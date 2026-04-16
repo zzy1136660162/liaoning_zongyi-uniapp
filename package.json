@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "dayjs": "^1.11.19",
+    "pinia": "^3.0.4"
+  }
+}

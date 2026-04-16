@@ -1,0 +1,39 @@
+# uni-app / HBuilderX
+node_modules/
+unpackage/
+dist/
+bin/
+*.log
+*.pid
+*.seed
+
+# HBuilderX
+*.db
+*.sqlite
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+package-lock.json
+yarn.lock
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build output
+*.apk
+*.ipa
+*.xci.apk
