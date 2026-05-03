@@ -41,6 +41,12 @@
 			}
 		},
 		{
+			"path": "pages/products/medicine_detail",
+			"style": {
+				"navigationBarTitleText": "药品详情"
+			}
+		},
+		{
 			"path": "pages/products/product_notice",
 			"style": {
 				"navigationBarTitleText": "注意事项"
