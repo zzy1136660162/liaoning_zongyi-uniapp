@@ -1,5 +1,5 @@
 <template>
-  <view class="page">
+  <view class="page" :class="{ 'page-lock': showManual || showPolicy }">
     <!-- 顶部导航 -->
     <view class="header">
       <view class="header-left" @click="goBack">
@@ -67,27 +67,6 @@
         </view>
       </view>
     </view>
-
-    <!-- 承诺标识 -->
-    <!-- <view class="promise-box">
-      <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">正品保证</text>
-      </view>
-      <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">隐私配送</text>
-      </view>
-      <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">专业药师</text>
-      </view>
-      <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">顺丰物流</text>
-      </view>
-    </view> -->
-
     <!-- 选择区域 -->
     <view class="select-section" @click="showSkuPopup">
       <view class="select-label">已选</view>
@@ -120,6 +99,29 @@
         <image class="sf-logo" src="https://smf.lntcm.com/static/logo/sf.png" mode="aspectFit" />
         <text class="delivery-text">顺丰配送约1-2天送达</text>
       </view>
+	  <!-- 承诺标识 -->
+	  <view class="promise-box">
+	    <view class="promise-item">
+	      <text class="promise-icon">✓</text>
+	      <text class="promise-text">医院自研</text>
+	    </view>
+	    <view class="promise-item">
+	      <text class="promise-icon">✓</text>
+	      <text class="promise-text">正品保证</text>
+	    </view>
+	    <view class="promise-item">
+	      <text class="promise-icon">✓</text>
+	      <text class="promise-text">专业药师</text>
+	    </view>
+	    <view class="promise-item">
+	      <text class="promise-icon">✓</text>
+	      <text class="promise-text">顺丰物流</text>
+	    </view>
+		<view class="promise-item">
+		  <text class="promise-icon">✓</text>
+		  <text class="promise-text">隐私保护</text>
+		</view>
+	  </view>
 
     <!-- 药品说明书抽屉 -->
     <view class="drawer-overlay" v-if="showManual" @click="closeManualDrawer">
@@ -184,17 +186,70 @@
     <!-- 用药推荐 -->
     <view class="recommend-section">
       <view class="recommend-header">
-        <text class="recommend-title">用药推荐</text>
+        <view class="recommend-tabs">
+          <view class="recommend-tab" :class="{ active: recommendTab === 'combo' }" @click="switchRecommendTab('combo')">用药组合</view>
+          <view class="recommend-tab" :class="{ active: recommendTab === 'star' }" @click="switchRecommendTab('star')">明星产品</view>
+        </view>
       </view>
-      <view class="recommend-list">
-        <view class="recommend-item" v-for="item in recommendedMedicines" :key="item.id">
-          <image class="recommend-image" :src="item.image" mode="aspectFill" />
-          <view class="recommend-name">{{ item.name }}</view>
-          <view class="recommend-spec">{{ item.specification }}</view>
-          <view class="recommend-price">¥{{ item.price }}</view>
+      <scroll-view class="recommend-scroll" scroll-x enable-flex>
+        <view class="recommend-list">
+          <view class="recommend-item" v-for="item in currentRecommendList" :key="item.id">
+            <image class="recommend-image" :src="item.image" mode="aspectFill" />
+            <view class="recommend-name">{{ item.name }}</view>
+            <view class="recommend-spec">{{ item.specification }}</view>
+            <view class="recommend-bottom">
+              <view class="recommend-price">¥{{ item.price }}</view>
+              <view class="recommend-add-btn" @click.stop="addToCart(item, $event)">
+                <text v-if="getItemCartQty(item.id) > 0">{{ getItemCartQty(item.id) }}</text>
+                <text v-else>+</text>
+              </view>
+            </view>
+          </view>
+        </view>
+        </scroll-view>
+      </view>
+
+    <!-- 飞入购物车动画 -->
+    <view class="fly-ball" :class="{ flying: isFlying }" :style="flyStyle">
+      <text class="fly-ball-text">+1</text>
+    </view>
+
+    <!-- 购物车详情弹窗 -->
+    <view class="cart-overlay" v-if="showCart" @click="closeCart">
+      <view class="cart-popup" @click.stop>
+        <view class="cart-header">
+          <text class="cart-title">购物车</text>
+          <view class="cart-header-right">
+            <text class="cart-clear" @click.stop="clearCart">清空购物车</text>
+          </view>
+        </view>
+        <scroll-view class="cart-body" scroll-y>
+          <view class="cart-item" v-for="item in cartItems" :key="item.id">
+            <image class="cart-item-img" :src="item.image" mode="aspectFill" />
+            <view class="cart-item-info">
+              <view class="cart-item-name">{{ item.name }}</view>
+              <view class="cart-item-spec">{{ item.sku }}</view>
+              <view class="cart-item-bottom">
+                <view class="cart-item-price">¥{{ item.price }}</view>
+                <view class="cart-item-qty">
+                  <view class="qty-btn-small" @click.stop="updateCartItemQty(item, -1)">−</view>
+                  <text class="qty-num">{{ item.quantity }}</text>
+                  <view class="qty-btn-small" @click.stop="updateCartItemQty(item, 1)">+</view>
+                </view>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+        <view class="cart-footer">
+          <view class="cart-total">
+            <text class="cart-total-label">共{{ cartCount }}件</text>
+            <text class="cart-total-price">¥{{ cartItems.reduce((sum, c) => sum + c.price * c.quantity, 0).toFixed(2) }}</text>
+          </view>
+          <view class="cart-checkout-btn" @click="goToCheckout">去结算</view>
         </view>
       </view>
     </view>
+
 
     <view class="split-line"></view>
 
@@ -309,9 +364,9 @@
           <text class="action-text">{{ isCollected ? '已收藏' : '收藏' }}</text>
         </view>
         <view class="action-icon-btn" @click="goCart">
-          <text class="action-icon">🛒</text>
+          <text class="action-icon" :class="{ shake: cartShake }">🛒</text>
           <text class="action-text">购物车</text>
-          <view class="cart-badge" v-if="cartCount > 0">{{ cartCount > 99 ? '99+' : cartCount }}</view>
+          <view class="cart-badge" :class="{ shake: cartShake }" v-if="cartCount > 0">{{ cartCount > 99 ? '99+' : cartCount }}</view>
         </view>
       </view>
       <view class="bottom-right">
@@ -396,7 +451,9 @@ const product = ref({
   stock: 168,
   skus: ['10g×9袋/盒', '10g×12袋/盒', '10g×18袋/盒'],
   intro: '复方感冒灵颗粒是一种用于治疗风热感冒的中成药，主要成分包括金银花、野菊花、岗梅、对乙酰氨基酚等。本品为浅棕黄色至棕色的颗粒，味甜、微苦。具有辛凉解表，清热解毒的功效，适用于风热感冒之发热、微恶风寒、头身痛、口干而渴、鼻塞涕浊、咽喉红肿疼痛、咳嗽、痰黄粘稠等症状。',
-  detailImages: []
+  detailImages: [
+    'https://smf.lntcm.com/static/medicine/2S7A5409.JPG'
+  ]
 })
 
 const quantity = ref(1)
@@ -408,6 +465,10 @@ const showSku = ref(false)
 const selectedSku = ref('')
 const showManual = ref(false)
 const showPolicy = ref(false)
+const isFlying = ref(false)
+const flyStyle = ref({})
+const cartShake = ref(false)
+const showCart = ref(false)
 
 const reviewScore = ref(4.8)
 const reviewCount = ref(236)
@@ -442,14 +503,177 @@ const recommendedMedicines = ref([
     specification: '10ml×12支',
     price: '28.00',
     image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')
+  },
+  {
+    id: 4,
+    name: '复方氨酚烷胺胶囊',
+    specification: '12粒/盒',
+    price: '15.80',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')
+  },
+  {
+    id: 5,
+    name: '板蓝根颗粒',
+    specification: '10g×20袋',
+    price: '22.50',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_zhou1.png')
+  },
+  {
+    id: 6,
+    name: '金银花口服液',
+    specification: '10ml×12支',
+    price: '28.00',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')
   }
 ])
+
+const recommendTab = ref('combo')
+
+const comboMedicines = ref([
+  {
+    id: 1,
+    name: '复方氨酚烷胺胶囊',
+    specification: '12粒/盒',
+    price: '15.80',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')
+  },
+  {
+    id: 2,
+    name: '板蓝根颗粒',
+    specification: '10g×20袋',
+    price: '22.50',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_zhou1.png')
+  },
+  {
+    id: 3,
+    name: '金银花口服液',
+    specification: '10ml×12支',
+    price: '28.00',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')
+  },
+  {
+    id: 4,
+    name: '维生素C泡腾片',
+    specification: '10片/盒',
+    price: '18.50',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')
+  }
+])
+
+const starMedicines = ref([
+  {
+    id: 5,
+    name: '川贝清肺糖浆',
+    specification: '120ml/瓶',
+    price: '35.00',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')
+  },
+  {
+    id: 6,
+    name: '金银花露',
+    specification: '250ml/瓶',
+    price: '12.00',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_zhou1.png')
+  },
+  {
+    id: 7,
+    name: '枇杷膏',
+    specification: '180g/瓶',
+    price: '42.00',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')
+  },
+  {
+    id: 8,
+    name: '感冒灵颗粒',
+    specification: '10g×9袋',
+    price: '16.80',
+    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')
+  }
+])
+
+const currentRecommendList = computed(() => {
+  return recommendTab.value === 'combo' ? comboMedicines.value : starMedicines.value
+})
+
+const cartItems = computed(() => {
+  return uni.getStorageSync('medicine_cart') || []
+})
+
+const switchRecommendTab = (tab) => {
+  recommendTab.value = tab
+}
+
+const getItemCartQty = (id) => {
+  const cart = uni.getStorageSync('medicine_cart') || []
+  const item = cart.find(c => c.id === id)
+  return item ? item.quantity : 0
+}
+
+const addToCart = (item, event) => {
+  let cart = uni.getStorageSync('medicine_cart') || []
+  const existIdx = cart.findIndex(c => c.id === item.id)
+  
+  if (existIdx > -1) {
+    cart[existIdx].quantity += 1
+  } else {
+    cart.push({
+      id: item.id,
+      name: item.name,
+      price: parseFloat(item.price),
+      sku: item.specification,
+      quantity: 1,
+      image: item.image
+    })
+  }
+  
+  uni.setStorageSync('medicine_cart', cart)
+  cartCount.value = cart.reduce((sum, c) => sum + c.quantity, 0)
+  cartShake.value = true
+  setTimeout(() => { cartShake.value = false }, 500)
+  
+  if (event) {
+    startFlyAnimation(event)
+  }
+}
+
+const startFlyAnimation = (event) => {
+  const query = uni.createSelectorQuery()
+  query.select('.action-icon-btn:last-child').boundingClientRect((cartRect) => {
+    if (!cartRect || !event) return
+    
+    const touch = event.touches ? event.touches[0] : event
+    const startX = touch.clientX || event.detail?.x || 0
+    const startY = touch.clientY || event.detail?.y || 0
+    
+    flyStyle.value = {
+      left: startX + 'px',
+      top: startY + 'px',
+      opacity: 1
+    }
+    
+    isFlying.value = true
+    
+    setTimeout(() => {
+      flyStyle.value = {
+        left: cartRect.left + cartRect.width / 2 + 'px',
+        top: cartRect.top + cartRect.height / 2 + 'px',
+        opacity: 0,
+        transition: 'all 0.6s cubic-bezier(0.5, -0.5, 0.3, 1)'
+      }
+    }, 50)
+    
+    setTimeout(() => {
+      isFlying.value = false
+      flyStyle.value = {}
+    }, 700)
+  }).exec()
+}
 
 const productImages = computed(() => {
   if (product.value.detailImages && product.value.detailImages.length > 0) {
     return product.value.detailImages
   }
-  return [getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')]
+  return [getImageUrl('https://smf.lntcm.com/static/medicine/2S7A5409.JPG')]
 })
 
 const priceInteger = computed(() => Math.floor(product.value.price || 0))
@@ -541,6 +765,60 @@ const toggleCollect = () => {
 }
 
 const goCart = () => {
+  if (cartCount.value > 0) {
+    showCart.value = true
+  } else {
+    uni.showToast({ title: '购物车是空的', icon: 'none' })
+  }
+}
+
+const closeCart = () => {
+  showCart.value = false
+}
+
+const clearCart = () => {
+  uni.showModal({
+    title: '提示',
+    content: '确定要清空购物车吗？',
+    success: (res) => {
+      if (res.confirm) {
+        uni.removeStorageSync('medicine_cart')
+        cartCount.value = 0
+        showCart.value = false
+        uni.showToast({ title: '购物车已清空', icon: 'success' })
+      }
+    }
+  })
+}
+
+const updateCartItemQty = (item, delta) => {
+  let cart = uni.getStorageSync('medicine_cart') || []
+  const existIdx = cart.findIndex(c => c.id === item.id)
+  
+  if (existIdx > -1) {
+    cart[existIdx].quantity += delta
+    if (cart[existIdx].quantity <= 0) {
+      cart.splice(existIdx, 1)
+    }
+  }
+  
+  uni.setStorageSync('medicine_cart', cart)
+  cartCount.value = cart.reduce((sum, c) => sum + c.quantity, 0)
+}
+
+const removeCartItem = (item) => {
+  let cart = uni.getStorageSync('medicine_cart') || []
+  cart = cart.filter(c => c.id !== item.id)
+  uni.setStorageSync('medicine_cart', cart)
+  cartCount.value = cart.reduce((sum, c) => sum + c.quantity, 0)
+}
+
+const goToCheckout = () => {
+  if (cartCount.value === 0) {
+    uni.showToast({ title: '购物车是空的', icon: 'none' })
+    return
+  }
+  showCart.value = false
   uni.switchTab({ url: '/pages/cart/cart' })
 }
 
@@ -638,6 +916,11 @@ onLoad((options) => {
   background: #fff;
   min-height: 100vh;
   padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
+}
+
+.page-lock {
+  overflow: hidden;
+  height: 100vh;
 }
 
 .header {
@@ -1206,20 +1489,54 @@ onLoad((options) => {
   margin-bottom: 20rpx;
 }
 
+.recommend-tabs {
+  display: flex;
+  gap: 24rpx;
+}
+
+.recommend-tab {
+  font-size: 28rpx;
+  color: #666;
+  padding-bottom: 8rpx;
+  position: relative;
+}
+
+.recommend-tab.active {
+  color: #ff4c4c;
+  font-weight: bold;
+}
+
+.recommend-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48rpx;
+  height: 4rpx;
+  background: #ff4c4c;
+  border-radius: 2rpx;
+}
+
 .recommend-title {
   font-size: 32rpx;
   font-weight: bold;
   color: #222;
 }
 
+.recommend-scroll {
+  white-space: nowrap;
+}
+
 .recommend-list {
-  display: flex;
-  justify-content: space-between;
+  display: inline-flex;
 }
 
 .recommend-item {
-  flex: 1;
+  width: 200rpx;
   margin-right: 16rpx;
+  display: inline-block;
+  vertical-align: top;
 }
 
 .recommend-item:last-child {
@@ -1248,11 +1565,31 @@ onLoad((options) => {
   margin-top: 6rpx;
 }
 
+.recommend-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8rpx;
+}
+
 .recommend-price {
   font-size: 26rpx;
   color: #ff4b4b;
   font-weight: bold;
-  margin-top: 8rpx;
+}
+
+.recommend-add-btn {
+  min-width: 44rpx;
+  height: 44rpx;
+  background: #ff4b4b;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: bold;
+  line-height: 1;
 }
 
 .split-line {
@@ -1814,5 +2151,208 @@ onLoad((options) => {
 .sku-buy {
   background: linear-gradient(135deg, #ff4b4b, #ff6b6b);
   color: #fff;
+}
+
+.fly-ball {
+  position: fixed;
+  width: 40rpx;
+  height: 40rpx;
+  background: #ff4b4b;
+  border-radius: 50%;
+  z-index: 999;
+  pointer-events: none;
+  transform: scale(0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cart-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+}
+
+.cart-popup {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 70vh;
+  background: #fff;
+  border-radius: 24rpx 24rpx 0 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cart-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30rpx;
+  border-bottom: 1rpx solid #eee;
+  position: relative;
+}
+
+.cart-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.cart-header-right {
+  position: absolute;
+  right: 30rpx;
+  top: 30rpx;
+  display: flex;
+  align-items: center;
+}
+
+.cart-clear {
+  font-size: 26rpx;
+  color: #ff4b4b;
+  margin-right: 20rpx;
+}
+
+.cart-close {
+  font-size: 48rpx;
+  color: #999;
+}
+
+.cart-body {
+  flex: 1;
+  padding: 20rpx 30rpx;
+  max-height: 50vh;
+  width: 92%;
+}
+
+.cart-item {
+  display: flex;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+  position: relative;
+}
+
+.cart-item:last-child {
+  border-bottom: none;
+}
+
+.cart-item-img {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 8rpx;
+  margin-right: 20rpx;
+}
+
+.cart-item-info {
+  flex: 1;
+}
+
+.cart-item-name {
+  font-size: 28rpx;
+  color: #333;
+  font-weight: bold;
+}
+
+.cart-item-spec {
+  font-size: 24rpx;
+  color: #888;
+  margin-top: 6rpx;
+}
+
+.cart-item-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12rpx;
+}
+
+.cart-item-price {
+  font-size: 28rpx;
+  color: #ff4b4b;
+  font-weight: bold;
+}
+
+.cart-item-qty {
+  display: flex;
+  align-items: center;
+  margin-right: 12rpx;
+}
+
+.qty-btn-small {
+  width: 44rpx;
+  height: 44rpx;
+  background: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8rpx;
+  font-size: 28rpx;
+  color: #333;
+}
+
+.qty-num {
+  width: 50rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #333;
+}
+
+.cart-footer {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 30rpx;
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #eee;
+  background: #fff;
+}
+
+.cart-total {
+  flex: 1;
+}
+
+.cart-total-label {
+  font-size: 26rpx;
+  color: #666;
+}
+
+.cart-total-price {
+  font-size: 36rpx;
+  color: #ff4b4b;
+  font-weight: bold;
+  margin-left: 10rpx;
+}
+
+.cart-checkout-btn {
+  background: linear-gradient(135deg, #ff4b4b, #ff6b6b);
+  color: #fff;
+  padding: 20rpx 40rpx;
+  border-radius: 40rpx;
+  font-size: 28rpx;
+  font-weight: bold;
+}
+
+.fly-ball.flying {
+  transform: scale(1);
+}
+
+.fly-ball-text {
+  font-size: 24rpx;
+  color: #fff;
+  font-weight: bold;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4rpx) scale(1.1); }
+  75% { transform: translateX(4rpx) scale(1.1); }
+}
+
+.shake {
+  animation: shake 0.3s ease-in-out;
 }
 </style>
