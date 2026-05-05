@@ -94,23 +94,23 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import {
   STORAGE_KEY_CURRENT_ORDER,
   STORAGE_KEY_SHIPPING_ADDRESSES,
   STORAGE_KEY_DEFAULT_ADDRESS_ID,
-  STORAGE_KEY_VERIFIED_PRODUCTS,
   STORAGE_KEY_CURRENT_CONSULTATION_ID
 } from '@/utils/storage.js'
-import { loadCartItems, calculateTotalPrice, getSelectedProductIds } from '@/utils/cart.js'
+import { buildOrderInfo, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds } from '@/utils/cart.js'
 import { createOrder } from '@/api/order.js'
 import { getAddressList } from '@/api/address.js'
-import { wechatSinglePay } from '@/api/payment.js'
+import { wechatCombinePay, wechatSinglePay } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
 import { getStoredWeChatOpenId } from '@/api/auth.js'
 import { queryFreight } from '@/api/express.js'
 import { getCachedProducts, setCachedProducts, isCacheValid } from '@/utils/cache.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
+import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
 
 const orderInfo = ref({
   prescriptions: [],
@@ -133,6 +133,17 @@ const addresses = ref([])
 const selectedAddress = ref(null)
 const categories = ref([])
 const calculatingFreight = ref(false)
+const selectedProductIds = ref([])
+const selectedBizType = ref(1)
+
+onLoad((options) => {
+  if (options?.selectedItems) {
+    selectedProductIds.value = options.selectedItems.split(',').filter(id => id.trim())
+    setCheckoutProductIds(selectedProductIds.value)
+  } else {
+    selectedProductIds.value = getCurrentCheckoutProductIds()
+  }
+})
 
 onMounted(async () => {
   // 记录页面访问日志
@@ -165,19 +176,22 @@ onShow(async () => {
   
   // 重新加载产品数据并更新订单金额（购物车数据可能已更新）
   await loadProducts()
+  loadOrderInfo()
 })
 
 // 加载产品数据（只加载购物车中选中的商品）
 const loadProducts = async () => {
   try {
-    // 获取选中的商品ID
-    const selectedProductIds = getSelectedProductIds()
+    const currentSelectedIds = selectedProductIds.value.length > 0
+      ? selectedProductIds.value
+      : getCurrentCheckoutProductIds()
     
-    if (selectedProductIds.length === 0) {
+    if (currentSelectedIds.length === 0) {
       // 如果没有选中的商品，清空分类数据
       categories.value = []
       return []
     }
+    setCheckoutProductIds(currentSelectedIds)
     
     // 先检查缓存
     if (isCacheValid()) {
@@ -188,12 +202,16 @@ const loadProducts = async () => {
       cached.categories.forEach(cat => {
         cat.products.forEach(p => cachedProductIds.add(String(p.id)))
       })
-      const currentProductIds = new Set(selectedProductIds.map(id => String(id)))
+      const currentProductIds = new Set(currentSelectedIds.map(id => String(id)))
       
       // 如果缓存包含所有需要的商品，使用缓存
-      const hasAllProducts = selectedProductIds.every(id => cachedProductIds.has(String(id)))
+      const hasAllProducts = currentSelectedIds.every(id => cachedProductIds.has(String(id)))
       if (hasAllProducts && cached.categories.length > 0) {
         categories.value = cached.categories
+        const flow = resolveProductFlow(cached.categories[0]?.products || [])
+        if (flow.valid) {
+          selectedBizType.value = flow.bizType
+        }
         return cached.categories
       }
     }
@@ -209,7 +227,7 @@ const loadProducts = async () => {
     }
     
     // 逐个获取选中商品的详细信息
-    for (const productId of selectedProductIds) {
+    for (const productId of currentSelectedIds) {
       try {
         const productDetail = await getProductDetail(productId)
         if (productDetail) {
@@ -219,6 +237,8 @@ const loadProducts = async () => {
             description: productDetail.subTitle || productDetail.description,
             image: productDetail.coverImage || productDetail.image,
             price: productDetail.price,
+            bizType: productDetail.bizType,
+            goodsMerchantType: productDetail.goodsMerchantType,
             unit: productDetail.unit || '份',
             notice: productDetail.usageDesc || productDetail.notice
           })
@@ -233,6 +253,13 @@ const loadProducts = async () => {
     setCachedProducts([cartCategory], productsData)
     
     categories.value = [cartCategory]
+    const flow = resolveProductFlow(cartCategory.products)
+    if (!flow.valid) {
+      uni.showToast({ title: flow.message, icon: 'none' })
+      setTimeout(() => uni.navigateBack(), 1500)
+      return []
+    }
+    selectedBizType.value = flow.bizType
     return [cartCategory]
   } catch (error) {
     console.error('加载商品失败:', error)
@@ -246,38 +273,47 @@ const loadProducts = async () => {
 const loadOrderInfo = () => {
   try {
     const saved = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
-    if (saved) {
-      orderInfo.value = saved
-      // 兜底：保证 cost 对象存在
-      if (!orderInfo.value.cost) {
-        orderInfo.value.cost = { medicineCost: 0, isDecocted: false, shippingFee: 0 }
-      }
-      
-      // 从购物车数据重新计算药品费用
-      if (categories.value.length > 0) {
-        const cartItems = loadCartItems(categories.value)
-        const medicineCost = calculateTotalPrice(cartItems)
-        orderInfo.value.cost.medicineCost = parseFloat(medicineCost.toFixed(2))
-        
-        // 更新订单商品列表（基于购物车数据）
-        orderInfo.value.items = cartItems.map(item => ({
-          id: item.id,
-          name: item.name,
-          type: '中药',
-          price: parseFloat(((item.price || 0) * (item.quantity || 1)).toFixed(2)),
-          quantity: item.quantity || 1
-        }))
-      }
-      
-      // 快递费兜底：无值时给默认18（不会覆盖已有计算值）
-      if (orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null) {
-        orderInfo.value.cost.shippingFee = 18
-      }
-      // 计算总价
-      calculateTotal()
-      // 保存更新后的订单信息
-      uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
+    const cartItems = categories.value.length > 0 ? loadCartItems(categories.value) : []
+    const currentSelectedIds = cartItems.map(item => String(item.id))
+    const distributor = selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
+      ? '健康产品服务'
+      : '辽宁中医药大学附属医院'
+    const rebuiltOrder = cartItems.length > 0
+      ? buildOrderInfo(cartItems, currentSelectedIds, distributor)
+      : null
+
+    orderInfo.value = saved && saved.items ? saved : (rebuiltOrder || orderInfo.value)
+
+    if (!orderInfo.value.cost) {
+      orderInfo.value.cost = { medicineCost: 0, isDecocted: false, shippingFee: 0 }
     }
+
+    if (rebuiltOrder) {
+      orderInfo.value.bizType = selectedBizType.value
+      orderInfo.value.prescriptions = rebuiltOrder.prescriptions
+      orderInfo.value.items = rebuiltOrder.items
+      orderInfo.value.deliveryInfo = {
+        ...(orderInfo.value.deliveryInfo || rebuiltOrder.deliveryInfo),
+        distributor,
+        logistics: '顺丰快递',
+        purchaseMethod: selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
+          ? '健康产品-在线支付'
+          : '药品配送-在线支付',
+        shippingPaymentMethod: '在线支付'
+      }
+      orderInfo.value.cost = {
+        ...orderInfo.value.cost,
+        medicineCost: rebuiltOrder.cost.medicineCost,
+        isDecocted: !!orderInfo.value.cost.isDecocted,
+        shippingFee: orderInfo.value.cost.shippingFee
+      }
+    }
+
+    if (orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null) {
+      orderInfo.value.cost.shippingFee = 18
+    }
+    calculateTotal()
+    uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
   } catch (e) {
     console.error('加载订单信息失败:', e)
     uni.showToast({ title: '加载订单失败', icon: 'none' })
@@ -453,7 +489,9 @@ const submitOrder = async () => {
     const orderData = {
       addressId: selectedAddress.value.id,
       shippingFee: orderInfo.value.cost.shippingFee || 0,
-      consultationId: uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID) || null,
+      consultationId: selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
+        ? null
+        : (uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID) || null),
       items: orderInfo.value.items.map(item => ({
         productId: item.id,
         quantity: item.quantity || 1,
@@ -469,8 +507,6 @@ const submitOrder = async () => {
     
     uni.hideLoading()
     
-    // ✅ 订单创建成功，直接调起单笔支付
-    // 优先使用 order.id（数字ID），这是后端API需要的
     const orderId = order.id || order.orderId
     
     if (!orderId) {
@@ -509,18 +545,28 @@ const submitOrder = async () => {
       
       console.log('使用openid发起支付:', openid)
       
-      // 调用单笔支付（商品费用+快递费统一支付给主商户）
-      console.log('开始调用单笔支付...')
-      const payResult = await wechatSinglePay(orderId, { 
-        openid,
-        totalAmount: orderInfo.value.total  // 传递总金额（元）
-      })
-      console.log('单笔支付成功:', payResult)
-      
-      // 支付成功，跳转到支付成功页面（传递订单ID用于从后端获取订单信息）
-      uni.redirectTo({
-        url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&outTradeNo=${payResult.outTradeNo || ''}&paymentType=single`
-      })
+      try {
+        console.log('开始调用合单支付...')
+        const combinePayResult = await wechatCombinePay(orderId, { openid })
+        console.log('合单支付成功:', combinePayResult)
+        uni.redirectTo({
+          url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&combineOutTradeNo=${combinePayResult.combineOutTradeNo || ''}&paymentType=combine`
+        })
+      } catch (combineError) {
+        if (combineError.message === '用户取消支付') {
+          throw combineError
+        }
+
+        console.warn('合单支付失败，回退单笔支付:', combineError)
+        const payResult = await wechatSinglePay(orderId, {
+          openid,
+          totalAmount: orderInfo.value.total
+        })
+        console.log('单笔支付成功:', payResult)
+        uni.redirectTo({
+          url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&outTradeNo=${payResult.outTradeNo || ''}&paymentType=single`
+        })
+      }
     } catch (error) {
       console.error('支付失败:', error)
       
@@ -796,4 +842,3 @@ const submitOrder = async () => {
   pointer-events: auto;
 }
 </style>
-

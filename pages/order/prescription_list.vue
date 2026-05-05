@@ -148,9 +148,11 @@ import {
   loadCartItems,
   buildOrderInfo,
   calculateTotalPrice,
+  getCurrentCheckoutProductIds,
   updateProductSelection,
   updateMultipleSelections,
-  getSelectedProductIds
+  getSelectedProductIds,
+  setCheckoutProductIds
 } from '@/utils/cart.js'
 
 // ==================== API 接口 ====================
@@ -208,11 +210,6 @@ const selectedCartIds = ref([])
     loadSelectedProducts() // 恢复用户之前的选择状态
     loadUserInfo()
 
-    // 页面初始化完成后，默认全选所有购物车商品
-    nextTick(() => {
-      setDefaultAllSelected()
-    })
-
     // 记录页面访问日志
     logPageView('处方列表', '用户进入处方列表页面')
   })
@@ -233,41 +230,11 @@ const selectedCartIds = ref([])
    */
   const loadSelectedProducts = () => {
     try {
-      // 从storage获取已选中的商品ID
-      selectedCartIds.value = getSelectedProductIds()
+      const checkoutIds = getCurrentCheckoutProductIds()
+      selectedCartIds.value = checkoutIds.length > 0 ? checkoutIds : getSelectedProductIds()
     } catch (e) {
       console.error('加载选中产品状态失败:', e)
       selectedCartIds.value = []
-    }
-  }
-
-  /**
-   * 设置默认全选状态
-   * 页面初始化时自动全选所有购物车商品
-   */
-  const setDefaultAllSelected = () => {
-    try {
-      // 获取所有购物车商品的ID
-      const allProductIds = cartItemsList.value.map(item => item.id)
-
-      // 如果购物车中有商品，则默认全选
-      if (allProductIds.length > 0) {
-        // 设置内存中的选中状态
-        selectedCartIds.value = [...allProductIds]
-
-        // 创建选择状态映射
-        const selectionMap = {}
-        allProductIds.forEach(productId => {
-          selectionMap[productId] = true
-        })
-
-        // 批量更新storage中的选中状态
-        updateMultipleSelections(selectionMap)
-
-        console.log('页面初始化默认全选完成，共选中', allProductIds.length, '个商品')
-      }
-    } catch (e) {
-      console.error('设置默认全选状态失败:', e)
     }
   }
 
@@ -328,9 +295,11 @@ const selectedCartIds = ref([])
    */
   const loadProducts = async () => {
     try {
-      // 从本地存储获取已添加到购物车的商品ID
+      const checkoutIds = getCurrentCheckoutProductIds()
       const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-      const productIds = Object.keys(verifiedProducts).filter(id => verifiedProducts[id])
+      const productIds = checkoutIds.length > 0
+        ? checkoutIds
+        : Object.keys(verifiedProducts).filter(id => verifiedProducts[id])
       
       // 如果购物车为空，不需要加载商品数据
       if (productIds.length === 0) {
@@ -551,8 +520,9 @@ const selectedCartIds = ref([])
       uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo)
       
       // 跳转到订单确认页面
+      setCheckoutProductIds(selectedProductIds)
       uni.navigateTo({
-        url: '/pages/order/confirm'
+        url: `/pages/order/confirm?selectedItems=${selectedProductIds.join(',')}`
       })
     } catch (e) {
       console.error('构建订单信息失败:', e)

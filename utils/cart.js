@@ -5,8 +5,10 @@
 
 import { 
   STORAGE_KEY_VERIFIED_PRODUCTS, 
-  STORAGE_KEY_PRODUCT_QUANTITIES 
+  STORAGE_KEY_PRODUCT_QUANTITIES,
+  STORAGE_KEY_CHECKOUT_PRODUCT_IDS
 } from './storage.js'
+import { resolveProductBizType, resolveProductTypeLabel } from './product-biz.js'
 
 /**
  * 数据格式标准化函数
@@ -204,13 +206,14 @@ export const calculateTotalQuantity = (cartItems) => {
 export const buildOrderItems = (cartItems, selectedProductIds = null) => {
   let items = cartItems
   if (selectedProductIds && selectedProductIds.length > 0) {
-    items = cartItems.filter(item => selectedProductIds.includes(item.id))
+    const selectedSet = new Set(selectedProductIds.map(id => String(id)))
+    items = cartItems.filter(item => selectedSet.has(String(item.id)))
   }
   
   return items.map(item => ({
     id: item.id,
     name: item.name,
-    type: '中药',
+    type: resolveProductTypeLabel(item),
     price: parseFloat(((item.price || 0) * (item.quantity || 1)).toFixed(2)),
     quantity: item.quantity || 1
   }))
@@ -224,11 +227,18 @@ export const buildOrderItems = (cartItems, selectedProductIds = null) => {
  * @returns {Object} 订单信息
  */
 export const buildOrderInfo = (cartItems, selectedProductIds = null, hospital = '辽宁中医药大学附属医院') => {
-  const orderItems = buildOrderItems(cartItems, selectedProductIds)
+  let selectedItems = cartItems
+  if (selectedProductIds && selectedProductIds.length > 0) {
+    const selectedSet = new Set(selectedProductIds.map(id => String(id)))
+    selectedItems = cartItems.filter(item => selectedSet.has(String(item.id)))
+  }
+  const orderItems = buildOrderItems(selectedItems, null)
   const medicineCost = parseFloat(orderItems.reduce((sum, item) => sum + item.price, 0).toFixed(2))
+  const bizType = selectedItems.length > 0 ? resolveProductBizType(selectedItems[0]) : 1
   
   return {
-    prescriptions: selectedProductIds || cartItems.map(item => item.id),
+    prescriptions: orderItems.map(item => item.id),
+    bizType,
     items: orderItems,
     deliveryInfo: {
       distributor: hospital,
@@ -353,6 +363,42 @@ export const getSelectedProductIds = () => {
   }
 }
 
+export const setCheckoutProductIds = (productIds = []) => {
+  try {
+    const normalizedIds = productIds.map(id => String(id))
+    uni.setStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS, normalizedIds)
+    return true
+  } catch (e) {
+    console.error('保存当前结算商品失败:', e)
+    return false
+  }
+}
+
+export const getCheckoutProductIds = () => {
+  try {
+    const ids = uni.getStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS) || []
+    return Array.isArray(ids) ? ids.map(id => String(id)) : []
+  } catch (e) {
+    console.error('读取当前结算商品失败:', e)
+    return []
+  }
+}
+
+export const clearCheckoutProductIds = () => {
+  try {
+    uni.removeStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS)
+    return true
+  } catch (e) {
+    console.error('清理当前结算商品失败:', e)
+    return false
+  }
+}
+
+export const getCurrentCheckoutProductIds = () => {
+  const checkoutIds = getCheckoutProductIds()
+  return checkoutIds.length > 0 ? checkoutIds : getSelectedProductIds()
+}
+
 /**
  * 获取购物车统计信息
  * @returns {Object} 统计信息 { totalCount: number, selectedCount: number, totalPrice: number }
@@ -381,4 +427,3 @@ export const getCartStatistics = () => {
     return { totalCount: 0, selectedCount: 0, totalPrice: 0 }
   }
 }
-

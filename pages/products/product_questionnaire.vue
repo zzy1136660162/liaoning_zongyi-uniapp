@@ -45,8 +45,10 @@
 <script>
 import { STORAGE_KEY_VERIFIED_PRODUCTS } from '@/utils/storage.js'
 import { saveToCart } from '@/utils/cart.js'
+import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId, submitQuestionnaire } from '@/api/questionnaire.js'
 import { logPageView } from '@/api/access-log.js'
+import { resolveProductFlow } from '@/utils/product-biz.js'
 
 export default {
 	data() {
@@ -67,6 +69,41 @@ export default {
 		logPageView('产品问卷', '用户进入产品问卷页面')
 	},
 	methods: {
+		async ensureCartCompatible() {
+			const currentProduct = await getProductDetail(this.productId)
+			if (!currentProduct) {
+				return false
+			}
+
+			const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
+			const existingIds = Object.keys(verifiedProducts)
+				.filter(id => verifiedProducts[id] && String(id) !== String(this.productId))
+			if (existingIds.length === 0) {
+				return true
+			}
+
+			const existingProducts = []
+			for (const productId of existingIds) {
+				try {
+					const detail = await getProductDetail(productId)
+					if (detail) {
+						existingProducts.push(detail)
+					}
+				} catch (error) {
+					console.warn('检查购物车商品失败:', productId, error)
+				}
+			}
+
+			const flow = resolveProductFlow([currentProduct, ...existingProducts])
+			if (!flow.valid) {
+				uni.showToast({
+					title: flow.message,
+					icon: 'none'
+				})
+				return false
+			}
+			return true
+		},
 		// 加载问卷数据
 		async loadQuestionnaire() {
 			if (!this.productId) {
@@ -197,6 +234,10 @@ export default {
 				
 				// 根据后端返回的结果处理
 				if (result.isMatch) {
+					const canAdd = await this.ensureCartCompatible()
+					if (!canAdd) {
+						return
+					}
 					// 符合条件，保存到购物车并返回列表页
 					saveToCart(this.productId, 1)
 					

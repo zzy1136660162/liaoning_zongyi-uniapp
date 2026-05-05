@@ -34,6 +34,8 @@ import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId } from '@/api/questionnaire.js'
 import { getImageUrl } from '@/utils/config.js'
 import { saveToCart } from '@/utils/cart.js'
+import { STORAGE_KEY_VERIFIED_PRODUCTS } from '@/utils/storage.js'
+import { isHealthGoods, resolveProductFlow } from '@/utils/product-biz.js'
 import { logPageView } from '@/api/access-log.js'
 
 export default {
@@ -43,7 +45,8 @@ export default {
 			productName: '',
 		noticeText: '',
 		suitableCrowd: '',
-		usageDesc: ''
+		usageDesc: '',
+		productDetail: null
 		}
 	},
 	onLoad(options) {
@@ -65,6 +68,7 @@ export default {
 			try {
 				const detail = await getProductDetail(productId)
 				if (detail) {
+					this.productDetail = detail
 					this.productName = detail.productName || detail.name || this.productName
 					this.noticeText = detail.contraindication || detail.noticeText || this.noticeText
 					this.suitableCrowd = detail.suitableCrowd || ''
@@ -79,6 +83,41 @@ export default {
 				this.noticeText = '当前药方暂无详细说明，请咨询医师后再使用。'
 			}
 		},
+		async ensureCartCompatible() {
+			const currentProduct = this.productDetail || await getProductDetail(this.productId)
+			if (!currentProduct) {
+				return false
+			}
+
+			const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
+			const existingIds = Object.keys(verifiedProducts)
+				.filter(id => verifiedProducts[id] && String(id) !== String(this.productId))
+			if (existingIds.length === 0) {
+				return true
+			}
+
+			const existingProducts = []
+			for (const productId of existingIds) {
+				try {
+					const detail = await getProductDetail(productId)
+					if (detail) {
+						existingProducts.push(detail)
+					}
+				} catch (error) {
+					console.warn('检查购物车商品失败:', productId, error)
+				}
+			}
+
+			const flow = resolveProductFlow([currentProduct, ...existingProducts])
+			if (!flow.valid) {
+				uni.showToast({
+					title: flow.message,
+					icon: 'none'
+				})
+				return false
+			}
+			return true
+		},
 		async startQuestionnaire() {
 			if (!this.productId) {
 				uni.showToast({
@@ -91,6 +130,39 @@ export default {
 			uni.showLoading({ title: '检查中...' })
 			
 			try {
+				const canAdd = await this.ensureCartCompatible()
+				if (!canAdd) {
+					return
+				}
+
+				const detail = this.productDetail || await getProductDetail(this.productId)
+				this.productDetail = detail
+				if (detail && isHealthGoods(detail)) {
+					const success = saveToCart(this.productId, 1)
+					if (!success) {
+						uni.showToast({
+							title: '添加到购物车失败',
+							icon: 'none'
+						})
+						return
+					}
+
+					uni.showToast({
+						title: '已添加到购物车',
+						icon: 'success'
+					})
+
+					setTimeout(() => {
+						uni.navigateBack({
+							delta: 1,
+							success: () => {
+								uni.$emit('refreshProductsList')
+							}
+						})
+					}, 1500)
+					return
+				}
+
 				// 尝试获取问卷，判断是否需要问卷
 				const response = await getQuestionnaireByProductId(this.productId)
 				const questionnaire = response.data || response

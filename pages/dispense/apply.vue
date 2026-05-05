@@ -97,13 +97,19 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { STORAGE_KEY_USER_REGISTER, STORAGE_KEY_VERIFIED_PRODUCTS, STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
-import { loadCartItems, calculateTotalPrice, calculateTotalQuantity } from '@/utils/cart.js'
+import {
+  STORAGE_KEY_CURRENT_CONSULTATION_ID,
+  STORAGE_KEY_USER_REGISTER,
+  STORAGE_KEY_VERIFIED_PRODUCTS,
+  STORAGE_KEY_PRODUCT_QUANTITIES
+} from '@/utils/storage.js'
+import { calculateTotalPrice, calculateTotalQuantity, getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/cart.js'
 import { getPatientList, updatePatient, deletePatient } from '@/api/patient.js'
 import { getCategoryList, getCategoryProducts, getProductDetail } from '@/api/product.js'
 import { deriveGenderFromId, deriveAgeFromId } from '@/utils/patient.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
+import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
 
 const cartItems = ref([]) // 购物车商品列表
 const productsData = ref(null) // 产品数据（保持兼容性）
@@ -111,6 +117,7 @@ const selectedItems = ref([]) // 从URL参数获取的选中商品ID列表
 
 const patients = ref([])
 const selectedPatient = ref(null)
+const selectedBizType = ref(1)
 
 // 计算总价格
 const totalPrice = computed(() => {
@@ -225,6 +232,12 @@ onMounted(() => {
 
   if (selectedItemsParam) {
     selectedItems.value = selectedItemsParam.split(',').filter(id => id.trim())
+  } else {
+    selectedItems.value = getCurrentCheckoutProductIds()
+  }
+
+  if (selectedItems.value.length > 0) {
+    setCheckoutProductIds(selectedItems.value)
   }
 
   loadPatientsFromAPI()
@@ -285,6 +298,8 @@ const loadProducts = async () => {
             description: productDetail.subTitle || productDetail.description,
             image: getImageUrl(productDetail.coverImage || productDetail.image),
             price: productDetail.price,
+            bizType: productDetail.bizType,
+            goodsMerchantType: productDetail.goodsMerchantType,
             unit: productDetail.unit || '份',
             notice: productDetail.usageDesc || productDetail.notice,
             quantity: quantity
@@ -297,6 +312,13 @@ const loadProducts = async () => {
 
     // 直接设置购物车商品列表
     cartItems.value = cartItemsList
+    const flow = resolveProductFlow(cartItemsList)
+    if (!flow.valid) {
+      uni.showToast({ title: flow.message, icon: 'none' })
+      setTimeout(() => uni.navigateBack(), 1500)
+      return
+    }
+    selectedBizType.value = flow.bizType
 
     // 设置兼容性数据（如果其他地方需要）
     productsData.value = { categories: [] }
@@ -400,7 +422,7 @@ const onAddPatient = () => {
 }
 
 const onSubmit = () => {
-  if (!selectedPatient.value) {
+  if (selectedBizType.value !== BIZ_TYPE_HEALTH_GOODS && !selectedPatient.value) {
     uni.showToast({ title: '请先选择就诊人', icon: 'none' })
     return
   }
@@ -410,9 +432,21 @@ const onSubmit = () => {
     productCount: cartItems.value.length
   })
 
-  // 跳转到在线复诊页面
+  const selectedItemIds = selectedItems.value.length > 0
+    ? selectedItems.value.join(',')
+    : cartItems.value.map(item => item.id).join(',')
+  setCheckoutProductIds(selectedItemIds ? selectedItemIds.split(',') : [])
+
+  if (selectedBizType.value === BIZ_TYPE_HEALTH_GOODS) {
+    uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+    uni.navigateTo({
+      url: `/pages/order/confirm?selectedItems=${selectedItemIds}`
+    })
+    return
+  }
+
   uni.navigateTo({
-    url: '/pages/dispense/consultation'
+    url: `/pages/dispense/consultation?selectedItems=${selectedItemIds}`
   })
 }
 </script>

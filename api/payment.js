@@ -85,19 +85,13 @@ export const wechatCombinePay = async (orderId, paymentData = {}) => {
     console.log('创建合单支付订单:', orderId, paymentData)
     
     // 调用后端创建合单支付订单
-    const response = await post('/api/payment/combine/create-by-order/' + orderId, paymentData, {
+    const combinePayData = await post('/api/payment/combine/create-by-order/' + orderId, paymentData, {
       needAuth: true,
       showLoading: true,
       loadingTitle: '正在创建支付订单...'
     })
     
-    console.log('合单支付创建响应:', response)
-    
-    if (response.code !== 200) {
-      throw new Error(response.message || '创建合单支付失败')
-    }
-    
-    const combinePayData = response.data
+    console.log('合单支付创建响应:', combinePayData)
     
     if (!combinePayData || !combinePayData.payParams) {
       throw new Error('支付参数不完整')
@@ -113,7 +107,7 @@ export const wechatCombinePay = async (orderId, paymentData = {}) => {
         provider: 'wxpay',
         timeStamp: payParams.timeStamp,
         nonceStr: payParams.nonceStr,
-        package: payParams.package,
+        package: payParams.packageValue,
         signType: payParams.signType || 'RSA',
         paySign: payParams.paySign,
         success: (res) => {

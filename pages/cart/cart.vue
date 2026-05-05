@@ -75,19 +75,24 @@
 
 <script>
 import { 
+	STORAGE_KEY_CURRENT_CONSULTATION_ID,
+	STORAGE_KEY_CURRENT_ORDER,
 	STORAGE_KEY_VERIFIED_PRODUCTS,
 	STORAGE_KEY_PRODUCT_QUANTITIES,
 	STORAGE_KEY_USER_REGISTER
 } from '@/utils/storage.js'
 import { getCategoryList, getCategoryProducts, getProductDetail } from '@/api/product.js'
 import {
+	buildOrderInfo,
+	clearCheckoutProductIds,
 	loadCartItems,
 	calculateTotalPrice,
 	calculateTotalQuantity,
 	saveToCart,
-	updateProductSelection,
+	setCheckoutProductIds,
 	removeFromCart
 } from '@/utils/cart.js'
+import { resolveProductFlow } from '@/utils/product-biz.js'
 import { getImageUrl } from '@/utils/config.js'
 import { logPageView } from '@/api/access-log.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
@@ -163,6 +168,8 @@ export default {
 								description: productDetail.subTitle || productDetail.description,
 								image: productDetail.coverImage || productDetail.image,
 								price: productDetail.price,
+								bizType: productDetail.bizType,
+								goodsMerchantType: productDetail.goodsMerchantType,
 								unit: productDetail.unit || '份',
 								notice: productDetail.usageDesc || productDetail.notice
 							})
@@ -373,15 +380,38 @@ export default {
 						})
 						return
 					}
-					
-					// 已注册，跳转到申请页面
-					// 传递选中的商品ID列表
-					const selectedItemIds = this.selectedItems.join(',')
+
+					const selectedProducts = this.cartItems.filter(item => this.selectedItems.includes(item.id))
+					const flow = resolveProductFlow(selectedProducts)
+					if (!flow.valid) {
+						uni.showToast({
+							title: flow.message,
+							icon: 'none'
+						})
+						return
+					}
+
+					const selectedItemIds = this.selectedItems.map(id => String(id))
+					setCheckoutProductIds(selectedItemIds)
+					uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+					uni.setStorageSync(
+						STORAGE_KEY_CURRENT_ORDER,
+						buildOrderInfo(this.cartItems, selectedItemIds)
+					)
+
+					if (flow.bizType === 2) {
+						uni.navigateTo({
+							url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}`
+						})
+						return
+					}
+
 					uni.navigateTo({
-						url: `/pages/dispense/apply?selectedItems=${selectedItemIds}`
+						url: `/pages/dispense/apply?selectedItems=${selectedItemIds.join(',')}`
 					})
 				} catch (e) {
 					console.error('检查注册状态失败:', e)
+					clearCheckoutProductIds()
 					uni.navigateTo({
 						url: '/pages/register/register'
 					})

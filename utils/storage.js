@@ -119,6 +119,13 @@ export const STORAGE_KEY_SELECTED_PRODUCTS = 'selected_products'
  */
 export const STORAGE_KEY_CURRENT_CONSULTATION_ID = 'current_consultation_id'
 
+/**
+ * 当前结算商品ID列表
+ * 存储格式: string[]
+ * 说明: 贯穿购物车 -> 问诊/确认页的当前结算上下文，避免使用全部购物车商品
+ */
+export const STORAGE_KEY_CHECKOUT_PRODUCT_IDS = 'checkout_product_ids'
+
 // ==================== 订单相关 ====================
 /**
  * 处方订单列表
@@ -218,4 +225,3 @@ export const STORAGE_KEY_PRODUCTS_CACHE = 'products_cache'
  * 默认30分钟过期
  */
 export const CACHE_EXPIRE_TIME = 30 * 60 * 1000
-

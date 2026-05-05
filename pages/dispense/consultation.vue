@@ -51,8 +51,10 @@ import { onLoad } from '@dcloudio/uni-app'
 import { createConsultation } from '@/api/consultation.js'
 import { getProductDetail } from '@/api/product.js'
 import { STORAGE_KEY_USER_REGISTER, STORAGE_KEY_VERIFIED_PRODUCTS, STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
+import { getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
 import { getImageUrl } from '@/utils/config.js'
+import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
 
 const doctorName = ref('线上名医')
 const doctorAvatar = ref('/profile/liaoning_zongyi/zaixian_mingyi_logo.png')
@@ -84,6 +86,7 @@ const messages = ref([
 const showPrescriptionBtn = ref(false)
 const scrollTop = ref(0)
 const scrollIntoView = ref('')
+const selectedProductIds = ref([])
 
 // 显示消息动画
 const showMessages = async () => {
@@ -131,8 +134,9 @@ const viewPrescription = () => {
 
 // 从购物车获取当前勾选的所有商品，用于创建处方明细
 const loadProductsForConsultation = async () => {
-  const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-  const productIds = Object.keys(verifiedProducts).filter(id => verifiedProducts[id])
+  const productIds = selectedProductIds.value.length > 0
+    ? selectedProductIds.value
+    : getCurrentCheckoutProductIds()
   if (productIds.length === 0) return []
 
   const products = []
@@ -155,6 +159,10 @@ const createConsultationRecord = async () => {
   try {
     const userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
     const products = await loadProductsForConsultation()
+    const flow = resolveProductFlow(products)
+    if (!flow.valid || flow.bizType === BIZ_TYPE_HEALTH_GOODS) {
+      return null
+    }
 
     // 取医生ID（默认使用购物车第一件商品的医生）
     const firstProduct = products[0]
@@ -205,7 +213,24 @@ const createConsultationRecord = async () => {
   }
 }
 
-onMounted(() => {
+const redirectHealthGoodsToConfirm = async () => {
+  const products = await loadProductsForConsultation()
+  const flow = resolveProductFlow(products)
+  if (flow.valid && flow.bizType === BIZ_TYPE_HEALTH_GOODS) {
+    const ids = selectedProductIds.value.length > 0 ? selectedProductIds.value : getCurrentCheckoutProductIds()
+    uni.redirectTo({
+      url: `/pages/order/confirm?selectedItems=${ids.join(',')}`
+    })
+    return true
+  }
+  return false
+}
+
+onMounted(async () => {
+  if (await redirectHealthGoodsToConfirm()) {
+    return
+  }
+
   // 页面加载后创建咨询记录
   createConsultationRecord()
 
@@ -219,6 +244,12 @@ onMounted(() => {
 })
 
 onLoad((options) => {
+  if (options?.selectedItems) {
+    selectedProductIds.value = options.selectedItems.split(',').filter(id => id.trim())
+    setCheckoutProductIds(selectedProductIds.value)
+  } else {
+    selectedProductIds.value = getCurrentCheckoutProductIds()
+  }
   if (options?.doctorName) {
     doctorName.value = decodeURIComponent(options.doctorName)
   }
