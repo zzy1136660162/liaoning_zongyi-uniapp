@@ -43,6 +43,7 @@
       </view>
       <view class="goods-sub">{{ product.subName || product.specification }}</view>
       <view class="drug-reminder">非处方药 请依说明书进行使用</view>
+      <!-- <view class="drug-reminder">处方药 处方药须凭处方在药师指导下购买和使用</view> -->
     </view>
 
     <!-- 退换政策说明抽屉 -->
@@ -125,15 +126,22 @@
 
     <!-- 药品说明书抽屉 -->
     <view class="drawer-overlay" v-if="showManual" @click="closeManualDrawer">
-      <view class="drawer-content" @click.stop>
+      <view class="drawer-content drawer-green-card" @click.stop>
         <view class="drawer-header">
-          <text class="drawer-title">药品说明书</text>
+          <text class="drawer-title">
+            <text class="drawer-title-icon">📄</text>
+            用药说明书
+          </text>
           <view class="drawer-close" @click="closeManualDrawer">×</view>
         </view>
         <scroll-view class="drawer-body" scroll-y>
-          <view class="drawer-section" v-if="product.indications">
+          <view class="drawer-section" v-if="product.subName2">
+            <text class="drawer-label">【成份】</text>
+            <text class="drawer-text">{{ product.subName2 }}</text>
+          </view>
+          <view class="drawer-section" v-if="product.subName">
             <text class="drawer-label">【功能主治】</text>
-            <text class="drawer-text">{{ product.indications }}</text>
+            <text class="drawer-text">{{ product.subName }}</text>
           </view>
           <view class="drawer-section" v-if="product.dosage">
             <text class="drawer-label">【用法用量】</text>
@@ -158,10 +166,6 @@
           <view class="drawer-section" v-if="product.manufacturer">
             <text class="drawer-label">【生产企业】</text>
             <text class="drawer-text">{{ product.manufacturer }}</text>
-          </view>
-          <view class="drawer-section" v-if="product.approvalNumber">
-            <text class="drawer-label">【批准文号】</text>
-            <text class="drawer-text">{{ product.approvalNumber }}</text>
           </view>
         </scroll-view>
       </view>
@@ -273,23 +277,31 @@
     <view class="detail-body" v-if="detailTab === 'spec'">
       <view class="spec-list">
         <view class="spec-item" v-if="product.specification">
-          <text class="spec-label">规格</text>
-          <text class="spec-value">{{ product.specification }}</text>
+          <text class="spec-label">药品名称</text>
+          <text class="spec-value">{{ product.name }}</text>
         </view>
         <view class="spec-item" v-if="product.manufacturer">
-          <text class="spec-label">生产企业</text>
+          <text class="spec-label">剂型</text>
+          <text class="spec-value">{{ product.manufacturer }}</text>
+        </view>
+        <view class="spec-item" v-if="product.manufacturer">
+          <text class="spec-label">包装</text>
           <text class="spec-value">{{ product.manufacturer }}</text>
         </view>
         <view class="spec-item" v-if="product.approvalNumber">
-          <text class="spec-label">批准文号</text>
+          <text class="spec-label">有效期</text>
           <text class="spec-value">{{ product.approvalNumber }}</text>
         </view>
         <view class="spec-item" v-if="product.storage">
-          <text class="spec-label">贮藏</text>
+          <text class="spec-label">产地类型</text>
           <text class="spec-value">{{ product.storage }}</text>
         </view>
         <view class="spec-item" v-if="product.packSize">
-          <text class="spec-label">包装</text>
+          <text class="spec-label">批准文号</text>
+          <text class="spec-value">{{ product.packSize }}</text>
+        </view>
+        <view class="spec-item" v-if="product.packSize">
+          <text class="spec-label">生产单位</text>
           <text class="spec-value">{{ product.packSize }}</text>
         </view>
       </view>
@@ -350,7 +362,7 @@
     <!-- 用药提醒 -->
     <view class="reminder-bar">
       <text class="reminder-icon">!</text>
-      <text class="reminder-text">请仔细阅读药品说明书或在医师指导下使用</text>
+      <text class="reminder-text">请仔细阅读药品说明书或在医师指导下使用.1.OTC药品请按药品说明书或在药师指导下购买和使用，请将药品置于儿童无法触及位置;2.依据《药品经营质量管理规范》，除药品质量原因外药品一经售出，不得退换;3.由于厂家不定期更换产品包装或修订说明书，请以实际收到的产品包装及其附带的说明书为准。</text>
     </view>
 
     <!-- 底部占位 -->
@@ -437,7 +449,7 @@ const product = ref({
   originalPrice: 36.00,
   specification: '10g×9袋/盒',
   defaultSku: '10g×9袋/盒',
-  manufacturer: '广州白云山制药总厂',
+  manufacturer: '辽宁中医药大学附属医院',
   approvalNumber: '国药准字Z44023456',
   storage: '密封，置阴凉干燥处保存',
   packSize: '10g×9袋/盒',
@@ -1429,12 +1441,16 @@ onLoad((options) => {
   flex-direction: column;
 }
 
+.drawer-green-card {
+  border-radius: 24rpx 24rpx 0 0;
+}
+
 .drawer-header {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 30rpx;
-  border-bottom: 1rpx solid #eee;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.1);
   position: relative;
 }
 
@@ -1442,6 +1458,13 @@ onLoad((options) => {
   font-size: 32rpx;
   font-weight: bold;
   color: #333;
+  display: flex;
+  align-items: center;
+}
+
+.drawer-title-icon {
+  margin-right: 10rpx;
+  font-size: 36rpx;
 }
 
 .drawer-close {
@@ -1460,6 +1483,7 @@ onLoad((options) => {
 
 .drawer-section {
   margin-bottom: 30rpx;
+  width: 92%;
 }
 
 .drawer-section:last-child {
@@ -1905,7 +1929,7 @@ onLoad((options) => {
 }
 
 .bottom-space {
-  height: 120rpx;
+  height: 40rpx;
 }
 
 .bottom-bar {

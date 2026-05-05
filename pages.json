@@ -47,6 +47,12 @@
 			}
 		},
 		{
+			"path": "pages/products/medicine_list",
+			"style": {
+				"navigationBarTitleText": "药品列表"
+			}
+		},
+		{
 			"path": "pages/products/product_notice",
 			"style": {
 				"navigationBarTitleText": "注意事项"
