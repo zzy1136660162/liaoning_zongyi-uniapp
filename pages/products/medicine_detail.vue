@@ -1613,11 +1613,9 @@ onLoad((options) => {
   color: #fff;
   border-radius: 50%;
   display: flex;
-  align-items: center;
   justify-content: center;
   font-size: 28rpx;
   font-weight: bold;
-  line-height: 1;
 }
 
 .split-line {
