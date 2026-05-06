@@ -188,7 +188,7 @@
 
      <view class="split-line"></view>
     <!-- 用药推荐 -->
-    <view class="recommend-section">
+    <view class="recommend-section" :class="{ 'gold-bg': recommendTab === 'star' }">
       <view class="recommend-header">
         <view class="recommend-tabs">
           <view class="recommend-tab" :class="{ active: recommendTab === 'combo' }" @click="switchRecommendTab('combo')">用药组合</view>
@@ -1507,6 +1507,10 @@ onLoad((options) => {
 .recommend-section {
   background: linear-gradient(180deg, #e8f5e9 0%, #ffffff 30%);
   padding: 24rpx 30rpx;
+}
+
+.gold-bg {
+  background: linear-gradient(180deg, #fff8e1 0%, #ffffff 30%);
 }
 
 .recommend-header {
