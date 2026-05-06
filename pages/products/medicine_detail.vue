@@ -362,7 +362,12 @@
     <!-- 用药提醒 -->
     <view class="reminder-bar">
       <text class="reminder-icon">!</text>
-      <text class="reminder-text">请仔细阅读药品说明书或在医师指导下使用.1.OTC药品请按药品说明书或在药师指导下购买和使用，请将药品置于儿童无法触及位置;2.依据《药品经营质量管理规范》，除药品质量原因外药品一经售出，不得退换;3.由于厂家不定期更换产品包装或修订说明书，请以实际收到的产品包装及其附带的说明书为准。</text>
+      <view class="reminder-content">
+        <text class="reminder-title">请仔细阅读药品说明书或在医师指导下使用</text>
+        <text class="reminder-item">1. OTC药品请按药品说明书或在药师指导下购买和使用，请将药品置于儿童无法触及位置</text>
+        <text class="reminder-item">2. 依据《药品经营质量管理规范》，除药品质量原因外药品一经售出，不得退换</text>
+        <text class="reminder-item">3. 由于厂家不定期更换产品包装或修订说明书，请以实际收到的产品包装及其附带的说明书为准</text>
+      </view>
     </view>
 
     <!-- 底部占位 -->
@@ -1928,6 +1933,26 @@ onLoad((options) => {
   font-size: 24rpx;
   color: #ad6800;
   flex: 1;
+}
+
+.reminder-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.reminder-title {
+  font-size: 24rpx;
+  color: #ad6800;
+  font-weight: bold;
+  margin-bottom: 8rpx;
+}
+
+.reminder-item {
+  font-size: 22rpx;
+  color: #ad6800;
+  line-height: 1.6;
+  margin-bottom: 4rpx;
 }
 
 .bottom-space {
