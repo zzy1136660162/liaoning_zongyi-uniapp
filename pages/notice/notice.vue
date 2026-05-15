@@ -145,13 +145,13 @@ export default {
 			}
 			// 跳转到产品列表页面
 			uni.redirectTo({
-				url: '/pages/products/priducts_list2'
+				url: '/pages/products/medicine_list'
 			})
 		},
 		handleBrowse() {
 			// 仅浏览，跳转到产品列表页面
 			uni.redirectTo({
-				url: '/pages/products/priducts_list2'
+				url: '/pages/products/medicine_list'
 			})
 		}
 	}

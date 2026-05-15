@@ -318,9 +318,10 @@ const handleContact = (e) => {
   // }
 
   // 暂时注释企业微信客服实现，以备后续切换
+ //  辽宁中医
  console.log({
-  extInfo:{url: 'https://work.weixin.qq.com/kfid/kfc79feecc56cb032bc'}, // 企业微信客服URL
-    corpId: 'ww55d1004932944831', // 企业ID
+  extInfo:{url: 'https://work.weixin.qq.com/kfid/kfcc92471bfa5f832db'}, // 企业微信客服URL
+    corpId: '', // 企业ID
  })
   // 打开企业微信客服
   uni.openCustomerServiceChat({
