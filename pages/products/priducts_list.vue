@@ -50,15 +50,23 @@
 		  <view class="product-items">
 			<view
 				class="product-item"
-				v-for="(product, productIndex) in filteredProducts"
+				v-for="product in filteredProducts"
 				:key="product.id"
 			>
-			  <image class="product-image" :src="getImageUrl(product.image)" mode="aspectFill" @click="goToDetail(product)"></image>
+			  <view class="image-wrapper" @click="goToDetail(product)">
+				<image class="product-image" :src="getImageUrl(product.image)" mode="aspectFill"></image>
+				<view class="hot-badge" v-if="product.isNewProduct === 1">新品</view>
+			  </view>
 			  <view class="product-info">
-				<text class="product-name" @click="goToDetail(product)">{{ product.name }}</text>
+				<text class="product-name" @click="goToDetail(product)">
+				  <text class="self-tag" v-if="product.bizType === 1">自研</text>
+				  <text class="self-tag2" v-if="product.isHospitalStarFormula === 1">院藏王牌制剂</text>
+				  <text class="self-tag3" v-if="product.isPrescription === 1">处方</text>
+				  {{ product.name }}
+				</text>
 				<text class="product-desc" v-if="product.description">{{ product.description }}</text>
 				<view class="product-footer">
-				  <text class="product-unit">{{ product.unit }}</text>
+				  <text class="product-unit">{{ product.specText || product.unit || '' }}</text>
 				  <view class="product-price-row">
 					<!-- 如果产品已通过验证，显示数量选择器 -->
 					<view v-if="isProductVerified(product.id)" class="quantity-selector">
@@ -68,12 +76,12 @@
 					</view>
 					<!-- 否则显示价格和选择按钮 -->
 					<template v-else>
-					  <text class="product-price">¥{{ product.price.toFixed(2) }}</text>
-					  <button
-						  class="select-btn"
+					  <text class="product-price">¥{{ Number(product.price || 0).toFixed(2) }}</text>
+					  <view
+						  class="add-btn"
 						  :id="`select-btn-${product.id}`"
 						  @click="goToNotice(product)"
-					  >选择</button>
+					  >+</view>
 					</template>
 				  </view>
 				</view>
@@ -121,7 +129,7 @@
 	STORAGE_KEY_SELECTED_PRODUCTS,
 	STORAGE_KEY_USER_REGISTER
   } from '@/utils/storage.js'
-  import { getCategoryList, getCategoryProducts } from '@/api/product.js'
+  import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
   import { loadCartItems, calculateTotalPrice, calculateTotalQuantity } from '@/utils/cart.js'
   import { getImageUrl } from '@/utils/config.js'
   import { getToken } from '@/utils/request.js'
@@ -250,16 +258,7 @@
 		  const productList = productPage.records || productPage.list || []
   
 		  // 转换字段名以匹配前端
-		  const allProducts = productList.map(p => ({
-			id: p.id,
-			name: p.productName,
-			description: p.subTitle,
-			image: getImageUrl(p.coverImage),
-			price: p.price,
-			unit: p.unit || '份',
-			notice: p.usageDesc,
-			categoryId: p.categoryId // 记录所属分类
-		  }))
+		  const allProducts = productList.map(item => mapProductListItem(item))
   
 		  // 更新"全部"分类的商品列表
 		  const allCategory = this.categories.find(cat => cat.id === 'all')
@@ -291,16 +290,7 @@
 		  const productList = productPage.records || productPage.list || []
   
 		  // 转换字段名以匹配前端
-		  const products = productList.map(p => ({
-			id: p.id,
-			name: p.productName,
-			description: p.subTitle,
-			image: getImageUrl(p.coverImage),
-			price: p.price,
-			unit: p.unit || '份',
-			notice: p.usageDesc,
-			categoryId: categoryId
-		  }))
+		  const products = productList.map(item => mapProductListItem({ ...item, categoryId }))
   
 		  // 更新对应分类的商品列表
 		  const category = this.categories.find(cat => cat.id === categoryId)
@@ -369,18 +359,8 @@
 		// 搜索功能已在computed中实现
 	  },
 	  goToDetail(product) {
-		// 跳转到详情页面，传递产品信息
-		// 将产品信息序列化后传递
-		const productData = encodeURIComponent(JSON.stringify({
-		  id: product.id,
-		  name: product.name,
-		  price: product.price,
-		  image: getImageUrl(product.image),
-		  description: product.description,
-		  unit: product.unit
-		}))
 		uni.navigateTo({
-		  url: `/pages/products/priducts_detail?product=${productData}`
+		  url: `/pages/products/medicine_detail?id=${product.id}`
 		})
 	  },
 	  goToNotice(product) {
@@ -950,36 +930,56 @@
   
   .product-items {
 	display: flex;
-	flex-direction: row;
-	flex-wrap: wrap;
-	gap: 20rpx;
+	flex-direction: column;
+	gap: 16rpx;
   }
   
   .product-item {
-	width: calc((100% - 20rpx) / 2);
+	width: 100%;
 	background-color: #ffffff;
 	border-radius: 16rpx;
 	overflow: hidden;
 	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
 	box-sizing: border-box;
+	padding: 20rpx;
+	gap: 20rpx;
+  }
+
+  .image-wrapper {
+	position: relative;
+	flex-shrink: 0;
   }
   
   .product-image {
-	width: 100%;
-	height: 320rpx;
+	width: 200rpx;
+	height: 200rpx;
 	background-color: #f5f5f5;
+	border-radius: 12rpx;
 	cursor: pointer;
+	display: block;
+  }
+
+  .hot-badge {
+	position: absolute;
+	top: 0;
+	right: 0;
+	background-color: #ff4b4b;
+	color: #ffffff;
+	font-size: 20rpx;
+	font-weight: bold;
+	padding: 4rpx 10rpx;
+	border-radius: 0 12rpx 0 12rpx;
   }
   
   .product-info {
 	flex: 1;
-	padding: 20rpx;
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;
-	min-height: 180rpx;
+	min-height: 200rpx;
+	min-width: 0;
   }
   
   .product-name {
@@ -995,6 +995,31 @@
 	line-clamp: 2;
 	-webkit-box-orient: vertical;
 	line-height: 1.4;
+  }
+
+  .self-tag,
+  .self-tag2,
+  .self-tag3 {
+	display: inline-block;
+	color: #ffffff;
+	font-size: 20rpx;
+	padding: 2rpx 8rpx;
+	border-radius: 4rpx;
+	margin-right: 8rpx;
+	vertical-align: middle;
+  }
+
+  .self-tag {
+	background: #ff4b4b;
+  }
+
+  .self-tag2 {
+	background: #333333;
+	color: #d4af37;
+  }
+
+  .self-tag3 {
+	background: #00a884;
   }
   
   .product-desc {
@@ -1013,7 +1038,7 @@
   .product-footer {
 	display: flex;
 	flex-direction: column;
-	gap: 12rpx;
+	gap: 8rpx;
 	margin-top: auto;
   }
   
@@ -1035,14 +1060,18 @@
 	color: #ff6b6b;
   }
   
-  .select-btn {
-	margin: 0;
-	background-color: #4A90E2;
+  .add-btn {
+	width: 44rpx;
+	height: 44rpx;
+	background-color: #ff4b4b;
 	color: #ffffff;
-	font-size: 24rpx;
-	padding: 0rpx 24rpx;
-	border-radius: 40rpx;
-	border: none;
+	font-size: 40rpx;
+	font-weight: 300;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1;
 	flex-shrink: 0;
   }
   
@@ -1167,7 +1196,5 @@
 	transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 	box-shadow: 0 4rpx 12rpx rgba(255, 107, 107, 0.5);
   }
-  
   /* Tab Bar 样式已移至组件中 */
   </style>
-  
