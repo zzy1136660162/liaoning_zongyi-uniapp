@@ -241,7 +241,7 @@ import { getImageUrl } from '@/utils/config.js'
 import { saveToCart } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
 
-const pharmacistAvatar = 'https://smf.lntcm.com/static/logo/doctor_default.png'
+const pharmacistAvatar = 'https://smf.lntcm.com/static/logo/zixun.svg'
 
 const createEmptyProduct = () => ({
   id: '',
