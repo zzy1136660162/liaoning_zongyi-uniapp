@@ -391,15 +391,28 @@ const loadProduct = async (id) => {
 
 const formatRichText = (htmlContent) => {
   if (!htmlContent) return ''
+  const normalizeRichText = (content) => content
+      .replace(/<img([^>]*)style=(['"])(.*?)\2([^>]*)>/gi, (match, before, quote, styleContent, after) => {
+        const sanitizedStyle = styleContent
+          .replace(/(?:^|;)\s*width\s*:[^;]*/gi, '')
+          .replace(/(?:^|;)\s*height\s*:[^;]*/gi, '')
+          .trim()
+        const nextStyle = `max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;${sanitizedStyle ? ` ${sanitizedStyle}` : ''}`.trim()
+        return `<img${before}style="${nextStyle}"${after}>`
+      })
+      .replace(/<img((?:(?!style=)[^>])*)>/gi, '<img$1 style="max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;">')
+
   if (typeof htmlContent === 'string') {
-    return htmlContent
+    return normalizeRichText(
+      htmlContent
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&amp;/g, '&')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
+    )
   }
-  return String(htmlContent)
+  return normalizeRichText(String(htmlContent))
 }
 
 const addCart = () => {
@@ -1023,6 +1036,9 @@ onShow(() => {
   font-size: 28rpx;
   color: #555;
   line-height: 1.8;
+  width: 100%;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .detail-images {
