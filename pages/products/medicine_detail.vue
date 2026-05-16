@@ -9,26 +9,41 @@
       </swiper>
       <view class="banner-index">{{ currentIndex }}/{{ productImages.length }}</view>
     </view>
-
+    <view class="split-line"></view>
     <view class="price-box">
-      <view class="price-info">
-        <text class="price-unit">￥</text>
-        <text class="price-num">{{ priceInteger }}</text>
-        <text class="price-decimal">.{{ priceDecimal }}</text>
+      <view class="price-main">
+        <view class="price-left">
+          <view class="price-tag">商品价格</view>
+          <view class="price-info">
+            <text class="price-unit">￥</text>
+            <text class="price-num">{{ priceInteger }}</text>
+            <text class="price-decimal">.{{ priceDecimal }}</text>
+          </view>
+        </view>
+        <view class="price-right">
+          <view class="sales-box">
+            <text class="sales-icon">🔥</text>
+            <text class="sales-count">已售 {{ product.salesVolume || 0 }}</text>
+          </view>
+        </view>
       </view>
-      <view class="price-right">
-        <text class="sales-count">累计销售 {{ product.salesVolume || 0 }}</text>
+      <view class="trust-badges">
+        <view class="trust-item"><image class="trust-icon" src="/static/logotou.png" mode="aspectFit" /><text class="trust-text">医院自营</text></view>
+        <view class="trust-item"><text class="trust-icon">🛡️</text><text class="trust-text">正品保证</text></view>
+        <view class="trust-item"><text class="trust-icon">💯</text><text class="trust-text">购买无忧</text></view>
+        <view class="trust-item"><text class="trust-icon">🚚</text><text class="trust-text">专业物流</text></view>
+        <view class="trust-item"><text class="trust-icon">⏰</text><text class="trust-text">24h发货</text></view>
       </view>
     </view>
 
     <view class="goods-info">
       <view class="goods-name-row">
-        <view class="self-developed-tag" v-if="product.bizType === 1">自研</view>
-        <view class="new-product-tag" v-if="product.isHospitalStarFormula === 1">院藏王牌制剂</view>
-        <view class="star-product-tag" v-if="product.isNewProduct === 1">重磅新品</view>
-        <view class="goods-name">{{ product.name }}</view>
+        <text class="self-developed-tag" v-if="product.bizType === 1">自研</text>
+        <text class="new-product-tag" v-if="product.isHospitalStarFormula === 1">院藏王牌制剂</text>
+        <text class="star-product-tag" v-if="product.isNewProduct === 1">重磅新品</text>
+        <text class="goods-name">{{ product.name }}&nbsp;{{ product.description }}</text>
       </view>
-      <view class="goods-sub" v-if="product.subtitle || product.indications">{{ product.subtitle || product.indications }}</view>
+      <view class="goods-sub" v-if="product.subtitle || product.indications">{{ product.indications }}</view>
       <view class="drug-reminder">{{ product.isPrescription === 1 ? '处方药，请在医师指导下购买和使用' : '非处方药，请按说明书或药师指导使用' }}</view>
     </view>
 
@@ -70,7 +85,7 @@
       <view class="manual-divider"></view>
       <view class="manual-item">
         <view class="manual-item-title">用法用量</view>
-        <view class="manual-item-content">{{ usageText || '暂无信息' }}</view>
+        <view class="manual-item-content">{{ product.usageDesc || '暂无信息' }}</view>
       </view>
       <view class="manual-arrow">›</view>
     </view>
@@ -164,12 +179,53 @@
       </view>
       <view class="consult-btn" @click.stop="goConsult">咨询</view>
     </view>
+     <view class="split-line"></view>
+    <view class="recommend-section" :class="{ 'combo-section': recommendTab === 'combo', 'star-section': recommendTab === 'star' }">
+      <view class="recommend-tabs">
+        <view class="recommend-tab" :class="{ active: recommendTab === 'combo' }" @click="switchRecommendTab('combo')">用药组合</view>
+        <view class="recommend-tab" :class="{ active: recommendTab === 'star' }" @click="switchRecommendTab('star')">明星产品</view>
+      </view>
+      <view class="recommend-content">
+        <scroll-view class="recommend-scroll" scroll-x v-if="recommendTab === 'combo'">
+          <view class="recommend-item" v-for="item in comboProducts" :key="item.id" @click="goToDetail(item)">
+            <image class="recommend-img" :src="getImageUrl(item.image)" mode="aspectFit" />
+            <view class="recommend-info">
+              <text class="recommend-name">{{ item.name }}</text>
+              <view class="recommend-bottom">
+                <text class="recommend-price">￥{{ Number(item.price || 0).toFixed(2) }}</text>
+                <view class="recommend-add-btn" :class="{ 'has-quantity': cartQuantities[item.id] > 0 }" @click.stop="flyToCart($event, item)">
+                  <text v-if="cartQuantities[item.id]">{{ cartQuantities[item.id] }}</text>
+                  <text v-else>+</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+        <scroll-view class="recommend-scroll" scroll-x v-else>
+          <view class="recommend-item" v-for="item in starProducts" :key="item.id" @click="goToDetail(item)">
+            <image class="recommend-img" :src="getImageUrl(item.image)" mode="aspectFit" />
+            <view class="recommend-info">
+              <text class="recommend-name">{{ item.name }}</text>
+              <view class="recommend-bottom">
+                <text class="recommend-price">￥{{ Number(item.price || 0).toFixed(2) }}</text>
+                <view class="recommend-add-btn" :class="{ 'has-quantity': cartQuantities[item.id] > 0 }" @click.stop="flyToCart($event, item)">
+                  <text v-if="cartQuantities[item.id]">{{ cartQuantities[item.id] }}</text>
+                  <text v-else>+</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+      <view class="combo-disclaimer" v-if="recommendTab === 'combo'">*用药组合仅供参考，最终以医嘱为准</view>
+
+      <view class="flying-dot" v-if="flyingDot.show" :style="{ left: flyingDot.x + 'px', top: flyingDot.y + 'px' }"></view>
+    </view>
 
     <view class="split-line"></view>
 
     <view class="detail-header">
       <view class="detail-tab" :class="{ active: detailTab === 'desc' }" @click="switchDetailTab('desc')">详情</view>
-      <view class="detail-tab" :class="{ active: detailTab === 'spec' }" @click="switchDetailTab('spec')">说明</view>
       <view class="detail-tab" :class="{ active: detailTab === 'review' }" @click="switchDetailTab('review')">评价</view>
     </view>
 
@@ -180,13 +236,22 @@
       <view class="detail-images" v-if="showDetailImages">
         <image v-for="(img, idx) in productImages" :key="idx" :src="img" mode="widthFix" class="detail-img" />
       </view>
-    </view>
 
-    <view class="detail-body" v-if="detailTab === 'spec'">
-      <view class="spec-list">
+      <!-- <view class="spec-list">
+        <view class="spec-title">药品基本信息</view>
         <view class="spec-item" v-for="item in specItems" :key="item.label">
           <text class="spec-label">{{ item.label }}</text>
           <text class="spec-value">{{ item.value }}</text>
+        </view>
+      </view> -->
+
+      <view class="usage-box" v-if="specItems.length > 0">
+        <view class="usage-title">药品基本信息</view>
+        <view class="usage-list">
+          <view class="usage-item" v-for="item in specItems" :key="item.label">
+            <text class="usage-label">{{ item.label }}</text>
+            <text class="usage-text">{{ item.value }}</text>
+          </view>
         </view>
       </view>
 
@@ -285,6 +350,23 @@ const currentIndex = ref(1)
 const cartCount = ref(0)
 const isCollected = ref(false)
 const isInitializing = ref(false)
+const flyingDot = ref({ show: false, x: 0, y: 0 })
+const recommendTab = ref('combo')
+const cartQuantities = ref({})
+const comboProducts = ref([
+  { id: 1, name: '养阴清肺糖浆', price: 29.9, image: 'https://smf.lntcm.com/static/medicine/2S7A5409.JPG' },
+  { id: 2, name: '清肺抑火片', price: 35.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5372.JPG' },
+  { id: 3, name: '复方甘草片', price: 18.5, image: 'https://smf.lntcm.com/static/medicine/2S7A5373.JPG' },
+  { id: 4, name: '川贝枇杷膏', price: 42.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5374.JPG' },
+  { id: 5, name: '板蓝根颗粒', price: 22.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5375.JPG' }
+])
+const starProducts = ref([
+  { id: 11, name: '人参养荣丸', price: 68.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5376.JPG' },
+  { id: 12, name: '六味地黄丸', price: 45.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5372.JPG' },
+  { id: 13, name: '补中益气丸', price: 38.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5373.JPG' },
+  { id: 14, name: '逍遥丸', price: 32.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5374.JPG' },
+  { id: 15, name: '归脾丸', price: 55.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5375.JPG' }
+])
 
 const productImages = computed(() => {
   if (product.value.images && product.value.images.length > 0) {
@@ -450,6 +532,9 @@ const closePolicyDrawer = () => {
 const switchDetailTab = (tab) => {
   detailTab.value = tab
 }
+const switchRecommendTab = (tab) => {
+  recommendTab.value = tab
+}
 const goBack = () => {
   uni.navigateBack()
 }
@@ -480,6 +565,57 @@ const goCart = () => {
   })
 }
 
+const addToCart = (item) => {
+  const cartData = uni.getStorageSync('cartItems') || []
+  const existIndex = cartData.findIndex(i => i.id === item.id)
+  let newQty = 1
+  if (existIndex > -1) {
+    cartData[existIndex].quantity += 1
+    newQty = cartData[existIndex].quantity
+  } else {
+    cartData.push({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      image: item.image,
+      quantity: 1,
+      checked: true
+    })
+  }
+  uni.setStorageSync('cartItems', cartData)
+  loadCartCount()
+  cartQuantities.value[item.id] = newQty
+  return newQty
+}
+
+const flyToCart = (e, item) => {
+  addToCart(item)
+
+  try {
+    const query = uni.createSelectorQuery().in(getCurrentInstance())
+    query.select('.action-icon-btn').boundingClientRect((target) => {
+      query.select('.recommend-add-btn').boundingClientRect((source) => {
+        if (target && source) {
+          flyingDot.show = true
+          const windowWidth = uni.getSystemInfoSync().windowWidth
+          flyingDot.x = source.left + 10
+          flyingDot.y = source.top + 10
+
+          setTimeout(() => {
+            flyingDot.x = 50
+            flyingDot.y = window.screen.height - 200
+            setTimeout(() => {
+              flyingDot.show = false
+            }, 400)
+          }, 50)
+        }
+      }).exec()
+    }).exec()
+  } catch (err) {
+    console.log('Animation error:', err)
+  }
+}
+
 onLoad((options) => {
   logPageView('MEDICINE_DETAIL', options?.id || '')
   product.value = createEmptyProduct()
@@ -503,9 +639,21 @@ onLoad((options) => {
   loadCartCount()
 })
 
+const loadRecommendCartQuantities = () => {
+  const cartData = uni.getStorageSync('cartItems') || []
+  const allProducts = [...comboProducts.value, ...starProducts.value]
+  allProducts.forEach(item => {
+    const cartItem = cartData.find(i => i.id === item.id)
+    if (cartItem) {
+      cartQuantities.value[item.id] = cartItem.quantity
+    }
+  })
+}
+
 onShow(() => {
   loadCartCount()
   loadQuantityFromStorage()
+  loadRecommendCartQuantities()
 })
 </script>
 
@@ -514,11 +662,13 @@ onShow(() => {
   background: #fff;
   min-height: 100vh;
   padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
+  z-index: -1;
 }
 
 .page-lock {
   overflow: hidden;
   height: 100vh;
+  touch-action: none;
 }
 
 .header {
@@ -588,42 +738,118 @@ onShow(() => {
 }
 
 .price-box {
-  background: #fff;
-  padding: 24rpx 30rpx;
+  margin-bottom: 18rpx;
+  background:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10rpx,
+      rgba(255, 255, 255, 0.03) 10rpx,
+      rgba(255, 255, 255, 0.03) 20rpx
+    ),
+    linear-gradient(90deg, #e63939, #ff4b4b);
+  padding: 20rpx 30rpx 16rpx;
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 36rpx 36rpx 0 0;
+}
+
+.price-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.price-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.price-tag {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-size: 18rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 20rpx;
+  margin-bottom: 8rpx;
+  width: fit-content;
+  font-weight: bold;
 }
 
 .price-info {
   display: flex;
   align-items: baseline;
-  color: #ff4b4b;
+  color: #fff;
 }
 
 .price-unit {
-  font-size: 28rpx;
+  font-size: 22rpx;
   font-weight: bold;
+  color: #fff;
 }
 
 .price-num {
-  font-size: 56rpx;
+  font-size: 44rpx;
   font-weight: bold;
+  color: #fff;
 }
 
 .price-decimal {
-  font-size: 32rpx;
+  font-size: 26rpx;
   font-weight: bold;
+  color: #fff;
 }
 
 .price-right {
-  margin-left: auto;
   display: flex;
   align-items: center;
 }
 
+.sales-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.sales-icon {
+  font-size: 24rpx;
+  margin-bottom: 4rpx;
+}
+
 .sales-count {
   font-size: 22rpx;
-  color: #999;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.trust-badges {
+  display: flex;
+  justify-content: flex-start;
+  gap: 20rpx;
+  margin-top: 16rpx;
+  padding-top: 14rpx;
+  border-top: 1rpx dashed rgba(255, 255, 255, 0.3);
+  flex-wrap: wrap;
+}
+
+.trust-item {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.trust-icon {
+  font-size: 22rpx;
+  width: 28rpx;
+  height: 28rpx;
+  vertical-align: middle;
+}
+
+.trust-text {
+  font-size: 20rpx;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .goods-info {
@@ -632,10 +858,15 @@ onShow(() => {
 }
 
 .goods-name-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12rpx;
+  display: inline;
+  vertical-align: middle;
+}
+
+.self-developed-tag,
+.new-product-tag,
+.star-product-tag,
+.goods-name {
+  vertical-align: middle;
 }
 
 .self-developed-tag,
@@ -645,6 +876,10 @@ onShow(() => {
   padding: 4rpx 10rpx;
   border-radius: 4rpx;
   font-weight: bold;
+  flex-shrink: 0;
+  margin-right: 12rpx;
+  margin-bottom: 8rpx;
+  display: inline;
 }
 
 .self-developed-tag {
@@ -667,7 +902,7 @@ onShow(() => {
   font-weight: bold;
   color: #222;
   line-height: 1.4;
-  flex: 1;
+  word-break: break-all;
 }
 
 .goods-sub {
@@ -706,7 +941,7 @@ onShow(() => {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 300;
+  z-index: 10000;
 }
 
 .policy-drawer,
@@ -717,6 +952,8 @@ onShow(() => {
   right: 0;
   background: #fff;
   border-radius: 24rpx 24rpx 0 0;
+  max-height: 85vh;
+  height: auto;
 }
 
 .policy-header,
@@ -747,8 +984,17 @@ onShow(() => {
 
 .policy-body,
 .drawer-body {
+  width: 690rpx;
   padding: 30rpx;
+  max-height: calc(85vh - 120rpx);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
+
+.drawer-body::-webkit-scrollbar {
+  display: none;
+}
+
 
 .policy-section {
   margin-bottom: 30rpx;
@@ -933,33 +1179,176 @@ onShow(() => {
   background: #f4f4f4;
 }
 
-.pharmacist-card {
-  background: #fff;
-  padding: 24rpx 30rpx;
+.recommend-section {
+  padding: 30rpx 0;
+  width: 100%;
+}
+
+.recommend-section.combo-section {
+  background: linear-gradient(180deg, #c8e6c9, #fff);
+}
+
+.recommend-section.star-section {
+  background: linear-gradient(180deg, #ffecb3, #fff);
+}
+
+.recommend-tabs {
+  display: flex;
+  justify-content: flex-start;
+  gap: 60rpx;
+  padding-left: 30rpx;
+  margin-bottom: 24rpx;
+}
+
+.recommend-tab {
+  font-size: 28rpx;
+  color: #333;
+  padding-bottom: 8rpx;
+  position: relative;
+}
+
+.recommend-tab.active {
+  color: #e63939;
+  font-weight: bold;
+}
+
+.recommend-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 50rpx;
+  height: 4rpx;
+  background: #e63939;
+  border-radius: 2rpx;
+}
+
+.combo-disclaimer {
+  font-size: 22rpx;
+  color: #999;
+  padding: 0 30rpx 16rpx;
+  letter-spacing: 1rpx;
+}
+
+.recommend-content {
+  padding: 20rpx 30rpx;
+  border-radius: 16rpx;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.recommend-scroll {
+  white-space: nowrap;
+  width: 100%;
+}
+
+.recommend-item {
+  display: inline-block;
+  width: 200rpx;
+  margin-right: 20rpx;
+  vertical-align: top;
+}
+
+.recommend-img {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 12rpx;
+  background: #f5f5f5;
+}
+
+.recommend-info {
+  padding: 12rpx 0;
+}
+
+.recommend-name {
+  display: block;
+  font-size: 24rpx;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 8rpx;
+}
+
+.recommend-price {
+  font-size: 26rpx;
+  color: #e63939;
+  font-weight: bold;
+}
+
+.recommend-bottom {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+
+.recommend-add-btn {
+  width: 40rpx;
+  height: 40rpx;
+  background: linear-gradient(135deg, #e63939, #ff4b4b);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.recommend-add-btn.has-quantity {
+  background: linear-gradient(135deg, #ff4b4b, #ff6b6b);
+  font-size: 22rpx;
+}
+
+.flying-dot {
+  position: fixed;
+  width: 20rpx;
+  height: 20rpx;
+  background: #e63939;
+  border-radius: 50%;
+  z-index: 9999;
+  pointer-events: none;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pharmacist-card {
+  background: linear-gradient(135deg, #f0fdf9, #e6f7f1);
+  padding: 28rpx 30rpx;
+  display: flex;
+  align-items: center;
+  border-radius: 20rpx;
+  margin: 20rpx 24rpx;
+  border: 1rpx solid #d4f0e6;
+  box-shadow: 0 4rpx 20rpx rgba(0, 199, 146, 0.08);
 }
 
 .pharmacist-avatar-wrap {
   position: relative;
-  margin-right: 20rpx;
+  margin-right: 24rpx;
 }
 
 .pharmacist-avatar {
-  width: 80rpx;
-  height: 80rpx;
+  width: 96rpx;
+  height: 96rpx;
   border-radius: 50%;
+  border: 4rpx solid #00c792;
+  padding: 4rpx;
+  background: #fff;
 }
 
 .online-tag {
   position: absolute;
-  bottom: -4rpx;
-  right: -4rpx;
-  background: #00c792;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(135deg, #00c792, #00a676);
   color: #fff;
   font-size: 18rpx;
-  padding: 2rpx 8rpx;
-  border-radius: 10rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 20rpx;
+  font-weight: bold;
+  border: 2rpx solid #fff;
 }
 
 .pharmacist-detail {
@@ -967,24 +1356,33 @@ onShow(() => {
 }
 
 .pharmacist-name {
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: bold;
-  color: #222;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+}
+
+.pharmacist-name::before {
+  content: '⚕️';
+  margin-right: 8rpx;
+  font-size: 28rpx;
 }
 
 .pharmacist-desc {
   font-size: 24rpx;
-  color: #888;
-  margin-top: 4rpx;
+  color: #666;
+  margin-top: 6rpx;
 }
 
 .consult-btn {
   background: linear-gradient(135deg, #00c792, #00a676);
   color: #fff;
-  padding: 12rpx 32rpx;
+  padding: 14rpx 36rpx;
   border-radius: 40rpx;
   font-size: 26rpx;
   font-weight: bold;
+  box-shadow: 0 4rpx 16rpx rgba(0, 199, 146, 0.3);
 }
 
 .detail-header {
@@ -1056,6 +1454,15 @@ onShow(() => {
   background: #f9f9f9;
   border-radius: 12rpx;
   padding: 24rpx;
+}
+
+.spec-title {
+  font-size: 30rpx;
+  font-weight: bold;
+  color: #333;
+  padding: 20rpx 0 16rpx;
+  border-bottom: 2rpx solid #eee;
+  margin-bottom: 8rpx;
 }
 
 .spec-item {

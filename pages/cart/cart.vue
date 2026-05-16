@@ -1,8 +1,15 @@
 <template>
 	<view class="cart-container">
-		<!-- Banner区域 -->
-		<view class="banner-section">
-			<image class="banner-image" :src="getImageUrl('/profile/liaoning_zongyi/banner_bg.png')" mode="widthFix"></image>
+		<!-- 购物车标题栏 -->
+		<view class="cart-header">
+			<view class="header-left">
+				<text class="header-title">🛒 我的购物车</text>
+			</view>
+		</view>
+		<view class="header-decoration">
+			<view class="deco-dot dot1"></view>
+			<view class="deco-dot dot2"></view>
+			<view class="deco-dot dot3"></view>
 		</view>
 
 		<!-- 购物车内容区域 -->
@@ -29,7 +36,7 @@
 						<image class="item-image" :src="getImageUrl(item.image)" mode="aspectFill" @click="goToProductDetail(item)"></image>
 						<view class="item-info">
 							<text class="item-name" @click="goToProductDetail(item)">{{ item.name }}</text>
-							<text class="item-desc" v-if="item.description">{{ item.description }}</text>
+							<text class="item-desc">规格：{{ item.specText }}</text>
 							<view class="item-bottom">
 								<text class="item-price">¥{{ item.price.toFixed(2) }}</text>
 								<view class="quantity-controls">
@@ -171,7 +178,8 @@ export default {
 								bizType: productDetail.bizType,
 								goodsMerchantType: productDetail.goodsMerchantType,
 								unit: productDetail.unit || '份',
-								notice: productDetail.usageDesc || productDetail.notice
+								notice: productDetail.usageDesc || productDetail.notice,
+								specText: productDetail.specText || productDetail.specDesc
 							})
 						}
 					} catch (err) {
@@ -303,7 +311,8 @@ export default {
 				price: item.price,
 				image: item.image,
 				description: item.description,
-				unit: item.unit
+				unit: item.unit,
+				specText: item.specText
 			}))
 			uni.navigateTo({
 				url: `/pages/products/priducts_detail?product=${productData}`
@@ -443,8 +452,71 @@ export default {
 
 .banner-image {
   width: 100%;
-  height: auto;
+  height: 180rpx;
   display: block;
+}
+
+.cart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 30rpx 16rpx;
+  background: linear-gradient(135deg, #4A90E2 0%, #67B26F 100%);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.header-title {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #ffffff;
+  letter-spacing: 2rpx;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+.edit-btn {
+  font-size: 26rpx;
+  color: #ffffff;
+  padding: 8rpx 20rpx;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 30rpx;
+}
+
+.header-decoration {
+  display: flex;
+  align-items: center;
+  padding: 0 30rpx 20rpx;
+  background: linear-gradient(135deg, #4A90E2 0%, #67B26F 100%);
+}
+
+.deco-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  margin-right: 16rpx;
+}
+
+.deco-dot.dot1 {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.deco-dot.dot2 {
+  background: rgba(255, 255, 255, 0.6);
+  width: 8rpx;
+  height: 8rpx;
+}
+
+.deco-dot.dot3 {
+  background: rgba(255, 255, 255, 0.3);
+  width: 6rpx;
+  height: 6rpx;
 }
 
 .cart-content {
@@ -663,7 +735,7 @@ export default {
   align-items: center;
   padding: 0 30rpx;
   z-index: 100;
-  box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
+  box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.08);
   box-sizing: border-box;
 }
 

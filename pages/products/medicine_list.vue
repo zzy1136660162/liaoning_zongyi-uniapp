@@ -1,13 +1,60 @@
 <template>
   <view class="product-container">
-    <view class="banner-section">
-      <image class="banner-image" :src="getImageUrl('/profile/liaoning_zongyi/banner_bg.png')" mode="widthFix"></image>
+    <view class="hospital-intro">
+      <view class="logo-wrap">
+        <image class="hospital-logo" src="/static/logotou.png" mode="aspectFit" />
+        <view class="logo-badge">官方</view>
+      </view>
+      <view class="hospital-info">
+        <view class="hospital-name-row">
+          <view class="hospital-badge">医院自营</view>
+          <text class="hospital-name">辽宁中医药大学附属医院商城</text>
+          <text class="verify-icon">✓</text>
+        </view>
+        <view class="hospital-desc">权威认证 · 品质保障 · 放心购药</view>
+        <view class="hospital-tags">
+          <view class="tag-item">
+            <text class="tag-icon">🛡️</text>
+            <text class="tag-text">正品保证</text>
+          </view>
+          <view class="tag-item">
+            <text class="tag-icon">⏰</text>
+            <text class="tag-text">24h发货</text>
+          </view>
+          <view class="tag-item">
+            <text class="tag-icon">📋</text>
+            <text class="tag-text">在线开方</text>
+          </view>
+          <view class="tag-item">
+            <text class="tag-icon">🚚</text>
+            <text class="tag-text">专业包装</text>
+          </view>
+        </view>
+        <!-- <view class="hospital-stats">
+          <view class="stat-item">
+            <text class="stat-value">9999+</text>
+            <text class="stat-label">月销量</text>
+          </view>
+          <view class="stat-divider"></view>
+          <view class="stat-item">
+            <text class="stat-value">4.9</text>
+            <text class="stat-label">综合评分</text>
+          </view>
+          <view class="stat-divider"></view>
+          <view class="stat-item">
+            <text class="stat-value">100%</text>
+            <text class="stat-label">好评率</text>
+          </view>
+        </view> -->
+      </view>
+      <text class="arrow-icon">›</text>
     </view>
+    <view class="intro-divider"></view>
 
     <view class="search-section">
       <view class="search-bar">
         <uni-icons type="search" size="18" color="#999999"></uni-icons>
-        <input class="search-input" placeholder="搜索" v-model="searchKeyword" @input="handleSearch" />
+        <input class="search-input" placeholder="搜索院内药品" v-model="searchKeyword" @input="handleSearch" />
         <button class="search-btn" @click="handleSearch">搜索</button>
       </view>
     </view>
@@ -53,7 +100,7 @@
                 </text>
                 <text class="product-desc" v-if="product.description">{{ product.description }}</text>
                 <view class="product-footer">
-                  <text class="product-unit">{{ product.specText || product.unit || '' }}</text>
+                  <!-- <text class="product-unit">{{ product.specText || product.unit || '' }}</text> -->
                   <view class="product-price-row">
                     <view v-if="isProductVerified(product.id)" class="quantity-selector">
                       <button class="quantity-btn" @click="decreaseQuantity(product)">-</button>
@@ -73,7 +120,7 @@
       </view>
     </view>
 
-    <view class="cart-bar">
+    <!-- <view class="cart-bar">
       <view class="cart-icon-wrapper" @click="showCart" id="cart-icon-target">
         <view class="cart-icon">
           <uni-icons type="cart" size="30" color="#ffffff"></uni-icons>
@@ -85,7 +132,7 @@
         <text class="cart-tip">不含复诊费，实际金额以结算为准</text>
       </view>
       <button class="submit-btn" @click="handleSubmit">提交</button>
-    </view>
+    </view> -->
 
     <TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
 
@@ -358,11 +405,16 @@ export default {
 </script>
 
 <style scoped>
+::-webkit-scrollbar {
+  display: none;
+}
+scroll-view ::-webkit-scrollbar {
+  display: none;
+}
 .product-container {
   width: 100%;
   min-height: 100vh;
   background-color: #f5f5f5;
-  padding-bottom: calc(env(safe-area-inset-bottom));
 }
 
 .banner-section {
@@ -380,6 +432,9 @@ export default {
 .search-section {
   padding: 20rpx 30rpx;
   background-color: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .search-bar {
@@ -387,7 +442,7 @@ export default {
   align-items: center;
   background-color: #f5f5f5;
   border-radius: 50rpx;
-  padding: 10rpx 10rpx 10rpx 30rpx;
+  padding: 6rpx 10rpx 6rpx 30rpx;
 }
 
 .search-input {
@@ -410,15 +465,16 @@ export default {
 
 .main-content {
   display: flex;
-  height: calc(100vh - 400rpx);
+  height: calc(100vh - 450rpx);
   overflow: scroll;
-  padding-bottom: 200rpx;
+  padding-bottom: 50rpx;
 }
 
 .category-nav {
   width: 200rpx;
   background-color: #ffffff;
   border-right: 1rpx solid #e5e5e5;
+  padding-bottom: 20rpx;
 }
 
 .category-item {
@@ -769,5 +825,163 @@ export default {
   pointer-events: none;
   transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   box-shadow: 0 4rpx 12rpx rgba(255, 107, 107, 0.5);
+}
+
+.hospital-intro {
+  display: flex;
+  align-items: flex-start;
+  background: linear-gradient(135deg, #fafafa, #fff);
+  padding: 30rpx 30rpx 10rpx 30rpx;
+  position: relative;
+}
+
+.logo-wrap {
+  position: relative;
+  margin-right: 24rpx;
+  flex-shrink: 0;
+}
+
+.hospital-logo {
+  width: 110rpx;
+  height: 110rpx;
+  border-radius: 16rpx;
+  background: transparent;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+}
+
+.logo-badge {
+  position: absolute;
+  bottom: -10rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #e63939, #ff4b4b);
+  color: #fff;
+  font-size: 18rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+  white-space: nowrap;
+  font-weight: bold;
+}
+
+.hospital-info {
+  flex: 1;
+}
+
+.hospital-name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8rpx;
+}
+
+.hospital-badge {
+  background: linear-gradient(135deg, #52c41a, #73d13d);
+  color: #fff;
+  font-size: 18rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 4rpx;
+  margin-right: 12rpx;
+  font-weight: bold;
+}
+
+.hospital-name {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.verify-icon {
+  color: #52c41a;
+  font-size: 26rpx;
+  margin-left: 8rpx;
+}
+
+.hospital-desc {
+  font-size: 22rpx;
+  color: #999;
+  margin-bottom: 12rpx;
+  letter-spacing: 1rpx;
+}
+
+.hospital-tags {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+
+.tag-item {
+  display: flex;
+  align-items: center;
+  background: #f5f5f5;
+  padding: 4rpx 10rpx;
+  border-radius: 20rpx;
+  flex-shrink: 0;
+}
+
+.tag-icon {
+  font-size: 18rpx;
+  margin-right: 4rpx;
+}
+
+.tag-text {
+  font-size: 18rpx;
+  color: #666;
+}
+
+.hospital-stats {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, #fff8e1, #fff);
+  padding: 12rpx 16rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid #ffe58f;
+}
+
+.stat-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-value {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #e63939;
+}
+
+.stat-label {
+  font-size: 18rpx;
+  color: #999;
+  margin-top: 2rpx;
+}
+
+.stat-divider {
+  width: 1rpx;
+  height: 40rpx;
+  background: #ffe58f;
+}
+
+.tag {
+  font-size: 22rpx;
+  color: #666;
+}
+
+.tag-sep {
+  color: #ddd;
+  font-size: 20rpx;
+}
+
+.arrow-icon {
+  font-size: 40rpx;
+  color: #ccc;
+  margin-left: 12rpx;
+  align-self: center;
+}
+
+.intro-divider {
+  height: 16rpx;
+  background: #f5f5f5;
 }
 </style>
