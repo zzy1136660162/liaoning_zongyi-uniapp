@@ -3,7 +3,7 @@
     <view class="hospital-intro">
       <view class="logo-wrap">
         <image class="hospital-logo" src="/static/logotou.png" mode="aspectFit" />
-        <view class="logo-badge">官方</view>
+        <view class="logo-badge">官方旗舰店</view>
       </view>
       <view class="hospital-info">
         <view class="hospital-name-row">
@@ -74,14 +74,28 @@
 
       <view class="product-list-wrapper">
         <view class="product-list-header">
-          <view class="prescription-title" @click="switchToHorizontalLayout">
-            <text class="prescription-text">药方</text>
-            <image class="prescription-icon" :src="getImageUrl('/profile/liaoning_zongyi/list_icon1.png')" mode="aspectFit"></image>
+          <view class="header-left">
+            <view class="prescription-title" @click="switchToHorizontalLayout">
+              <text class="prescription-text">药方</text>
+            </view>
+            <view class="sort-section">
+              <view class="sort-btn" :class="{ active: sortType === '' }" @click="toggleSort('')">
+                <text class="sort-text">综合</text>
+              </view>
+              <view class="sort-btn" :class="{ active: sortType === 'sales' }" @click="toggleSort('sales')">
+                <text class="sort-text">销量</text>
+                <text class="sort-arrow" :class="{ desc: sortType === 'sales' && sortOrder === 'desc' }">↓</text>
+              </view>
+              <view class="sort-btn" :class="{ active: sortType === 'price' }" @click="toggleSort('price')">
+                <text class="sort-text">价格</text>
+                <text class="sort-arrow" :class="{ desc: sortType === 'price' && sortOrder === 'desc' }">↓</text>
+              </view>
+            </view>
           </view>
-          <view class="history-order" @click="goToHistory">
+          <!-- <view class="history-order" @click="goToHistory">
             <uni-icons type="list" size="18" color="#666666"></uni-icons>
             <text class="history-text">历史订单</text>
-          </view>
+          </view> -->
         </view>
 
         <scroll-view class="product-list" scroll-y>
@@ -178,7 +192,10 @@ export default {
       productQuantities: {},
       currentTab: 'home',
       loadedCategories: {},
-      categoryList: []
+      categoryList: [],
+      isScrolled: false,
+      sortType: '',
+      sortOrder: 'desc'
     }
   },
   computed: {
@@ -193,6 +210,20 @@ export default {
           product.name.toLowerCase().includes(keyword) ||
           (product.description && product.description.toLowerCase().includes(keyword))
         )
+      }
+      if (this.sortType) {
+        products = [...products].sort((a, b) => {
+          if (this.sortType === 'sales') {
+            const aSales = a.salesVolume || 0
+            const bSales = b.salesVolume || 0
+            return this.sortOrder === 'desc' ? bSales - aSales : aSales - bSales
+          } else if (this.sortType === 'price') {
+            const aPrice = a.price || 0
+            const bPrice = b.price || 0
+            return this.sortOrder === 'desc' ? bPrice - aPrice : aPrice - bPrice
+          }
+          return 0
+        })
       }
       return products
     },
@@ -216,6 +247,17 @@ export default {
   },
   methods: {
     getImageUrl,
+    toggleSort(type) {
+      if (type === '') {
+        this.sortType = ''
+        this.sortOrder = 'desc'
+      } else if (this.sortType === type) {
+        this.sortOrder = this.sortOrder === 'desc' ? 'asc' : 'desc'
+      } else {
+        this.sortType = type
+        this.sortOrder = 'desc'
+      }
+    },
     handleSearch() {},
     async loadProducts() {
       try {
@@ -548,6 +590,55 @@ scroll-view ::-webkit-scrollbar {
   height: 24rpx;
   background: linear-gradient(135deg, #4A90E2 0%, #6BB3FF 100%);
   border-radius: 3rpx;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.sort-section {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.sort-btn {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 20rpx;
+  background: #f5f5f5;
+  transition: all 0.2s ease;
+}
+
+.sort-btn.active {
+  background: linear-gradient(135deg, #4A90E2 0%, #67B26F 100%);
+}
+
+.sort-text {
+  font-size: 24rpx;
+  color: #666666;
+}
+
+.sort-btn.active .sort-text {
+  color: #ffffff;
+}
+
+.sort-arrow {
+  font-size: 20rpx;
+  color: #999999;
+  transition: all 0.2s ease;
+}
+
+.sort-btn.active .sort-arrow {
+  color: #ffffff;
+}
+
+.sort-arrow.desc {
+  transform: rotate(180deg);
 }
 
 .history-order {
