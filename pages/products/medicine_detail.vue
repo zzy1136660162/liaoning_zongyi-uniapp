@@ -27,13 +27,13 @@
           </view>
         </view>
       </view>
-      <view class="trust-badges">
+      <!-- <view class="trust-badges">
         <view class="trust-item"><image class="trust-icon" src="/static/logotou.png" mode="aspectFit" /><text class="trust-text">医院自营</text></view>
         <view class="trust-item"><text class="trust-icon">🛡️</text><text class="trust-text">正品保证</text></view>
         <view class="trust-item"><text class="trust-icon">💯</text><text class="trust-text">购买无忧</text></view>
         <view class="trust-item"><text class="trust-icon">🚚</text><text class="trust-text">专业物流</text></view>
         <view class="trust-item"><text class="trust-icon">⏰</text><text class="trust-text">24h发货</text></view>
-      </view>
+      </view> -->
     </view>
 
     <view class="goods-info">
@@ -747,7 +747,7 @@ onShow(() => {
       rgba(255, 255, 255, 0.03) 10rpx,
       rgba(255, 255, 255, 0.03) 20rpx
     ),
-    linear-gradient(90deg, #e63939, #ff4b4b);
+    linear-gradient(90deg, #f05a5a, #ff6b6b);
   padding: 20rpx 30rpx 16rpx;
   display: flex;
   flex-direction: column;
