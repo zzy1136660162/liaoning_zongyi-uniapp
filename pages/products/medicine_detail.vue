@@ -277,6 +277,8 @@
       <text class="reminder-text">请仔细阅读药品说明书或在医师、药师指导下使用。药品包装及说明请以实际收到的商品为准。</text>
     </view>
 
+    <view class="customer-service-float" @click="showCustomerService">客服</view>
+
     <view class="bottom-space"></view>
 
     <view class="bottom-bar">
@@ -302,11 +304,12 @@
 <script setup>
 import { computed, getCurrentInstance, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
+import { STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
 import { getImageUrl } from '@/utils/config.js'
-import { saveToCart } from '@/utils/cart.js'
+import { saveToCart, setCheckoutProductIds } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
+import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 
 const pharmacistAvatar = 'https://smf.lntcm.com/static/logo/zixun.svg'
 
@@ -323,6 +326,8 @@ const createEmptyProduct = () => ({
   salesVolume: 0,
   bizType: 1,
   isPrescription: 0,
+  needQuestionnaire: 0,
+  questionnaireId: null,
   isHospitalStarFormula: 0,
   isNewProduct: 0,
   detailTitle: '',
@@ -373,6 +378,7 @@ const productImages = computed(() => {
 
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
+const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
 const selectedSpec = computed(() => product.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
 const priceInteger = computed(() => {
   const [integer = '0'] = (Number(product.value.price || 0).toFixed(2)).split('.')
@@ -514,13 +520,34 @@ const addCart = () => {
   uni.showToast({ title: '已加入购物车', icon: 'success' })
 }
 
+const goCheckout = () => {
+  const selectedItems = [String(product.value.id)]
+  setCheckoutProductIds(selectedItems)
+
+  if (Number(product.value.bizType) === BIZ_TYPE_HEALTH_GOODS) {
+    uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+    uni.navigateTo({
+      url: `/pages/order/confirm?selectedItems=${selectedItems.join(',')}`
+    })
+    return
+  }
+
+  uni.navigateTo({
+    url: `/pages/dispense/apply?selectedItems=${selectedItems.join(',')}`
+  })
+}
+
 const buyNow = () => {
   if (!product.value.id) return
   saveToCart(product.value.id, quantity.value, true)
   loadCartCount()
-  uni.navigateTo({
-    url: `/pages/products/product_notice?id=${product.value.id}`
-  })
+  if (requiresQuestionnaire.value) {
+    uni.navigateTo({
+      url: `/pages/products/product_notice?id=${product.value.id}`
+    })
+    return
+  }
+  goCheckout()
 }
 
 const handleBannerChange = (event) => {
@@ -564,6 +591,27 @@ const goConsult = () => {
   uni.showToast({
     title: '在线咨询功能建设中',
     icon: 'none'
+  })
+}
+const showCustomerService = () => {
+  uni.showModal({
+    title: '客服电话',
+    content: '82961387',
+    confirmText: '拨打',
+    success: ({ confirm }) => {
+      if (!confirm) {
+        return
+      }
+      uni.makePhoneCall({
+        phoneNumber: '82961387',
+        fail: () => {
+          uni.showToast({
+            title: '拨号失败',
+            icon: 'none'
+          })
+        }
+      })
+    }
   })
 }
 const toggleCollect = () => {
@@ -1565,6 +1613,25 @@ onShow(() => {
   color: #ad6800;
   flex: 1;
   line-height: 1.6;
+}
+
+.customer-service-float {
+  position: fixed;
+  right: 24rpx;
+  bottom: 150rpx;
+  z-index: 120;
+  min-width: 88rpx;
+  height: 88rpx;
+  padding: 0 24rpx;
+  border-radius: 44rpx;
+  background: linear-gradient(135deg, #00c792, #00a676);
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12rpx 32rpx rgba(0, 167, 118, 0.24);
 }
 
 .bottom-space {

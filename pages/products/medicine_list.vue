@@ -2,7 +2,7 @@
   <view class="product-container">
     <view class="hospital-intro">
       <view class="logo-wrap">
-        <image class="hospital-logo" src="/static/logotou.png" mode="aspectFit" />
+        <image class="hospital-logo" src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png" mode="aspectFit" />
         <view class="logo-badge">官方旗舰店</view>
       </view>
       <view class="hospital-info">

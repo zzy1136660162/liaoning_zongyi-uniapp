@@ -149,6 +149,7 @@ import {
   buildOrderInfo,
   calculateTotalPrice,
   getCurrentCheckoutProductIds,
+  getCartProductQuantity,
   updateProductSelection,
   updateMultipleSelections,
   getSelectedProductIds,
@@ -330,6 +331,7 @@ const selectedCartIds = ref([])
                 description: productDetail.subTitle || productDetail.description,
                 image: productDetail.coverImage || productDetail.image,
                 price: productDetail.price,
+                quantity: getCartProductQuantity(productId, 1),
                 unit: productDetail.unit || '份',
                 notice: productDetail.usageDesc || productDetail.notice,
                 doctorName: productDetail.doctorName || '医师'
@@ -845,4 +847,3 @@ const selectedCartIds = ref([])
     border: none;
   }
   </style>
-  

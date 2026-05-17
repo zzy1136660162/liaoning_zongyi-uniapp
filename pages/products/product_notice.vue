@@ -33,7 +33,7 @@
 import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId } from '@/api/questionnaire.js'
 import { getImageUrl } from '@/utils/config.js'
-import { saveToCart } from '@/utils/cart.js'
+import { getCartProductQuantity, saveToCart } from '@/utils/cart.js'
 import { STORAGE_KEY_VERIFIED_PRODUCTS } from '@/utils/storage.js'
 import { isHealthGoods, resolveProductFlow } from '@/utils/product-biz.js'
 import { logPageView } from '@/api/access-log.js'
@@ -63,6 +63,9 @@ export default {
 	},
 	methods: {
 		getImageUrl,
+		getSelectedQuantity() {
+			return getCartProductQuantity(this.productId, 1)
+		},
 		async loadProductDetail(productId) {
 			// 只通过后端接口查询商品详情
 			try {
@@ -138,7 +141,7 @@ export default {
 				const detail = this.productDetail || await getProductDetail(this.productId)
 				this.productDetail = detail
 				if (detail && isHealthGoods(detail)) {
-					const success = saveToCart(this.productId, 1)
+					const success = saveToCart(this.productId, this.getSelectedQuantity())
 					if (!success) {
 						uni.showToast({
 							title: '添加到购物车失败',
@@ -180,7 +183,7 @@ export default {
 					})
 				} else {
 					// 没有问卷，直接添加到购物车
-					const success = saveToCart(this.productId, 1)
+					const success = saveToCart(this.productId, this.getSelectedQuantity())
 					
 					if (success) {
 						uni.showToast({
@@ -209,7 +212,7 @@ export default {
 				console.log('检查问卷失败，视为无问卷，直接添加到购物车:', error)
 				
 				// API调用失败（可能是没有问卷），直接添加到购物车
-				const success = saveToCart(this.productId, 1)
+				const success = saveToCart(this.productId, this.getSelectedQuantity())
 				
 				if (success) {
 					uni.showToast({

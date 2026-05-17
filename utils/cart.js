@@ -363,6 +363,22 @@ export const getSelectedProductIds = () => {
   }
 }
 
+export const getCartProductInfo = (productId) => {
+  try {
+    const cartData = getNormalizedCartData()
+    return cartData[String(productId)] || null
+  } catch (e) {
+    console.error('获取购物车商品信息失败:', e)
+    return null
+  }
+}
+
+export const getCartProductQuantity = (productId, fallback = 1) => {
+  const productInfo = getCartProductInfo(productId)
+  const quantity = Number(productInfo?.quantity)
+  return quantity > 0 ? quantity : fallback
+}
+
 export const setCheckoutProductIds = (productIds = []) => {
   try {
     const normalizedIds = productIds.map(id => String(id))

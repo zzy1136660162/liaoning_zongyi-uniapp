@@ -51,7 +51,7 @@
         >
           <view class="item-info">
             <text class="item-name">{{ item.name }}</text>
-            <text class="item-type">{{ item.type }} <text v-if="item.quantity > 1">×{{ item.quantity }}</text></text>
+            <text class="item-type">{{ item.type }} ×{{ item.quantity || 1 }}</text>
           </view>
           <text class="item-price">¥{{ item.price.toFixed(2) }}</text>
         </view>

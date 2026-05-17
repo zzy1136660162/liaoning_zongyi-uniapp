@@ -629,9 +629,9 @@
 		this.currentTab = tab
 	  },
 	  switchToVerticalLayout() {
-		// 跳转到纵向分类布局页面
+		// 跳转到药品列表页
 		uni.navigateTo({
-		  url: '/pages/products/priducts_list2'
+		  url: '/pages/products/medicine_list'
 		})
 	  }
 	}

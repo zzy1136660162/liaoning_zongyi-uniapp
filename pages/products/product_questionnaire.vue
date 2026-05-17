@@ -44,7 +44,7 @@
 
 <script>
 import { STORAGE_KEY_VERIFIED_PRODUCTS } from '@/utils/storage.js'
-import { saveToCart } from '@/utils/cart.js'
+import { getCartProductQuantity, saveToCart } from '@/utils/cart.js'
 import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId, submitQuestionnaire } from '@/api/questionnaire.js'
 import { logPageView } from '@/api/access-log.js'
@@ -69,6 +69,9 @@ export default {
 		logPageView('产品问卷', '用户进入产品问卷页面')
 	},
 	methods: {
+		getSelectedQuantity() {
+			return getCartProductQuantity(this.productId, 1)
+		},
 		async ensureCartCompatible() {
 			const currentProduct = await getProductDetail(this.productId)
 			if (!currentProduct) {
@@ -239,7 +242,7 @@ export default {
 						return
 					}
 					// 符合条件，保存到购物车并返回列表页
-					saveToCart(this.productId, 1)
+					saveToCart(this.productId, this.getSelectedQuantity())
 					
 					uni.showToast({
 						title: result.tipMessage || '已添加到购物车',

@@ -121,6 +121,8 @@ export const mapProductListItem = (product = {}) => {
     goodsMerchantType: Number(pickField(product, 'goodsMerchantType', 'goods_merchant_type') || 1),
     productCategory: Number(pickField(product, 'productCategory', 'product_category') || 2),
     isPrescription: Number(pickField(product, 'isPrescription', 'is_prescription') || 0),
+    needQuestionnaire: Number(pickField(product, 'needQuestionnaire', 'need_questionnaire') || 0),
+    questionnaireId: pickField(product, 'questionnaireId', 'questionnaire_id'),
     isHospitalStarFormula: Number(pickField(product, 'isHospitalStarFormula', 'is_hospital_star_formula') || 0),
     isNewProduct: Number(pickField(product, 'isNewProduct', 'is_new_product') || 0),
     detailTitle: pickField(product, 'detailTitle', 'detail_title') || '',
