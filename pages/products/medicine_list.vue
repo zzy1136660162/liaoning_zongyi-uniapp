@@ -163,16 +163,23 @@
 </template>
 
 <script>
-import {
-  STORAGE_KEY_VERIFIED_PRODUCTS,
-  STORAGE_KEY_PRODUCT_QUANTITIES,
-  STORAGE_KEY_USER_REGISTER
-} from '@/utils/storage.js'
+import { STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
 import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
-import { loadCartItems, calculateTotalPrice, calculateTotalQuantity } from '@/utils/cart.js'
+import {
+  getCartEntries,
+  getCartProductQuantity,
+  loadCartItems,
+  calculateTotalPrice,
+  calculateTotalQuantity,
+  setCartItemQuantity,
+  removeFromCart,
+  prepareCheckout
+} from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
+
+const HOSPITAL_BIZ_TYPE = 1
 
 export default {
   components: { TabBar },
@@ -189,7 +196,6 @@ export default {
         scale: 1
       },
       verifiedProducts: {},
-      productQuantities: {},
       currentTab: 'home',
       loadedCategories: {},
       categoryList: [],
@@ -217,7 +223,8 @@ export default {
             const aSales = a.salesVolume || 0
             const bSales = b.salesVolume || 0
             return this.sortOrder === 'desc' ? bSales - aSales : aSales - bSales
-          } else if (this.sortType === 'price') {
+          }
+          if (this.sortType === 'price') {
             const aPrice = a.price || 0
             const bPrice = b.price || 0
             return this.sortOrder === 'desc' ? bPrice - aPrice : aPrice - bPrice
@@ -262,24 +269,24 @@ export default {
     async loadProducts() {
       try {
         uni.showLoading({ title: '加载中...' })
-        const categoryList = await getCategoryList()
-        this.categoryList = categoryList
+        const categoryList = await getCategoryList(HOSPITAL_BIZ_TYPE)
+        this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categories = [
           { id: 'all', name: '全部分类', products: [] },
-          ...categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
+          ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
         ]
         await this.loadAllProducts()
         this.$set(this.loadedCategories, 'all', true)
         this.loadVerifiedProductsFromStorage()
       } catch (error) {
-        console.error('加载商品分类失败:', error)
+        console.error('loadProducts failed:', error)
         uni.showToast({ title: '加载失败', icon: 'none' })
       } finally {
         uni.hideLoading()
       }
     },
     async loadAllProducts() {
-      const productPage = await getCategoryProducts(null, 1, 100)
+      const productPage = await getCategoryProducts(null, 1, 100, HOSPITAL_BIZ_TYPE)
       const productList = productPage.records || productPage.list || []
       const allProducts = productList.map(item => mapProductListItem(item))
       const allCategory = this.categories.find(cat => cat.id === 'all')
@@ -289,7 +296,7 @@ export default {
     },
     async loadCategoryProducts(categoryId) {
       if (this.loadedCategories[categoryId]) return
-      const productPage = await getCategoryProducts(categoryId, 1, 100)
+      const productPage = await getCategoryProducts(categoryId, 1, 100, HOSPITAL_BIZ_TYPE)
       const productList = productPage.records || productPage.list || []
       const products = productList.map(item => mapProductListItem(item))
       const category = this.categories.find(cat => cat.id === categoryId)
@@ -300,11 +307,10 @@ export default {
     },
     loadVerifiedProductsFromStorage() {
       try {
-        this.verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-        this.productQuantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
+        this.verifiedProducts = getCartEntries()
         this.cartItems = loadCartItems(this.categories)
       } catch (error) {
-        console.error('加载购物车失败:', error)
+        console.error('loadVerifiedProductsFromStorage failed:', error)
       }
     },
     async switchCategory(categoryId) {
@@ -326,86 +332,41 @@ export default {
       })
     },
     goToNotice(product) {
-      const token = getToken()
-      if (!token) {
+      if (!getToken()) {
         uni.navigateTo({
           url: '/pages/register/register?redirect=/pages/products/medicine_list'
         })
         return
       }
       uni.navigateTo({
-        url: `/pages/products/product_notice?id=${product.id}`
+        url: `/pages/products/product_notice?id=${product.id}&quantity=1&action=cart`
       })
     },
-    saveVerifiedProductsToStorage() {
-      uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, this.verifiedProducts)
-      uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, this.productQuantities)
-    },
     isProductVerified(productId) {
-      const productData = this.verifiedProducts[productId]
-      if (typeof productData === 'object' && productData !== null) {
-        return productData.verified === true
-      }
-      return productData === true
+      return !!this.verifiedProducts[String(productId)]
     },
     getProductQuantity(productId) {
-      const productData = this.verifiedProducts[productId]
-      if (typeof productData === 'object' && productData !== null) {
-        return productData.quantity || 0
-      }
-      return this.productQuantities[productId] || 0
+      return getCartProductQuantity(productId, 0)
     },
     increaseQuantity(product) {
-      const productData = this.verifiedProducts[product.id]
-      if (typeof productData === 'object' && productData !== null) {
-        productData.quantity = (productData.quantity || 1) + 1
-      } else {
-        this.verifiedProducts = {
-          ...this.verifiedProducts,
-          [product.id]: {
-          verified: true,
-          selected: true,
-          quantity: (this.productQuantities[product.id] || 0) + 1,
-          timestamp: Date.now()
-          }
-        }
-      }
-      this.productQuantities = {
-        ...this.productQuantities,
-        [product.id]: this.getProductQuantity(product.id)
-      }
-      this.saveVerifiedProductsToStorage()
-      this.cartItems = loadCartItems(this.categories)
+      const nextQuantity = this.getProductQuantity(product.id) + 1
+      setCartItemQuantity(product.id, nextQuantity)
+      this.loadVerifiedProductsFromStorage()
     },
     decreaseQuantity(product) {
       const current = this.getProductQuantity(product.id)
       if (current <= 1) {
-        const { [product.id]: _, ...remainingVerifiedProducts } = this.verifiedProducts
-        const { [product.id]: __, ...remainingProductQuantities } = this.productQuantities
-        this.verifiedProducts = remainingVerifiedProducts
-        this.productQuantities = remainingProductQuantities
+        removeFromCart(product.id)
       } else {
-        const productData = this.verifiedProducts[product.id]
-        if (typeof productData === 'object' && productData !== null) {
-          productData.quantity = current - 1
-        }
-        this.productQuantities = {
-          ...this.productQuantities,
-          [product.id]: current - 1
-        }
+        setCartItemQuantity(product.id, current - 1)
       }
-      this.saveVerifiedProductsToStorage()
-      this.cartItems = loadCartItems(this.categories)
+      this.loadVerifiedProductsFromStorage()
     },
     showCart() {
-      uni.showToast({
-        title: `购物车中有${this.cartCount}件商品`,
-        icon: 'none'
-      })
+      uni.navigateTo({ url: '/pages/cart/cart' })
     },
     handleSubmit() {
-      const token = getToken()
-      if (!token) {
+      if (!getToken()) {
         uni.navigateTo({
           url: '/pages/register/register?redirect=/pages/products/medicine_list'
         })
@@ -424,10 +385,22 @@ export default {
           })
           return
         }
-        this.saveVerifiedProductsToStorage()
-        uni.navigateTo({ url: '/pages/dispense/apply' })
+
+        const selectedIds = this.cartItems.map(item => String(item.id))
+        const checkout = prepareCheckout(selectedIds, this.categories)
+        if (!checkout.valid) {
+          uni.showToast({
+            title: checkout.message,
+            icon: 'none'
+          })
+          return
+        }
+
+        uni.navigateTo({
+          url: `/pages/dispense/apply?selectedItems=${checkout.productIds.join(',')}`
+        })
       } catch (error) {
-        console.error('检查注册状态失败:', error)
+        console.error('handleSubmit failed:', error)
         uni.navigateTo({
           url: '/pages/register/register?redirect=/pages/products/medicine_list'
         })

@@ -302,16 +302,22 @@
 </template>
 
 <script setup>
-import { computed, getCurrentInstance, ref, watch } from 'vue'
+import { computed, getCurrentInstance, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
+import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
 import { getImageUrl } from '@/utils/config.js'
-import { saveToCart, setCheckoutProductIds } from '@/utils/cart.js'
+import {
+  addCartItem,
+  getCartProductInfo,
+  getCartProductQuantity,
+  getCartTotalQuantity,
+  prepareCheckout,
+  resolveCartCompatibility
+} from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
 import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
-
-const pharmacistAvatar = 'https://smf.lntcm.com/static/logo/zixun.svg'
+import { getToken } from '@/utils/request.js'
 
 const createEmptyProduct = () => ({
   id: '',
@@ -325,6 +331,7 @@ const createEmptyProduct = () => ({
   unit: '',
   salesVolume: 0,
   bizType: 1,
+  goodsMerchantType: 1,
   isPrescription: 0,
   needQuestionnaire: 0,
   questionnaireId: null,
@@ -362,7 +369,6 @@ const detailTab = ref('desc')
 const currentIndex = ref(1)
 const cartCount = ref(0)
 const isCollected = ref(false)
-const isInitializing = ref(false)
 const flyingDot = ref({ show: false, x: 0, y: 0 })
 const recommendTab = ref('combo')
 const cartQuantities = ref({})
@@ -381,11 +387,11 @@ const usageText = computed(() => product.value.commonUsage || product.value.usag
 const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
 const selectedSpec = computed(() => product.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
 const priceInteger = computed(() => {
-  const [integer = '0'] = (Number(product.value.price || 0).toFixed(2)).split('.')
+  const [integer = '0'] = Number(product.value.price || 0).toFixed(2).split('.')
   return integer
 })
 const priceDecimal = computed(() => {
-  const [, decimal = '00'] = (Number(product.value.price || 0).toFixed(2)).split('.')
+  const [, decimal = '00'] = Number(product.value.price || 0).toFixed(2).split('.')
   return decimal
 })
 const originTypeText = computed(() => {
@@ -423,8 +429,7 @@ const usageItems = computed(() => {
 })
 
 const loadCartCount = () => {
-  const productQuantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
-  cartCount.value = Object.values(productQuantities).reduce((sum, current) => sum + (Number(current) || 0), 0)
+  cartCount.value = getCartTotalQuantity()
 }
 
 const resolveRecommendTab = () => {
@@ -438,25 +443,23 @@ const resolveRecommendTab = () => {
 }
 
 const loadQuantityFromStorage = () => {
-  if (!product.value.id) return
-  try {
-    isInitializing.value = true
-    const productQuantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
-    const savedQuantity = productQuantities[product.value.id]
-    quantity.value = savedQuantity && savedQuantity > 0 ? Number(savedQuantity) : 1
-  } catch (error) {
-    console.error('加载商品数量失败:', error)
-  } finally {
-    isInitializing.value = false
+  if (!product.value.id) {
+    quantity.value = 1
+    return
   }
+  quantity.value = getCartProductQuantity(product.value.id, 1)
 }
 
-watch(quantity, (value) => {
-  if (!product.value.id || isInitializing.value) return
-  const nextQuantity = Math.max(1, Number(value) || 1)
-  saveToCart(product.value.id, nextQuantity, true)
-  loadCartCount()
-})
+const loadRecommendCartQuantities = () => {
+  const nextQuantities = {}
+  ;[...comboProducts.value, ...starProducts.value].forEach((item) => {
+    const currentQuantity = getCartProductQuantity(item.id, 0)
+    if (currentQuantity > 0) {
+      nextQuantities[item.id] = currentQuantity
+    }
+  })
+  cartQuantities.value = nextQuantities
+}
 
 const applyProduct = (source) => {
   const mapped = mapProductDetail(source)
@@ -464,9 +467,11 @@ const applyProduct = (source) => {
     ...createEmptyProduct(),
     ...mapped
   }
+  currentIndex.value = 1
   comboProducts.value = Array.isArray(mapped.relatedProducts) ? mapped.relatedProducts : []
   starProducts.value = Array.isArray(mapped.starProducts) ? mapped.starProducts : []
   recommendTab.value = resolveRecommendTab()
+  loadQuantityFromStorage()
   loadRecommendCartQuantities()
 }
 
@@ -475,9 +480,8 @@ const loadProduct = async (id) => {
     uni.showLoading({ title: '加载中...' })
     const response = await getProductDetail(id)
     applyProduct(response)
-    loadQuantityFromStorage()
   } catch (error) {
-    console.error('加载商品详情失败:', error)
+    console.error('loadProduct failed:', error)
     uni.showToast({
       title: error.message || '加载失败',
       icon: 'none'
@@ -490,64 +494,151 @@ const loadProduct = async (id) => {
 const formatRichText = (htmlContent) => {
   if (!htmlContent) return ''
   const normalizeRichText = (content) => content
-      .replace(/<img([^>]*)style=(['"])(.*?)\2([^>]*)>/gi, (match, before, quote, styleContent, after) => {
-        const sanitizedStyle = styleContent
-          .replace(/(?:^|;)\s*width\s*:[^;]*/gi, '')
-          .replace(/(?:^|;)\s*height\s*:[^;]*/gi, '')
-          .trim()
-        const nextStyle = `max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;${sanitizedStyle ? ` ${sanitizedStyle}` : ''}`.trim()
-        return `<img${before}style="${nextStyle}"${after}>`
-      })
-      .replace(/<img((?:(?!style=)[^>])*)>/gi, '<img$1 style="max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;">')
+    .replace(/<img([^>]*)style=(['"])(.*?)\2([^>]*)>/gi, (match, before, quote, styleContent, after) => {
+      const sanitizedStyle = styleContent
+        .replace(/(?:^|;)\s*width\s*:[^;]*/gi, '')
+        .replace(/(?:^|;)\s*height\s*:[^;]*/gi, '')
+        .trim()
+      const nextStyle = `max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;${sanitizedStyle ? ` ${sanitizedStyle}` : ''}`.trim()
+      return `<img${before}style="${nextStyle}"${after}>`
+    })
+    .replace(/<img((?:(?!style=)[^>])*)>/gi, '<img$1 style="max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;">')
 
   if (typeof htmlContent === 'string') {
     return normalizeRichText(
       htmlContent
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
     )
   }
   return normalizeRichText(String(htmlContent))
 }
 
-const addCart = () => {
-  if (!product.value.id) return
-  saveToCart(product.value.id, quantity.value, true)
-  loadCartCount()
-  uni.showToast({ title: '已加入购物车', icon: 'success' })
+const buildDetailRedirect = () => {
+  return product.value.id ? `/pages/products/medicine_detail?id=${product.value.id}` : '/pages/products/medicine_detail'
 }
 
-const goCheckout = () => {
-  const selectedItems = [String(product.value.id)]
-  setCheckoutProductIds(selectedItems)
+const ensureLogin = () => {
+  if (getToken()) {
+    return true
+  }
+  uni.navigateTo({
+    url: `/pages/register/register?redirect=${encodeURIComponent(buildDetailRedirect())}`
+  })
+  return false
+}
 
-  if (Number(product.value.bizType) === BIZ_TYPE_HEALTH_GOODS) {
+const ensureCartCompatible = (targetProduct) => {
+  const result = resolveCartCompatibility(targetProduct, {
+    ignoreProductId: targetProduct?.id
+  })
+  if (!result.valid) {
+    uni.showToast({
+      title: result.message,
+      icon: 'none'
+    })
+    return false
+  }
+  return true
+}
+
+const hasQuestionnairePassed = (productId) => {
+  const entry = getCartProductInfo(productId)
+  return !!(entry && entry.questionnairePassed)
+}
+
+const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart') => {
+  uni.navigateTo({
+    url: `/pages/products/product_notice?id=${targetProduct.id}&quantity=${selectedQuantity}&action=${action}`
+  })
+  return false
+}
+
+const goCheckout = (targetProduct) => {
+  const checkout = prepareCheckout([String(targetProduct.id)], [{
+    id: 'detail_checkout',
+    products: [targetProduct]
+  }])
+
+  if (!checkout.valid) {
+    uni.showToast({
+      title: checkout.message,
+      icon: 'none'
+    })
+    return false
+  }
+
+  const selectedItems = checkout.productIds.join(',')
+  if (Number(targetProduct.bizType) === BIZ_TYPE_HEALTH_GOODS) {
     uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
     uni.navigateTo({
-      url: `/pages/order/confirm?selectedItems=${selectedItems.join(',')}`
+      url: `/pages/order/confirm?selectedItems=${selectedItems}`
     })
-    return
+    return true
   }
 
   uni.navigateTo({
-    url: `/pages/dispense/apply?selectedItems=${selectedItems.join(',')}`
+    url: `/pages/dispense/apply?selectedItems=${selectedItems}`
   })
+  return true
 }
 
-const buyNow = () => {
-  if (!product.value.id) return
-  saveToCart(product.value.id, quantity.value, true)
-  loadCartCount()
-  if (requiresQuestionnaire.value) {
-    uni.navigateTo({
-      url: `/pages/products/product_notice?id=${product.value.id}`
-    })
-    return
+const handlePurchaseAction = async (mode, targetProduct = product.value, selectedQuantity = 1) => {
+  if (!targetProduct?.id) {
+    return false
   }
-  goCheckout()
+
+  if (!ensureLogin()) {
+    return false
+  }
+
+  if (!ensureCartCompatible(targetProduct)) {
+    return false
+  }
+
+  const nextQuantity = Math.max(1, Number(selectedQuantity) || 1)
+  const alreadyPassed = hasQuestionnairePassed(targetProduct.id)
+  if (Number(targetProduct.needQuestionnaire) === 1 && !alreadyPassed) {
+    return navigateToNotice(targetProduct, nextQuantity, mode)
+  }
+
+  const saved = addCartItem(targetProduct, nextQuantity, {
+    questionnairePassed: Number(targetProduct.needQuestionnaire) !== 1 || alreadyPassed
+  })
+  if (!saved) {
+    uni.showToast({
+      title: '加入购物车失败',
+      icon: 'none'
+    })
+    return false
+  }
+
+  loadCartCount()
+  loadRecommendCartQuantities()
+  if (String(targetProduct.id) === String(product.value.id)) {
+    loadQuantityFromStorage()
+  }
+
+  if (mode === 'buy') {
+    return goCheckout(targetProduct)
+  }
+
+  uni.showToast({
+    title: '已加入购物车',
+    icon: 'success'
+  })
+  return true
+}
+
+const addCart = async () => {
+  await handlePurchaseAction('cart', product.value, quantity.value)
+}
+
+const buyNow = async () => {
+  await handlePurchaseAction('buy', product.value, quantity.value)
 }
 
 const handleBannerChange = (event) => {
@@ -624,61 +715,42 @@ const goCart = () => {
 }
 
 const goToDetail = (item) => {
-  if (!item || !item.id) return
-  if (String(item.id) === String(product.value.id)) return
+  if (!item?.id || String(item.id) === String(product.value.id)) return
   uni.navigateTo({
     url: `/pages/products/medicine_detail?id=${item.id}&product=${encodeURIComponent(JSON.stringify(item))}`
   })
 }
 
-const addToCart = (item) => {
-  const cartData = uni.getStorageSync('cartItems') || []
-  const existIndex = cartData.findIndex(i => i.id === item.id)
-  let newQty = 1
-  if (existIndex > -1) {
-    cartData[existIndex].quantity += 1
-    newQty = cartData[existIndex].quantity
-  } else {
-    cartData.push({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      image: item.image,
-      quantity: 1,
-      checked: true
-    })
-  }
-  uni.setStorageSync('cartItems', cartData)
-  loadCartCount()
-  cartQuantities.value[item.id] = newQty
-  return newQty
-}
-
-const flyToCart = (e, item) => {
-  addToCart(item)
-
+const animateFlyToCart = () => {
   try {
     const query = uni.createSelectorQuery().in(getCurrentInstance())
     query.select('.action-icon-btn').boundingClientRect((target) => {
       query.select('.recommend-add-btn').boundingClientRect((source) => {
         if (target && source) {
-          flyingDot.show = true
-          const windowWidth = uni.getSystemInfoSync().windowWidth
-          flyingDot.x = source.left + 10
-          flyingDot.y = source.top + 10
+          flyingDot.value.show = true
+          flyingDot.value.x = source.left + 10
+          flyingDot.value.y = source.top + 10
 
           setTimeout(() => {
-            flyingDot.x = 50
-            flyingDot.y = window.screen.height - 200
+            flyingDot.value.x = 50
+            flyingDot.value.y = window.screen.height - 200
             setTimeout(() => {
-              flyingDot.show = false
+              flyingDot.value.show = false
             }, 400)
           }, 50)
         }
       }).exec()
     }).exec()
-  } catch (err) {
-    console.log('Animation error:', err)
+  } catch (error) {
+    console.log('animateFlyToCart error:', error)
+  }
+}
+
+const flyToCart = async (event, item) => {
+  const nextQuantity = getCartProductQuantity(item.id, 0) + 1
+  const added = await handlePurchaseAction('cart', item, nextQuantity)
+  if (added) {
+    animateFlyToCart()
   }
 }
 
@@ -694,29 +766,14 @@ onLoad((options) => {
       applyProduct(parsed)
       if (parsed.id) {
         loadProduct(parsed.id)
-      } else {
-        loadQuantityFromStorage()
       }
     } catch (error) {
-      console.error('解析商品参数失败:', error)
+      console.error('parse product failed:', error)
     }
   }
 
   loadCartCount()
 })
-
-const loadRecommendCartQuantities = () => {
-  const cartData = uni.getStorageSync('cartItems') || []
-  const allProducts = [...comboProducts.value, ...starProducts.value]
-  const nextQuantities = {}
-  allProducts.forEach(item => {
-    const cartItem = cartData.find(i => i.id === item.id)
-    if (cartItem) {
-      nextQuantities[item.id] = cartItem.quantity
-    }
-  })
-  cartQuantities.value = nextQuantities
-}
 
 onShow(() => {
   loadCartCount()

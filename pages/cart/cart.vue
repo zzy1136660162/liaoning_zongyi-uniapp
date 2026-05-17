@@ -81,356 +81,259 @@
 </template>
 
 <script>
-import { 
-	STORAGE_KEY_CURRENT_CONSULTATION_ID,
-	STORAGE_KEY_CURRENT_ORDER,
-	STORAGE_KEY_VERIFIED_PRODUCTS,
-	STORAGE_KEY_PRODUCT_QUANTITIES,
-	STORAGE_KEY_USER_REGISTER
-} from '@/utils/storage.js'
-import { getCategoryList, getCategoryProducts, getProductDetail } from '@/api/product.js'
 import {
-	buildOrderInfo,
-	clearCheckoutProductIds,
-	loadCartItems,
-	calculateTotalPrice,
-	calculateTotalQuantity,
-	saveToCart,
-	setCheckoutProductIds,
-	removeFromCart
+  STORAGE_KEY_CURRENT_CONSULTATION_ID,
+  STORAGE_KEY_USER_REGISTER
+} from '@/utils/storage.js'
+import { getProductDetail } from '@/api/product.js'
+import {
+  getCartEntries,
+  loadCartItems,
+  calculateTotalPrice,
+  calculateTotalQuantity,
+  setCartItemQuantity,
+  prepareCheckout,
+  removeFromCart,
+  updateProductSelection,
+  updateMultipleSelections
 } from '@/utils/cart.js'
-import { resolveProductFlow } from '@/utils/product-biz.js'
 import { getImageUrl } from '@/utils/config.js'
+import { getToken } from '@/utils/request.js'
 import { logPageView } from '@/api/access-log.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
 export default {
-	components: {
-		TabBar
-	},
-	data() {
-		return {
-			cartItems: [],
-			categories: [],
-			selectedItems: [], // 选中的商品ID列表
-			isEditMode: false, // 是否处于编辑模式
-			currentTab: 'cart' // 当前选中的 tab
-		}
-	},
-	computed: {
-		cartCount() {
-			return calculateTotalQuantity(this.cartItems)
-		},
-		selectedItemCount() {
-			return this.selectedItems.length
-		},
-		selectedTotalPrice() {
-			const selectedCartItems = this.cartItems.filter(item => this.selectedItems.includes(item.id))
-			return calculateTotalPrice(selectedCartItems)
-		},
-		isAllSelected() {
-			return this.cartItems.length > 0 && this.selectedItems.length === this.cartItems.length
-		}
-	},
-	onLoad() {
-		this.currentTab = 'cart'
-	},
-	onShow() {
-		// 每次显示购物车页面时重新加载最新数据
-		this.loadCategories()
+  components: {
+    TabBar
+  },
+  data() {
+    return {
+      cartItems: [],
+      categories: [],
+      selectedItems: [],
+      isEditMode: false,
+      currentTab: 'cart'
+    }
+  },
+  computed: {
+    cartCount() {
+      return calculateTotalQuantity(this.cartItems)
+    },
+    selectedItemCount() {
+      return this.selectedItems.length
+    },
+    selectedTotalPrice() {
+      const selectedCartItems = this.cartItems.filter(item => this.selectedItems.includes(item.id))
+      return calculateTotalPrice(selectedCartItems)
+    },
+    isAllSelected() {
+      return this.cartItems.length > 0 && this.selectedItems.length === this.cartItems.length
+    }
+  },
+  onLoad() {
+    this.currentTab = 'cart'
+  },
+  onShow() {
+    this.loadCategories()
+    logPageView('CART')
+  },
+  methods: {
+    getImageUrl,
+    async loadCategories() {
+      try {
+        const cartEntries = getCartEntries()
+        const productIds = Object.keys(cartEntries)
 
-		// 记录页面访问日志
-		logPageView('购物车', '用户进入购物车页面')
-	},
-	methods: {
-		getImageUrl,
-		async loadCategories() {
-			try {
-				// 先从购物车获取需要的产品ID
-				const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-				const productIds = Object.keys(verifiedProducts).filter(id => verifiedProducts[id])
-				
-				if (productIds.length === 0) {
-					// 如果购物车为空，直接加载购物车数据
-					this.categories = []
-					this.loadCartData()
-					return
-				}
-				
-				// 为购物车中的商品创建虚拟分类结构
-				const cartCategory = {
-					id: 'cart_items',
-					name: '指定药品',
-					products: []
-				}
-				
-				// 逐个获取购物车商品的详细信息
-				for (const productId of productIds) {
-					try {
-						const productDetail = await getProductDetail(productId)
-						if (productDetail) {
-							cartCategory.products.push({
-								id: productDetail.id,
-								name: productDetail.productName || productDetail.name,
-								description: productDetail.subTitle || productDetail.description,
-								image: productDetail.coverImage || productDetail.image,
-								price: productDetail.price,
-								bizType: productDetail.bizType,
-								goodsMerchantType: productDetail.goodsMerchantType,
-								unit: productDetail.unit || '份',
-								notice: productDetail.usageDesc || productDetail.notice,
-								specText: productDetail.specText || productDetail.specDesc
-							})
-						}
-					} catch (err) {
-						console.error(`获取商品${productId}详情失败:`, err)
-					}
-				}
-				
-				this.categories = [cartCategory]
-			
-			this.loadCartData()
-			} catch (error) {
-				console.error('加载商品失败:', error)
-				this.categories = []
-				this.loadCartData()
-			} finally {
-				uni.hideLoading()
-			}
-		},
-		loadCartData() {
-			// 保存当前的选中状态
-			const previousSelectedItems = [...this.selectedItems]
-			const previousCartItemIds = this.cartItems.map(item => item.id)
-			
-			// 加载新的购物车数据
-			this.cartItems = loadCartItems(this.categories)
-			const currentCartItemIds = this.cartItems.map(item => item.id)
-			
-			// 如果购物车为空，清空选中状态
-			if (this.cartItems.length === 0) {
-				this.selectedItems = []
-				return
-			}
-			
-			// 如果之前没有选中状态（首次加载），默认选中所有商品
-			if (previousSelectedItems.length === 0 && previousCartItemIds.length === 0) {
-				this.selectedItems = currentCartItemIds
-				return
-			}
-			
-			// 保留之前选中的商品（如果它们仍然在购物车中）
-			// 同时添加新加入购物车的商品（默认选中）
-			const newSelectedItems = []
-			const newItemIds = currentCartItemIds.filter(id => !previousCartItemIds.includes(id))
-			
-			// 保留之前选中的商品
-			previousSelectedItems.forEach(id => {
-				if (currentCartItemIds.includes(id)) {
-					newSelectedItems.push(id)
-				}
-			})
-			
-			// 新加入的商品默认选中
-			newItemIds.forEach(id => {
-				if (!newSelectedItems.includes(id)) {
-					newSelectedItems.push(id)
-				}
-			})
-			
-			this.selectedItems = newSelectedItems
-		},
-		toggleEditMode() {
-			this.isEditMode = !this.isEditMode
-		},
-		toggleItemSelection(itemId) {
-			const index = this.selectedItems.indexOf(itemId)
-			if (index > -1) {
-				this.selectedItems.splice(index, 1)
-			} else {
-				this.selectedItems.push(itemId)
-			}
-		},
-		toggleSelectAll() {
-			if (this.isAllSelected) {
-				this.selectedItems = []
-			} else {
-				this.selectedItems = this.cartItems.map(item => item.id)
-			}
-		},
-		increaseQuantity(item) {
-			const newQuantity = item.quantity + 1
-			saveToCart(item.id, newQuantity)
-			this.loadCartData()
-		},
-		decreaseQuantity(item) {
-			if (item.quantity > 1) {
-				const newQuantity = item.quantity - 1
-				saveToCart(item.id, newQuantity)
-				this.loadCartData()
-			}
-		},
-		removeItem(itemId) {
-			uni.showModal({
-				title: '确认删除',
-				content: '确定要删除这个商品吗？',
-				success: (res) => {
-					if (res.confirm) {
-						// 使用新的API删除商品
-						try {
-							const success = removeFromCart(itemId)
-							if (success) {
-							// 重新加载购物车数据
-							this.loadCartData()
-							
-							uni.showToast({
-								title: '删除成功',
-								icon: 'success'
-							})
-							} else {
-								uni.showToast({
-									title: '删除失败',
-									icon: 'none'
-								})
-							}
-						} catch (e) {
-							console.error('删除商品失败:', e)
-							uni.showToast({
-								title: '删除失败',
-								icon: 'none'
-							})
-						}
-					}
-				}
-			})
-		},
-		goToProductDetail(item) {
-			const productData = encodeURIComponent(JSON.stringify({
-				id: item.id,
-				name: item.name,
-				price: item.price,
-				image: item.image,
-				description: item.description,
-				unit: item.unit,
-				specText: item.specText
-			}))
-			uni.navigateTo({
-				url: `/pages/products/priducts_detail?product=${productData}`
-			})
-		},
-		goShopping() {
-			uni.navigateTo({
-				url: '/pages/products/priducts_list'
-			})
-		},
-		goToCheckout() {
-			if (this.isEditMode) {
-				// 编辑模式：删除选中的商品
-				if (this.selectedItems.length === 0) {
-					uni.showToast({
-						title: '请选择要删除的商品',
-						icon: 'none'
-					})
-					return
-				}
-				
-				uni.showModal({
-					title: '确认删除',
-					content: `确定要删除选中的${this.selectedItems.length}个商品吗？`,
-					success: (res) => {
-						if (res.confirm) {
-							try {
-								// 使用新的API批量删除商品
-								const success = removeFromCart(this.selectedItems)
-								if (success) {
-								// 重新加载购物车数据
-								this.loadCartData()
-								
-								// 退出编辑模式
-								this.isEditMode = false
-								
-								uni.showToast({
-									title: '删除成功',
-									icon: 'success'
-								})
-								} else {
-									uni.showToast({
-										title: '删除失败',
-										icon: 'none'
-									})
-								}
-							} catch (e) {
-								console.error('批量删除失败:', e)
-								uni.showToast({
-									title: '删除失败',
-									icon: 'none'
-								})
-							}
-						}
-					}
-				})
-			} else {
-				// 正常模式：去结算
-				if (this.selectedItems.length === 0) {
-					uni.showToast({
-						title: '请选择要结算的商品',
-						icon: 'none'
-					})
-					return
-				}
-				
-				// 检查是否已注册
-				try {
-					const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-					if (!userRegisterInfo || !userRegisterInfo.realName) {
-						// 未注册，跳转到注册页面
-						uni.navigateTo({
-							url: '/pages/register/register'
-						})
-						return
-					}
+        if (productIds.length === 0) {
+          this.categories = []
+          this.loadCartData()
+          return
+        }
 
-					const selectedProducts = this.cartItems.filter(item => this.selectedItems.includes(item.id))
-					const flow = resolveProductFlow(selectedProducts)
-					if (!flow.valid) {
-						uni.showToast({
-							title: flow.message,
-							icon: 'none'
-						})
-						return
-					}
+        const cartCategory = {
+          id: 'cart_items',
+          name: '购物车商品',
+          products: []
+        }
 
-					const selectedItemIds = this.selectedItems.map(id => String(id))
-					setCheckoutProductIds(selectedItemIds)
-					uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-					uni.setStorageSync(
-						STORAGE_KEY_CURRENT_ORDER,
-						buildOrderInfo(this.cartItems, selectedItemIds)
-					)
+        for (const productId of productIds) {
+          try {
+            const productDetail = await getProductDetail(productId)
+            if (productDetail) {
+              cartCategory.products.push({
+                id: productDetail.id,
+                name: productDetail.productName || productDetail.name,
+                description: productDetail.subTitle || productDetail.description,
+                image: productDetail.coverImage || productDetail.image,
+                price: Number(productDetail.price || 0),
+                bizType: productDetail.bizType,
+                goodsMerchantType: productDetail.goodsMerchantType,
+                unit: productDetail.unit || '件',
+                notice: productDetail.usageDesc || productDetail.notice,
+                specText: productDetail.specText || productDetail.specDesc,
+                needQuestionnaire: productDetail.needQuestionnaire || 0
+              })
+            }
+          } catch (error) {
+            console.error(`load cart product detail failed: ${productId}`, error)
+          }
+        }
 
-					if (flow.bizType === 2) {
-						uni.navigateTo({
-							url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}`
-						})
-						return
-					}
+        this.categories = [cartCategory]
+        this.loadCartData()
+      } catch (error) {
+        console.error('loadCategories failed:', error)
+        this.categories = []
+        this.loadCartData()
+      } finally {
+        uni.hideLoading()
+      }
+    },
+    loadCartData() {
+      this.cartItems = loadCartItems(this.categories)
+      this.selectedItems = this.cartItems
+        .filter(item => item.selected !== false)
+        .map(item => item.id)
 
-					uni.navigateTo({
-						url: `/pages/dispense/apply?selectedItems=${selectedItemIds.join(',')}`
-					})
-				} catch (e) {
-					console.error('检查注册状态失败:', e)
-					clearCheckoutProductIds()
-					uni.navigateTo({
-						url: '/pages/register/register'
-					})
-				}
-			}
-		},
-		handleTabChange(tab) {
-			this.currentTab = tab
-		}
-	}
+      if (this.cartItems.length > 0 && this.selectedItems.length === 0) {
+        const selectionMap = {}
+        this.cartItems.forEach(item => {
+          selectionMap[item.id] = true
+        })
+        updateMultipleSelections(selectionMap)
+        this.cartItems = loadCartItems(this.categories)
+        this.selectedItems = this.cartItems.map(item => item.id)
+      }
+    },
+    toggleEditMode() {
+      this.isEditMode = !this.isEditMode
+    },
+    toggleItemSelection(itemId) {
+      const normalizedId = itemId
+      updateProductSelection(normalizedId, !this.selectedItems.includes(normalizedId))
+      this.loadCartData()
+    },
+    toggleSelectAll() {
+      const nextSelected = !this.isAllSelected
+      const selectionMap = {}
+      this.cartItems.forEach(item => {
+        selectionMap[item.id] = nextSelected
+      })
+      updateMultipleSelections(selectionMap)
+      this.loadCartData()
+    },
+    increaseQuantity(item) {
+      setCartItemQuantity(item.id, Number(item.quantity || 1) + 1)
+      this.loadCartData()
+    },
+    decreaseQuantity(item) {
+      const nextQuantity = Number(item.quantity || 1) - 1
+      if (nextQuantity <= 0) {
+        removeFromCart(item.id)
+        this.loadCategories()
+        return
+      }
+      setCartItemQuantity(item.id, nextQuantity)
+      this.loadCartData()
+    },
+    removeItem(itemId) {
+      uni.showModal({
+        title: '确认删除',
+        content: '确定要删除这个商品吗？',
+        success: (res) => {
+          if (!res.confirm) {
+            return
+          }
+          const success = removeFromCart(itemId)
+          if (!success) {
+            uni.showToast({ title: '删除失败', icon: 'none' })
+            return
+          }
+          this.loadCategories()
+          uni.showToast({ title: '删除成功', icon: 'success' })
+        }
+      })
+    },
+    goToProductDetail(item) {
+      uni.navigateTo({
+        url: `/pages/products/medicine_detail?id=${item.id}`
+      })
+    },
+    goShopping() {
+      uni.navigateTo({
+        url: '/pages/products/priducts_list'
+      })
+    },
+    goToCheckout() {
+      if (this.isEditMode) {
+        if (this.selectedItems.length === 0) {
+          uni.showToast({ title: '请选择要删除的商品', icon: 'none' })
+          return
+        }
+        uni.showModal({
+          title: '确认删除',
+          content: `确定要删除选中的${this.selectedItems.length}个商品吗？`,
+          success: (res) => {
+            if (!res.confirm) {
+              return
+            }
+            const success = removeFromCart(this.selectedItems)
+            if (!success) {
+              uni.showToast({ title: '删除失败', icon: 'none' })
+              return
+            }
+            this.isEditMode = false
+            this.loadCategories()
+            uni.showToast({ title: '删除成功', icon: 'success' })
+          }
+        })
+        return
+      }
+
+      if (this.selectedItems.length === 0) {
+        uni.showToast({ title: '请选择要结算的商品', icon: 'none' })
+        return
+      }
+
+      if (!getToken()) {
+        uni.navigateTo({ url: '/pages/register/register' })
+        return
+      }
+
+      try {
+        const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
+        if (!userRegisterInfo || !userRegisterInfo.realName) {
+          uni.navigateTo({ url: '/pages/register/register' })
+          return
+        }
+
+        const checkout = prepareCheckout(this.selectedItems, this.categories)
+        if (!checkout.valid) {
+          uni.showToast({ title: checkout.message, icon: 'none' })
+          return
+        }
+
+        const selectedItemsParam = checkout.productIds.join(',')
+        if (Number(checkout.bizType) === 2) {
+          uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+          uni.navigateTo({
+            url: `/pages/order/confirm?selectedItems=${selectedItemsParam}`
+          })
+          return
+        }
+
+        uni.navigateTo({
+          url: `/pages/dispense/apply?selectedItems=${selectedItemsParam}`
+        })
+      } catch (error) {
+        console.error('goToCheckout failed:', error)
+        uni.navigateTo({ url: '/pages/register/register' })
+      }
+    },
+    handleTabChange(tab) {
+      this.currentTab = tab
+    }
+  }
 }
 </script>
 

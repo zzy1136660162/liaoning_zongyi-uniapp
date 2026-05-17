@@ -1,391 +1,372 @@
-/**
- * 购物车数据工具函数
- * 统一管理购物车数据的加载和计算
- */
-
-import { 
-  STORAGE_KEY_VERIFIED_PRODUCTS, 
+import {
+  STORAGE_KEY_VERIFIED_PRODUCTS,
   STORAGE_KEY_PRODUCT_QUANTITIES,
   STORAGE_KEY_CHECKOUT_PRODUCT_IDS
 } from './storage.js'
-import { resolveProductBizType, resolveProductTypeLabel } from './product-biz.js'
+import {
+  BIZ_TYPE_HOSPITAL_MEDICAL,
+  resolveGoodsMerchantType,
+  resolveProductBizType,
+  resolveProductFlow,
+  resolveProductTypeLabel
+} from './product-biz.js'
 
-/**
- * 数据格式标准化函数
- * 将旧格式转换为新格式，并确保数据完整性
- * 自动检测和同步STORAGE_KEY_PRODUCT_QUANTITIES的外部修改
- * @param {Object} rawData - 原始数据
- * @returns {Object} 标准化后的数据
- */
+const toNumber = (value, fallback = 0) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+const toPositiveInt = (value, fallback = 1) => {
+  const parsed = parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+const toFlag = (value, fallback = false) => {
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+  if (typeof value === 'string') {
+    return value === '1' || value.toLowerCase() === 'true'
+  }
+  return Boolean(value)
+}
+
+const normalizeId = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return ''
+  }
+  return String(value)
+}
+
+const uniqueIds = (ids = []) => {
+  return [...new Set((Array.isArray(ids) ? ids : [ids]).map(normalizeId).filter(Boolean))]
+}
+
+const readLegacyQuantities = () => {
+  const quantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
+  return typeof quantities === 'object' && quantities !== null ? quantities : {}
+}
+
+const buildCartEntry = (productId, partial = {}, legacyQuantities = {}) => {
+  const normalizedId = normalizeId(productId)
+  if (!normalizedId) {
+    return null
+  }
+
+  const legacyQuantity = legacyQuantities[normalizedId]
+  const quantity = toPositiveInt(partial.quantity, toPositiveInt(legacyQuantity, 1))
+  const needQuestionnaire = toNumber(partial.needQuestionnaire, 0)
+  const defaultQuestionnairePassed = needQuestionnaire === 1 ? false : true
+
+  return {
+    verified: toFlag(partial.verified, true),
+    selected: toFlag(partial.selected, true),
+    quantity,
+    bizType: partial.bizType !== undefined && partial.bizType !== null && partial.bizType !== ''
+      ? toNumber(partial.bizType, null)
+      : null,
+    goodsMerchantType: partial.goodsMerchantType !== undefined && partial.goodsMerchantType !== null && partial.goodsMerchantType !== ''
+      ? toNumber(partial.goodsMerchantType, null)
+      : null,
+    needQuestionnaire,
+    questionnairePassed: toFlag(partial.questionnairePassed, defaultQuestionnairePassed),
+    timestamp: partial.timestamp ? toNumber(partial.timestamp, Date.now()) : Date.now()
+  }
+}
+
 const normalizeCartData = (rawData) => {
+  const legacyQuantities = readLegacyQuantities()
   const normalized = {}
+  const source = rawData && typeof rawData === 'object' ? rawData : {}
+  const ids = uniqueIds([...Object.keys(source), ...Object.keys(legacyQuantities)])
 
-  // 获取旧格式的数量数据（用于向后兼容）
-  const legacyQuantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
-
-  // 检查是否有外部直接修改STORAGE_KEY_PRODUCT_QUANTITIES的情况
-  // 如果有商品在旧格式中有但新格式中没有，需要同步过来
-  let needsSync = false
-  for (const [productId, quantity] of Object.entries(legacyQuantities)) {
-    if (!rawData || !rawData[productId]) {
-      // 新格式中没有这个商品，但旧格式中有，说明是外部直接添加的
-      normalized[productId] = {
-        verified: true,
-        selected: true, // 默认为选中
-        quantity: Math.max(1, parseInt(quantity) || 1),
-        timestamp: Date.now()
-      }
-      needsSync = true
-    }
-  }
-
-  // 如果检测到需要同步，保存同步后的数据
-  if (needsSync) {
-    saveNormalizedCartData(normalized)
-  }
-
-  for (const [productId, value] of Object.entries(rawData || {})) {
+  ids.forEach((productId) => {
+    const value = source[productId]
     if (typeof value === 'boolean') {
-      // 旧格式转换：{ productId: true } -> 新格式
-      normalized[productId] = {
-        verified: value,
-        selected: true, // 默认为选中状态
-        quantity: legacyQuantities[productId] || 1, // 从旧存储中获取数量
-        timestamp: Date.now()
+      const entry = buildCartEntry(productId, { verified: value }, legacyQuantities)
+      if (entry && entry.verified) {
+        normalized[productId] = entry
       }
-    } else if (typeof value === 'object' && value !== null) {
-      // 新格式：确保所有必需字段存在
-      normalized[productId] = {
-        verified: value.verified !== false, // 默认为true
-        selected: value.selected !== false, // 默认为true
-        quantity: Math.max(1, parseInt(value.quantity) || legacyQuantities[productId] || 1), // 优先使用新格式，否则使用旧格式
-        timestamp: value.timestamp || Date.now()
+      return
+    }
+
+    if (value && typeof value === 'object') {
+      const entry = buildCartEntry(productId, value, legacyQuantities)
+      if (entry && entry.verified) {
+        normalized[productId] = entry
+      }
+      return
+    }
+
+    if (legacyQuantities[productId] !== undefined) {
+      const entry = buildCartEntry(productId, { verified: true }, legacyQuantities)
+      if (entry) {
+        normalized[productId] = entry
       }
     }
-  }
+  })
 
   return normalized
 }
 
-/**
- * 获取标准化后的购物车数据
- * @returns {Object} 标准化后的购物车数据
- */
-const getNormalizedCartData = () => {
-  const rawData = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-  return normalizeCartData(rawData)
+const readCartData = () => {
+  const raw = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
+  return normalizeCartData(raw)
 }
 
-/**
- * 保存标准化后的购物车数据
- * @param {Object} cartData - 购物车数据
- */
-const saveNormalizedCartData = (cartData) => {
-  // 保存新格式数据
-  uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, cartData)
-
-  // 同步保存旧格式的数量数据（向后兼容）
+const writeCartData = (cartData) => {
+  const normalized = normalizeCartData(cartData)
   const legacyQuantities = {}
-  for (const [productId, productInfo] of Object.entries(cartData)) {
-    if (productInfo.verified) {
-      legacyQuantities[productId] = productInfo.quantity
+
+  Object.entries(normalized).forEach(([productId, entry]) => {
+    if (entry.verified) {
+      legacyQuantities[productId] = toPositiveInt(entry.quantity, 1)
     }
-  }
+  })
+
+  uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, normalized)
   uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, legacyQuantities)
 }
 
-/**
- * 将产品添加到购物车
- * @param {string|number} productId - 产品ID
- * @param {number} quantity - 数量（可选，默认值为1）
- * @param {boolean} selected - 是否选中（可选，默认值为true）
- * @returns {boolean} 添加是否成功
- */
-export const saveToCart = (productId, quantity = 1, selected = true) => {
-  try {
-    const cartData = getNormalizedCartData()
-    const normalizedId = String(productId)
-
-    // 添加或更新产品信息
-    cartData[normalizedId] = {
-      verified: true,
-      selected: selected,
-      quantity: Math.max(1, parseInt(quantity) || 1),
-      timestamp: cartData[normalizedId]?.timestamp || Date.now()
-    }
-
-    // 保存更新后的数据
-    saveNormalizedCartData(cartData)
-    
-    return true
-  } catch (e) {
-    console.error('保存到购物车失败:', e)
-    return false
+const resolveProductId = (productOrId) => {
+  if (productOrId && typeof productOrId === 'object') {
+    return normalizeId(productOrId.id || productOrId.productId)
   }
+  return normalizeId(productOrId)
 }
 
-/**
- * 从 storage 加载购物车数据
- * @param {Array} categories - 产品分类列表
- * @param {boolean} onlySelected - 是否只返回选中的商品（默认false，返回所有商品）
- * @returns {Array} 购物车商品列表，每个商品包含完整的产品信息和数量
- */
-export const loadCartItems = (categories, onlySelected = false) => {
-  try {
-    const cartData = getNormalizedCartData()
-    
-    // 构建购物车列表
-    const cartItems = []
+const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) => {
+  const hasProductObject = product && typeof product === 'object'
+  const productBizType = hasProductObject ? resolveProductBizType(product) : null
+  const productGoodsMerchantType = hasProductObject ? resolveGoodsMerchantType(product) : null
+  const resolvedNeedQuestionnaire = options.needQuestionnaire !== undefined
+    ? toNumber(options.needQuestionnaire, 0)
+    : (hasProductObject && product.needQuestionnaire !== undefined
+      ? toNumber(product.needQuestionnaire, 0)
+      : toNumber(existing.needQuestionnaire, 0))
 
-    for (const [productId, productInfo] of Object.entries(cartData)) {
-      // 如果只返回选中的商品，跳过未选中的
-      if (onlySelected && !productInfo.selected) {
-        continue
-      }
+  const questionnairePassed = options.questionnairePassed !== undefined
+    ? toFlag(options.questionnairePassed, false)
+    : (existing.questionnairePassed !== undefined
+      ? toFlag(existing.questionnairePassed, resolvedNeedQuestionnaire !== 1)
+      : resolvedNeedQuestionnaire !== 1)
 
-      // 如果未验证，跳过
-      if (!productInfo.verified) {
-        continue
-      }
-
-        // 在所有分类中查找产品信息
-        let product = null
-        const normalizedId = String(productId)
-        for (let category of categories) {
-          product = category.products.find(p => String(p.id) === normalizedId)
-          if (product) break
-        }
-        
-        if (product) {
-          cartItems.push({
-            ...product,
-          quantity: productInfo.quantity,
-          selected: productInfo.selected,
-          timestamp: productInfo.timestamp
-          })
-      }
-    }
-    
-    return cartItems
-  } catch (e) {
-    console.error('加载购物车数据失败:', e)
-    return []
-  }
-}
-
-/**
- * 计算购物车总价格
- * @param {Array} cartItems - 购物车商品列表
- * @returns {number} 总价格
- */
-export const calculateTotalPrice = (cartItems) => {
-  return cartItems.reduce((total, item) => {
-    const price = item.price || 0
-    const quantity = item.quantity || 1
-    return total + (price * quantity)
-  }, 0)
-}
-
-/**
- * 计算购物车总数量
- * @param {Array} cartItems - 购物车商品列表
- * @returns {number} 总数量
- */
-export const calculateTotalQuantity = (cartItems) => {
-  return cartItems.reduce((total, item) => {
-    return total + (item.quantity || 1)
-  }, 0)
-}
-
-/**
- * 从购物车数据构建订单商品列表
- * @param {Array} cartItems - 购物车商品列表
- * @param {Array} selectedProductIds - 选中的产品ID列表（可选，如果不提供则使用所有商品）
- * @returns {Array} 订单商品列表
- */
-export const buildOrderItems = (cartItems, selectedProductIds = null) => {
-  let items = cartItems
-  if (selectedProductIds && selectedProductIds.length > 0) {
-    const selectedSet = new Set(selectedProductIds.map(id => String(id)))
-    items = cartItems.filter(item => selectedSet.has(String(item.id)))
-  }
-  
-  return items.map(item => ({
-    id: item.id,
-    name: item.name,
-    type: resolveProductTypeLabel(item),
-    price: parseFloat(((item.price || 0) * (item.quantity || 1)).toFixed(2)),
-    quantity: item.quantity || 1
-  }))
-}
-
-/**
- * 从购物车数据构建订单信息
- * @param {Array} cartItems - 购物车商品列表
- * @param {Array} selectedProductIds - 选中的产品ID列表（可选）
- * @param {string} hospital - 医院名称
- * @returns {Object} 订单信息
- */
-export const buildOrderInfo = (cartItems, selectedProductIds = null, hospital = '辽宁中医药大学附属医院') => {
-  let selectedItems = cartItems
-  if (selectedProductIds && selectedProductIds.length > 0) {
-    const selectedSet = new Set(selectedProductIds.map(id => String(id)))
-    selectedItems = cartItems.filter(item => selectedSet.has(String(item.id)))
-  }
-  const orderItems = buildOrderItems(selectedItems, null)
-  const medicineCost = parseFloat(orderItems.reduce((sum, item) => sum + item.price, 0).toFixed(2))
-  const bizType = selectedItems.length > 0 ? resolveProductBizType(selectedItems[0]) : 1
-  
   return {
-    prescriptions: orderItems.map(item => item.id),
-    bizType,
-    items: orderItems,
-    deliveryInfo: {
-      distributor: hospital,
-      logistics: '顺丰快递',
-      purchaseMethod: '药品配送-在线支付',
-      shippingPaymentMethod: '在线支付'
-    },
-    cost: {
-      medicineCost: medicineCost,
-      isDecocted: false,
-      shippingFee: 0 // 确认页面会自动设置为18元
-    },
-    total: medicineCost // 确认页面会重新计算包含快递费的总价
+    bizType: options.bizType !== undefined && options.bizType !== null
+      ? toNumber(options.bizType, productBizType || existing.bizType || null)
+      : (productBizType !== null ? productBizType : (existing.bizType ?? null)),
+    goodsMerchantType: options.goodsMerchantType !== undefined && options.goodsMerchantType !== null
+      ? toNumber(options.goodsMerchantType, productGoodsMerchantType || existing.goodsMerchantType || null)
+      : (productGoodsMerchantType !== null ? productGoodsMerchantType : (existing.goodsMerchantType ?? null)),
+    needQuestionnaire: resolvedNeedQuestionnaire,
+    questionnairePassed
   }
 }
 
-/**
- * 从购物车中移除指定商品
- * @param {string|number|Array} productIds - 商品ID或商品ID数组
- * @returns {boolean} 移除是否成功
- */
-export const removeFromCart = (productIds) => {
-  try {
-    // 统一处理为数组格式
-    const idsToRemove = Array.isArray(productIds) ? productIds : [productIds]
-    
-    // 获取购物车数据
-    const cartData = getNormalizedCartData()
-    
-    // 移除指定的商品
-    idsToRemove.forEach(productId => {
-      const normalizedId = String(productId)
-      delete cartData[normalizedId]
-    })
-    
-    // 保存更新后的数据
-    saveNormalizedCartData(cartData)
-    
-    return true
-  } catch (e) {
-    console.error('从购物车移除商品失败:', e)
-    return false
+const updateCheckoutIdsAfterRemoval = (removedIds = []) => {
+  const current = getCheckoutProductIds()
+  if (!current.length) {
+    return
+  }
+  const removedSet = new Set(uniqueIds(removedIds))
+  const next = current.filter(id => !removedSet.has(id))
+  if (next.length > 0) {
+    setCheckoutProductIds(next)
+  } else {
+    clearCheckoutProductIds()
   }
 }
 
-/**
- * 清空购物车
- * @returns {boolean} 清空是否成功
- */
-export const clearCart = () => {
-  try {
-    // 清空新格式数据
-    uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, {})
-    // 清空旧格式数据（向后兼容）
-    uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, {})
-    return true
-  } catch (e) {
-    console.error('清空购物车失败:', e)
-    return false
-  }
-}
-
-/**
- * 更新商品的选中状态
- * @param {string|number} productId - 商品ID
- * @param {boolean} selected - 是否选中
- * @returns {boolean} 更新是否成功
- */
-export const updateProductSelection = (productId, selected) => {
-  try {
-    const cartData = getNormalizedCartData()
-    const normalizedId = String(productId)
-
-    if (cartData[normalizedId]) {
-      cartData[normalizedId].selected = selected
-      saveNormalizedCartData(cartData)
-      return true
-    }
-
-    return false
-  } catch (e) {
-    console.error('更新商品选中状态失败:', e)
-    return false
-  }
-}
-
-/**
- * 批量更新商品选中状态
- * @param {Object} selectionMap - 选中状态映射 { productId: selected }
- * @returns {boolean} 更新是否成功
- */
-export const updateMultipleSelections = (selectionMap) => {
-  try {
-    const cartData = getNormalizedCartData()
-
-    for (const [productId, selected] of Object.entries(selectionMap)) {
-      const normalizedId = String(productId)
-      if (cartData[normalizedId]) {
-        cartData[normalizedId].selected = selected
-      }
-    }
-
-    saveNormalizedCartData(cartData)
-    return true
-  } catch (e) {
-    console.error('批量更新商品选中状态失败:', e)
-    return false
-  }
-}
-
-/**
- * 获取所有已选中商品的ID列表
- * @returns {Array} 已选中商品的ID数组
- */
-export const getSelectedProductIds = () => {
-  try {
-    const cartData = getNormalizedCartData()
-    return Object.keys(cartData).filter(productId => cartData[productId].selected)
-  } catch (e) {
-    console.error('获取选中商品ID失败:', e)
+const flattenCategoryProducts = (categories = []) => {
+  if (!Array.isArray(categories)) {
     return []
   }
+
+  const items = []
+  categories.forEach((category) => {
+    if (Array.isArray(category?.products)) {
+      items.push(...category.products)
+    }
+  })
+  return items
+}
+
+const findProductById = (categories = [], productId) => {
+  const normalizedId = normalizeId(productId)
+  if (!normalizedId) {
+    return null
+  }
+
+  const products = flattenCategoryProducts(categories)
+  return products.find(item => normalizeId(item.id) === normalizedId) || null
+}
+
+export const getCartEntries = () => {
+  return readCartData()
 }
 
 export const getCartProductInfo = (productId) => {
-  try {
-    const cartData = getNormalizedCartData()
-    return cartData[String(productId)] || null
-  } catch (e) {
-    console.error('获取购物车商品信息失败:', e)
+  const normalizedId = normalizeId(productId)
+  if (!normalizedId) {
     return null
   }
+  const cartData = readCartData()
+  return cartData[normalizedId] || null
 }
 
 export const getCartProductQuantity = (productId, fallback = 1) => {
-  const productInfo = getCartProductInfo(productId)
-  const quantity = Number(productInfo?.quantity)
-  return quantity > 0 ? quantity : fallback
+  const entry = getCartProductInfo(productId)
+  return entry ? toPositiveInt(entry.quantity, fallback) : fallback
+}
+
+export const getCartTotalQuantity = () => {
+  return Object.values(readCartData()).reduce((sum, entry) => sum + toPositiveInt(entry.quantity, 1), 0)
+}
+
+export const addCartItem = (productOrId, quantity = 1, options = {}) => {
+  try {
+    const productId = resolveProductId(productOrId)
+    if (!productId) {
+      return false
+    }
+
+    const cartData = readCartData()
+    const existing = cartData[productId] || {}
+    const meta = resolveCartMetaFromProduct(productOrId, existing, options)
+
+    cartData[productId] = {
+      verified: options.verified !== undefined ? toFlag(options.verified, true) : true,
+      selected: options.selected !== undefined ? toFlag(options.selected, true) : (existing.selected !== undefined ? toFlag(existing.selected, true) : true),
+      quantity: toPositiveInt(quantity, existing.quantity || 1),
+      bizType: meta.bizType,
+      goodsMerchantType: meta.goodsMerchantType,
+      needQuestionnaire: meta.needQuestionnaire,
+      questionnairePassed: meta.questionnairePassed,
+      timestamp: Date.now()
+    }
+
+    writeCartData(cartData)
+    return true
+  } catch (error) {
+    console.error('addCartItem failed:', error)
+    return false
+  }
+}
+
+export const saveToCart = (productId, quantity = 1, selected = true) => {
+  const existing = getCartProductInfo(productId)
+  return addCartItem(existing ? { id: productId, ...existing } : { id: productId }, quantity, {
+    selected
+  })
+}
+
+export const setCartItemQuantity = (productId, quantity) => {
+  try {
+    const normalizedId = normalizeId(productId)
+    if (!normalizedId) {
+      return false
+    }
+
+    if (toNumber(quantity, 0) <= 0) {
+      return removeFromCart(normalizedId)
+    }
+
+    const cartData = readCartData()
+    const existing = cartData[normalizedId] || {}
+    cartData[normalizedId] = {
+      ...buildCartEntry(normalizedId, existing),
+      quantity: toPositiveInt(quantity, 1),
+      timestamp: Date.now()
+    }
+    writeCartData(cartData)
+    return true
+  } catch (error) {
+    console.error('setCartItemQuantity failed:', error)
+    return false
+  }
+}
+
+export const removeFromCart = (productIds) => {
+  try {
+    const ids = uniqueIds(productIds)
+    if (!ids.length) {
+      return true
+    }
+
+    const cartData = readCartData()
+    ids.forEach((productId) => {
+      delete cartData[productId]
+    })
+
+    writeCartData(cartData)
+    updateCheckoutIdsAfterRemoval(ids)
+    return true
+  } catch (error) {
+    console.error('removeFromCart failed:', error)
+    return false
+  }
+}
+
+export const clearCart = () => {
+  try {
+    uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, {})
+    uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, {})
+    clearCheckoutProductIds()
+    return true
+  } catch (error) {
+    console.error('clearCart failed:', error)
+    return false
+  }
+}
+
+export const updateProductSelection = (productId, selected) => {
+  try {
+    const normalizedId = normalizeId(productId)
+    const cartData = readCartData()
+    if (!cartData[normalizedId]) {
+      return false
+    }
+
+    cartData[normalizedId].selected = toFlag(selected, true)
+    cartData[normalizedId].timestamp = Date.now()
+    writeCartData(cartData)
+    return true
+  } catch (error) {
+    console.error('updateProductSelection failed:', error)
+    return false
+  }
+}
+
+export const updateMultipleSelections = (selectionMap = {}) => {
+  try {
+    const cartData = readCartData()
+    Object.entries(selectionMap).forEach(([productId, selected]) => {
+      const normalizedId = normalizeId(productId)
+      if (cartData[normalizedId]) {
+        cartData[normalizedId].selected = toFlag(selected, true)
+        cartData[normalizedId].timestamp = Date.now()
+      }
+    })
+    writeCartData(cartData)
+    return true
+  } catch (error) {
+    console.error('updateMultipleSelections failed:', error)
+    return false
+  }
+}
+
+export const getSelectedProductIds = () => {
+  return Object.entries(readCartData())
+    .filter(([, entry]) => entry.verified && entry.selected)
+    .map(([productId]) => productId)
 }
 
 export const setCheckoutProductIds = (productIds = []) => {
   try {
-    const normalizedIds = productIds.map(id => String(id))
-    uni.setStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS, normalizedIds)
+    uni.setStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS, uniqueIds(productIds))
     return true
-  } catch (e) {
-    console.error('保存当前结算商品失败:', e)
+  } catch (error) {
+    console.error('setCheckoutProductIds failed:', error)
     return false
   }
 }
@@ -393,9 +374,9 @@ export const setCheckoutProductIds = (productIds = []) => {
 export const getCheckoutProductIds = () => {
   try {
     const ids = uni.getStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS) || []
-    return Array.isArray(ids) ? ids.map(id => String(id)) : []
-  } catch (e) {
-    console.error('读取当前结算商品失败:', e)
+    return uniqueIds(ids)
+  } catch (error) {
+    console.error('getCheckoutProductIds failed:', error)
     return []
   }
 }
@@ -404,8 +385,8 @@ export const clearCheckoutProductIds = () => {
   try {
     uni.removeStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS)
     return true
-  } catch (e) {
-    console.error('清理当前结算商品失败:', e)
+  } catch (error) {
+    console.error('clearCheckoutProductIds failed:', error)
     return false
   }
 }
@@ -415,31 +396,219 @@ export const getCurrentCheckoutProductIds = () => {
   return checkoutIds.length > 0 ? checkoutIds : getSelectedProductIds()
 }
 
-/**
- * 获取购物车统计信息
- * @returns {Object} 统计信息 { totalCount: number, selectedCount: number, totalPrice: number }
- */
-export const getCartStatistics = () => {
+export const loadCartItems = (categories = [], onlySelected = false) => {
   try {
-    const cartData = getNormalizedCartData()
-    let totalCount = 0
-    let selectedCount = 0
-    let totalPrice = 0
+    const cartData = readCartData()
+    const cartItems = []
+    let needsSave = false
 
-    for (const [productId, productInfo] of Object.entries(cartData)) {
-      if (productInfo.verified) {
-        totalCount++
-        if (productInfo.selected) {
-          selectedCount++
-          // 注意：这里无法计算总价，因为需要商品的单价信息
-          // 总价计算需要在有商品详细信息时进行
-        }
+    Object.entries(cartData).forEach(([productId, entry]) => {
+      if (!entry.verified) {
+        return
       }
+      if (onlySelected && !entry.selected) {
+        return
+      }
+
+      const product = findProductById(categories, productId)
+      if (!product) {
+        return
+      }
+
+      const nextBizType = entry.bizType ?? resolveProductBizType(product)
+      const nextGoodsMerchantType = entry.goodsMerchantType ?? resolveGoodsMerchantType(product)
+      const nextNeedQuestionnaire = entry.needQuestionnaire ?? toNumber(product.needQuestionnaire, 0)
+      const nextQuestionnairePassed = entry.questionnairePassed !== undefined
+        ? entry.questionnairePassed
+        : nextNeedQuestionnaire !== 1
+
+      if (
+        entry.bizType !== nextBizType ||
+        entry.goodsMerchantType !== nextGoodsMerchantType ||
+        entry.needQuestionnaire !== nextNeedQuestionnaire ||
+        entry.questionnairePassed !== nextQuestionnairePassed
+      ) {
+        cartData[productId] = {
+          ...entry,
+          bizType: nextBizType,
+          goodsMerchantType: nextGoodsMerchantType,
+          needQuestionnaire: nextNeedQuestionnaire,
+          questionnairePassed: nextQuestionnairePassed
+        }
+        needsSave = true
+      }
+
+      cartItems.push({
+        ...product,
+        quantity: toPositiveInt(entry.quantity, 1),
+        selected: entry.selected !== false,
+        verified: entry.verified !== false,
+        bizType: nextBizType,
+        goodsMerchantType: nextGoodsMerchantType,
+        needQuestionnaire: nextNeedQuestionnaire,
+        questionnairePassed: nextQuestionnairePassed,
+        timestamp: entry.timestamp || Date.now()
+      })
+    })
+
+    if (needsSave) {
+      writeCartData(cartData)
     }
 
-    return { totalCount, selectedCount, totalPrice: 0 }
-  } catch (e) {
-    console.error('获取购物车统计信息失败:', e)
-    return { totalCount: 0, selectedCount: 0, totalPrice: 0 }
+    return cartItems.sort((a, b) => toNumber(a.timestamp, 0) - toNumber(b.timestamp, 0))
+  } catch (error) {
+    console.error('loadCartItems failed:', error)
+    return []
+  }
+}
+
+export const calculateTotalPrice = (cartItems = []) => {
+  return cartItems.reduce((total, item) => {
+    const unitPrice = toNumber(item.price, 0)
+    const quantity = toPositiveInt(item.quantity, 1)
+    return total + unitPrice * quantity
+  }, 0)
+}
+
+export const calculateTotalQuantity = (cartItems = []) => {
+  return cartItems.reduce((total, item) => total + toPositiveInt(item.quantity, 1), 0)
+}
+
+export const buildOrderItems = (cartItems = [], selectedProductIds = null) => {
+  let items = cartItems
+  if (Array.isArray(selectedProductIds) && selectedProductIds.length > 0) {
+    const selectedSet = new Set(uniqueIds(selectedProductIds))
+    items = cartItems.filter(item => selectedSet.has(normalizeId(item.id)))
+  }
+
+  return items.map(item => {
+    const unitPrice = toNumber(item.price, 0)
+    const quantity = toPositiveInt(item.quantity, 1)
+    return {
+      id: item.id,
+      name: item.name,
+      type: resolveProductTypeLabel(item),
+      unitPrice: Number(unitPrice.toFixed(2)),
+      price: Number((unitPrice * quantity).toFixed(2)),
+      quantity
+    }
+  })
+}
+
+export const buildOrderInfo = (
+  cartItems = [],
+  selectedProductIds = null,
+  distributor = '辽宁中医药大学附属医院'
+) => {
+  let selectedItems = cartItems
+  if (Array.isArray(selectedProductIds) && selectedProductIds.length > 0) {
+    const selectedSet = new Set(uniqueIds(selectedProductIds))
+    selectedItems = cartItems.filter(item => selectedSet.has(normalizeId(item.id)))
+  }
+
+  const orderItems = buildOrderItems(selectedItems)
+  const medicineCost = Number(orderItems.reduce((sum, item) => sum + item.price, 0).toFixed(2))
+  const flow = resolveProductFlow(selectedItems)
+  const bizType = flow.valid ? flow.bizType : BIZ_TYPE_HOSPITAL_MEDICAL
+
+  return {
+    prescriptions: orderItems.map(item => item.id),
+    bizType,
+    items: orderItems,
+    deliveryInfo: {
+      distributor,
+      logistics: '顺丰快递',
+      purchaseMethod: bizType === 2 ? '健康产品-在线支付' : '药品配送-在线支付',
+      shippingPaymentMethod: '在线支付'
+    },
+    cost: {
+      medicineCost,
+      isDecocted: false,
+      shippingFee: 0
+    },
+    total: medicineCost
+  }
+}
+
+export const resolveCartCompatibility = (productOrMeta, options = {}) => {
+  const currentEntries = Object.entries(readCartData())
+    .filter(([productId, entry]) => entry.verified && normalizeId(productId) !== normalizeId(options.ignoreProductId))
+    .map(([, entry]) => entry)
+
+  if (!currentEntries.length) {
+    return {
+      valid: true,
+      bizType: productOrMeta ? resolveProductBizType(productOrMeta) : BIZ_TYPE_HOSPITAL_MEDICAL,
+      goodsMerchantType: productOrMeta ? resolveGoodsMerchantType(productOrMeta) : null,
+      message: ''
+    }
+  }
+
+  const targetBizType = productOrMeta ? resolveProductBizType(productOrMeta) : currentEntries[0].bizType
+  const targetGoodsMerchantType = productOrMeta ? resolveGoodsMerchantType(productOrMeta) : currentEntries[0].goodsMerchantType
+
+  const mixed = currentEntries.some(entry => {
+    if (entry.bizType == null || entry.goodsMerchantType == null) {
+      return false
+    }
+    return Number(entry.bizType) !== Number(targetBizType) || Number(entry.goodsMerchantType) !== Number(targetGoodsMerchantType)
+  })
+
+  if (mixed) {
+    return {
+      valid: false,
+      bizType: null,
+      goodsMerchantType: null,
+      message: '暂不支持本院产品和健康产品混合下单'
+    }
+  }
+
+  return {
+    valid: true,
+    bizType: targetBizType,
+    goodsMerchantType: targetGoodsMerchantType,
+    message: ''
+  }
+}
+
+export const resolveCheckoutFlow = (productIds = [], categories = []) => {
+  const ids = uniqueIds(productIds.length > 0 ? productIds : getCurrentCheckoutProductIds())
+  if (!ids.length) {
+    return {
+      valid: true,
+      bizType: BIZ_TYPE_HOSPITAL_MEDICAL,
+      message: '',
+      items: [],
+      productIds: []
+    }
+  }
+
+  const selectedSet = new Set(ids)
+  const items = loadCartItems(categories).filter(item => selectedSet.has(normalizeId(item.id)))
+  const flow = resolveProductFlow(items)
+
+  return {
+    ...flow,
+    items,
+    productIds: ids
+  }
+}
+
+export const prepareCheckout = (productIds = [], categories = []) => {
+  const resolved = resolveCheckoutFlow(productIds, categories)
+  if (resolved.productIds.length > 0) {
+    setCheckoutProductIds(resolved.productIds)
+  }
+  return resolved
+}
+
+export const getCartStatistics = () => {
+  const entries = Object.values(readCartData())
+  const totalCount = entries.length
+  const selectedCount = entries.filter(entry => entry.selected).length
+  return {
+    totalCount,
+    selectedCount,
+    totalPrice: 0
   }
 }

@@ -114,548 +114,239 @@
   </template>
   
   <script>
-  import {
-	STORAGE_KEY_VERIFIED_PRODUCTS,
-	STORAGE_KEY_PRODUCT_QUANTITIES,
-	STORAGE_KEY_SELECTED_PRODUCTS,
-	STORAGE_KEY_USER_REGISTER
-  } from '@/utils/storage.js'
-  import { getCategoryList, getCategoryProducts } from '@/api/product.js'
-  import { loadCartItems, calculateTotalPrice, calculateTotalQuantity } from '@/utils/cart.js'
-  import { getImageUrl } from '@/utils/config.js'
-  import { getToken } from '@/utils/request.js'
-  import TabBar from '@/components/TabBar/TabBar.vue'
-  
-  export default {
-	components: {
-	  TabBar
-	},
-	data() {
-	  return {
-		searchKeyword: '',
-		currentCategoryId: 'all', // 默认选中"全部"
-		categories: [],
-		allProducts: [],
-		cartItems: [],
-		productsData: null,
-		showFlyBall: false,
-		flyBallStyle: {
-		  left: 0,
-		  top: 0,
-		  scale: 1
-		},
-		verifiedProducts: {}, // 存储已通过验证的产品ID
-		productQuantities: {}, // 存储产品的数量
-		currentTab: 'cart', // 当前选中的 tab，商品列表页默认显示购物车
-		loadedCategories: {}, // 记录已加载的分类ID，避免重复加载 {categoryId: true}
-		categoryList: [] // 存储分类列表（不含商品）
-	  }
-	},
-	computed: {
-	  filteredProducts() {
-		// 获取当前分类的商品列表
-		const category = this.categories.find(cat => cat.id === this.currentCategoryId)
-		if (!category) return []
-  
-		let products = category.products || []
-  
-		// 搜索过滤
-		if (this.searchKeyword.trim()) {
-		  const keyword = this.searchKeyword.trim().toLowerCase()
-		  products = products.filter(product =>
-			  product.name.toLowerCase().includes(keyword) ||
-			  (product.description && product.description.toLowerCase().includes(keyword))
-		  )
-		}
-  
-		return products
-	  },
-	  cartCount() {
-		return calculateTotalQuantity(this.cartItems)
-	  },
-	  totalPrice() {
-		return calculateTotalPrice(this.cartItems)
-	  }
-	},
-	onLoad() {
-	  // 设置当前 tab 为首页（商品列表页就是首页）
-	  this.currentTab = 'home'
-  
-	  // 添加全局事件监听器
-	  uni.$on('refreshProductsList', () => {
-		// 强制重新加载验证产品数据和购物车
-		console.log('接收到刷新购物车事件')
-		this.loadVerifiedProductsFromStorage()
-	  })
-	  this.loadProducts()
-	},
-	onShow() {
-	  // 页面显示时，重新加载已验证的产品数据
-	  this.loadVerifiedProductsFromStorage()
-	},
-	onUnload() {
-	  // 移除事件监听器，避免内存泄漏
-	  uni.$off('refreshProductsList')
-	},
-	methods: {
-	  getImageUrl,
-	  async loadProducts() {
-		// 初始化：加载分类列表，并自动加载"全部"分类的商品
-		try {
-		  uni.showLoading({ title: '加载中...' })
-  
-		  // 1. 获取分类列表
-		  const categoryList = await getCategoryList()
-		  console.log('从后端API获取分类列表:', categoryList)
-		  this.categoryList = categoryList
-  
-		  // 2. 初始化分类数据结构（不含商品，所有分类的商品列表都为空）
-		  this.categories = [
-			{
-			  id: 'all',
-			  name: '全部分类',
-			  products: [] // 初始为空，下面会自动加载
-			},
-			...categoryList.map(cat => ({
-			  id: cat.id,
-			  name: cat.name,
-			  products: [] // 初始为空，按需加载
-			}))
-		  ]
-  
-		  // 3. 自动加载"全部"分类的商品（初始化时显示）
-		  await this.loadAllProducts()
-		  // 标记"全部"分类已加载
-		  this.$set(this.loadedCategories, 'all', true)
-  
-		  uni.hideLoading()
-		  // 分类列表和商品加载完成后，加载已验证的产品
-		  this.loadVerifiedProductsFromStorage()
-  
-		} catch (error) {
-		  console.error('❌ 加载分类列表失败:', error)
-		  uni.hideLoading()
-		  uni.showToast({ title: '加载失败，使用本地数据', icon: 'none' })
-		  // 如果请求失败，使用本地数据作为后备
-		  this.loadLocalData()
-		  this.loadVerifiedProductsFromStorage()
-		}
-	  },
-	  // 加载"全部"分类的商品（只请求一次，不传 categoryId）
-	  async loadAllProducts() {
-		try {
-		  // 调用API，不传 categoryId，查询所有分类的商品
-		  const productPage = await getCategoryProducts(null, 1, 100)
-		  const productList = productPage.records || productPage.list || []
-  
-		  // 转换字段名以匹配前端
-		  const allProducts = productList.map(p => ({
-			id: p.id,
-			name: p.productName,
-			description: p.subTitle,
-			image: getImageUrl(p.coverImage),
-			price: p.price,
-			unit: p.unit || '份',
-			notice: p.usageDesc,
-			categoryId: p.categoryId // 记录所属分类
-		  }))
-  
-		  // 更新"全部"分类的商品列表
-		  const allCategory = this.categories.find(cat => cat.id === 'all')
-		  if (allCategory) {
-			allCategory.products = allProducts
-		  }
-  
-		  console.log('全部商品加载完成，共', allProducts.length, '个商品')
-		} catch (error) {
-		  console.error('加载全部商品失败:', error)
-		  uni.showToast({
-			title: '加载商品失败',
-			icon: 'none',
-			duration: 2000
-		  })
-		}
-	  },
-	  // 加载指定分类的商品
-	  async loadCategoryProducts(categoryId) {
-		// 如果已加载过，直接返回
-		if (this.loadedCategories[categoryId]) {
-		  return
-		}
-  
-		try {
-		  uni.showLoading({ title: '加载中...' })
-  
-		  const productPage = await getCategoryProducts(categoryId, 1, 100)
-		  const productList = productPage.records || productPage.list || []
-  
-		  // 转换字段名以匹配前端
-		  const products = productList.map(p => ({
-			id: p.id,
-			name: p.productName,
-			description: p.subTitle,
-			image: getImageUrl(p.coverImage),
-			price: p.price,
-			unit: p.unit || '份',
-			notice: p.usageDesc,
-			categoryId: categoryId
-		  }))
-  
-		  // 更新对应分类的商品列表
-		  const category = this.categories.find(cat => cat.id === categoryId)
-		  if (category) {
-			category.products = products
-			// 标记为已加载
-			this.$set(this.loadedCategories, categoryId, true)
-			console.log(`分类${categoryId}的商品加载完成，共${products.length}个商品`)
-		  }
-  
-		  uni.hideLoading()
-		} catch (error) {
-		  console.error(`加载分类${categoryId}商品失败:`, error)
-		  uni.hideLoading()
-		  uni.showToast({
-			title: '加载商品失败',
-			icon: 'none',
-			duration: 2000
-		  })
-		}
-	  },
-	  loadVerifiedProductsFromStorage() {
-		// 从 uniStorage 读取已验证的产品和数量
-		try {
-		  const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-		  const productQuantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
-  
-		  // 更新数据
-		  this.verifiedProducts = verifiedProducts
-		  this.productQuantities = productQuantities
-  
-		  // 使用cart.js工具函数更新购物车
-		  this.cartItems = loadCartItems(this.categories)
-  
-		  console.log('已验证产品已加载:', Object.keys(verifiedProducts).length)
-		  console.log('购物车项目数量:', this.cartItems.length)
-		} catch (e) {
-		  console.error('加载已验证产品失败:', e)
-		}
-	  },
-	  async switchCategory(categoryId) {
-		// 先切换分类
-		this.currentCategoryId = categoryId
-  
-		// 如果切换到"全部"分类
-		if (categoryId === 'all') {
-		  // 如果"全部"分类还未加载，则加载
-		  if (!this.loadedCategories[categoryId]) {
-			await this.loadAllProducts()
-			// 标记"全部"分类已加载
-			this.$set(this.loadedCategories, 'all', true)
-			// 加载完成后，更新购物车数据
-			this.loadVerifiedProductsFromStorage()
-		  }
-		  return
-		}
-  
-		// 切换到具体分类，检查是否需要加载
-		if (!this.loadedCategories[categoryId]) {
-		  await this.loadCategoryProducts(categoryId)
-		  // 加载完成后，更新购物车数据
-		  this.loadVerifiedProductsFromStorage()
-		}
-	  },
-	  handleSearch() {
-		// 搜索功能已在computed中实现
-	  },
-	  goToDetail(product) {
-		// 跳转到详情页面，传递产品信息
-		// 将产品信息序列化后传递
-		const productData = encodeURIComponent(JSON.stringify({
-		  id: product.id,
-		  name: product.name,
-		  price: product.price,
-		  image: getImageUrl(product.image),
-		  description: product.description,
-		  unit: product.unit
-		}))
-		uni.navigateTo({
-		  url: `/pages/products/priducts_detail?product=${productData}`
-		})
-	  },
-	  goToNotice(product) {
-		// 未登录先跳转登录
-		const token = getToken()
-		console.log('token', token);
-  
-		if (!token) {
-		  uni.navigateTo({
-			url: '/pages/register/register?redirect=/pages/products/priducts_list'
-		  })
-		  return
-		}
-		// 跳转到注意页面
-		uni.navigateTo({
-		  url: `/pages/products/product_notice?id=${product.id}`
-		})
-	  },
-	  setProductVerified(productId, verified) {
-		// 设置产品验证状态
-		if (verified) {
-		  // 使用新的数据格式
-		  const productData = {
-			verified: true,
-			selected: true, // 默认为选中状态
-			quantity: 1, // 初始化数量为1
-			timestamp: Date.now()
-		  }
-		  this.$set(this.verifiedProducts, productId, productData)
-		  // 同步更新旧格式以保持兼容性
-		  this.$set(this.productQuantities, productId, 1)
+import {
+  STORAGE_KEY_CURRENT_CONSULTATION_ID,
+  STORAGE_KEY_USER_REGISTER
+} from '@/utils/storage.js'
+import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
+import {
+  getCartEntries,
+  getCartProductQuantity,
+  loadCartItems,
+  calculateTotalPrice,
+  calculateTotalQuantity,
+  setCartItemQuantity,
+  removeFromCart,
+  prepareCheckout
+} from '@/utils/cart.js'
+import { getImageUrl } from '@/utils/config.js'
+import { getToken } from '@/utils/request.js'
+import TabBar from '@/components/TabBar/TabBar.vue'
 
-		  // 保存到 uniStorage
-		  this.saveVerifiedProductsToStorage()
-		  // 添加到购物车
-		  this.addToCartAfterVerified(productId)
-		}
-	  },
-	  saveVerifiedProductsToStorage() {
-		// 保存已验证产品和数量到 uniStorage
-		try {
-			console.log('this.verifiedProducts', this.verifiedProducts);
-			console.log('this.productQuantities', this.productQuantities);
-		  uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, this.verifiedProducts)
-		  uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, this.productQuantities)
-		} catch (e) {
-		  console.error('保存已验证产品失败:', e)
-		}
-	  },
-	  isProductVerified(productId) {
-		const productData = this.verifiedProducts[productId]
-		// 支持新旧两种数据格式
-		if (typeof productData === 'object' && productData !== null) {
-			// 新格式：检查 verified 字段
-			return productData.verified === true
-		} else {
-			// 旧格式：直接检查布尔值
-			return productData === true
-		}
-	  },
-	  getProductQuantity(productId) {
-		const productData = this.verifiedProducts[productId]
-		// 支持新旧两种数据格式
-		if (typeof productData === 'object' && productData !== null) {
-			// 新格式：从对象中获取数量
-			return productData.quantity || 0
-		} else {
-			// 旧格式：从单独的 productQuantities 中获取
-			return this.productQuantities[productId] || 0
-		}
-	  },
-	  increaseQuantity(product) {
-		const productData = this.verifiedProducts[product.id]
+const HEALTH_BIZ_TYPE = 2
 
-		if (typeof productData === 'object' && productData !== null) {
-			// 新格式：直接修改数量
-			productData.quantity = (productData.quantity || 1) + 1
-			productData.timestamp = Date.now()
-			// 同步更新旧格式以保持兼容性
-			this.$set(this.productQuantities, product.id, productData.quantity)
-		} else {
-			// 旧格式：兼容处理
-			const current = Number(this.productQuantities[product.id] || 0)
-			const newQty = current + 1
-			this.$set(this.productQuantities, product.id, newQty)
-		}
+export default {
+  components: { TabBar },
+  data() {
+    return {
+      searchKeyword: '',
+      currentCategoryId: 'all',
+      categories: [],
+      cartItems: [],
+      showFlyBall: false,
+      flyBallStyle: {
+        left: 0,
+        top: 0,
+        scale: 1
+      },
+      verifiedProducts: {},
+      currentTab: 'home',
+      loadedCategories: {},
+      categoryList: []
+    }
+  },
+  computed: {
+    filteredProducts() {
+      const category = this.categories.find(cat => cat.id === this.currentCategoryId)
+      if (!category) return []
 
-		// 保存到 uniStorage
-		this.saveVerifiedProductsToStorage()
-		// 使用cart.js工具函数重新加载购物车，确保数据一致性
-		this.cartItems = loadCartItems(this.categories)
-		console.log('增加数量后购物车项目:', this.cartItems.length)
-	  },
-	  decreaseQuantity(product) {
-		const productData = this.verifiedProducts[product.id]
+      let products = category.products || []
+      if (this.searchKeyword.trim()) {
+        const keyword = this.searchKeyword.trim().toLowerCase()
+        products = products.filter(product =>
+          product.name.toLowerCase().includes(keyword) ||
+          (product.description && product.description.toLowerCase().includes(keyword))
+        )
+      }
+      return products
+    },
+    cartCount() {
+      return calculateTotalQuantity(this.cartItems)
+    },
+    totalPrice() {
+      return calculateTotalPrice(this.cartItems)
+    }
+  },
+  onLoad() {
+    this.currentTab = 'home'
+    uni.$on('refreshProductsList', this.loadVerifiedProductsFromStorage)
+    this.loadProducts()
+  },
+  onShow() {
+    this.loadVerifiedProductsFromStorage()
+  },
+  onUnload() {
+    uni.$off('refreshProductsList', this.loadVerifiedProductsFromStorage)
+  },
+  methods: {
+    getImageUrl,
+    async loadProducts() {
+      try {
+        uni.showLoading({ title: '加载中...' })
+        const categoryList = await getCategoryList(HEALTH_BIZ_TYPE)
+        this.categoryList = Array.isArray(categoryList) ? categoryList : []
+        this.categories = [
+          { id: 'all', name: '全部分类', products: [] },
+          ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
+        ]
+        await this.loadAllProducts()
+        this.$set(this.loadedCategories, 'all', true)
+        this.loadVerifiedProductsFromStorage()
+      } catch (error) {
+        console.error('loadProducts failed:', error)
+        uni.showToast({ title: '加载失败', icon: 'none' })
+      } finally {
+        uni.hideLoading()
+      }
+    },
+    async loadAllProducts() {
+      const productPage = await getCategoryProducts(null, 1, 100, HEALTH_BIZ_TYPE)
+      const productList = productPage.records || productPage.list || []
+      const allProducts = productList.map(item => mapProductListItem(item))
+      const allCategory = this.categories.find(cat => cat.id === 'all')
+      if (allCategory) {
+        allCategory.products = allProducts
+      }
+    },
+    async loadCategoryProducts(categoryId) {
+      if (this.loadedCategories[categoryId]) return
+      const productPage = await getCategoryProducts(categoryId, 1, 100, HEALTH_BIZ_TYPE)
+      const productList = productPage.records || productPage.list || []
+      const products = productList.map(item => mapProductListItem(item))
+      const category = this.categories.find(cat => cat.id === categoryId)
+      if (category) {
+        category.products = products
+        this.$set(this.loadedCategories, categoryId, true)
+      }
+    },
+    loadVerifiedProductsFromStorage() {
+      try {
+        this.verifiedProducts = getCartEntries()
+        this.cartItems = loadCartItems(this.categories)
+      } catch (error) {
+        console.error('loadVerifiedProductsFromStorage failed:', error)
+      }
+    },
+    async switchCategory(categoryId) {
+      this.currentCategoryId = categoryId
+      if (categoryId === 'all') {
+        if (!this.loadedCategories.all) {
+          await this.loadAllProducts()
+          this.$set(this.loadedCategories, 'all', true)
+        }
+        this.loadVerifiedProductsFromStorage()
+        return
+      }
+      await this.loadCategoryProducts(categoryId)
+      this.loadVerifiedProductsFromStorage()
+    },
+    handleSearch() {},
+    goToDetail(product) {
+      uni.navigateTo({
+        url: `/pages/products/medicine_detail?id=${product.id}`
+      })
+    },
+    goToNotice(product) {
+      if (!getToken()) {
+        uni.navigateTo({
+          url: '/pages/register/register?redirect=/pages/products/priducts_list2'
+        })
+        return
+      }
+      uni.navigateTo({
+        url: `/pages/products/product_notice?id=${product.id}&quantity=1&action=cart`
+      })
+    },
+    isProductVerified(productId) {
+      return !!this.verifiedProducts[String(productId)]
+    },
+    getProductQuantity(productId) {
+      return getCartProductQuantity(productId, 0)
+    },
+    increaseQuantity(product) {
+      const nextQuantity = this.getProductQuantity(product.id) + 1
+      setCartItemQuantity(product.id, nextQuantity)
+      this.loadVerifiedProductsFromStorage()
+    },
+    decreaseQuantity(product) {
+      const current = this.getProductQuantity(product.id)
+      if (current <= 1) {
+        removeFromCart(product.id)
+      } else {
+        setCartItemQuantity(product.id, current - 1)
+      }
+      this.loadVerifiedProductsFromStorage()
+    },
+    showCart() {
+      uni.navigateTo({ url: '/pages/cart/cart' })
+    },
+    handleSubmit() {
+      if (!getToken()) {
+        uni.navigateTo({
+          url: '/pages/register/register?redirect=/pages/products/priducts_list2'
+        })
+        return
+      }
+      if (this.cartItems.length === 0) {
+        uni.showToast({ title: '请先选择商品', icon: 'none' })
+        return
+      }
 
-		if (typeof productData === 'object' && productData !== null) {
-			// 新格式：直接修改数量
-			const current = productData.quantity || 1
+      try {
+        const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
+        if (!userRegisterInfo || !userRegisterInfo.realName) {
+          uni.navigateTo({
+            url: '/pages/register/register?redirect=/pages/products/priducts_list2'
+          })
+          return
+        }
 
-			if (current <= 1) {
-				// 数量从1减到0，移除产品验证状态
-				delete this.verifiedProducts[product.id]
-				this.verifiedProducts = { ...this.verifiedProducts }
-				// 同步删除旧格式数据
-				if (this.productQuantities.hasOwnProperty(product.id)) {
-					delete this.productQuantities[product.id]
-					this.productQuantities = { ...this.productQuantities }
-				}
-			} else {
-				productData.quantity = current - 1
-				productData.timestamp = Date.now()
-				// 同步更新旧格式以保持兼容性
-				this.$set(this.productQuantities, product.id, productData.quantity)
-			}
-		} else {
-			// 旧格式：兼容处理
-			const current = Number(this.productQuantities[product.id] || 0)
+        const selectedIds = this.cartItems.map(item => String(item.id))
+        const checkout = prepareCheckout(selectedIds, this.categories)
+        if (!checkout.valid) {
+          uni.showToast({
+            title: checkout.message,
+            icon: 'none'
+          })
+          return
+        }
 
-			if (current <= 0) return
-
-			if (current > 1) {
-				const newQty = current - 1
-				this.$set(this.productQuantities, product.id, newQty)
-			} else { // current === 1
-				// 数量从1减到0，移除产品验证状态
-				if (this.verifiedProducts.hasOwnProperty(product.id)) {
-					delete this.verifiedProducts[product.id]
-					this.verifiedProducts = { ...this.verifiedProducts }
-				}
-				if (this.productQuantities.hasOwnProperty(product.id)) {
-					delete this.productQuantities[product.id]
-					this.productQuantities = { ...this.productQuantities }
-				}
-			}
-		}
-
-		// 保存到 uniStorage
-		this.saveVerifiedProductsToStorage()
-		// 使用cart.js工具函数重新加载购物车
-		this.cartItems = loadCartItems(this.categories)
-	  },
-	  // updateCartItem方法已由loadCartItems替代
-	  // removeFromCart方法已由loadCartItems替代
-	  addToCartAfterVerified(productId) {
-		// 找到产品并设置验证状态
-		let product = null
-		for (let category of this.categories) {
-		  product = category.products.find(p => p.id === productId)
-		  if (product) break
-		}
-
-		if (product) {
-		  // 使用新的数据格式设置验证状态
-		  const productData = {
-			verified: true,
-			selected: true,
-			quantity: 1,
-			timestamp: Date.now()
-		  }
-		  this.$set(this.verifiedProducts, productId, productData)
-		  // 同步更新旧格式以保持兼容性
-		  this.$set(this.productQuantities, productId, 1)
-
-		  // 保存到 uniStorage
-		  this.saveVerifiedProductsToStorage()
-		  // 使用cart.js工具函数重新加载购物车
-		  this.cartItems = loadCartItems(this.categories)
-		}
-	  },
-	  directAddToCart(product) {
-		// 直接添加到购物车时，也需要设置验证状态
-		const existingData = this.verifiedProducts[product.id]
-
-		if (typeof existingData === 'object' && existingData !== null) {
-			// 新格式：增加数量
-			existingData.quantity = (existingData.quantity || 1) + 1
-			existingData.timestamp = Date.now()
-			// 同步更新旧格式以保持兼容性
-			this.$set(this.productQuantities, product.id, existingData.quantity)
-		} else {
-			// 旧格式或不存在：创建新数据
-			const productData = {
-				verified: true,
-				selected: true,
-				quantity: 1,
-				timestamp: Date.now()
-			}
-			this.$set(this.verifiedProducts, product.id, productData)
-			// 同步更新旧格式以保持兼容性
-			this.$set(this.productQuantities, product.id, 1)
-		}
-
-		// 保存到 uniStorage
-		this.saveVerifiedProductsToStorage()
-		// 使用cart.js工具函数重新加载购物车
-		this.cartItems = loadCartItems(this.categories)
-
-		uni.showToast({
-		  title: '已添加到购物车',
-		  icon: 'success',
-		  duration: 1500
-		})
-	  },
-	  showCart() {
-		// 显示购物车详情（可以后续扩展）
-		uni.showToast({
-		  title: `购物车中有${this.cartCount}件商品`,
-		  icon: 'none'
-		})
-	  },
-	  handleSubmit() {
-		// 未登录则先去登录
-		const token = getToken()
-  
-		console.log(' getToken()', getToken());
-		console.log(!token);
-  
-		if (!token) {
-		  uni.navigateTo({
-			url: '/pages/register/register?redirect=/pages/products/priducts_list'
-		  })
-		  return
-		}
-		if (this.cartItems.length === 0) {
-		  uni.showToast({
-			title: '请先选择商品',
-			icon: 'none'
-		  })
-		  return
-		}
-  
-		// 检查是否已注册
-		try {
-		  const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-		  if (!userRegisterInfo || !userRegisterInfo.realName) {
-			// 未注册，跳转到注册页面，传递 redirect 参数
-			uni.navigateTo({
-			  url: '/pages/register/register?redirect=/pages/products/priducts_list'
-			})
-			return
-		  }
-		  this.saveVerifiedProductsToStorage()
-		  // 已注册，跳转到申请页面
-		  uni.navigateTo({
-			url: '/pages/dispense/apply'
-		  })
-		} catch (e) {
-		  console.error('检查注册状态失败:', e)
-		  // 出错时也跳转到注册页面，传递 redirect 参数
-		  uni.navigateTo({
-			url: '/pages/register/register?redirect=/pages/products/priducts_list'
-		  })
-		}
-	  },
-	  goToHistory() {
-		// 跳转到历史订单页面
-		uni.navigateTo({
-		  url: '/pages/order/order_list'
-		})
-	  },
-	  goBack() {
-		uni.navigateBack()
-	  },
-	  handleTabChange(tab) {
-		this.currentTab = tab
-	  },
-	  switchToHorizontalLayout() {
-		// 跳转到横向分类布局页面
-		uni.navigateTo({
-		  url: '/pages/products/priducts_list'
-		})
-	  }
-	}
+        uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+        uni.navigateTo({
+          url: `/pages/order/confirm?selectedItems=${checkout.productIds.join(',')}`
+        })
+      } catch (error) {
+        console.error('handleSubmit failed:', error)
+        uni.navigateTo({
+          url: '/pages/register/register?redirect=/pages/products/priducts_list2'
+        })
+      }
+    },
+    goToHistory() {
+      uni.navigateTo({ url: '/pages/order/order_list' })
+    },
+    goBack() {
+      uni.navigateBack()
+    },
+    handleTabChange(tab) {
+      this.currentTab = tab
+    },
+    switchToHorizontalLayout() {
+      uni.navigateTo({ url: '/pages/products/priducts_list' })
+    }
   }
-  </script>
+}
+</script>
   
   <style scoped>
   .product-container {

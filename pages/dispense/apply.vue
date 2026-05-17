@@ -96,50 +96,40 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   STORAGE_KEY_CURRENT_CONSULTATION_ID,
-  STORAGE_KEY_USER_REGISTER,
-  STORAGE_KEY_VERIFIED_PRODUCTS,
-  STORAGE_KEY_PRODUCT_QUANTITIES
+  STORAGE_KEY_USER_REGISTER
 } from '@/utils/storage.js'
-import { calculateTotalPrice, calculateTotalQuantity, getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/cart.js'
-import { getPatientList, updatePatient, deletePatient } from '@/api/patient.js'
-import { getCategoryList, getCategoryProducts, getProductDetail } from '@/api/product.js'
+import {
+  calculateTotalPrice,
+  calculateTotalQuantity,
+  getCurrentCheckoutProductIds,
+  loadCartItems,
+  setCheckoutProductIds
+} from '@/utils/cart.js'
+import { getPatientList, deletePatient } from '@/api/patient.js'
+import { getProductDetail } from '@/api/product.js'
 import { deriveGenderFromId, deriveAgeFromId } from '@/utils/patient.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
 import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
 
-const cartItems = ref([]) // 购物车商品列表
-const productsData = ref(null) // 产品数据（保持兼容性）
-const selectedItems = ref([]) // 从URL参数获取的选中商品ID列表
-
+const cartItems = ref([])
+const categories = ref([])
+const selectedItems = ref([])
 const patients = ref([])
 const selectedPatient = ref(null)
 const selectedBizType = ref(1)
 
-// 计算总价格
-const totalPrice = computed(() => {
-  return calculateTotalPrice(cartItems.value)
-})
+const totalPrice = computed(() => calculateTotalPrice(cartItems.value))
+const totalQuantity = computed(() => calculateTotalQuantity(cartItems.value))
 
-// 计算总数量
-const totalQuantity = computed(() => {
-  return calculateTotalQuantity(cartItems.value)
-})
-
-// 从API加载就诊人列表
 const loadPatientsFromAPI = async () => {
   try {
     uni.showLoading({ title: '加载中...' })
-
-    // 保存当前选中的就诊人ID，用于保持选择状态
     const currentSelectedId = selectedPatient.value?.id
-
     const patientList = await getPatientList()
-
-    console.log('就诊人列表:', patientList)
 
     if (patientList && patientList.length > 0) {
       patients.value = patientList.map(p => ({
@@ -152,21 +142,13 @@ const loadPatientsFromAPI = async () => {
         age: p.age
       }))
 
-      // 如果之前有选中的就诊人，尝试保持选择状态
       if (currentSelectedId !== null && currentSelectedId !== undefined) {
         const found = patients.value.find(p => p.id === currentSelectedId)
-        if (found) {
-          selectedPatient.value = found
-        } else {
-          // 如果之前选中的就诊人不在新列表中，选择第一个
-          selectedPatient.value = patients.value.length > 0 ? patients.value[0] : null
-        }
+        selectedPatient.value = found || patients.value[0] || null
       } else {
-        // 如果之前没有选中的就诊人，选择第一个
-        selectedPatient.value = patients.value.length > 0 ? patients.value[0] : null
+        selectedPatient.value = patients.value[0] || null
       }
     } else {
-      // 如果没有就诊人，尝试从注册信息创建
       const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
       if (userRegisterInfo && userRegisterInfo.realName) {
         patients.value = [{
@@ -178,7 +160,6 @@ const loadPatientsFromAPI = async () => {
           gender: deriveGenderFromId(userRegisterInfo.idNumber),
           age: deriveAgeFromId(userRegisterInfo.idNumber)
         }]
-        // 如果之前没有选中的就诊人，才选择这个
         if (!currentSelectedId) {
           selectedPatient.value = patients.value[0]
         }
@@ -187,14 +168,8 @@ const loadPatientsFromAPI = async () => {
         selectedPatient.value = null
       }
     }
-
-    uni.hideLoading()
-
-  } catch (e) {
-    console.error('加载就诊人信息失败:', e)
-    uni.hideLoading()
-
-    // API失败时从本地加载
+  } catch (error) {
+    console.error('loadPatientsFromAPI failed:', error)
     const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
     if (userRegisterInfo && userRegisterInfo.realName) {
       patients.value = [{
@@ -203,7 +178,6 @@ const loadPatientsFromAPI = async () => {
         gender: deriveGenderFromId(userRegisterInfo.idNumber),
         age: deriveAgeFromId(userRegisterInfo.idNumber)
       }]
-      // 如果之前没有选中的就诊人，才选择这个
       if (!selectedPatient.value?.id) {
         selectedPatient.value = patients.value[0]
       }
@@ -211,209 +185,118 @@ const loadPatientsFromAPI = async () => {
       patients.value = []
       selectedPatient.value = null
     }
-  }
-}
-
-const handlePatientChanged = () => {
-  // 延迟执行，避免快速重复触发
-  setTimeout(() => {
-    loadPatientsFromAPI()
-  }, 100)
-}
-
-onMounted(() => {
-  logPageView('DISPENSE_APPLY')
-  uni.$on('patientChanged', handlePatientChanged)
-
-  // 获取URL参数中的选中商品
-  const pages = getCurrentPages()
-  const currentPage = pages[pages.length - 1]
-  const selectedItemsParam = currentPage.options.selectedItems
-
-  if (selectedItemsParam) {
-    selectedItems.value = selectedItemsParam.split(',').filter(id => id.trim())
-  } else {
-    selectedItems.value = getCurrentCheckoutProductIds()
-  }
-
-  if (selectedItems.value.length > 0) {
-    setCheckoutProductIds(selectedItems.value)
-  }
-
-  loadPatientsFromAPI()
-  loadProducts()
-})
-
-onUnmounted(() => {
-  uni.$off('patientChanged', handlePatientChanged)
-})
-
-// 加载产品数据（仅加载购物车需要的商品）
-const loadProducts = async () => {
-  try {
-    // 如果有选中商品参数，只加载选中的商品；否则加载所有购物车商品
-    let productIds = []
-
-    if (selectedItems.value && selectedItems.value.length > 0) {
-      // 只加载从URL参数传入的选中商品，但要确保这些商品已经在购物车中验证过
-      const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-      productIds = selectedItems.value.filter(id => verifiedProducts[id])
-    } else {
-      // 从购物车获取需要的产品ID（原有的逻辑）
-      const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-      productIds = Object.keys(verifiedProducts).filter(id => verifiedProducts[id])
-    }
-
-    if (productIds.length === 0) {
-      uni.showToast({ title: '购物车为空', icon: 'none' })
-      setTimeout(() => uni.navigateBack(), 1500)
-      return
-    }
-
-    // 直接从服务器加载商品数据，不使用前端缓存
-
-    console.log('从服务器加载购物车商品详情')
-    uni.showLoading({ title: '加载商品...' })
-
-    // 获取购物车验证数据
-    const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-
-    // 直接构建购物车商品列表
-    const cartItemsList = []
-
-    // 逐个获取购物车商品的详细信息
-    for (const productId of productIds) {
-      try {
-        const productDetail = await getProductDetail(productId)
-        if (productDetail) {
-          // 获取商品数量（优先从新格式获取）
-          const productInfo = verifiedProducts[productId]
-          const quantity = productInfo && typeof productInfo === 'object' && productInfo.quantity
-            ? productInfo.quantity
-            : 1
-
-          cartItemsList.push({
-            id: productDetail.id,
-            name: productDetail.productName || productDetail.name,
-            description: productDetail.subTitle || productDetail.description,
-            image: getImageUrl(productDetail.coverImage || productDetail.image),
-            price: productDetail.price,
-            bizType: productDetail.bizType,
-            goodsMerchantType: productDetail.goodsMerchantType,
-            unit: productDetail.unit || '份',
-            notice: productDetail.usageDesc || productDetail.notice,
-            quantity: quantity
-          })
-        }
-      } catch (err) {
-        console.error(`获取商品${productId}详情失败:`, err)
-      }
-    }
-
-    // 直接设置购物车商品列表
-    cartItems.value = cartItemsList
-    const flow = resolveProductFlow(cartItemsList)
-    if (!flow.valid) {
-      uni.showToast({ title: flow.message, icon: 'none' })
-      setTimeout(() => uni.navigateBack(), 1500)
-      return
-    }
-    selectedBizType.value = flow.bizType
-
-    // 设置兼容性数据（如果其他地方需要）
-    productsData.value = { categories: [] }
-
-    loadCartData()
-  } catch (error) {
-    console.error('加载商品失败，使用本地数据:', error)
-    loadCartData()
   } finally {
     uni.hideLoading()
   }
 }
 
-// 加载购物车数据（简化版，直接使用已获取的商品详情）
-const loadCartData = () => {
-  try {
-    // 获取购物车验证数据
-    const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-    console.log(verifiedProducts,'verifiedProducts----------apply')
+const handlePatientChanged = () => {
+  setTimeout(() => {
+    loadPatientsFromAPI()
+  }, 100)
+}
 
-    // 如果cartItems还没有加载（出错情况），提示用户
-    if (cartItems.value.length === 0) {
-      uni.showToast({
-        title: '购物车为空',
-        icon: 'none'
-      })
-      // 延迟返回上一页
-      setTimeout(() => {
-        uni.navigateBack()
-      }, 1500)
+const loadProducts = async () => {
+  try {
+    const requestedIds = selectedItems.value.length > 0 ? selectedItems.value : getCurrentCheckoutProductIds()
+    if (requestedIds.length === 0) {
+      uni.showToast({ title: '购物车为空', icon: 'none' })
+      setTimeout(() => uni.navigateBack(), 1200)
+      return
     }
 
-    console.log('购物车数据已加载:', cartItems.value.length, '件商品')
-  } catch (e) {
-    console.error('加载购物车数据失败:', e)
-    uni.showToast({
-      title: '加载购物车失败',
-      icon: 'none'
-    })
+    const checkoutCategory = {
+      id: 'checkout_items',
+      name: '待结算商品',
+      products: []
+    }
+
+    uni.showLoading({ title: '加载商品...' })
+    for (const productId of requestedIds) {
+      try {
+        const productDetail = await getProductDetail(productId)
+        if (productDetail) {
+          checkoutCategory.products.push({
+            id: productDetail.id,
+            name: productDetail.productName || productDetail.name,
+            description: productDetail.subTitle || productDetail.description,
+            image: productDetail.coverImage || productDetail.image,
+            price: Number(productDetail.price || 0),
+            bizType: productDetail.bizType,
+            goodsMerchantType: productDetail.goodsMerchantType,
+            unit: productDetail.unit || '件',
+            notice: productDetail.usageDesc || productDetail.notice,
+            needQuestionnaire: productDetail.needQuestionnaire || 0
+          })
+        }
+      } catch (error) {
+        console.error(`load checkout product failed: ${productId}`, error)
+      }
+    }
+
+    categories.value = [checkoutCategory]
+    const selectedSet = new Set(requestedIds.map(id => String(id)))
+    cartItems.value = loadCartItems(categories.value).filter(item => selectedSet.has(String(item.id)))
+
+    if (cartItems.value.length === 0) {
+      uni.showToast({ title: '购物车为空', icon: 'none' })
+      setTimeout(() => uni.navigateBack(), 1200)
+      return
+    }
+
+    const flow = resolveProductFlow(cartItems.value)
+    if (!flow.valid) {
+      uni.showToast({ title: flow.message, icon: 'none' })
+      setTimeout(() => uni.navigateBack(), 1200)
+      return
+    }
+    selectedBizType.value = flow.bizType
+  } catch (error) {
+    console.error('loadProducts failed:', error)
+    uni.showToast({ title: '加载商品失败', icon: 'none' })
+  } finally {
+    uni.hideLoading()
   }
 }
 
-// 底部栏高度（参考列表页面的 120rpx）
-const footerHeight = 120
-
-const onClose = () => {
-  // 小程序返回/关闭
-  uni.navigateBack({ delta: 1 })
-}
-
 const onModify = () => {
-  // 返回商品列表页面进行修改
   uni.navigateBack()
 }
 
-const selectPatient = (p) => {
-  logButtonClick('选择就诊人', 'DISPENSE_APPLY', p?.id?.toString() || '', {
-    patientName: p?.name
+const selectPatient = (patient) => {
+  logButtonClick('选择就诊人', 'DISPENSE_APPLY', patient?.id?.toString() || '', {
+    patientName: patient?.name
   })
-  selectedPatient.value = p
+  selectedPatient.value = patient
 }
 
-
-// ✅ 删除就诊人
 const onDeletePatient = (patientId) => {
   logButtonClick('删除就诊人', 'DISPENSE_APPLY', patientId.toString())
   uni.showModal({
     title: '提示',
     content: '确定要删除此就诊人吗？',
     success: async (res) => {
-      if (res.confirm) {
-        try {
-          uni.showLoading({ title: '删除中...' })
-
-          await deletePatient(patientId)
-
-          uni.hideLoading()
-          uni.showToast({ title: '删除成功', icon: 'success' })
-
-          // 重新加载就诊人列表
-          await loadPatientsFromAPI()
-        } catch (error) {
-          console.error('删除就诊人失败:', error)
-          uni.hideLoading()
-          uni.showToast({
-            title: error.message || '删除失败',
-            icon: 'none'
-          })
-        }
+      if (!res.confirm) {
+        return
+      }
+      try {
+        uni.showLoading({ title: '删除中...' })
+        await deletePatient(patientId)
+        uni.showToast({ title: '删除成功', icon: 'success' })
+        await loadPatientsFromAPI()
+      } catch (error) {
+        console.error('onDeletePatient failed:', error)
+        uni.showToast({
+          title: error.message || '删除失败',
+          icon: 'none'
+        })
+      } finally {
+        uni.hideLoading()
       }
     }
   })
 }
 
-// ✅ 添加就诊人
 const onAddPatient = () => {
   logButtonClick('添加就诊人', 'DISPENSE_APPLY')
   uni.navigateTo({
@@ -433,22 +316,47 @@ const onSubmit = () => {
   })
 
   const selectedItemIds = selectedItems.value.length > 0
-    ? selectedItems.value.join(',')
-    : cartItems.value.map(item => item.id).join(',')
-  setCheckoutProductIds(selectedItemIds ? selectedItemIds.split(',') : [])
+    ? selectedItems.value
+    : cartItems.value.map(item => String(item.id))
+  setCheckoutProductIds(selectedItemIds)
 
   if (selectedBizType.value === BIZ_TYPE_HEALTH_GOODS) {
     uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
     uni.navigateTo({
-      url: `/pages/order/confirm?selectedItems=${selectedItemIds}`
+      url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}`
     })
     return
   }
 
   uni.navigateTo({
-    url: `/pages/dispense/consultation?selectedItems=${selectedItemIds}`
+    url: `/pages/dispense/consultation?selectedItems=${selectedItemIds.join(',')}`
   })
 }
+
+onMounted(() => {
+  logPageView('DISPENSE_APPLY')
+  uni.$on('patientChanged', handlePatientChanged)
+
+  const pages = getCurrentPages()
+  const currentPage = pages[pages.length - 1]
+  const selectedItemsParam = currentPage.options.selectedItems
+  if (selectedItemsParam) {
+    selectedItems.value = selectedItemsParam.split(',').filter(id => id.trim())
+  } else {
+    selectedItems.value = getCurrentCheckoutProductIds()
+  }
+
+  if (selectedItems.value.length > 0) {
+    setCheckoutProductIds(selectedItems.value)
+  }
+
+  loadPatientsFromAPI()
+  loadProducts()
+})
+
+onUnmounted(() => {
+  uni.$off('patientChanged', handlePatientChanged)
+})
 </script>
 
 <style scoped>

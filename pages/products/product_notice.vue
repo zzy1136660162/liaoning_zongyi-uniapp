@@ -33,214 +33,151 @@
 import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId } from '@/api/questionnaire.js'
 import { getImageUrl } from '@/utils/config.js'
-import { getCartProductQuantity, saveToCart } from '@/utils/cart.js'
-import { STORAGE_KEY_VERIFIED_PRODUCTS } from '@/utils/storage.js'
-import { isHealthGoods, resolveProductFlow } from '@/utils/product-biz.js'
+import { addCartItem, getCartProductQuantity, resolveCartCompatibility } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
 
 export default {
-	data() {
-		return {
-			productId: '',
-			productName: '',
-		noticeText: '',
-		suitableCrowd: '',
-		usageDesc: '',
-		productDetail: null
-		}
-	},
-	onLoad(options) {
-		this.productId = options.id || ''
-		this.productName = options.name ? decodeURIComponent(options.name) : ''
-		if (!this.productId) {
-			console.warn('未获取到产品ID，无法加载注意事项')
-			return
-		}
-		this.loadProductDetail(this.productId)
+  data() {
+    return {
+      productId: '',
+      productName: '',
+      noticeText: '',
+      suitableCrowd: '',
+      usageDesc: '',
+      productDetail: null,
+      requestedQuantity: 1,
+      action: 'cart'
+    }
+  },
+  onLoad(options) {
+    this.productId = options.id || ''
+    this.productName = options.name ? decodeURIComponent(options.name) : ''
+    this.requestedQuantity = Math.max(1, Number(options.quantity) || 1)
+    this.action = options.action || 'cart'
+    if (!this.productId) {
+      console.warn('missing productId on notice page')
+      return
+    }
+    this.loadProductDetail(this.productId)
+    logPageView('PRODUCT_NOTICE', this.productId)
+  },
+  methods: {
+    getImageUrl,
+    getSelectedQuantity() {
+      return Math.max(1, Number(this.requestedQuantity) || getCartProductQuantity(this.productId, 1) || 1)
+    },
+    async loadProductDetail(productId) {
+      try {
+        const detail = await getProductDetail(productId)
+        if (detail) {
+          this.productDetail = detail
+          this.productName = detail.productName || detail.name || this.productName
+          this.noticeText = detail.contraindication || detail.noticeText || this.noticeText
+          this.suitableCrowd = detail.suitableCrowd || ''
+          this.usageDesc = detail.usageDesc || ''
+          return
+        }
+      } catch (error) {
+        console.warn('loadProductDetail failed:', error)
+      }
+      if (!this.noticeText) {
+        this.noticeText = '当前商品暂无详细说明，请咨询医生或药师后再使用。'
+      }
+    },
+    async ensureCartCompatible(detail) {
+      const target = detail || this.productDetail || await getProductDetail(this.productId)
+      if (!target) {
+        return false
+      }
+      const flow = resolveCartCompatibility(target, {
+        ignoreProductId: this.productId
+      })
+      if (!flow.valid) {
+        uni.showToast({
+          title: flow.message,
+          icon: 'none'
+        })
+        return false
+      }
+      this.productDetail = target
+      return true
+    },
+    async startQuestionnaire() {
+      if (!this.productId) {
+        uni.showToast({
+          title: '商品信息缺失',
+          icon: 'none'
+        })
+        return
+      }
 
-		// 记录页面访问日志
-		logPageView('产品公告', '用户进入产品公告页面')
-	},
-	methods: {
-		getImageUrl,
-		getSelectedQuantity() {
-			return getCartProductQuantity(this.productId, 1)
-		},
-		async loadProductDetail(productId) {
-			// 只通过后端接口查询商品详情
-			try {
-				const detail = await getProductDetail(productId)
-				if (detail) {
-					this.productDetail = detail
-					this.productName = detail.productName || detail.name || this.productName
-					this.noticeText = detail.contraindication || detail.noticeText || this.noticeText
-					this.suitableCrowd = detail.suitableCrowd || ''
-					this.usageDesc = detail.usageDesc || ''
-					return
-				}
-			} catch (err) {
-				console.warn('从后端获取商品详情失败', err)
-			}
-			// 接口不可用时给出兜底文案
-			if (!this.noticeText) {
-				this.noticeText = '当前药方暂无详细说明，请咨询医师后再使用。'
-			}
-		},
-		async ensureCartCompatible() {
-			const currentProduct = this.productDetail || await getProductDetail(this.productId)
-			if (!currentProduct) {
-				return false
-			}
+      uni.showLoading({ title: '检查中...' })
+      try {
+        const detail = this.productDetail || await getProductDetail(this.productId)
+        if (!(await this.ensureCartCompatible(detail))) {
+          return
+        }
 
-			const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-			const existingIds = Object.keys(verifiedProducts)
-				.filter(id => verifiedProducts[id] && String(id) !== String(this.productId))
-			if (existingIds.length === 0) {
-				return true
-			}
+        const selectedQuantity = this.getSelectedQuantity()
+        let shouldGoQuestionnaire = Number(detail?.needQuestionnaire) === 1 || !!detail?.questionnaireId
 
-			const existingProducts = []
-			for (const productId of existingIds) {
-				try {
-					const detail = await getProductDetail(productId)
-					if (detail) {
-						existingProducts.push(detail)
-					}
-				} catch (error) {
-					console.warn('检查购物车商品失败:', productId, error)
-				}
-			}
+        if (!shouldGoQuestionnaire) {
+          try {
+            const response = await getQuestionnaireByProductId(this.productId)
+            const questionnaire = response.data || response
+            shouldGoQuestionnaire = !!(
+              questionnaire &&
+              questionnaire.questionnaireId &&
+              Array.isArray(questionnaire.questions) &&
+              questionnaire.questions.length > 0
+            )
+          } catch (error) {
+            shouldGoQuestionnaire = false
+          }
+        }
 
-			const flow = resolveProductFlow([currentProduct, ...existingProducts])
-			if (!flow.valid) {
-				uni.showToast({
-					title: flow.message,
-					icon: 'none'
-				})
-				return false
-			}
-			return true
-		},
-		async startQuestionnaire() {
-			if (!this.productId) {
-				uni.showToast({
-					title: '商品ID不能为空',
-					icon: 'none'
-				})
-				return
-			}
-			
-			uni.showLoading({ title: '检查中...' })
-			
-			try {
-				const canAdd = await this.ensureCartCompatible()
-				if (!canAdd) {
-					return
-				}
+        if (shouldGoQuestionnaire) {
+          uni.navigateTo({
+            url: `/pages/products/product_questionnaire?id=${this.productId}&quantity=${selectedQuantity}&action=${this.action}`
+          })
+          return
+        }
 
-				const detail = this.productDetail || await getProductDetail(this.productId)
-				this.productDetail = detail
-				if (detail && isHealthGoods(detail)) {
-					const success = saveToCart(this.productId, this.getSelectedQuantity())
-					if (!success) {
-						uni.showToast({
-							title: '添加到购物车失败',
-							icon: 'none'
-						})
-						return
-					}
+        const success = addCartItem(detail, selectedQuantity, {
+          questionnairePassed: Number(detail?.needQuestionnaire) !== 1
+        })
+        if (!success) {
+          uni.showToast({
+            title: '加入购物车失败',
+            icon: 'none'
+          })
+          return
+        }
 
-					uni.showToast({
-						title: '已添加到购物车',
-						icon: 'success'
-					})
+        uni.showToast({
+          title: '已加入购物车',
+          icon: 'success'
+        })
 
-					setTimeout(() => {
-						uni.navigateBack({
-							delta: 1,
-							success: () => {
-								uni.$emit('refreshProductsList')
-							}
-						})
-					}, 1500)
-					return
-				}
-
-				// 尝试获取问卷，判断是否需要问卷
-				const response = await getQuestionnaireByProductId(this.productId)
-				const questionnaire = response.data || response
-				
-				// 检查是否有有效的问卷数据
-				const hasQuestionnaire = questionnaire && 
-					questionnaire.questionnaireId && 
-					questionnaire.questions && 
-					questionnaire.questions.length > 0
-				
-				if (hasQuestionnaire) {
-					// 有问卷，跳转到答题页面
-					uni.navigateTo({
-						url: `/pages/products/product_questionnaire?id=${this.productId}`
-					})
-				} else {
-					// 没有问卷，直接添加到购物车
-					const success = saveToCart(this.productId, this.getSelectedQuantity())
-					
-					if (success) {
-						uni.showToast({
-							title: '已添加到购物车',
-							icon: 'success'
-						})
-						
-						// 返回上一页（跳过问卷页面）
-						setTimeout(() => {
-							uni.navigateBack({
-								delta: 1,
-								success: () => {
-									// 通知列表页刷新
-									uni.$emit('refreshProductsList')
-								}
-							})
-						}, 1500)
-					} else {
-						uni.showToast({
-							title: '添加到购物车失败',
-							icon: 'none'
-						})
-					}
-				}
-			} catch (error) {
-				console.log('检查问卷失败，视为无问卷，直接添加到购物车:', error)
-				
-				// API调用失败（可能是没有问卷），直接添加到购物车
-				const success = saveToCart(this.productId, this.getSelectedQuantity())
-				
-				if (success) {
-					uni.showToast({
-						title: '已添加到购物车',
-						icon: 'success'
-					})
-					
-					// 返回上一页
-					setTimeout(() => {
-						uni.navigateBack({
-							delta: 1,
-							success: () => {
-								// 通知列表页刷新
-								uni.$emit('refreshProductsList')
-							}
-						})
-					}, 1500)
-				} else {
-					uni.showToast({
-						title: '添加到购物车失败',
-						icon: 'none'
-					})
-				}
-			} finally {
-				uni.hideLoading()
-			}
-		}
-	}
+        setTimeout(() => {
+          uni.navigateBack({
+            delta: 1,
+            success: () => {
+              uni.$emit('refreshProductsList')
+            }
+          })
+        }, 1200)
+      } catch (error) {
+        console.error('startQuestionnaire failed:', error)
+        uni.showToast({
+          title: error.message || '处理失败，请重试',
+          icon: 'none'
+        })
+      } finally {
+        uni.hideLoading()
+      }
+    }
+  }
 }
 </script>
 
