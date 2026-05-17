@@ -186,7 +186,7 @@
         <view class="recommend-tab" :class="{ active: recommendTab === 'star' }" @click="switchRecommendTab('star')">明星产品</view>
       </view>
       <view class="recommend-content">
-        <scroll-view class="recommend-scroll" scroll-x v-if="recommendTab === 'combo'">
+        <scroll-view class="recommend-scroll" scroll-x v-if="recommendTab === 'combo' && comboProducts.length > 0">
           <view class="recommend-item" v-for="item in comboProducts" :key="item.id" @click="goToDetail(item)">
             <image class="recommend-img" :src="getImageUrl(item.image)" mode="aspectFit" />
             <view class="recommend-info">
@@ -201,7 +201,8 @@
             </view>
           </view>
         </scroll-view>
-        <scroll-view class="recommend-scroll" scroll-x v-else>
+        <view v-else-if="recommendTab === 'combo'" class="empty-block">暂无组合推荐</view>
+        <scroll-view class="recommend-scroll" scroll-x v-else-if="starProducts.length > 0">
           <view class="recommend-item" v-for="item in starProducts" :key="item.id" @click="goToDetail(item)">
             <image class="recommend-img" :src="getImageUrl(item.image)" mode="aspectFit" />
             <view class="recommend-info">
@@ -216,6 +217,7 @@
             </view>
           </view>
         </scroll-view>
+        <view v-else class="empty-block">暂无明星产品</view>
       </view>
       <view class="combo-disclaimer" v-if="recommendTab === 'combo'">*用药组合仅供参考，最终以医嘱为准</view>
 
@@ -230,7 +232,7 @@
     </view>
 
     <view class="detail-body" v-if="detailTab === 'desc'">
-      <view class="detail-title">商品详情</view>
+      <view class="detail-title">{{ product.detailTitle || '商品详情' }}</view>
       <rich-text v-if="product.intro" class="detail-richtext" :nodes="formatRichText(product.intro)"></rich-text>
       <view v-else class="empty-block">暂无图文详情</view>
       <view class="detail-images" v-if="showDetailImages">
@@ -298,7 +300,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, getCurrentInstance, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
@@ -312,15 +314,19 @@ const createEmptyProduct = () => ({
   id: '',
   name: '',
   subtitle: '',
+  description: '',
   price: 0,
   image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png'),
   images: [],
   intro: '',
+  unit: '',
   salesVolume: 0,
   bizType: 1,
   isPrescription: 0,
   isHospitalStarFormula: 0,
   isNewProduct: 0,
+  detailTitle: '',
+  isStarProduct: 0,
   indications: '',
   ingredients: '',
   commonUsage: '',
@@ -338,7 +344,9 @@ const createEmptyProduct = () => ({
   approvalNumber: '',
   manufacturer: '',
   executionStandard: '',
-  warmTips: ''
+  warmTips: '',
+  relatedProducts: [],
+  starProducts: []
 })
 
 const product = ref(createEmptyProduct())
@@ -353,20 +361,8 @@ const isInitializing = ref(false)
 const flyingDot = ref({ show: false, x: 0, y: 0 })
 const recommendTab = ref('combo')
 const cartQuantities = ref({})
-const comboProducts = ref([
-  { id: 1, name: '养阴清肺糖浆', price: 29.9, image: 'https://smf.lntcm.com/static/medicine/2S7A5409.JPG' },
-  { id: 2, name: '清肺抑火片', price: 35.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5372.JPG' },
-  { id: 3, name: '复方甘草片', price: 18.5, image: 'https://smf.lntcm.com/static/medicine/2S7A5373.JPG' },
-  { id: 4, name: '川贝枇杷膏', price: 42.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5374.JPG' },
-  { id: 5, name: '板蓝根颗粒', price: 22.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5375.JPG' }
-])
-const starProducts = ref([
-  { id: 11, name: '人参养荣丸', price: 68.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5376.JPG' },
-  { id: 12, name: '六味地黄丸', price: 45.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5372.JPG' },
-  { id: 13, name: '补中益气丸', price: 38.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5373.JPG' },
-  { id: 14, name: '逍遥丸', price: 32.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5374.JPG' },
-  { id: 15, name: '归脾丸', price: 55.0, image: 'https://smf.lntcm.com/static/medicine/2S7A5375.JPG' }
-])
+const comboProducts = ref([])
+const starProducts = ref([])
 
 const productImages = computed(() => {
   if (product.value.images && product.value.images.length > 0) {
@@ -425,6 +421,16 @@ const loadCartCount = () => {
   cartCount.value = Object.values(productQuantities).reduce((sum, current) => sum + (Number(current) || 0), 0)
 }
 
+const resolveRecommendTab = () => {
+  if (comboProducts.value.length > 0) {
+    return 'combo'
+  }
+  if (starProducts.value.length > 0) {
+    return 'star'
+  }
+  return 'combo'
+}
+
 const loadQuantityFromStorage = () => {
   if (!product.value.id) return
   try {
@@ -452,6 +458,10 @@ const applyProduct = (source) => {
     ...createEmptyProduct(),
     ...mapped
   }
+  comboProducts.value = Array.isArray(mapped.relatedProducts) ? mapped.relatedProducts : []
+  starProducts.value = Array.isArray(mapped.starProducts) ? mapped.starProducts : []
+  recommendTab.value = resolveRecommendTab()
+  loadRecommendCartQuantities()
 }
 
 const loadProduct = async (id) => {
@@ -565,6 +575,14 @@ const goCart = () => {
   })
 }
 
+const goToDetail = (item) => {
+  if (!item || !item.id) return
+  if (String(item.id) === String(product.value.id)) return
+  uni.navigateTo({
+    url: `/pages/products/medicine_detail?id=${item.id}&product=${encodeURIComponent(JSON.stringify(item))}`
+  })
+}
+
 const addToCart = (item) => {
   const cartData = uni.getStorageSync('cartItems') || []
   const existIndex = cartData.findIndex(i => i.id === item.id)
@@ -642,12 +660,14 @@ onLoad((options) => {
 const loadRecommendCartQuantities = () => {
   const cartData = uni.getStorageSync('cartItems') || []
   const allProducts = [...comboProducts.value, ...starProducts.value]
+  const nextQuantities = {}
   allProducts.forEach(item => {
     const cartItem = cartData.find(i => i.id === item.id)
     if (cartItem) {
-      cartQuantities.value[item.id] = cartItem.quantity
+      nextQuantities[item.id] = cartItem.quantity
     }
   })
+  cartQuantities.value = nextQuantities
 }
 
 onShow(() => {

@@ -122,8 +122,23 @@ export const mapProductListItem = (product = {}) => {
     productCategory: Number(pickField(product, 'productCategory', 'product_category') || 2),
     isPrescription: Number(pickField(product, 'isPrescription', 'is_prescription') || 0),
     isHospitalStarFormula: Number(pickField(product, 'isHospitalStarFormula', 'is_hospital_star_formula') || 0),
-    isNewProduct: Number(pickField(product, 'isNewProduct', 'is_new_product') || 0)
+    isNewProduct: Number(pickField(product, 'isNewProduct', 'is_new_product') || 0),
+    detailTitle: pickField(product, 'detailTitle', 'detail_title') || '',
+    isStarProduct: Number(pickField(product, 'isStarProduct', 'is_star_product') || 0)
   }
+}
+
+const mapRecommendationProducts = (products = []) => {
+  if (!Array.isArray(products)) {
+    return []
+  }
+  return products.map(item => {
+    const mapped = mapProductListItem(item)
+    return {
+      ...mapped,
+      image: getImageUrl(pickField(item, 'coverImage', 'cover_image', 'image', 'productImage') || mapped.image)
+    }
+  })
 }
 
 export const mapProductDetail = (product = {}) => {
@@ -157,6 +172,10 @@ export const mapProductDetail = (product = {}) => {
     executionStandard: pickField(product, 'executionStandard', 'execution_standard') || '',
     warmTips: pickField(product, 'warmTips', 'warm_tips') || '',
     brandName: pickField(product, 'brandName', 'brand_name') || '',
-    suitableCrowd: pickField(product, 'suitableCrowd', 'suitable_crowd') || ''
+    suitableCrowd: pickField(product, 'suitableCrowd', 'suitable_crowd') || '',
+    detailTitle: pickField(product, 'detailTitle', 'detail_title') || '',
+    isStarProduct: Number(pickField(product, 'isStarProduct', 'is_star_product') || 0),
+    relatedProducts: mapRecommendationProducts(pickField(product, 'relatedProducts', 'related_products') || []),
+    starProducts: mapRecommendationProducts(pickField(product, 'starProducts', 'star_products') || [])
   }
 }
