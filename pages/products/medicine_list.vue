@@ -41,7 +41,7 @@
         </view>
       </view>
 
-      <text class="arrow-icon">></text>
+      <text class="arrow-icon" >{{'>'}}</text>
     </view>
 
     <view class="intro-divider"></view>
@@ -70,14 +70,14 @@
       <view class="product-list-wrapper">
         <view class="product-list-header">
           <view class="header-left">
-            <text class="section-title">药房商品</text>
-            <view class="switch-icon-btn" @click="switchToHorizontalLayout">
+            <text class="section-title">药品</text>
+<!--            <view class="switch-icon-btn" @click="switchToHorizontalLayout">
               <image
                 class="switch-icon"
                 :src="getImageUrl('/profile/liaoning_zongyi/list_icon1.png')"
                 mode="aspectFit"
               ></image>
-            </view>
+            </view>-->
             <view class="sort-section">
               <view class="sort-btn" :class="{ active: sortType === '' }" @click="toggleSort('')">
                 <text class="sort-text">综合</text>
