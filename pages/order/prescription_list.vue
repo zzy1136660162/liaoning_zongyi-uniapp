@@ -6,20 +6,20 @@
 <template>
     <view class="page">
     <!-- 页面头部：医院信息和用户信息 -->
-      <view class="header-info">
+<!--      <view class="header-info">
         <view class="hospital">{{ hospitalName }}</view>
         <view class="user-info" @click="onSelectUser">
           {{ currentUserName }}
         </view>
-      </view>
+      </view>-->
       
     <!-- 日期选择区域（目前用于占位，后续可扩展筛选功能） -->
-      <view class="date-section">
+<!--      <view class="date-section">
         <view class="date-label">日期选择</view>
         <view class="date-range" @click="onSelectDate">
         选择时间范围
         </view>
-      </view>
+      </view>-->
       
     <!-- 标签筛选区域（保留布局结构，后续可扩展） -->
       <view class="filter-tabs">
@@ -55,7 +55,7 @@
           <view class="prescription-item">
             <!-- 商品选择框 -->
             <view class="prescription-checkbox" @click="toggleCartSelect(cartItem.id)">
-              <view class="checkbox" :class="{ checked: selectedCartIds.includes(cartItem.id) }"></view>
+              <view class="checkbox" :class="{ checked: isCartItemSelected(cartItem.id) }"></view>
             </view>
 
             <!-- 商品信息内容区域 -->
@@ -128,7 +128,7 @@
   <script setup>
 // ==================== 导入依赖 ====================
 // Vue 3 响应式 API
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 // uni-app 生命周期钩子
 import { onLoad } from '@dcloudio/uni-app'
 // 时间处理库
@@ -139,7 +139,6 @@ import {
   STORAGE_KEY_USER_REGISTER,
   STORAGE_KEY_CURRENT_ORDER,
   STORAGE_KEY_VERIFIED_PRODUCTS,
-  STORAGE_KEY_PRODUCT_QUANTITIES,
   STORAGE_KEY_CURRENT_CONSULTATION_ID
 } from '@/utils/storage.js'
 
@@ -147,7 +146,6 @@ import {
 import {
   loadCartItems,
   buildOrderInfo,
-  calculateTotalPrice,
   getCurrentCheckoutProductIds,
   getCartProductQuantity,
   updateProductSelection,
@@ -159,7 +157,6 @@ import {
 // ==================== API 接口 ====================
 import { getConsultationDetail } from '@/api/consultation.js'
 import { getProductDetail } from '@/api/product.js'
-import { getPrescriptionItems, getPrescriptionByConsultation } from '@/api/consultation.js'
 
 // ==================== 其他 ====================
 import { logPageView } from '@/api/access-log.js'
@@ -173,7 +170,7 @@ import { logPageView } from '@/api/access-log.js'
 /**
  * 当前用户名 - 显示在页面顶部右侧
  */
-  const currentUserName = ref('')
+const currentUserName = ref('')
 
 /**
  * 选中的购物车产品ID列表 - 用户选择要购买的处方
@@ -188,7 +185,60 @@ const selectedCartIds = ref([])
 /**
  * 当前显示的处方信息 - 用于显示就诊时间等信息
  */
-  const currentPrescription = ref(null)
+const currentPrescription = ref(null)
+
+const normalizeCartId = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return ''
+  }
+  return String(value)
+}
+
+const buildSelectionMap = (productIds = [], selected = true) => {
+  return productIds.reduce((result, productId) => {
+    const normalizedId = normalizeCartId(productId)
+    if (normalizedId) {
+      result[normalizedId] = selected
+    }
+    return result
+  }, {})
+}
+
+const isCartItemSelected = (cartItemId) => {
+  const normalizedId = normalizeCartId(cartItemId)
+  return normalizedId ? selectedCartIds.value.includes(normalizedId) : false
+}
+
+const syncSelectedCartState = () => {
+  const cartIds = cartItemsList.value
+    .map(item => normalizeCartId(item.id))
+    .filter(Boolean)
+
+  if (cartIds.length === 0) {
+    selectedCartIds.value = []
+    return
+  }
+
+  const checkoutIds = getCurrentCheckoutProductIds()
+    .map(id => normalizeCartId(id))
+    .filter(Boolean)
+
+  const selectedIds = checkoutIds.length > 0
+    ? checkoutIds
+    : getSelectedProductIds().map(id => normalizeCartId(id)).filter(Boolean)
+
+  const matchedSelectedIds = cartIds.filter(id => selectedIds.includes(id))
+
+  if (matchedSelectedIds.length === 0) {
+    selectedCartIds.value = [...cartIds]
+    updateMultipleSelections(buildSelectionMap(cartIds, true))
+    setCheckoutProductIds(cartIds)
+    return
+  }
+
+  selectedCartIds.value = matchedSelectedIds
+  setCheckoutProductIds(matchedSelectedIds)
+}
   
   // ==================== 生命周期钩子 ====================
   /**
@@ -196,6 +246,13 @@ const selectedCartIds = ref([])
    * 支持通过 URL 参数或本地存储获取咨询ID
    */
   onLoad((options) => {
+    const selectedItems = options?.selectedItems
+      ? options.selectedItems.split(',').map(id => normalizeCartId(id)).filter(Boolean)
+      : []
+    if (selectedItems.length > 0) {
+      setCheckoutProductIds(selectedItems)
+    }
+
     const consultationId = options?.consultationId || uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
     if (consultationId) {
       loadSingleConsultation(consultationId)
@@ -208,6 +265,7 @@ const selectedCartIds = ref([])
    */
   onMounted(async () => {
     await loadProducts()
+    loadUserInfo()
     loadSelectedProducts() // 恢复用户之前的选择状态
     loadUserInfo()
 
@@ -231,8 +289,7 @@ const selectedCartIds = ref([])
    */
   const loadSelectedProducts = () => {
     try {
-      const checkoutIds = getCurrentCheckoutProductIds()
-      selectedCartIds.value = checkoutIds.length > 0 ? checkoutIds : getSelectedProductIds()
+      syncSelectedCartState()
     } catch (e) {
       console.error('加载选中产品状态失败:', e)
       selectedCartIds.value = []
@@ -375,7 +432,7 @@ const selectedCartIds = ref([])
    * 已选中的购物车商品数量（处方数量）
    */
   const selectedCartCount = computed(() => {
-    return selectedCartIds.value.length
+    return cartItemsList.value.filter(item => isCartItemSelected(item.id)).length
   })
 
   /**
@@ -383,7 +440,7 @@ const selectedCartIds = ref([])
    */
   const isCartAllSelected = computed(() => {
     return cartItemsList.value.length > 0 &&
-           selectedCartIds.value.length === cartItemsList.value.length
+           cartItemsList.value.every(item => isCartItemSelected(item.id))
   })
 
   /**
@@ -393,9 +450,7 @@ const selectedCartIds = ref([])
     if (selectedCartIds.value.length === 0) return 0
 
     // 过滤出已选中的商品
-    const selectedItems = cartItemsList.value.filter(item =>
-      selectedCartIds.value.includes(item.id)
-    )
+    const selectedItems = cartItemsList.value.filter(item => isCartItemSelected(item.id))
 
     // 计算总价：单价 × 数量
     return selectedItems.reduce((total, item) =>
@@ -425,21 +480,26 @@ const selectedCartIds = ref([])
    * @param {string} cartItemId - 商品ID
    */
   const toggleCartSelect = (cartItemId) => {
-    const isCurrentlySelected = selectedCartIds.value.includes(cartItemId)
+    const normalizedId = normalizeCartId(cartItemId)
+    if (!normalizedId) {
+      return
+    }
+    const isCurrentlySelected = selectedCartIds.value.includes(normalizedId)
     const newSelectedState = !isCurrentlySelected
 
     // 更新内存中的选中状态
     if (newSelectedState) {
-      selectedCartIds.value.push(cartItemId)
+      selectedCartIds.value.push(normalizedId)
     } else {
-      const index = selectedCartIds.value.indexOf(cartItemId)
+      const index = selectedCartIds.value.indexOf(normalizedId)
       if (index > -1) {
         selectedCartIds.value.splice(index, 1)
       }
     }
 
     // 持久化到storage
-    updateProductSelection(cartItemId, newSelectedState)
+    updateProductSelection(normalizedId, newSelectedState)
+    setCheckoutProductIds(selectedCartIds.value)
   }
   
   /**
@@ -447,7 +507,9 @@ const selectedCartIds = ref([])
    * 如果当前已全选，则取消全选；否则全选所有商品
    */
   const toggleCartSelectAll = () => {
-    const allProductIds = cartItemsList.value.map(item => item.id)
+    const allProductIds = cartItemsList.value
+      .map(item => normalizeCartId(item.id))
+      .filter(Boolean)
     const newSelectedState = !isCartAllSelected.value
 
     // 更新内存中的选中状态
@@ -461,6 +523,7 @@ const selectedCartIds = ref([])
 
     // 使用cart.js中的批量更新函数
     updateMultipleSelections(selectionMap)
+    setCheckoutProductIds(selectedCartIds.value)
   }
   
 /**
@@ -803,7 +866,7 @@ const selectedCartIds = ref([])
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: 25px;
     background: #fff;
     display: flex;
     justify-content: space-between;

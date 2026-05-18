@@ -1,52 +1,59 @@
 <template>
-	<view class="questionnaire-container">
-		<view v-if="loading" class="loading-section">
-			<text>加载问卷中...</text>
-		</view>
-		<view class="content-section" v-else-if="questions && questions.length > 0">
-			<view 
-				class="question-item" 
-				v-for="(question, index) in questions" 
-				:key="'question-' + index"
-			>
-				<view class="question-header">
-					<text class="question-label">Q{{ index + 1 }}. {{ question.text }}</text>
-					<text class="question-type">单选</text>
-				</view>
-				<view class="options">
-					<view 
-						class="option-item" 
-						v-for="(option, optIndex) in question.options" 
-						:key="'option-' + index + '-' + optIndex"
-						:class="{ active: question.selectedOptionId === option.optionId }"
-						@click="selectAnswer(index, option.optionId)"
-					>
-						<view class="radio">
-							<view class="radio-inner" v-if="question.selectedOptionId === option.optionId"></view>
-						</view>
-						<text class="option-text">{{ option.label }}</text>
-					</view>
-				</view>
-			</view>
-			
-			<view class="question-count">- 共{{ questions.length }}题 -</view>
-			
-			<view class="button-group">
-				<button class="save-btn" @click="saveDraft">暂存</button>
-				<button class="submit-btn" @click="submitAnswer">提交</button>
-			</view>
-		</view>
-		<view v-else class="empty-section">
-			<text>暂无问卷数据</text>
-		</view>
-	</view>
+  <view class="questionnaire-container">
+    <view v-if="loading" class="loading-section">
+      <text>Loading questionnaire...</text>
+    </view>
+    <view class="content-section" v-else-if="questions && questions.length > 0">
+      <view
+        class="question-item"
+        v-for="(question, index) in questions"
+        :key="'question-' + index"
+      >
+        <view class="question-header">
+          <text class="question-label">Q{{ index + 1 }}. {{ question.text }}</text>
+          <text class="question-type">Single choice</text>
+        </view>
+        <view class="options">
+          <view
+            class="option-item"
+            v-for="(option, optIndex) in question.options"
+            :key="'option-' + index + '-' + optIndex"
+            :class="{ active: question.selectedOptionId === option.optionId }"
+            @click="selectAnswer(index, option.optionId)"
+          >
+            <view class="radio">
+              <view class="radio-inner" v-if="question.selectedOptionId === option.optionId"></view>
+            </view>
+            <text class="option-text">{{ option.label }}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="question-count">- {{ questions.length }} questions -</view>
+
+      <view class="button-group">
+        <button class="save-btn" @click="saveDraft">Save draft</button>
+        <button class="submit-btn" @click="submitAnswer">Submit</button>
+      </view>
+    </view>
+    <view v-else class="empty-section">
+      <text>No questionnaire data</text>
+    </view>
+  </view>
 </template>
 
 <script>
-import { addCartItem, getCartProductQuantity, resolveCartCompatibility } from '@/utils/cart.js'
+import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
+import {
+  addCartItem,
+  getCartProductQuantity,
+  prepareCheckout,
+  resolveCartCompatibility
+} from '@/utils/cart.js'
 import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId, submitQuestionnaire } from '@/api/questionnaire.js'
 import { logPageView } from '@/api/access-log.js'
+import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 
 export default {
   data() {
@@ -94,7 +101,7 @@ export default {
     async loadQuestionnaire() {
       if (!this.productId) {
         uni.showToast({
-          title: '商品信息缺失',
+          title: 'Missing product information',
           icon: 'none'
         })
         return
@@ -102,7 +109,7 @@ export default {
 
       try {
         this.loading = true
-        uni.showLoading({ title: '加载问卷...' })
+        uni.showLoading({ title: 'Loading questionnaire...' })
         const response = await getQuestionnaireByProductId(this.productId)
         const questionnaire = response.data || response
 
@@ -127,7 +134,7 @@ export default {
       } catch (error) {
         console.error('loadQuestionnaire failed:', error)
         uni.showToast({
-          title: error.message || '加载问卷失败',
+          title: error.message || 'Failed to load questionnaire',
           icon: 'none'
         })
         setTimeout(() => {
@@ -138,6 +145,33 @@ export default {
         uni.hideLoading()
       }
     },
+    goCheckout(detail) {
+      const checkout = prepareCheckout([String(detail.id)], [{
+        id: 'questionnaire_checkout',
+        products: [detail]
+      }])
+      if (!checkout.valid) {
+        uni.showToast({
+          title: checkout.message,
+          icon: 'none'
+        })
+        return false
+      }
+
+      const selectedItems = checkout.productIds.join(',')
+      if (Number(detail.bizType) === BIZ_TYPE_HEALTH_GOODS) {
+        uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+        uni.navigateTo({
+          url: `/pages/order/confirm?selectedItems=${selectedItems}`
+        })
+        return true
+      }
+
+      uni.navigateTo({
+        url: `/pages/dispense/apply?selectedItems=${selectedItems}`
+      })
+      return true
+    },
     selectAnswer(questionIndex, optionId) {
       this.questions[questionIndex].selectedOptionId = optionId
       const option = this.questions[questionIndex].options.find(opt => opt.optionId === optionId)
@@ -147,14 +181,14 @@ export default {
     },
     saveDraft() {
       uni.showToast({
-        title: '已暂存',
+        title: 'Draft saved',
         icon: 'success'
       })
     },
     async submitAnswer() {
       if (!this.productId) {
         uni.showToast({
-          title: '缺少商品信息',
+          title: 'Missing product information',
           icon: 'none'
         })
         return
@@ -162,7 +196,7 @@ export default {
 
       if (!this.questionnaireId) {
         uni.showToast({
-          title: '问卷信息不完整',
+          title: 'Incomplete questionnaire',
           icon: 'none'
         })
         return
@@ -172,14 +206,14 @@ export default {
       const allRequiredAnswered = requiredQuestions.every(q => q.selectedOptionId != null)
       if (!allRequiredAnswered) {
         uni.showToast({
-          title: '请完成所有必答题',
+          title: 'Please complete all required questions',
           icon: 'none'
         })
         return
       }
 
       try {
-        uni.showLoading({ title: '提交中...' })
+        uni.showLoading({ title: 'Submitting...' })
         const answers = this.questions
           .filter(q => q.selectedOptionId != null)
           .map(q => ({
@@ -206,14 +240,19 @@ export default {
           })
           if (!success) {
             uni.showToast({
-              title: '加入购物车失败',
+              title: 'Failed to add to cart',
               icon: 'none'
             })
             return
           }
 
+          if (this.action === 'buy') {
+            this.goCheckout(detail)
+            return
+          }
+
           uni.showToast({
-            title: result.tipMessage || '已加入购物车',
+            title: result.tipMessage || 'Added to cart',
             icon: 'success'
           })
 
@@ -229,10 +268,10 @@ export default {
         }
 
         uni.showModal({
-          title: '提示',
-          content: result.tipMessage || '当前情况暂不推荐使用，建议前往医院就诊。',
+          title: 'Prompt',
+          content: result.tipMessage || 'This product is not recommended for the current condition. Please visit a hospital.',
           showCancel: false,
-          confirmText: '确定',
+          confirmText: 'OK',
           success: () => {
             uni.navigateBack()
           }
@@ -240,7 +279,7 @@ export default {
       } catch (error) {
         console.error('submitAnswer failed:', error)
         uni.showToast({
-          title: error.message || '提交失败，请重试',
+          title: error.message || 'Submit failed, please try again',
           icon: 'none'
         })
       } finally {
@@ -253,145 +292,145 @@ export default {
 
 <style scoped>
 .questionnaire-container {
-	width: 100%;
-	min-height: 100vh;
-	background-color: #ffffff;
-	display: flex;
-	flex-direction: column;
+  width: 100%;
+  min-height: 100vh;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
 }
 
 .content-section {
-	padding: 40rpx 30rpx;
-	flex: 1;
+  padding: 40rpx 30rpx;
+  flex: 1;
 }
 
 .question-item {
-	margin-bottom: 50rpx;
+  margin-bottom: 50rpx;
 }
 
 .question-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	margin-bottom: 20rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
 }
 
 .question-label {
-	font-size: 30rpx;
-	font-weight: 500;
-	color: #333333;
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #333333;
 }
 
 .question-type {
-	font-size: 24rpx;
-	color: #FFB6C1;
-	background-color: #FFF0F5;
-	padding: 4rpx 12rpx;
-	border-radius: 8rpx;
+  font-size: 24rpx;
+  color: #FFB6C1;
+  background-color: #FFF0F5;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
 }
 
 .options {
-	display: flex;
-	flex-direction: column;
+  display: flex;
+  flex-direction: column;
 }
 
 .options .option-item {
-	margin-bottom: 20rpx;
+  margin-bottom: 20rpx;
 }
 
 .options .option-item:last-child {
-	margin-bottom: 0;
+  margin-bottom: 0;
 }
 
 .option-item {
-	display: flex;
-	align-items: center;
-	padding: 20rpx;
-	background-color: #f9f9f9;
-	border-radius: 12rpx;
-	transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  padding: 20rpx;
+  background-color: #f9f9f9;
+  border-radius: 12rpx;
+  transition: all 0.3s;
 }
 
 .option-item.active {
-	background-color: #FFF0F5;
+  background-color: #FFF0F5;
 }
 
 .radio {
-	width: 40rpx;
-	height: 40rpx;
-	border: 2rpx solid #cccccc;
-	border-radius: 50%;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	margin-right: 20rpx;
-	transition: all 0.3s;
+  width: 40rpx;
+  height: 40rpx;
+  border: 2rpx solid #cccccc;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  transition: all 0.3s;
 }
 
 .option-item.active .radio {
-	border-color: #FFB6C1;
+  border-color: #FFB6C1;
 }
 
 .radio-inner {
-	width: 24rpx;
-	height: 24rpx;
-	background-color: #FFB6C1;
-	border-radius: 50%;
+  width: 24rpx;
+  height: 24rpx;
+  background-color: #FFB6C1;
+  border-radius: 50%;
 }
 
 .option-text {
-	font-size: 28rpx;
-	color: #333333;
+  font-size: 28rpx;
+  color: #333333;
 }
 
 .question-count {
-	text-align: center;
-	font-size: 24rpx;
-	color: #999999;
-	margin: 40rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #999999;
+  margin: 40rpx 0;
 }
 
 .button-group {
-	display: flex;
-	margin-top: 40rpx;
+  display: flex;
+  margin-top: 40rpx;
 }
 
 .button-group .save-btn {
-	margin-right: 20rpx;
+  margin-right: 20rpx;
 }
 
 .button-group .submit-btn {
-	margin-left: 0;
+  margin-left: 0;
 }
 
 .save-btn,
 .submit-btn {
-	flex: 1;
-	height: 88rpx;
-	border-radius: 44rpx;
-	font-size: 30rpx;
-	border: none;
-	display: flex;
-	align-items: center;
-	justify-content: center;
+  flex: 1;
+  height: 88rpx;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .save-btn {
-	background-color: #FFF0F5;
-	color: #FFB6C1;
+  background-color: #FFF0F5;
+  color: #FFB6C1;
 }
 
 .submit-btn {
-	background: linear-gradient(135deg, #FFB6C1 0%, #FFC0CB 100%);
-	color: #ffffff;
-	font-weight: 500;
+  background: linear-gradient(135deg, #FFB6C1 0%, #FFC0CB 100%);
+  color: #ffffff;
+  font-weight: 500;
 }
 
 .loading-section,
 .empty-section {
-	padding: 100rpx 30rpx;
-	text-align: center;
-	font-size: 28rpx;
-	color: #999999;
+  padding: 100rpx 30rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #999999;
 }
 </style>
