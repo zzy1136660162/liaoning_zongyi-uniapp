@@ -6,59 +6,59 @@
     <view class="hospital-intro">
       <view class="logo-wrap">
         <image class="hospital-logo" src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png" mode="aspectFit" />
-        <view class="logo-badge">閻庤蓱閺岀喖寮Δ鍕厒閹?/view>
+        <view class="logo-badge">官方旗舰店</view>
       </view>
       <view class="hospital-info">
         <view class="hospital-name-row">
-          <view class="hospital-badge">闁告牕顭峰▍宀勬嚊椤忓洦鍎?/view>
-          <text class="hospital-name">閺夊牐妫勯悾鐐寸▔椤撶偛闉嶉柤绛嬪灠閵囧洨鈧冻绠撳顔句沪閻愭彃闉嶉梻鍕╁灩閺呫垽宕?/text>
-          <text class="verify-icon">闁?/text>
+          <view class="hospital-badge">医院自营</view>
+          <text class="hospital-name">辽宁中医药大学附属医院商城</text>
+          <text class="verify-icon">✓</text>
         </view>
-        <view class="hospital-desc">闁哄鍟埢澶屾媼閵堝牏妲?鐠?闁告繀娴囧婵囩┍濠靛顔?鐠?闁衡偓閹呭閻犳劦鍙€瀹?/view>
+        <view class="hospital-desc">权威认证 · 品质保障 · 放心购药</view>
         <view class="hospital-tags">
           <view class="tag-item">
-            <text class="tag-icon">妫ｅ啯绀夐柨?/text>
-            <text class="tag-text">婵繐绲介幖褎绌卞┑濠勬</text>
+            <text class="tag-icon">🛡️</text>
+            <text class="tag-text">正品保证</text>
           </view>
           <view class="tag-item">
-            <text class="tag-icon">闁?/text>
-            <text class="tag-text">24h闁告瑦鍨奸幓?/text>
+            <text class="tag-icon">⏰</text>
+            <text class="tag-text">24h发货</text>
           </view>
           <view class="tag-item">
-            <text class="tag-icon">妫ｅ啯鎯?/text>
-            <text class="tag-text">闁革负鍔庨崵搴☆嚕閳ь剟寮?/text>
+            <text class="tag-icon">📋</text>
+            <text class="tag-text">在线开方</text>
           </view>
           <view class="tag-item">
-            <text class="tag-icon">妫ｅ啯顔?/text>
-            <text class="tag-text">濞戞挻鎸风粭鐔煎礌閸涢偊妫?/text>
+            <text class="tag-icon">🚚</text>
+            <text class="tag-text">专业包装</text>
           </view>
         </view>
         <!-- <view class="hospital-stats">
           <view class="stat-item">
             <text class="stat-value">9999+</text>
-            <text class="stat-label">闁哄牆鐗撻弨銏ゆ煂?/text>
+            <text class="stat-label">月销量</text>
           </view>
           <view class="stat-divider"></view>
           <view class="stat-item">
             <text class="stat-value">4.9</text>
-            <text class="stat-label">缂備胶鍘ч幃搴ｆ嫚閸曨偄鐎?/text>
+            <text class="stat-label">综合评分</text>
           </view>
           <view class="stat-divider"></view>
           <view class="stat-item">
             <text class="stat-value">100%</text>
-            <text class="stat-label">濠靛倸鈧喓妲戦柣?/text>
+            <text class="stat-label">好评率</text>
           </view>
         </view> -->
       </view>
-      <text class="arrow-icon">闁?/text>
+      <text class="arrow-icon">›</text>
     </view>
     <view class="intro-divider"></view>
 
     <view class="search-section">
       <view class="search-bar">
         <uni-icons type="search" size="18" color="#999999"></uni-icons>
-        <input class="search-input" placeholder="闁瑰吋绮庨崒銊╂⒔閵忕姴鏁堕柤绛嬪灠閹? v-model="searchKeyword" @input="handleSearch" />
-        <button class="search-btn" @click="handleSearch">闁瑰吋绮庨崒?/button>
+        <input class="search-input" placeholder="搜索院内药品" v-model="searchKeyword" @input="handleSearch" />
+        <button class="search-btn" @click="handleSearch">搜索</button>
       </view>
     </view>
 
@@ -79,25 +79,25 @@
         <view class="product-list-header">
           <view class="header-left">
             <view class="prescription-title" @click="switchToHorizontalLayout">
-              <text class="prescription-text">闁肩瓔鍨遍弻?/text>
+              <text class="prescription-text">药方</text>
             </view>
             <view class="sort-section">
               <view class="sort-btn" :class="{ active: sortType === '' }" @click="toggleSort('')">
-                <text class="sort-text">缂備胶鍘ч幃?/text>
+                <text class="sort-text">综合</text>
               </view>
               <view class="sort-btn" :class="{ active: sortType === 'sales' }" @click="toggleSort('sales')">
-                <text class="sort-text">闂佸簱鍋撻梺?/text>
-                <text class="sort-arrow" :class="{ desc: sortType === 'sales' && sortOrder === 'desc' }">闁?/text>
+                <text class="sort-text">销量</text>
+                <text class="sort-arrow" :class="{ desc: sortType === 'sales' && sortOrder === 'desc' }">↓</text>
               </view>
               <view class="sort-btn" :class="{ active: sortType === 'price' }" @click="toggleSort('price')">
-                <text class="sort-text">濞寸娀鏀遍悧?/text>
-                <text class="sort-arrow" :class="{ desc: sortType === 'price' && sortOrder === 'desc' }">闁?/text>
+                <text class="sort-text">价格</text>
+                <text class="sort-arrow" :class="{ desc: sortType === 'price' && sortOrder === 'desc' }">↓</text>
               </view>
             </view>
           </view>
           <!-- <view class="history-order" @click="goToHistory">
             <uni-icons type="list" size="18" color="#666666"></uni-icons>
-            <text class="history-text">闁告ê妫楄ぐ鍓佹媼閵忕姴绀?/text>
+            <text class="history-text">历史订单</text>
           </view> -->
         </view>
 
@@ -106,13 +106,13 @@
             <view class="product-item" v-for="product in filteredProducts" :key="product.id">
               <view class="image-wrapper">
                 <image class="product-image" :src="getImageUrl(product.image)" mode="aspectFill" @click="goToDetail(product)"></image>
-                <view class="hot-badge" v-if="product.isNewProduct === 1">闁?/view>
+                <view class="hot-badge" v-if="product.isNewProduct === 1">新</view>
               </view>
               <view class="product-info">
                 <text class="product-name" @click="goToDetail(product)">
-                  <text class="self-tag" v-if="product.bizType === 1">闁煎浜為悥?/text>
-                  <text class="self-tag2" v-if="product.isHospitalStarFormula === 1">闂傚嫨鍨煎Λ宀勬偝鐎ｎ剙顤傞柛鎺曟硾婢?/text>
-                  <text class="self-tag3" v-if="product.isNewProduct === 1">闂佹彃绉堕ˉ濠囧棘閺夋寧鎯?/text>
+                  <text class="self-tag" v-if="product.bizType === 1">自研</text>
+                  <text class="self-tag2" v-if="product.isHospitalStarFormula === 1">院藏王牌制剂</text>
+                  <text class="self-tag3" v-if="product.isNewProduct === 1">重磅新品</text>
                   {{ product.name }}
                 </text>
                 <text class="product-desc" v-if="product.description">{{ product.description }}</text>
@@ -125,7 +125,7 @@
                       <button class="quantity-btn" @click="increaseQuantity(product)">+</button>
                     </view>
                     <template v-else>
-                      <text class="product-price">闁跨噥娈巤 Number(product.price || 0).toFixed(2) }}</text>
+                      <text class="product-price">￥{{ Number(product.price || 0).toFixed(2) }}</text>
                       <view class="add-btn" @click="goToNotice(product)">+</view>
                     </template>
                   </view>
@@ -145,10 +145,10 @@
         <view class="cart-badge" v-if="cartCount > 0">{{ cartCount }}</view>
       </view>
       <view class="cart-info">
-        <text class="cart-total">闁?{{ totalPrice.toFixed(2) }}</text>
-        <text class="cart-tip">濞戞挸绉撮幆鍫熷緞瀹ュ牏妲氶悹鎰缁辨繄鈧湱鍋ゅ顖炴煂閹达富鏉哄ù鐘劤缁劎绮诲鎹愮闁?/text>
+        <text class="cart-total">￥ {{ totalPrice.toFixed(2) }}</text>
+        <text class="cart-tip">不含复诊费，实际金额以结算为准</text>
       </view>
-      <button class="submit-btn" @click="handleSubmit">闁圭粯鍔掑?/button>
+      <button class="submit-btn" @click="handleSubmit">提交</button>
     </view> -->
 
     <TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
@@ -169,7 +169,6 @@
 import { STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
 import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
 import {
-  addCartItem,
   getCartEntries,
   getCartProductQuantity,
   loadCartItems,
@@ -177,12 +176,10 @@ import {
   calculateTotalQuantity,
   setCartItemQuantity,
   removeFromCart,
-  prepareCheckout,
-  resolveCartCompatibility
+  prepareCheckout
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
-import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
 const HOSPITAL_BIZ_TYPE = 1
@@ -284,11 +281,11 @@ export default {
     handleSearch() {},
     async loadProducts() {
       try {
-        uni.showLoading({ title: '闁告梻濮惧ù鍥ㄧ▔?..' })
+        uni.showLoading({ title: '加载中...' })
         const categoryList = await getCategoryList(HOSPITAL_BIZ_TYPE)
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categories = [
-          { id: 'all', name: 'All', products: [] },
+          { id: 'all', name: '全部分类', products: [] },
           ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
         ]
         await this.loadAllProducts()
@@ -296,7 +293,7 @@ export default {
         this.loadVerifiedProductsFromStorage()
       } catch (error) {
         console.error('loadProducts failed:', error)
-        uni.showToast({ title: '闁告梻濮惧ù鍥ㄥ緞鏉堫偉袝', icon: 'none' })
+        uni.showToast({ title: '加载失败', icon: 'none' })
       } finally {
         uni.hideLoading()
       }
@@ -354,30 +351,6 @@ export default {
         })
         return
       }
-      const flow = resolveCartCompatibility(product, {
-        ignoreProductId: product?.id
-      })
-      if (!flow.valid) {
-        uni.showToast({
-          title: flow.message,
-          icon: 'none'
-        })
-        return
-      }
-      if (!hasBoundQuestionnaire(product)) {
-        const success = addCartItem(product, 1, {
-          questionnairePassed: true
-        })
-        if (!success) {
-          uni.showToast({
-            title: 'Failed to add to cart',
-            icon: 'none'
-          })
-          return
-        }
-        this.loadVerifiedProductsFromStorage()
-        return
-      }
       uni.navigateTo({
         url: `/pages/products/product_notice?id=${product.id}&quantity=1&action=cart`
       })
@@ -413,7 +386,7 @@ export default {
         return
       }
       if (this.cartItems.length === 0) {
-        uni.showToast({ title: 'Please select at least one product', icon: 'none' })
+        uni.showToast({ title: '请先选择商品', icon: 'none' })
         return
       }
 
