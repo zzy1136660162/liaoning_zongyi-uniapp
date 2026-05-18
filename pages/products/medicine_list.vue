@@ -1,5 +1,5 @@
 <template>
-  <scroll-view class="product-container" scroll-y :scroll-top="scrollTop" @scroll="onPageScroll" :bounces="!isAtBottom">
+  <view class="product-container">
     <view class="top-banner">
       <image class="top-banner-img" src="https://smf.lntcm.com/static/img/yiyuan.jpg" mode="widthFix" />
     </view>
@@ -162,7 +162,7 @@
         transform: `translate(-50%, -50%) scale(${flyBallStyle.scale})`
       }"
     ></view>
-  </scroll-view>
+  </view>
 </template>
 
 <script>
@@ -204,10 +204,7 @@ export default {
       categoryList: [],
       isScrolled: false,
       sortType: '',
-      sortOrder: 'desc',
-      bannerCollapsed: false,
-      isAtBottom: false,
-      scrollTop: 0
+      sortOrder: 'desc'
     }
   },
   computed: {
@@ -260,13 +257,6 @@ export default {
   },
   methods: {
     getImageUrl,
-    onPageScroll(e) {
-      this.isScrolled = e.detail.scrollTop > 100
-      const scrollHeight = e.detail.scrollHeight
-      const clientHeight = e.detail.clientHeight
-      const scrollTop = e.detail.scrollTop
-      this.isAtBottom = scrollTop + clientHeight >= scrollHeight - 10
-    },
     toggleSort(type) {
       if (type === '') {
         this.sortType = ''
@@ -441,7 +431,6 @@ scroll-view ::-webkit-scrollbar {
 }
 .product-container {
   width: 100%;
-  height: 100vh;
   background-color: #f5f5f5;
 }
 
@@ -493,9 +482,9 @@ scroll-view ::-webkit-scrollbar {
 
 .main-content {
   display: flex;
-  height: calc(100vh - 450rpx);
+  height: calc(100vh - 600rpx);
   overflow: scroll;
-  padding-bottom: 50rpx;
+  padding-bottom: 150rpx;
 }
 
 .category-nav {
@@ -643,7 +632,6 @@ scroll-view ::-webkit-scrollbar {
 .product-list {
   overflow: scroll;
   flex: 1;
-  margin-bottom: 110rpx;
 }
 
 .product-items {
@@ -921,7 +909,7 @@ scroll-view ::-webkit-scrollbar {
   background: linear-gradient(135deg, #fafafa, #fff);
   padding: 30rpx 30rpx 10rpx 30rpx;
   position: relative;
-  margin-top: -80rpx;
+  margin-top: -45rpx;
   z-index: 10;
 }
 
