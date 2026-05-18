@@ -277,7 +277,7 @@
       <text class="reminder-text">请仔细阅读药品说明书或在医师、药师指导下使用。药品包装及说明请以实际收到的商品为准。</text>
     </view>
 
-    
+
 
     <view class="bottom-space"></view>
 
@@ -298,7 +298,6 @@
         </view>
       </view>
       <view class="bottom-right">
-        <!-- <view class="btn-service" @click="showCustomerService">客服</view> -->
         <view class="btn-add-cart" @click="addCart">加入购物车</view>
         <view class="btn-buy" @click="buyNow">立即购买</view>
       </view>

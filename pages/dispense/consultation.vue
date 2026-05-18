@@ -127,8 +127,12 @@ const onClose = () => {
 }
 
 const viewPrescription = () => {
+  const ids = selectedProductIds.value.length > 0
+    ? selectedProductIds.value
+    : getCurrentCheckoutProductIds()
+  const query = ids.length > 0 ? `?selectedItems=${ids.join(',')}` : ''
   uni.navigateTo({
-    url: '/pages/order/prescription_list'
+    url: `/pages/order/prescription_list${query}`
   })
 }
 

@@ -25,6 +25,18 @@ export const isHospitalMedical = (product = {}) => {
   return resolveProductBizType(product) === BIZ_TYPE_HOSPITAL_MEDICAL
 }
 
+export const hasBoundQuestionnaire = (product = {}) => {
+  if (Number(product.needQuestionnaire) !== 1) {
+    return false
+  }
+  const questionnaireId = product.questionnaireId
+  if (questionnaireId === undefined || questionnaireId === null) {
+    return false
+  }
+  const normalizedId = String(questionnaireId).trim()
+  return normalizedId !== '' && normalizedId !== '0'
+}
+
 export const resolveProductTypeLabel = (product = {}) => {
   return isHealthGoods(product) ? '健康产品' : '中药'
 }
