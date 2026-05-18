@@ -482,7 +482,7 @@ scroll-view ::-webkit-scrollbar {
 
 .main-content {
   display: flex;
-  height: calc(100vh - 600rpx);
+  height: calc(100vh - 580rpx);
   overflow: scroll;
   padding-bottom: 150rpx;
 }
@@ -909,7 +909,7 @@ scroll-view ::-webkit-scrollbar {
   background: linear-gradient(135deg, #fafafa, #fff);
   padding: 30rpx 30rpx 10rpx 30rpx;
   position: relative;
-  margin-top: -45rpx;
+  margin-top: -50rpx;
   z-index: 10;
 }
 
