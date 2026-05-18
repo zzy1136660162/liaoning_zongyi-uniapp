@@ -104,7 +104,7 @@ import { createOrder } from '@/api/order.js'
 import { getAddressList } from '@/api/address.js'
 import { wechatPay, wechatCombinePay } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
-import { getStoredWeChatOpenId } from '@/api/auth.js'
+import { ensureWeChatIdentity } from '@/api/auth.js'
 
 const orderInfo = ref({
   prescriptions: [],
@@ -296,6 +296,14 @@ const submitOrder = async () => {
   }
   
   try {
+    uni.showLoading({ title: '获取支付信息...' })
+
+    const wechatInfo = await ensureWeChatIdentity()
+    const openid = wechatInfo && wechatInfo.openid
+    if (!openid) {
+      throw new Error('未获取到微信支付信息，请稍后重试')
+    }
+
     uni.showLoading({ title: '提交中...' })
     
     // ✅ 调用后端API创建订单
@@ -335,25 +343,7 @@ const submitOrder = async () => {
       success: async (res) => {
         if (res.confirm) {
           try {
-            // ✅ 获取本地存储的 openid
-            const openid = getStoredWeChatOpenId()
-            console.log('openid',openid);
-            
-            if (!openid) {
-              console.warn('未找到本地存储的openid，可能需要重新登录')
-              uni.showModal({
-                title: '提示',
-                content: '请先登录以获取支付信息',
-                showCancel: false,
-                success: () => {
-                  uni.redirectTo({
-                    url: '/pages/register/register?redirect=' + encodeURIComponent(`/pages/order/confirm`)
-                  })
-                }
-              })
-              return
-            }
-            
+            console.log('openid', openid)
             console.log('使用openid发起支付:', openid)
             
             // 调用微信合单支付（商品+快递分账），传递openid

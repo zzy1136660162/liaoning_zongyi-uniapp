@@ -60,7 +60,7 @@
         <view class="medicines-list">
           <view 
             class="medicine-item"
-            v-for="(item, index) in allCartItems" 
+            v-for="item in allCartItems" 
             :key="item.id"
           >
             <view class="medicine-left">
@@ -180,7 +180,7 @@ const loadCartFromStorage = async () => {
 }
 
 onLoad((options) => {
-  ;(async () => {
+  (async () => {
     console.log(options,'options');
     
   if (options.prescription) {

@@ -43,7 +43,7 @@
       <view class="medicines-list" v-if="allCartItems.length > 0">
         <view 
           class="medicine-item"
-          v-for="(item, index) in allCartItems" 
+          v-for="item in allCartItems" 
           :key="item.id"
         >
           <view class="medicine-info-row">
@@ -392,9 +392,9 @@ onLoad(async (options) => {
         medicineName: consultationData.details || consultationData.medicineName || consultationData.name || consultationData.formulaName || '',
         medicineQuantity: consultationData.doses || consultationData.quantity || consultationData.medicineQuantity || consultationData.packCount || 0,
         // 如果 consultationData 中有提供患者信息，则使用，否则使用从 storage 加载的信息
-        patientName: consultationData.patientName || loadedPatientName || '',
-        patientGender: consultationData.patientGender || loadedPatientGender || '',
-        patientAge: consultationData.patientAge || loadedPatientAge || 0,
+        patientName: consultationData.patientName || consultation.value.patientName || '',
+        patientGender: consultationData.patientGender || consultation.value.patientGender || '',
+        patientAge: consultationData.patientAge || consultation.value.patientAge || 0,
         // 统一价格计算：单价 * 数量 = 总价（与处方详情页和商品详情页保持一致）
         productPrice: consultationData.productPrice || 4.51 // 单价
       }

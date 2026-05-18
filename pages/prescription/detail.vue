@@ -59,7 +59,7 @@
             <!-- 显示处方药品列表 -->
             <view v-if="detail.prescriptionItems && detail.prescriptionItems.length > 0" class="rp-items">
               <view
-                  v-for="(item, index) in detail.prescriptionItems"
+                  v-for="item in detail.prescriptionItems"
                   :key="item.id"
                   class="rp-item"
               >
@@ -131,7 +131,7 @@ import {
   STORAGE_KEY_USER_REGISTER,
   STORAGE_KEY_PRESCRIPTION_ORDERS,
   STORAGE_KEY_VERIFIED_PRODUCTS,
-  STORAGE_KEY_PRODUCT_QUANTITIES
+  STORAGE_KEY_PRODUCT_QUANTITIES, STORAGE_KEY_SELECTED_PRODUCTS
 } from '@/utils/storage.js'
 import { getPrescriptionDetail, getPrescriptionItems } from '@/api/consultation.js'
 import { getProductDetail } from '@/api/product.js'
@@ -640,7 +640,7 @@ export default {
                   if (pPharmacistId) pharmacistIds.add(pPharmacistId)
                 }
               } catch (prodErr) {
-                console.warn('获取商品详情失败:', item.id || item.product_id || productId, prodErr)
+                console.warn('get product detail failed:', item.id || item.product_id || item.productId, prodErr)
               }
             }
 
@@ -704,7 +704,7 @@ export default {
                     // 显示医生表中的 avatarUrl（兼容多种字段名）
                     const signatureUrl = doc.signatureUrl
                     this.detail.doctorSignatureUrl = getImageUrl(signatureUrl)
-                    console.log('设置 detail.doctorSignatureUrl =', this.detail.doctorSignatureUrl, 'raw avatar field=', avatar)
+                    console.log('set detail.doctorSignatureUrl =', this.detail.doctorSignatureUrl, 'raw avatar field=', signatureUrl)
                     // 补充医生基础信息
                     this.detail.doctorName = this.detail.doctorName || doc.name || this.detail.doctorName
                   }
@@ -721,7 +721,7 @@ export default {
                   if (ph) {
                     const signatureUrl = ph.signatureUrl
                     this.detail.pharmacistSignatureUrl = getImageUrl(signatureUrl)
-                    console.log('设置 detail.pharmacistSignatureUrl =', this.detail.pharmacistSignatureUrl, 'raw avatar field=', avatarPh)
+                    console.log('set detail.pharmacistSignatureUrl =', this.detail.pharmacistSignatureUrl, 'raw avatar field=', signatureUrl)
                     this.detail.pharmacistName = this.detail.pharmacistName || ph.name || this.detail.pharmacistName
                   }
                 } catch (phErr) {

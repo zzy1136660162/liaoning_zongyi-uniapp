@@ -1,6 +1,6 @@
 <template>
 	<view class="cart-container">
-		<!-- 购物车标题栏 -->
+		<!-- 璐墿杞︽爣棰樻爮 -->
 		<view class="cart-header">
 			<view class="header-left">
 				<text class="header-title">🛒 我的购物车</text>
@@ -12,33 +12,33 @@
 			<view class="deco-dot dot3"></view>
 		</view>
 
-		<!-- 购物车内容区域 -->
+		<!-- 璐墿杞﹀唴瀹瑰尯鍩?-->
 		<view class="cart-content">
-			<!-- 空购物车状态 -->
+			<!-- 绌鸿喘鐗╄溅鐘舵€?-->
 			<view class="empty-cart" v-if="cartItems.length === 0">
 				<image class="empty-icon" :src="getImageUrl('/profile/liaoning_zongyi/empty_cart.png')" mode="aspectFit"></image>
 				<text class="empty-text">购物车还是空的</text>
 				<button class="go-shopping-btn" @click="goShopping">去逛逛</button>
 			</view>
 
-			<!-- 购物车商品列表 -->
+			<!-- 璐墿杞﹀晢鍝佸垪琛?-->
 			<view class="cart-list" v-else>
-				<view class="cart-item" v-for="(item, index) in cartItems" :key="item.id">
-					<!-- 选择框 -->
+				<view class="cart-item" v-for="item in cartItems" :key="item.id">
+					<!-- 閫夋嫨妗?-->
 					<view class="checkbox-wrapper" @click="toggleItemSelection(item.id)">
 						<view class="checkbox" :class="{ checked: selectedItems.includes(item.id) }">
 							<uni-icons type="checkmarkempty" size="16" color="#ffffff" v-if="selectedItems.includes(item.id)"></uni-icons>
 						</view>
 					</view>
 
-					<!-- 商品信息 -->
+					<!-- 鍟嗗搧淇℃伅 -->
 					<view class="item-content">
 						<image class="item-image" :src="getImageUrl(item.image)" mode="aspectFill" @click="goToProductDetail(item)"></image>
 						<view class="item-info">
 							<text class="item-name" @click="goToProductDetail(item)">{{ item.name }}</text>
-							<text class="item-desc">规格：{{ item.specText }}</text>
+									<text class="item-desc">规格：{{ item.specText }}</text>
 							<view class="item-bottom">
-								<text class="item-price">¥{{ item.price.toFixed(2) }}</text>
+									<text class="item-price">¥{{ item.price.toFixed(2) }}</text>
 								<view class="quantity-controls">
 									<button class="quantity-btn" @click="decreaseQuantity(item)">-</button>
 									<text class="quantity-text">{{ item.quantity }}</text>
@@ -48,7 +48,7 @@
 						</view>
 					</view>
 
-					<!-- 删除按钮（编辑模式下显示） -->
+					<!-- 鍒犻櫎鎸夐挳锛堢紪杈戞ā寮忎笅鏄剧ず锛?-->
 					<view class="delete-btn" v-if="isEditMode" @click="removeItem(item.id)">
 						<uni-icons type="trash" size="20" color="#ff6b6b"></uni-icons>
 					</view>
@@ -56,7 +56,7 @@
 			</view>
 		</view>
 
-		<!-- 底部结算栏 -->
+		<!-- 搴曢儴缁撶畻鏍?-->
 		<view class="checkout-bar" v-if="cartItems.length > 0">
 			<view class="select-all-wrapper" @click="toggleSelectAll">
 				<view class="checkbox" :class="{ checked: isAllSelected }">
@@ -75,7 +75,7 @@
 			</button>
 		</view>
 
-		<!-- Tab Bar 导航栏 -->
+		<!-- Tab Bar 瀵艰埅鏍?-->
 		<TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
 	</view>
 </template>
@@ -175,7 +175,7 @@ export default {
               })
             }
           } catch (error) {
-            console.error(`load cart product detail failed: ${productId}`, error)
+            console.error('load cart product detail failed: ' + productId, error)
           }
         }
 
@@ -256,23 +256,23 @@ export default {
     },
     goToProductDetail(item) {
       uni.navigateTo({
-        url: `/pages/products/medicine_detail?id=${item.id}`
+        url: '/pages/products/medicine_detail?id=' + item.id
       })
     },
     goShopping() {
       uni.navigateTo({
-        url: '/pages/products/priducts_list'
+        url: '/pages/products/medicine_index'
       })
     },
     goToCheckout() {
       if (this.isEditMode) {
         if (this.selectedItems.length === 0) {
-          uni.showToast({ title: '请选择要删除的商品', icon: 'none' })
+					uni.showToast({ title: '请选择要删除的商品', icon: 'none' })
           return
         }
         uni.showModal({
           title: '确认删除',
-          content: `确定要删除选中的${this.selectedItems.length}个商品吗？`,
+          content: '确定要删除选中的 ' + this.selectedItems.length + ' 个商品吗？',
           success: (res) => {
             if (!res.confirm) {
               return
@@ -291,7 +291,7 @@ export default {
       }
 
       if (this.selectedItems.length === 0) {
-        uni.showToast({ title: '请选择要结算的商品', icon: 'none' })
+			uni.showToast({ title: '请选择要结算的商品', icon: 'none' })
         return
       }
 
@@ -317,13 +317,13 @@ export default {
         if (Number(checkout.bizType) === 2) {
           uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
           uni.navigateTo({
-            url: `/pages/order/confirm?selectedItems=${selectedItemsParam}`
+            url: '/pages/order/confirm?selectedItems=' + selectedItemsParam
           })
           return
         }
 
         uni.navigateTo({
-          url: `/pages/dispense/apply?selectedItems=${selectedItemsParam}`
+          url: '/pages/dispense/apply?selectedItems=' + selectedItemsParam
         })
       } catch (error) {
         console.error('goToCheckout failed:', error)
@@ -345,7 +345,7 @@ export default {
   padding-bottom: calc(  env(safe-area-inset-bottom));
 }
 
-/* Banner区域 */
+/* Banner鍖哄煙 */
 .banner-section {
   width: 100%;
   margin-bottom: 20rpx;
@@ -424,7 +424,7 @@ export default {
 
 .cart-content {
   flex: 1;
-  padding: 0 20rpx calc(120rpx + 100rpx + env(safe-area-inset-bottom) + 20rpx) 20rpx; /* 底部内边距：结算栏高度(120rpx) + TabBar高度(100rpx + 安全区域) + 额外间距(40rpx) */
+  padding: 0 20rpx calc(120rpx + 100rpx + env(safe-area-inset-bottom) + 20rpx) 20rpx; /* 搴曢儴鍐呰竟璺濓細缁撶畻鏍忛珮搴?120rpx) + TabBar楂樺害(100rpx + 瀹夊叏鍖哄煙) + 棰濆闂磋窛(40rpx) */
 }
 
 .empty-cart {
@@ -697,9 +697,9 @@ export default {
   color: #999999;
 }
 
-/* Tab Bar 样式已移至组件中 */
+/* Tab Bar 鏍峰紡宸茬Щ鑷崇粍浠朵腑 */
 
-/* 悬停效果 */
+/* 鎮仠鏁堟灉 */
 .cart-item:hover {
   transform: translateY(-2rpx);
   box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.1);

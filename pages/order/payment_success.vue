@@ -1,7 +1,7 @@
 <template>
   <view class="page">
     <view class="content">
-      <!-- 成功图标和文字 -->
+      <!-- 鎴愬姛鍥炬爣鍜屾枃瀛?-->
       <view class="success-header">
         <view class="success-icon-wrapper">
           <view class="success-icon">
@@ -11,14 +11,14 @@
         <text class="success-text">支付成功</text>
       </view>
       
-      <!-- 支付金额 -->
+      <!-- 鏀粯閲戦 -->
       <view class="amount-section">
         <text class="amount-label">支付金额</text>
-        <text class="amount-value" v-if="!loading">¥{{ (paymentInfo.amount || 0).toFixed(2) }}</text>
+        <text class="amount-value" v-if="!loading">楼{{ (paymentInfo.amount || 0).toFixed(2) }}</text>
         <text class="amount-value" v-else>加载中...</text>
       </view>
       
-      <!-- 支付信息卡片 -->
+      <!-- 鏀粯淇℃伅鍗＄墖 -->
       <view class="info-card">
         <view class="info-row">
           <text class="info-label">支付方式</text>
@@ -29,20 +29,20 @@
           <text class="info-value order-no">{{ paymentInfo.orderNo }}</text>
         </view>
         <view class="info-row">
-          <text class="info-label">支付时间</text>
+          <text class="info-label">鏀粯鏃堕棿</text>
           <text class="info-value">{{ paymentInfo.paymentTime }}</text>
         </view>
       </view>
       
-      <!-- 提示信息 -->
+      <!-- 鎻愮ず淇℃伅 -->
       <view class="tip-section">
         <text class="tip-text">订单已提交，我们将尽快为您处理</text>
       </view>
     </view>
     
-    <!-- 底部按钮 -->
+    <!-- 搴曢儴鎸夐挳 -->
     <view class="footer">
-      <button class="complete-btn" @click="goHome">完成</button>
+      <button class="complete-btn" @click="goHome">瀹屾垚</button>
     </view>
   </view>
 </template>
@@ -64,13 +64,13 @@ const paymentInfo = ref({
 
 const loading = ref(true)
 
-// 格式化时间
+// 鏍煎紡鍖栨椂闂?
 const formatTime = (timeStr) => {
   if (!timeStr) return ''
   return dayjs(timeStr).format('YYYY-MM-DD HH:mm:ss')
 }
 
-// 从后端加载订单信息
+// 浠庡悗绔姞杞借鍗曚俊鎭?
 const loadOrderInfo = async (orderId) => {
   if (!orderId) {
     console.warn('订单ID为空，无法加载订单信息')
@@ -83,34 +83,34 @@ const loadOrderInfo = async (orderId) => {
     
     const orderData = await getOrderDetail(orderId)
     
-    console.log('订单详情:', orderData)
+
     
-    // 映射订单数据（优先展示实付金额 paidAmount）
+    // 鏄犲皠璁㈠崟鏁版嵁锛堜紭鍏堝睍绀哄疄浠橀噾棰?paidAmount锛?
     paymentInfo.value.amount = parseFloat(orderData.paidAmount || orderData.totalAmount || orderData.amount || 0)
     paymentInfo.value.orderNo = orderData.orderNo || ''
     
-    // 支付时间：优先使用 payTime，如果没有则使用 createTime
+    // 鏀粯鏃堕棿锛氫紭鍏堜娇鐢?payTime锛屽鏋滄病鏈夊垯浣跨敤 createTime
     const payTime = orderData.payTime || orderData.createTime || orderData.createdAt
     paymentInfo.value.paymentTime = formatTime(payTime)
     
-    // 支付方式：根据 paymentType 判断，默认为在线支付
+    // 鏀粯鏂瑰紡锛氭牴鎹?paymentType 鍒ゆ柇锛岄粯璁や负鍦ㄧ嚎鏀粯
     if (orderData.paymentType) {
       paymentInfo.value.paymentMethod = orderData.paymentType === 'single' ? '在线支付' : orderData.paymentType
     }
     
-    // ✅ 支付成功后，从购物车中移除已下单的商品
-    // 后端现在保证返回 items 字段，每个 item 都有 productId 字段（驼峰命名）
+    // 鉁?鏀粯鎴愬姛鍚庯紝浠庤喘鐗╄溅涓Щ闄ゅ凡涓嬪崟鐨勫晢鍝?
+    // 鍚庣鐜板湪淇濊瘉杩斿洖 items 瀛楁锛屾瘡涓?item 閮芥湁 productId 瀛楁锛堥┘宄板懡鍚嶏級
     if (orderData.items && Array.isArray(orderData.items) && orderData.items.length > 0) {
-      // 提取商品ID（后端返回的是 productId 驼峰命名）
+      // 鎻愬彇鍟嗗搧ID锛堝悗绔繑鍥炵殑鏄?productId 椹煎嘲鍛藉悕锛?
       const productIds = orderData.items
         .map(item => item.productId)
         .filter(Boolean)
-        .map(id => String(id)) // 统一转换为字符串，确保与购物车存储格式一致
+        .map(id => String(id)) // 缁熶竴杞崲涓哄瓧绗︿覆锛岀‘淇濅笌璐墿杞﹀瓨鍌ㄦ牸寮忎竴鑷?
 
       if (productIds.length > 0) {
         const removed = removeFromCart(productIds)
-        console.log('支付成功，已从购物车移除商品:', productIds, removed ? '成功' : '失败')
-        // 通知其他页面购物车已更新
+
+        // 閫氱煡鍏朵粬椤甸潰璐墿杞﹀凡鏇存柊
         uni.$emit('cartUpdated')
       } else {
         console.warn('订单商品列表中没有有效的 productId')
@@ -120,9 +120,9 @@ const loadOrderInfo = async (orderId) => {
     }
 
   } catch (error) {
-    console.error('加载订单信息失败:', error)
+    console.error('鍔犺浇璁㈠崟淇℃伅澶辫触:', error)
     uni.showToast({
-      title: '加载订单信息失败',
+      title: '鍔犺浇璁㈠崟淇℃伅澶辫触',
       icon: 'none',
       duration: 2000
     })
@@ -133,22 +133,22 @@ const loadOrderInfo = async (orderId) => {
 }
 
 onLoad(async (options) => {
-  // 优先从 URL 参数获取订单ID
-  // 记录页面访问日志
+  // 浼樺厛浠?URL 鍙傛暟鑾峰彇璁㈠崟ID
+  // 璁板綍椤甸潰璁块棶鏃ュ織
   const orderId = options.orderId || options.id
-  logPageView('支付成功页面', '用户进入支付成功页面', orderId)
+  logPageView('鏀粯鎴愬姛椤甸潰', '鐢ㄦ埛杩涘叆鏀粯鎴愬姛椤甸潰', orderId)
 
-  // 优先从 URL 参数获取订单ID
+  // 浼樺厛浠?URL 鍙傛暟鑾峰彇璁㈠崟ID
   if (orderId) {
-    // 从后端加载订单信息
+    // 浠庡悗绔姞杞借鍗曚俊鎭?
     await loadOrderInfo(orderId)
   } else {
-    // 如果没有订单ID，使用页面参数作为兜底
+    // 濡傛灉娌℃湁璁㈠崟ID锛屼娇鐢ㄩ〉闈㈠弬鏁颁綔涓哄厹搴?
     if (options.amount) {
       paymentInfo.value.amount = parseFloat(options.amount)
     }
     
-    // 生成临时订单号（仅用于显示，实际应该从后端获取）
+    // 鐢熸垚涓存椂璁㈠崟鍙凤紙浠呯敤浜庢樉绀猴紝瀹為檯搴旇浠庡悗绔幏鍙栵級
     paymentInfo.value.orderNo = options.outTradeNo || '临时订单号'
     paymentInfo.value.paymentTime = formatTime(new Date())
     
@@ -161,27 +161,27 @@ onLoad(async (options) => {
 })
 
 const goHome = () => {
-  // 记录按钮点击日志
+  // 璁板綍鎸夐挳鐐瑰嚮鏃ュ織
   logButtonClick('支付成功页面', '用户点击完成按钮', paymentInfo.value.orderNo)
 
-  // 跳转到产品列表页面
+  // 璺宠浆鍒颁骇鍝佸垪琛ㄩ〉闈?
   uni.redirectTo({
-    url: '/pages/products/priducts_list'
+    url: '/pages/products/medicine_index'
   })
 }
 </script>
 
 <style scoped>
 .page {
-  /* 更干净的浅灰蓝背景 */
+  /* 鏇村共鍑€鐨勬祬鐏拌摑鑳屾櫙 */
   background: #f5f7fb;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   padding-bottom: calc(112rpx + env(safe-area-inset-bottom));
 
-  /* 统一视觉变量（便于后续换主题） */
-  --brand: #16a34a;          /* 更“专业”的绿色 */
+  /* 缁熶竴瑙嗚鍙橀噺锛堜究浜庡悗缁崲涓婚锛?*/
+  --brand: #16a34a;          /* 鏇粹€滀笓涓氣€濈殑缁胯壊 */
   --brand-dark: #15803d;
   --text: #0f172a;
   --text-2: #64748b;
@@ -283,7 +283,7 @@ const goHome = () => {
   font-size: 26rpx;
   color: var(--text);
   font-weight: 600;
-  max-width: 420rpx;        /* 防止订单号把布局撑爆 */
+  max-width: 420rpx;        /* 闃叉璁㈠崟鍙锋妸甯冨眬鎾戠垎 */
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -320,13 +320,13 @@ const goHome = () => {
 
 .complete-btn {
   width: 100%;
-  height: 88rpx;           /* 关键：不要太大 */
-  line-height: 88rpx;      /* 关键：对齐高度 */
-  background: #10b981;     /* 令人愉悦的绿色 */
+  height: 88rpx;           /* 鍏抽敭锛氫笉瑕佸お澶?*/
+  line-height: 88rpx;      /* 鍏抽敭锛氬榻愰珮搴?*/
+  background: #10b981;     /* 浠や汉鎰夋偊鐨勭豢鑹?*/
   color: #fff;
   font-size: 30rpx;
   font-weight: 700;
-  border-radius: 9999px;    /* 更"商务"的圆角，不用 50rpx 那么夸张 */
+  border-radius: 9999px;    /* 鏇?鍟嗗姟"鐨勫渾瑙掞紝涓嶇敤 50rpx 閭ｄ箞澶稿紶 */
   border: none;
   margin: 0;
   padding: 0;

@@ -1,7 +1,7 @@
 <template>
   <view class="questionnaire-container">
     <view v-if="loading" class="loading-section">
-      <text>Loading questionnaire...</text>
+      <text>问卷加载中...</text>
     </view>
     <view class="content-section" v-else-if="questions && questions.length > 0">
       <view
@@ -11,7 +11,7 @@
       >
         <view class="question-header">
           <text class="question-label">Q{{ index + 1 }}. {{ question.text }}</text>
-          <text class="question-type">Single choice</text>
+          <text class="question-type">单选题</text>
         </view>
         <view class="options">
           <view
@@ -29,15 +29,15 @@
         </view>
       </view>
 
-      <view class="question-count">- {{ questions.length }} questions -</view>
+      <view class="question-count">- 共 {{ questions.length }} 题 -</view>
 
       <view class="button-group">
-        <button class="save-btn" @click="saveDraft">Save draft</button>
-        <button class="submit-btn" @click="submitAnswer">Submit</button>
+        <button class="save-btn" @click="saveDraft">暂存</button>
+        <button class="submit-btn" @click="submitAnswer">提交</button>
       </view>
     </view>
     <view v-else class="empty-section">
-      <text>No questionnaire data</text>
+      <text>暂无问卷数据</text>
     </view>
   </view>
 </template>
@@ -101,7 +101,7 @@ export default {
     async loadQuestionnaire() {
       if (!this.productId) {
         uni.showToast({
-          title: 'Missing product information',
+          title: '缺少商品信息',
           icon: 'none'
         })
         return
@@ -109,7 +109,7 @@ export default {
 
       try {
         this.loading = true
-        uni.showLoading({ title: 'Loading questionnaire...' })
+        uni.showLoading({ title: '问卷加载中...' })
         const response = await getQuestionnaireByProductId(this.productId)
         const questionnaire = response.data || response
 
@@ -181,14 +181,14 @@ export default {
     },
     saveDraft() {
       uni.showToast({
-        title: 'Draft saved',
+        title: '已暂存',
         icon: 'success'
       })
     },
     async submitAnswer() {
       if (!this.productId) {
         uni.showToast({
-          title: 'Missing product information',
+          title: '缺少商品信息',
           icon: 'none'
         })
         return
@@ -196,7 +196,7 @@ export default {
 
       if (!this.questionnaireId) {
         uni.showToast({
-          title: 'Incomplete questionnaire',
+          title: '问卷信息不完整',
           icon: 'none'
         })
         return
@@ -206,14 +206,14 @@ export default {
       const allRequiredAnswered = requiredQuestions.every(q => q.selectedOptionId != null)
       if (!allRequiredAnswered) {
         uni.showToast({
-          title: 'Please complete all required questions',
+          title: '请完成所有必答题',
           icon: 'none'
         })
         return
       }
 
       try {
-        uni.showLoading({ title: 'Submitting...' })
+        uni.showLoading({ title: '提交中...' })
         const answers = this.questions
           .filter(q => q.selectedOptionId != null)
           .map(q => ({
@@ -240,7 +240,7 @@ export default {
           })
           if (!success) {
             uni.showToast({
-              title: 'Failed to add to cart',
+              title: '加入购物车失败',
               icon: 'none'
             })
             return
@@ -252,7 +252,7 @@ export default {
           }
 
           uni.showToast({
-            title: result.tipMessage || 'Added to cart',
+            title: result.tipMessage || '已加入购物车',
             icon: 'success'
           })
 
@@ -268,10 +268,10 @@ export default {
         }
 
         uni.showModal({
-          title: 'Prompt',
-          content: result.tipMessage || 'This product is not recommended for the current condition. Please visit a hospital.',
+          title: '提示',
+          content: result.tipMessage || '当前情况暂不推荐使用该商品，请及时前往医院就诊。',
           showCancel: false,
-          confirmText: 'OK',
+          confirmText: '知道了',
           success: () => {
             uni.navigateBack()
           }
@@ -279,7 +279,7 @@ export default {
       } catch (error) {
         console.error('submitAnswer failed:', error)
         uni.showToast({
-          title: error.message || 'Submit failed, please try again',
+          title: error.message || '提交失败，请稍后重试',
           icon: 'none'
         })
       } finally {

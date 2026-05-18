@@ -6,7 +6,7 @@
 		</view>
 		
 		<view class="form-container">
-			<!-- 真实姓名 -->
+			<!-- 鐪熷疄濮撳悕 -->
 			<view class="input-group">
 				<uni-icons type="contact" size="18" color="#666666" class="input-icon"></uni-icons>
 				<input 
@@ -18,7 +18,7 @@
 				/>
 			</view>
 			
-			<!-- 证件类型和号码 -->
+			<!-- 璇佷欢绫诲瀷鍜屽彿鐮?-->
 			<view class="input-group">
 				<uni-icons type="wallet" size="18" color="#666666" class="input-icon"></uni-icons>
 				<picker 
@@ -30,7 +30,7 @@
 				>
 					<view class="picker-display">
 						<text class="picker-text">{{ formData.idType || '身份证' }}</text>
-						<text class="picker-arrow">▼</text>
+						<text class="picker-arrow">v</text>
 					</view>
 				</picker>
 			</view>
@@ -46,7 +46,7 @@
 				/>
 			</view>
 			
-			<!-- 手机号 -->
+			<!-- 鎵嬫満鍙?-->
 			<view class="input-group">
 				<uni-icons type="phone" size="18" color="#666666" class="input-icon"></uni-icons>
 				<input 
@@ -59,7 +59,7 @@
 				/>
 			</view>
 			
-			<!-- 验证码 -->
+			<!-- 楠岃瘉鐮?-->
 			<view class="input-group verify-code-group">
 				<uni-icons type="locked" size="18" color="#666666" class="input-icon"></uni-icons>
 				<input 
@@ -79,19 +79,19 @@
 				</button>
 			</view>
 			
-			<!-- 用户协议 -->
+			<!-- 鐢ㄦ埛鍗忚 -->
 			<view class="agreement-group" @click="toggleAgreement">
 				<view class="checkbox" :class="{ checked: isAgreed }">
 					<uni-icons v-if="isAgreed" type="checkmarkempty" size="16" color="#ffffff" class="checkbox-icon"></uni-icons>
 				</view>
 				<text class="agreement-text">
 					我已阅读并同意
-					<text class="link-text" @click.stop="viewServiceAgreement">《用户服务协议》</text>
-					<text class="link-text" @click.stop="viewPrivacyAgreement">《用户隐私协议》</text>
+					<text class="link-text" @click.stop="viewServiceAgreement">用户服务协议</text>
+					<text class="link-text" @click.stop="viewPrivacyAgreement">用户隐私协议</text>
 				</text>
 			</view>
 			
-			<!-- 登录按钮 -->
+			<!-- 鐧诲綍鎸夐挳 -->
 			<button 
 				class="login-btn" 
 				:class="{ disabled: !canSubmit }"
@@ -111,7 +111,7 @@ import {
 	STORAGE_KEY_USER_INFO,
 	STORAGE_KEY_USER_LOGIN_STATUS
 } from '@/utils/storage.js'
-import { sendSmsCode, login, getWeChatOpenId, getWeChatUserProfile } from '@/api/auth.js'
+import { sendSmsCode, login, ensureWeChatIdentity, getWeChatUserProfile } from '@/api/auth.js'
 import { saveToken } from '@/utils/request.js'
 import { logPageView } from '@/api/access-log.js'
 
@@ -136,74 +136,74 @@ export default {
 	computed: {
 		canSubmit() {
 			return this.formData.realName &&
-				   this.formData.idType &&
-				   this.formData.idNumber &&
-				   this.formData.phone &&
-				   this.formData.verifyCode &&
-				   this.isAgreed
+			this.formData.idType &&
+			this.formData.idNumber &&
+			this.formData.phone &&
+			this.formData.verifyCode &&
+			this.isAgreed
 		}
 	},
 	onLoad(options) {
-		// 接收 redirect 参数
+		// 鎺ユ敹 redirect 鍙傛暟
 		if (options && options.redirect) {
 			this.redirectUrl = decodeURIComponent(options.redirect)
 		}
-		// 加载已保存的注册信息
+		// 鍔犺浇宸蹭繚瀛樼殑娉ㄥ唽淇℃伅
 		this.loadSavedData()
 
-		// 记录页面访问日志
+		// 璁板綍椤甸潰璁块棶鏃ュ織
 		logPageView('注册页面', '用户进入注册页面')
 	},
 	onUnload() {
-		// 清除倒计时定时器
+		// 娓呴櫎鍊掕鏃跺畾鏃跺櫒
 		if (this.countdownTimer) {
 			clearInterval(this.countdownTimer)
 		}
 	},
 	methods: {
-		// 加载已保存的数据
+		// 鍔犺浇宸蹭繚瀛樼殑鏁版嵁
 		loadSavedData() {
 			try {
 				const savedData = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
 				if (savedData) {
 					this.formData = { ...this.formData, ...savedData }
-					// 恢复证件类型索引
+					// 鎭㈠璇佷欢绫诲瀷绱㈠紩
 					const index = this.idTypeList.indexOf(savedData.idType)
 					if (index !== -1) {
 						this.idTypeIndex = index
 					}
 				}
 				
-				// 加载协议同意状态
+				// 鍔犺浇鍗忚鍚屾剰鐘舵€?
 				const agreementStatus = uni.getStorageSync(STORAGE_KEY_AGREEMENT_ACCEPTED)
 				if (agreementStatus) {
 					this.isAgreed = agreementStatus
 				}
 			} catch (e) {
-				console.error('加载保存数据失败:', e)
+				console.error('鍔犺浇淇濆瓨鏁版嵁澶辫触:', e)
 			}
 		},
 		
-		// 保存表单数据
+		// 淇濆瓨琛ㄥ崟鏁版嵁
 		saveFormData() {
 			try {
 				uni.setStorageSync(STORAGE_KEY_USER_REGISTER, this.formData)
 				uni.setStorageSync(STORAGE_KEY_AGREEMENT_ACCEPTED, this.isAgreed)
 			} catch (e) {
-				console.error('保存数据失败:', e)
+				console.error('淇濆瓨鏁版嵁澶辫触:', e)
 			}
 		},
 		
-		// 证件类型选择
+		// 璇佷欢绫诲瀷閫夋嫨
 		onIdTypeChange(e) {
 			this.idTypeIndex = e.detail.value
 			this.formData.idType = this.idTypeList[this.idTypeIndex]
 			this.saveFormData()
 		},
 		
-		// 获取验证码
+		// 鑾峰彇楠岃瘉鐮?
 		async getVerifyCode() {
-			// 验证手机号
+			// 楠岃瘉鎵嬫満鍙?
 			if (!this.formData.phone) {
 				uni.showToast({
 					title: '请输入手机号',
@@ -212,7 +212,7 @@ export default {
 				return
 			}
 			
-			// 验证手机号格式
+			// 楠岃瘉鎵嬫満鍙锋牸寮?
 			const phoneReg = /^1[3-9]\d{9}$/
 			if (!phoneReg.test(this.formData.phone)) {
 				uni.showToast({
@@ -223,10 +223,10 @@ export default {
 			}
 			
 			try {
-				// ✅ 调用后端API发送验证码
+				// 鉁?璋冪敤鍚庣API鍙戦€侀獙璇佺爜
 				await sendSmsCode(this.formData.phone)
 				
-				// 开始倒计时
+				// 寮€濮嬪€掕鏃?
 				this.countdown = 60
 				this.countdownTimer = setInterval(() => {
 					this.countdown--
@@ -245,32 +245,32 @@ export default {
 			}
 		},
 		
-		// 切换协议同意状态
+		// 鍒囨崲鍗忚鍚屾剰鐘舵€?
 		toggleAgreement() {
 			this.isAgreed = !this.isAgreed
 			this.saveFormData()
 		},
 		
-		// 查看用户服务协议
+		// 鏌ョ湅鐢ㄦ埛鏈嶅姟鍗忚
 		viewServiceAgreement() {
 			uni.showToast({
 				title: '用户服务协议',
 				icon: 'none'
 			})
-			// TODO: 跳转到协议详情页
+
 		},
 		
-		// 查看用户隐私协议
+		// 鏌ョ湅鐢ㄦ埛闅愮鍗忚
 		viewPrivacyAgreement() {
 			uni.showToast({
 				title: '用户隐私协议',
 				icon: 'none'
 			})
-			// TODO: 跳转到协议详情页
+
 		},
 
 		
-		// 处理登录
+		// 澶勭悊鐧诲綍
 		async handleLogin() {
 			if (!this.canSubmit) {
 				uni.showToast({
@@ -283,54 +283,47 @@ export default {
 			try {
 				uni.showLoading({ title: '获取微信信息...' })
 				
-				// 1. 获取微信 openid 和 unionid
-				let wechatInfo = {}
-				try {
-					wechatInfo = await getWeChatOpenId()
-					console.log('获取微信信息成功:', wechatInfo)
-				} catch (wechatError) {
-					console.error('获取微信openid失败:', wechatError)
-					// 不阻塞登录流程，继续执行
-				}
+				// 1. 获取微信 openid / unionid，支付链路依赖该信息
+				const wechatInfo = await ensureWeChatIdentity()
 				
-				// 2. 尝试获取微信用户信息（头像、昵称）
+				// 2. 灏濊瘯鑾峰彇寰俊鐢ㄦ埛淇℃伅锛堝ご鍍忋€佹樀绉帮級
 				let wechatUserInfo = {}
 				try {
 					wechatUserInfo = await getWeChatUserProfile()
-					console.log('获取微信用户信息成功:', wechatUserInfo)
+
 				} catch (userInfoError) {
-					console.error('获取微信用户信息失败:', userInfoError)
-					// 用户可能拒绝授权，不影响登录
+					console.error('鑾峰彇寰俊鐢ㄦ埛淇℃伅澶辫触:', userInfoError)
+					// 鐢ㄦ埛鍙兘鎷掔粷鎺堟潈锛屼笉褰卞搷鐧诲綍
 				}
 				
 				uni.showLoading({ title: '登录中...' })
 				
-				// 3. 准备登录数据（包含完整的用户信息）
+				// 3. 鍑嗗鐧诲綍鏁版嵁锛堝寘鍚畬鏁寸殑鐢ㄦ埛淇℃伅锛?
 				const loginData = {
 					phone: this.formData.phone,
 					code: this.formData.verifyCode,
-					userName: this.formData.realName, // 真实姓名
-					idType: this.formData.idType, // 证件类型
-					idCardNo: this.formData.idNumber, // 证件号码
-					wechatOpenid: wechatInfo.openid || '', // 微信openid
-					wechatUnionid: wechatInfo.unionid || '', // 微信unionid（可能为空）
-					avatarUrl: wechatUserInfo.avatarUrl || '', // 微信头像
-					gender: this.parseGender(wechatUserInfo.gender), // 性别
+					userName: this.formData.realName, // 鐪熷疄濮撳悕
+					idType: this.formData.idType, // 璇佷欢绫诲瀷
+					idCardNo: this.formData.idNumber, // 璇佷欢鍙风爜
+					wechatOpenid: wechatInfo.openid || '', // 寰俊openid
+					wechatUnionid: wechatInfo.unionid || '', // 寰俊unionid锛堝彲鑳戒负绌猴級
+					avatarUrl: wechatUserInfo.avatarUrl || '', // 寰俊澶村儚
+					gender: this.parseGender(wechatUserInfo.gender), // 鎬у埆
 				}
 				
-				console.log('登录数据:', loginData)
+
 				
-				// 4. 调用后端API登录/注册
+				// 4. 璋冪敤鍚庣API鐧诲綍/娉ㄥ唽
 				const result = await login(loginData)
 				
-				console.log('登录成功:', result)
+
 				
-				// 5. 保存Token
+				// 5. 淇濆瓨Token
 				if (result && result.token) {
 					saveToken(result.token)
 				}
 				
-				// 6. 保存后端返回的基础用户信息
+				// 6. 淇濆瓨鍚庣杩斿洖鐨勫熀纭€鐢ㄦ埛淇℃伅
 				try {
 					if (result) {
 						const userInfo = {
@@ -344,10 +337,10 @@ export default {
 						uni.setStorageSync(STORAGE_KEY_USER_LOGIN_STATUS, true)
 					}
 				} catch (storageError) {
-					console.error('保存用户信息失败:', storageError)
+					console.error('淇濆瓨鐢ㄦ埛淇℃伅澶辫触:', storageError)
 				}
 				
-				// 7. 保存用户数据
+				// 7. 淇濆瓨鐢ㄦ埛鏁版嵁
 				this.saveFormData()
 				
 				uni.hideLoading()
@@ -356,33 +349,33 @@ export default {
 					icon: 'success'
 				})
 				
-				// 8. 登录成功后跳转
+				// 8. 鐧诲綍鎴愬姛鍚庤烦杞?
 				setTimeout(() => {
-					// 如果有 redirect 参数，跳转到指定页面，否则跳转到首页
-					const targetUrl = this.redirectUrl || '/pages/products/priducts_list'
+					// 濡傛灉鏈?redirect 鍙傛暟锛岃烦杞埌鎸囧畾椤甸潰锛屽惁鍒欒烦杞埌棣栭〉
+					const targetUrl = this.redirectUrl || '/pages/products/medicine_index'
 					uni.redirectTo({ url: targetUrl })
 				}, 1500)
 				
 			} catch (error) {
-				console.error('登录失败:', error)
+				console.error('鐧诲綍澶辫触:', error)
 				uni.hideLoading()
 				uni.showToast({
-					title: error.message || '登录失败，请重试',
+					title: error.message || '鐧诲綍澶辫触锛岃閲嶈瘯',
 					icon: 'none'
 				})
 			}
 		},
 		
-		// 解析微信性别：0-未知，1-男，2-女
+		// 瑙ｆ瀽寰俊鎬у埆锛?-鏈煡锛?-鐢凤紝2-濂?
 		parseGender(wechatGender) {
-			if (wechatGender === 1) return 1 // 男
-			if (wechatGender === 2) return 2 // 女
-			return 0 // 未知
+			if (wechatGender === 1) return 1 // 鐢?
+			if (wechatGender === 2) return 2 // 濂?
+			return 0 // 鏈煡
 		}
 	},
 	
 	watch: {
-		// 监听表单数据变化，自动保存
+		// 鐩戝惉琛ㄥ崟鏁版嵁鍙樺寲锛岃嚜鍔ㄤ繚瀛?
 		formData: {
 			handler() {
 				this.saveFormData()

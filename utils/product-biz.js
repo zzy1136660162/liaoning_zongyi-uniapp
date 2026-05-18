@@ -12,6 +12,7 @@ export const resolveGoodsMerchantType = (product = {}) => {
   if (product.goodsMerchantType != null && product.goodsMerchantType !== '') {
     return Number(product.goodsMerchantType)
   }
+
   return resolveProductBizType(product) === BIZ_TYPE_HEALTH_GOODS
     ? GOODS_MERCHANT_TECH_SERVICE
     : GOODS_MERCHANT_HOSPITAL
@@ -29,10 +30,12 @@ export const hasBoundQuestionnaire = (product = {}) => {
   if (Number(product.needQuestionnaire) !== 1) {
     return false
   }
+
   const questionnaireId = product.questionnaireId
   if (questionnaireId === undefined || questionnaireId === null) {
     return false
   }
+
   const normalizedId = String(questionnaireId).trim()
   return normalizedId !== '' && normalizedId !== '0'
 }
@@ -56,7 +59,7 @@ export const resolveProductFlow = (products = []) => {
     return {
       valid: false,
       bizType: null,
-      message: '暂不支持本院产品和健康产品混合下单'
+      message: '暂不支持本院产品与健康产品混合下单'
     }
   }
 

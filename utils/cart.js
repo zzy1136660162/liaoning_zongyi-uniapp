@@ -498,7 +498,7 @@ export const buildOrderItems = (cartItems = [], selectedProductIds = null) => {
 export const buildOrderInfo = (
   cartItems = [],
   selectedProductIds = null,
-  distributor = '辽宁中医药大学附属医院'
+  distributor = '辽宁中医药大学附属医院',
 ) => {
   let selectedItems = cartItems
   if (Array.isArray(selectedProductIds) && selectedProductIds.length > 0) {
@@ -559,7 +559,7 @@ export const resolveCartCompatibility = (productOrMeta, options = {}) => {
       valid: false,
       bizType: null,
       goodsMerchantType: null,
-      message: '暂不支持本院产品和健康产品混合下单'
+      message: '暂不支持本院产品与健康产品混合下单'
     }
   }
 

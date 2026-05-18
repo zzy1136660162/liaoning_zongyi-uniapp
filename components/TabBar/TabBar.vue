@@ -22,12 +22,10 @@
 export default {
   name: 'TabBar',
   props: {
-    // 当前激活的标签
     current: {
       type: String,
       default: 'home'
     },
-    // 购物车数量
     cartCount: {
       type: Number,
       default: 0
@@ -40,10 +38,8 @@ export default {
   },
   methods: {
     switchTab(tab) {
-      // 触发父组件事件
       this.$emit('change', tab)
-      
-      // 如果点击的是当前页面，滚动到顶部
+
       if (tab === this.currentTab) {
         uni.pageScrollTo({
           scrollTop: 0,
@@ -51,11 +47,10 @@ export default {
         })
         return
       }
-      
-      // 页面跳转逻辑 - 使用 redirectTo 替换当前页面，避免页面栈累积
+
       if (tab === 'home') {
         uni.redirectTo({
-          url: '/pages/products/priducts_list'
+          url: '/pages/products/medicine_index'
         })
       } else if (tab === 'cart') {
         uni.redirectTo({
@@ -72,7 +67,6 @@ export default {
 </script>
 
 <style scoped lang="scss">
-/* Tab Bar 导航栏 - 医院商城简约风格 */
 .tab-bar {
   position: fixed;
   bottom: 0;
@@ -145,6 +139,5 @@ export default {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   line-height: 1.2;
   font-weight: 400;
-  letter-spacing: 0.5rpx;
 }
 </style>

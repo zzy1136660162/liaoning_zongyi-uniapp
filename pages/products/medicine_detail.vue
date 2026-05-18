@@ -1,8 +1,15 @@
 <template>
   <view class="page" :class="{ 'page-lock': showManual || showPolicy }">
-
     <view class="banner-wrapper">
-      <swiper class="banner" :indicator-dots="true" :autoplay="productImages.length > 1" :interval="3000" indicator-color="rgba(255,255,255,0.4)" indicator-active-color="#fff" @change="handleBannerChange">
+      <swiper
+        class="banner"
+        :indicator-dots="true"
+        :autoplay="productImages.length > 1"
+        :interval="3000"
+        indicator-color="rgba(255,255,255,0.4)"
+        indicator-active-color="#fff"
+        @change="handleBannerChange"
+      >
         <swiper-item v-for="(img, idx) in productImages" :key="idx">
           <image class="banner-img" :src="img" mode="aspectFill" />
         </swiper-item>
@@ -10,6 +17,7 @@
       <view class="banner-index">{{ currentIndex }}/{{ productImages.length }}</view>
     </view>
     <view class="split-line"></view>
+
     <view class="price-box">
       <view class="price-main">
         <view class="price-left">
@@ -22,44 +30,39 @@
         </view>
         <view class="price-right">
           <view class="sales-box">
-            <text class="sales-icon">🔥</text>
+            <text class="sales-icon">销量</text>
             <text class="sales-count">已售 {{ product.salesVolume || 0 }}</text>
           </view>
         </view>
       </view>
-      <!-- <view class="trust-badges">
-        <view class="trust-item"><image class="trust-icon" src="/static/logotou.png" mode="aspectFit" /><text class="trust-text">医院自营</text></view>
-        <view class="trust-item"><text class="trust-icon">🛡️</text><text class="trust-text">正品保证</text></view>
-        <view class="trust-item"><text class="trust-icon">💯</text><text class="trust-text">购买无忧</text></view>
-        <view class="trust-item"><text class="trust-icon">🚚</text><text class="trust-text">专业物流</text></view>
-        <view class="trust-item"><text class="trust-icon">⏰</text><text class="trust-text">24h发货</text></view>
-      </view> -->
     </view>
 
     <view class="goods-info">
       <view class="goods-name-row">
-        <text class="self-developed-tag" v-if="product.bizType === 1">自研</text>
-        <text class="new-product-tag" v-if="product.isHospitalStarFormula === 1">院藏王牌制剂</text>
-        <text class="star-product-tag" v-if="product.isNewProduct === 1">重磅新品</text>
-        <text class="goods-name">{{ product.name }}&nbsp;{{ product.description }}</text>
+        <text class="self-developed-tag" v-if="product.bizType === 1">本院自研</text>
+        <text class="new-product-tag" v-if="product.isHospitalStarFormula === 1">院藏名方</text>
+        <text class="star-product-tag" v-if="product.isNewProduct === 1">新品</text>
+        <text class="goods-name">{{ product.name }} {{ product.description }}</text>
       </view>
       <view class="goods-sub" v-if="product.subtitle || product.indications">{{ product.indications }}</view>
-      <view class="drug-reminder">{{ product.isPrescription === 1 ? '处方药，请在医师指导下购买和使用' : '非处方药，请按说明书或药师指导使用' }}</view>
+      <view class="drug-reminder">
+        {{ product.isPrescription === 1 ? '处方药请在医师指导下购买和使用' : '非处方药请按说明书或药师指导使用' }}
+      </view>
     </view>
 
     <view class="policy-overlay" v-if="showPolicy" @click="closePolicyDrawer">
       <view class="policy-drawer" @click.stop>
         <view class="policy-header">
-          <text class="policy-title">退换货说明</text>
-          <view class="policy-close" @click="closePolicyDrawer">×</view>
+          <text class="policy-title">退换说明</text>
+          <view class="policy-close" @click="closePolicyDrawer">x</view>
         </view>
         <view class="policy-body">
           <view class="policy-section">
-            <text class="policy-section-title"><text class="check-icon">✓</text> 不支持七天无理由退换</text>
+            <text class="policy-section-title"><text class="check-icon">√</text> 不支持七天无理由退换</text>
             <text class="policy-content">药品属于特殊商品，除质量问题外，一经售出通常不支持退换。</text>
           </view>
           <view class="policy-section">
-            <text class="policy-section-title"><text class="check-icon">✓</text> 售后保障</text>
+            <text class="policy-section-title"><text class="check-icon">√</text> 售后保障</text>
             <text class="policy-content">如需了解用药问题，可联系平台药师或医院相关科室咨询。</text>
           </view>
         </view>
@@ -73,7 +76,7 @@
       <view class="select-label">已选</view>
       <view class="select-value">
         <text>{{ selectedSpec }}</text>
-        <text class="select-num"> ×{{ quantity }}</text>
+        <text class="select-num"> x{{ quantity }}</text>
       </view>
     </view>
 
@@ -87,12 +90,12 @@
         <view class="manual-item-title">用法用量</view>
         <view class="manual-item-content">{{ product.usageDesc || '暂无信息' }}</view>
       </view>
-      <view class="manual-arrow">›</view>
+      <view class="manual-arrow">></view>
     </view>
 
     <view class="policy-row" @click="showPolicyDrawer">
       <text class="policy-text">不支持七天无理由退换 · 售后服务</text>
-      <text class="select-arrow">›</text>
+      <text class="select-arrow">></text>
     </view>
     <view class="delivery-row">
       <text class="delivery-label">配送</text>
@@ -102,23 +105,23 @@
 
     <view class="promise-box">
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">医院自研</text>
+        <text class="promise-icon">√</text>
+        <text class="promise-text">医院自营</text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
+        <text class="promise-icon">√</text>
         <text class="promise-text">正品保障</text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
+        <text class="promise-icon">√</text>
         <text class="promise-text">专业药师</text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
+        <text class="promise-icon">√</text>
         <text class="promise-text">顺丰物流</text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
+        <text class="promise-icon">√</text>
         <text class="promise-text">隐私保护</text>
       </view>
     </view>
@@ -127,39 +130,39 @@
       <view class="drawer-content drawer-green-card" @click.stop>
         <view class="drawer-header">
           <text class="drawer-title">用药说明</text>
-          <view class="drawer-close" @click="closeManualDrawer">×</view>
+          <view class="drawer-close" @click="closeManualDrawer">x</view>
         </view>
         <scroll-view class="drawer-body" scroll-y>
           <view class="drawer-section" v-if="product.ingredients">
-            <text class="drawer-label">【成份】</text>
+            <text class="drawer-label">成分</text>
             <text class="drawer-text">{{ product.ingredients }}</text>
           </view>
           <view class="drawer-section" v-if="product.indications">
-            <text class="drawer-label">【功能主治】</text>
+            <text class="drawer-label">功能主治</text>
             <text class="drawer-text">{{ product.indications }}</text>
           </view>
           <view class="drawer-section" v-if="usageText">
-            <text class="drawer-label">【用法用量】</text>
+            <text class="drawer-label">用法用量</text>
             <text class="drawer-text">{{ usageText }}</text>
           </view>
           <view class="drawer-section" v-if="product.adverseReactions">
-            <text class="drawer-label">【不良反应】</text>
+            <text class="drawer-label">不良反应</text>
             <text class="drawer-text">{{ product.adverseReactions }}</text>
           </view>
           <view class="drawer-section" v-if="product.contraindication">
-            <text class="drawer-label">【禁忌】</text>
+            <text class="drawer-label">禁忌</text>
             <text class="drawer-text">{{ product.contraindication }}</text>
           </view>
           <view class="drawer-section" v-if="product.precautions">
-            <text class="drawer-label">【注意事项】</text>
+            <text class="drawer-label">注意事项</text>
             <text class="drawer-text">{{ product.precautions }}</text>
           </view>
           <view class="drawer-section" v-if="product.storageCondition">
-            <text class="drawer-label">【贮藏】</text>
+            <text class="drawer-label">贮藏</text>
             <text class="drawer-text">{{ product.storageCondition }}</text>
           </view>
           <view class="drawer-section" v-if="product.manufacturer">
-            <text class="drawer-label">【生产单位】</text>
+            <text class="drawer-label">生产单位</text>
             <text class="drawer-text">{{ product.manufacturer }}</text>
           </view>
         </scroll-view>
@@ -179,7 +182,8 @@
       </view>
       <view class="consult-btn" @click.stop="goConsult">咨询</view>
     </view>
-     <view class="split-line"></view>
+    <view class="split-line"></view>
+
     <view class="recommend-section" :class="{ 'combo-section': recommendTab === 'combo', 'star-section': recommendTab === 'star' }">
       <view class="recommend-tabs">
         <view class="recommend-tab" :class="{ active: recommendTab === 'combo' }" @click="switchRecommendTab('combo')">用药组合</view>
@@ -219,7 +223,7 @@
         </scroll-view>
         <view v-else class="empty-block">暂无明星产品</view>
       </view>
-      <view class="combo-disclaimer" v-if="recommendTab === 'combo'">*用药组合仅供参考，最终以医嘱为准</view>
+      <view class="combo-disclaimer" v-if="recommendTab === 'combo'">*用药组合仅供参考，最终请以医嘱为准</view>
 
       <view class="flying-dot" v-if="flyingDot.show" :style="{ left: flyingDot.x + 'px', top: flyingDot.y + 'px' }"></view>
     </view>
@@ -239,16 +243,8 @@
         <image v-for="(img, idx) in productImages" :key="idx" :src="img" mode="widthFix" class="detail-img" />
       </view>
 
-      <!-- <view class="spec-list">
-        <view class="spec-title">药品基本信息</view>
-        <view class="spec-item" v-for="item in specItems" :key="item.label">
-          <text class="spec-label">{{ item.label }}</text>
-          <text class="spec-value">{{ item.value }}</text>
-        </view>
-      </view> -->
-
       <view class="usage-box" v-if="specItems.length > 0">
-        <view class="usage-title">药品基本信息</view>
+        <view class="usage-title">商品基本信息</view>
         <view class="usage-list">
           <view class="usage-item" v-for="item in specItems" :key="item.label">
             <text class="usage-label">{{ item.label }}</text>
@@ -274,10 +270,8 @@
 
     <view class="reminder-bar">
       <text class="reminder-icon">!</text>
-      <text class="reminder-text">请仔细阅读药品说明书或在医师、药师指导下使用。药品包装及说明请以实际收到的商品为准。</text>
+      <text class="reminder-text">请仔细阅读药品说明书，并在医生或药师指导下使用。商品包装与说明请以实际收货为准。</text>
     </view>
-
-
 
     <view class="bottom-space"></view>
 
@@ -288,12 +282,12 @@
           <text class="action-text">{{ isCollected ? '已收藏' : '收藏' }}</text>
         </view>
         <view class="action-icon-btn" @click="goCart">
-          <text class="action-icon">🛒</text>
+          <text class="action-icon">车</text>
           <text class="action-text">购物车</text>
           <view class="cart-badge" v-if="cartCount > 0">{{ cartCount > 99 ? '99+' : cartCount }}</view>
         </view>
         <view class="action-icon-btn" @click="showCustomerService">
-          <text class="action-icon">☎️</text>
+          <text class="action-icon">服</text>
           <text class="action-text">客服</text>
         </view>
       </view>
@@ -304,7 +298,6 @@
     </view>
   </view>
 </template>
-
 <script setup>
 import { computed, getCurrentInstance, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
@@ -320,7 +313,7 @@ import {
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
-import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
+import { BIZ_TYPE_HEALTH_GOODS, hasBoundQuestionnaire } from '@/utils/product-biz.js'
 import { getToken } from '@/utils/request.js'
 
 const createEmptyProduct = () => ({
@@ -378,7 +371,7 @@ const recommendTab = ref('combo')
 const cartQuantities = ref({})
 const comboProducts = ref([])
 const starProducts = ref([])
-const pharmacistAvatar = getImageUrl('https://smf.lntcm.com/static/medicine/yaoshi1.svg')
+const pharmacistAvatar = ('https://smf.lntcm.com/static/medicine/yaoshi1.svg')
 
 const productImages = computed(() => {
   if (product.value.images && product.value.images.length > 0) {
@@ -389,7 +382,7 @@ const productImages = computed(() => {
 
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
-const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
+const requiresQuestionnaire = computed(() => hasBoundQuestionnaire(product.value))
 const selectedSpec = computed(() => product.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
 const priceInteger = computed(() => {
   const [integer = '0'] = Number(product.value.price || 0).toFixed(2).split('.')
@@ -407,7 +400,7 @@ const originTypeText = computed(() => {
 
 const specItems = computed(() => {
   return [
-    { label: '药品名称', value: product.value.name },
+    { label: '商品名称', value: product.value.name },
     { label: '规格', value: product.value.specText },
     { label: '包装', value: product.value.packageSpec },
     { label: '剂型', value: product.value.dosageForm },
@@ -606,12 +599,12 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
 
   const nextQuantity = Math.max(1, Number(selectedQuantity) || 1)
   const alreadyPassed = hasQuestionnairePassed(targetProduct.id)
-  if (Number(targetProduct.needQuestionnaire) === 1 && !alreadyPassed) {
+  if (hasBoundQuestionnaire(targetProduct) && !alreadyPassed) {
     return navigateToNotice(targetProduct, nextQuantity, mode)
   }
 
   const saved = addCartItem(targetProduct, nextQuantity, {
-    questionnairePassed: Number(targetProduct.needQuestionnaire) !== 1 || alreadyPassed
+    questionnairePassed: !hasBoundQuestionnaire(targetProduct) || alreadyPassed
   })
   if (!saved) {
     uni.showToast({
@@ -747,7 +740,7 @@ const animateFlyToCart = () => {
       }).exec()
     }).exec()
   } catch (error) {
-    console.log('animateFlyToCart error:', error)
+    console.error('animateFlyToCart error:', error)
   }
 }
 
@@ -1494,7 +1487,7 @@ onShow(() => {
 }
 
 .pharmacist-name::before {
-  content: '⚕️';
+  content: '药师';
   margin-right: 8rpx;
   font-size: 28rpx;
 }

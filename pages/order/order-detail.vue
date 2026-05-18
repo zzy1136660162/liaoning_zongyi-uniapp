@@ -50,7 +50,7 @@
           <view class="medicines-list">
             <view 
               class="medicine-item"
-              v-for="(item, index) in allCartItems" 
+              v-for="item in allCartItems" 
               :key="item.id"
             >
               <view class="medicine-left">
@@ -635,11 +635,11 @@
       
       // 加载购物车数据
       loadCartItems() {
-        this.loadProducts().then(categories => {
-          this.allCartItems = loadCartItems(categories)
-          console.log('加载的购物车商品:', this.allCartItems)
-        })
+        this.allCartItems = []
+        console.log('loadCartItems is not used on this page')
       },
+
+
 
       // 申请退货
       async applyRefund() {

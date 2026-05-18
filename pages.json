@@ -1,262 +1,262 @@
 {
-	"pages": [
-		{
-			"path": "pages/index/index",
-			"style": {
-				"navigationStyle": "custom",
-				"navigationBarTitleText": "首页"
-			}
-		},
-		{
-			"path": "pages/splash/splash",
-			"style": {
-				"navigationStyle": "custom",
-				"navigationBarTitleText": ""
-			}
-		},
-		{
-			"path": "pages/notice/notice",
-			"style": {
-				"navigationStyle": "custom",
-				"navigationBarTitleText": "告知书"
-			}
-		},
-		{
-			"path": "pages/products/priducts_list",
-			"style": {
-				"navigationBarTitleText": "选择药方",
-				"navigationBarBackgroundColor": "#ffffff"
-			}
-		},
-		{
-			"path": "pages/products/priducts_list2",
-			"style": {
-				"navigationBarTitleText": "选择药方",
-				"navigationBarBackgroundColor": "#ffffff"
-			}
-		},
-		{
-			"path": "pages/products/priducts_detail",
-			"style": {
-				"navigationBarTitleText": "产品详情"
-			}
-		},
-		{
-			"path": "pages/products/medicine_index",
-			"style": {
-				"navigationBarTitleText": "商城首页"
-			}
-		},
-		{
-			"path": "pages/products/medicine_detail",
-			"style": {
-				"navigationBarTitleText": "商品详情"
-			}
-		},
-		{
-			"path": "pages/products/medicine_list",
-			"style": {
-				"navigationBarTitleText": "商品列表"
-			}
-		},
-		{
-			"path": "pages/products/product_notice",
-			"style": {
-				"navigationBarTitleText": "注意事项"
-			}
-		},
-		{
-			"path": "pages/products/product_questionnaire",
-			"style": {
-				"navigationBarTitleText": "健康问卷"
-			}
-		},
-		{
-			"path": "pages/register/register",
-			"style": {
-				"navigationBarTitleText": "注册/登录"
-			}
-		},
-		{
-			"path": "pages/cart/cart",
-			"style": {
-				"navigationBarTitleText": "购物车",
-				"navigationBarBackgroundColor": "#ffffff"
-			}
-		},
-		{
-			"path": "pages/user/profile",
-			"style": {
-				"navigationBarTitleText": "我的",
-				"navigationBarBackgroundColor": "#ffffff"
-			}
-		}
-	],
-	"subPackages": [
-		{
-			"root": "pages/dispense",
-			"pages": [
-				{
-					"path": "apply",
-					"style": {
-						"navigationBarTitleText": "申请配药"
-					}
-				},
-				{
-					"path": "patient_edit",
-					"style": {
-						"navigationBarTitleText": "新增就诊人",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "consultation",
-					"style": {
-						"navigationBarTitleText": "在线复诊"
-					}
-				}
-			]
-		},
-		{
-			"root": "pages/order",
-			"pages": [
-				{
-					"path": "order-detail",
-					"style": {
-						"navigationBarTitleText": "订单详情",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "order_list",
-					"style": {
-						"navigationBarTitleText": "我的订单",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "prescription_list",
-					"style": {
-						"navigationBarTitleText": "药品处方",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "prescription_detail",
-					"style": {
-						"navigationBarTitleText": "处方详情",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "consultation_detail",
-					"style": {
-						"navigationBarTitleText": "在线复诊单",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "confirm",
-					"style": {
-						"navigationBarTitleText": "确认订单",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "address_list",
-					"style": {
-						"navigationBarTitleText": "收货地址",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "address_edit",
-					"style": {
-						"navigationBarTitleText": "地址设置",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "payment_success",
-					"style": {
-						"navigationBarTitleText": "支付成功",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "refund_apply",
-					"style": {
-						"navigationBarTitleText": "申请退货",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "refund_detail",
-					"style": {
-						"navigationBarTitleText": "退货详情",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "refund_list",
-					"style": {
-						"navigationBarTitleText": "退货申请",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				},
-				{
-					"path": "refund_logistics",
-					"style": {
-						"navigationBarTitleText": "填写物流信息",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				}
-			]
-		},
-		{
-			"root": "pages/prescription",
-			"pages": [
-				{
-					"path": "detail",
-					"style": {
-						"navigationBarTitleText": "处方详情",
-						"navigationBarBackgroundColor": "#ffffff"
-					}
-				}
-			]
-		},
-		{
-			"root": "pages/doctor",
-			"pages": [
-				{
-					"path": "signature",
-					"style": {
-						"navigationBarTitleText": "医生签名",
-						"navigationBarBackgroundColor": "#ffffff",
-						"navigationBarTextStyle": "black"
-					}
-				},
-				{
-					"path": "signature_landscape",
-					"style": {
-						"navigationBarTitleText": "医生签名横屏",
-						"navigationBarBackgroundColor": "#ffffff",
-						"navigationBarTextStyle": "black",
-						"mp-weixin": {
-							"pageOrientation": "landscape"
-						}
-					}
-				}
-			]
-		}
-	],
-	"globalStyle": {
-		"navigationBarTextStyle": "black",
-		"navigationBarTitleText": "辽宁中医",
-		"navigationBarBackgroundColor": "#ffffff",
-		"backgroundColor": "#F8F8F8",
-		"app-plus": {
-			"background": "#efeff4"
-		}
-	}
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "首页"
+      }
+    },
+    {
+      "path": "pages/splash/splash",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": ""
+      }
+    },
+    {
+      "path": "pages/notice/notice",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "就诊告知"
+      }
+    },
+    {
+      "path": "pages/products/priducts_list",
+      "style": {
+        "navigationBarTitleText": "健康商城",
+        "navigationBarBackgroundColor": "#ffffff"
+      }
+    },
+    {
+      "path": "pages/products/priducts_list2",
+      "style": {
+        "navigationBarTitleText": "健康商城",
+        "navigationBarBackgroundColor": "#ffffff"
+      }
+    },
+    {
+      "path": "pages/products/priducts_detail",
+      "style": {
+        "navigationBarTitleText": "商品详情"
+      }
+    },
+    {
+      "path": "pages/products/medicine_index",
+      "style": {
+        "navigationBarTitleText": "商城首页"
+      }
+    },
+    {
+      "path": "pages/products/medicine_detail",
+      "style": {
+        "navigationBarTitleText": "商品详情"
+      }
+    },
+    {
+      "path": "pages/products/medicine_list",
+      "style": {
+        "navigationBarTitleText": "商品列表"
+      }
+    },
+    {
+      "path": "pages/products/product_notice",
+      "style": {
+        "navigationBarTitleText": "用药须知"
+      }
+    },
+    {
+      "path": "pages/products/product_questionnaire",
+      "style": {
+        "navigationBarTitleText": "健康问卷"
+      }
+    },
+    {
+      "path": "pages/register/register",
+      "style": {
+        "navigationBarTitleText": "注册/登录"
+      }
+    },
+    {
+      "path": "pages/cart/cart",
+      "style": {
+        "navigationBarTitleText": "购物车",
+        "navigationBarBackgroundColor": "#ffffff"
+      }
+    },
+    {
+      "path": "pages/user/profile",
+      "style": {
+        "navigationBarTitleText": "我的",
+        "navigationBarBackgroundColor": "#ffffff"
+      }
+    }
+  ],
+  "subPackages": [
+    {
+      "root": "pages/dispense",
+      "pages": [
+        {
+          "path": "apply",
+          "style": {
+            "navigationBarTitleText": "申请配药"
+          }
+        },
+        {
+          "path": "patient_edit",
+          "style": {
+            "navigationBarTitleText": "就诊人信息",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "consultation",
+          "style": {
+            "navigationBarTitleText": "在线复诊"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/order",
+      "pages": [
+        {
+          "path": "order-detail",
+          "style": {
+            "navigationBarTitleText": "订单详情",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "order_list",
+          "style": {
+            "navigationBarTitleText": "我的订单",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "prescription_list",
+          "style": {
+            "navigationBarTitleText": "处方记录",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "prescription_detail",
+          "style": {
+            "navigationBarTitleText": "处方详情",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "consultation_detail",
+          "style": {
+            "navigationBarTitleText": "复诊详情",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "confirm",
+          "style": {
+            "navigationBarTitleText": "确认订单",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "address_list",
+          "style": {
+            "navigationBarTitleText": "收货地址",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "address_edit",
+          "style": {
+            "navigationBarTitleText": "地址设置",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "payment_success",
+          "style": {
+            "navigationBarTitleText": "支付成功",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "refund_apply",
+          "style": {
+            "navigationBarTitleText": "申请退款",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "refund_detail",
+          "style": {
+            "navigationBarTitleText": "退款详情",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "refund_list",
+          "style": {
+            "navigationBarTitleText": "退款记录",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "refund_logistics",
+          "style": {
+            "navigationBarTitleText": "填写物流信息",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/prescription",
+      "pages": [
+        {
+          "path": "detail",
+          "style": {
+            "navigationBarTitleText": "处方详情",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/doctor",
+      "pages": [
+        {
+          "path": "signature",
+          "style": {
+            "navigationBarTitleText": "医生签名",
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black"
+          }
+        },
+        {
+          "path": "signature_landscape",
+          "style": {
+            "navigationBarTitleText": "医生签名横屏",
+            "navigationBarBackgroundColor": "#ffffff",
+            "navigationBarTextStyle": "black",
+            "mp-weixin": {
+              "pageOrientation": "landscape"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "辽宁中医",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#F8F8F8",
+    "app-plus": {
+      "background": "#efeff4"
+    }
+  }
 }

@@ -7,7 +7,8 @@ import { API_PATHS } from '@/utils/config.js'
 import { 
   STORAGE_KEY_WECHAT_OPENID, 
   STORAGE_KEY_WECHAT_UNIONID, 
-  STORAGE_KEY_WECHAT_SESSION_KEY 
+  STORAGE_KEY_WECHAT_SESSION_KEY,
+  STORAGE_KEY_USER_INFO
 } from '@/utils/storage.js'
 
 /**
@@ -196,7 +197,19 @@ export const getWeChatUserProfile = () => {
  */
 export const getStoredWeChatOpenId = () => {
   try {
-    return uni.getStorageSync(STORAGE_KEY_WECHAT_OPENID) || null
+    const storedOpenid = uni.getStorageSync(STORAGE_KEY_WECHAT_OPENID)
+    if (storedOpenid) {
+      return storedOpenid
+    }
+
+    const storedUserInfo = uni.getStorageSync(STORAGE_KEY_USER_INFO)
+    const userInfoOpenid = storedUserInfo && storedUserInfo.openid
+    if (userInfoOpenid) {
+      uni.setStorageSync(STORAGE_KEY_WECHAT_OPENID, userInfoOpenid)
+      return userInfoOpenid
+    }
+
+    return null
   } catch (e) {
     console.error('获取本地存储的 openid 失败:', e)
     return null
@@ -227,6 +240,28 @@ export const getStoredWeChatSessionKey = () => {
     console.error('获取本地存储的 sessionKey 失败:', e)
     return null
   }
+}
+
+/**
+ * 确保本地存在可用的微信身份信息
+ * @returns {Promise<{openid: string, unionid?: string, sessionKey?: string}>}
+ */
+export const ensureWeChatIdentity = async () => {
+  const storedOpenid = getStoredWeChatOpenId()
+  if (storedOpenid) {
+    return {
+      openid: storedOpenid,
+      unionid: getStoredWeChatUnionId(),
+      sessionKey: getStoredWeChatSessionKey()
+    }
+  }
+
+  const wechatData = await getWeChatOpenId()
+  if (!wechatData || !wechatData.openid) {
+    throw new Error('未获取到微信支付信息，请稍后重试')
+  }
+
+  return wechatData
 }
 
 /**

@@ -9,23 +9,23 @@
     </view>
 
     <view class="content-section">
-      <view class="product-title">{{ productName || 'Product notice' }}</view>
+      <view class="product-title">{{ productName || '用药须知' }}</view>
 
       <view class="notice-text">
         <text class="notice-content">{{ noticeText }}</text>
       </view>
 
       <view class="extra-block" v-if="suitableCrowd">
-        <view class="block-title">Suitable crowd</view>
+        <view class="block-title">适用人群</view>
         <text class="block-content">{{ suitableCrowd }}</text>
       </view>
 
       <view class="extra-block" v-if="usageDesc">
-        <view class="block-title">Usage</view>
+        <view class="block-title">用法用量</view>
         <text class="block-content">{{ usageDesc }}</text>
       </view>
 
-      <button class="start-btn" @click="startQuestionnaire">Continue</button>
+      <button class="start-btn" @click="startQuestionnaire">继续</button>
     </view>
   </view>
 </template>
@@ -89,7 +89,7 @@ export default {
         console.warn('loadProductDetail failed:', error)
       }
       if (!this.noticeText) {
-        this.noticeText = 'No product instructions are available. Please consult a doctor or pharmacist before use.'
+        this.noticeText = '暂无商品说明，请在医生或药师指导下购买和使用。'
       }
     },
     async ensureCartCompatible(detail) {
@@ -140,13 +140,13 @@ export default {
     async startQuestionnaire() {
       if (!this.productId) {
         uni.showToast({
-          title: 'Missing product information',
+          title: '缺少商品信息',
           icon: 'none'
         })
         return
       }
 
-      uni.showLoading({ title: 'Checking...' })
+      uni.showLoading({ title: '校验中...' })
       try {
         const detail = this.productDetail || await getProductDetail(this.productId)
         if (!(await this.ensureCartCompatible(detail))) {
@@ -183,7 +183,7 @@ export default {
         })
         if (!success) {
           uni.showToast({
-            title: 'Failed to add to cart',
+            title: '加入购物车失败',
             icon: 'none'
           })
           return
@@ -195,7 +195,7 @@ export default {
         }
 
         uni.showToast({
-          title: 'Added to cart',
+          title: '已加入购物车',
           icon: 'success'
         })
 
@@ -210,7 +210,7 @@ export default {
       } catch (error) {
         console.error('startQuestionnaire failed:', error)
         uni.showToast({
-          title: error.message || 'Request failed, please try again',
+          title: error.message || '请求失败，请稍后重试',
           icon: 'none'
         })
       } finally {

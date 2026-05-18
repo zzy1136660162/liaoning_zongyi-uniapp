@@ -1,145 +1,138 @@
 <template>
-	<view class="product-container">
-  
-  
-	  <!-- Banner区域 -->
-	  <view class="banner-section">
-		<image class="banner-image" :src="getImageUrl('/profile/liaoning_zongyi/banner_bg.png')" mode="widthFix"></image>
-	  </view>
-  
-	  <!-- 搜索栏 -->
-	  <view class="search-section">
-		<view class="search-bar">
-		  <uni-icons type="search" size="18" color="#999999"></uni-icons>
-		  <input class="search-input" placeholder="搜索" v-model="searchKeyword" @input="handleSearch" />
-		  <button class="search-btn" @click="handleSearch">搜索</button>
-		</view>
-	  </view>
-	  <!-- 列表头部 -->
-	  <view class="product-list-header">
-		<view class="prescription-title" @click="switchToVerticalLayout">
-		  <text class="prescription-text" >药方</text>
-		  <image class="prescription-icon" :src="getImageUrl('/profile/liaoning_zongyi/list_icon2.png')" mode="aspectFit"></image>
-		</view>
-		<view class="history-order" @click="goToHistory">
-		  <uni-icons type="list" size="18" color="#666666"></uni-icons>
-		  <text class="history-text">历史订单</text>
-		</view>
-	  </view>
-  
-	  <!-- 横向分类Tabs -->
-	  <view class="category-tabs-wrapper">
-		<scroll-view class="category-tabs" scroll-x>
-		  <view class="category-tabs-content">
-			<view
-				class="category-tab-item"
-				v-for="(category, index) in categories"
-				:key="category.id"
-				:class="{ active: currentCategoryId === category.id }"
-				@click="switchCategory(category.id)"
-			>
-			  <text class="category-tab-name">{{ category.name }}</text>
-			</view>
-		  </view>
-		</scroll-view>
-	  </view>
-  
-	  <!-- 产品列表区域 -->
-	  <view class="product-list-wrapper">
-		<scroll-view class="product-list" scroll-y>
-		  <view class="product-items">
-			<view
-				class="product-item"
-				v-for="product in filteredProducts"
-				:key="product.id"
-			>
-			  <view class="image-wrapper" @click="goToDetail(product)">
-				<image class="product-image" :src="getImageUrl(product.image)" mode="aspectFill"></image>
-				<view class="hot-badge" v-if="product.isNewProduct === 1">新品</view>
-			  </view>
-			  <view class="product-info">
-				<text class="product-name" @click="goToDetail(product)">
-				  <text class="self-tag" v-if="product.bizType === 1">自研</text>
-				  <text class="self-tag2" v-if="product.isHospitalStarFormula === 1">院藏王牌制剂</text>
-				  <text class="self-tag3" v-if="product.isPrescription === 1">处方</text>
-				  {{ product.name }}
-				</text>
-				<text class="product-desc" v-if="product.description">{{ product.description }}</text>
-				<view class="product-footer">
-				  <text class="product-unit">{{ product.specText || product.unit || '' }}</text>
-				  <view class="product-price-row">
-					<!-- 如果产品已通过验证，显示数量选择器 -->
-					<view v-if="isProductVerified(product.id)" class="quantity-selector">
-					  <button class="quantity-btn" @click="decreaseQuantity(product)">-</button>
-					  <text class="quantity-text">{{ getProductQuantity(product.id) }}</text>
-					  <button class="quantity-btn" @click="increaseQuantity(product)">+</button>
-					</view>
-					<!-- 否则显示价格和选择按钮 -->
-					<template v-else>
-					  <text class="product-price">¥{{ Number(product.price || 0).toFixed(2) }}</text>
-					  <view
-						  class="add-btn"
-						  :id="`select-btn-${product.id}`"
-						  @click="goToNotice(product)"
-					  >+</view>
-					</template>
-				  </view>
-				</view>
-			  </view>
-			</view>
-		  </view>
-		</scroll-view>
-	  </view>
-  
-	  <!-- 底部购物车栏 -->
-	  <view class="cart-bar">
-		<view class="cart-icon-wrapper" @click="showCart" id="cart-icon-target">
-		  <view class="cart-icon">
-			<uni-icons type="cart" size="30" color="#ffffff"></uni-icons>
-		  </view>
-		  <view class="cart-badge" v-if="cartCount > 0">{{ cartCount }}</view>
-		</view>
-		<view class="cart-info">
-		  <text class="cart-total">¥ {{ totalPrice.toFixed(2) }}</text>
-		  <text class="cart-tip">不含复诊费,实际金额以结算为准</text>
-		</view>
-		<button class="submit-btn" @click="handleSubmit">提&nbsp;交</button>
-	  </view>
-  
-	  <!-- Tab Bar 导航栏 -->
-	  <TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
-  
-	  <!-- 动画小球 -->
-	  <view
-		  class="fly-ball"
-		  v-if="showFlyBall"
-		  :style="{
-				  left: flyBallStyle.left + 'px',
-				  top: flyBallStyle.top + 'px',
-				  transform: `translate(-50%, -50%) scale(${flyBallStyle.scale})`
-			  }"
-	  ></view>
-	</view>
-  </template>
-  
-  <script>
+  <view class="product-container">
+    <view class="banner-section">
+      <image
+        class="banner-image"
+        :src="getImageUrl('/profile/liaoning_zongyi/banner_bg.png')"
+        mode="widthFix"
+      ></image>
+    </view>
+
+    <view class="search-section">
+      <view class="search-bar">
+        <uni-icons type="search" size="18" color="#999999"></uni-icons>
+        <input v-model="searchKeyword" class="search-input" placeholder="搜索健康产品" @input="handleSearch" />
+        <button class="search-btn" @click="handleSearch">搜索</button>
+      </view>
+    </view>
+
+    <view class="product-list-header">
+      <view class="prescription-title" @click="switchToVerticalLayout">
+        <text class="prescription-text">药方</text>
+<!--        <image
+          class="prescription-icon"
+          :src="getImageUrl('/profile/liaoning_zongyi/list_icon2.png')"
+          mode="aspectFit"
+        ></image>-->
+      </view>
+      <view class="history-order" @click="goToHistory">
+        <uni-icons type="list" size="18" color="#666666"></uni-icons>
+        <text class="history-text">订单记录</text>
+      </view>
+    </view>
+
+    <view class="category-tabs-wrapper">
+      <scroll-view class="category-tabs" scroll-x>
+        <view class="category-tabs-content">
+          <view
+            v-for="category in categories"
+            :key="category.id"
+            class="category-tab-item"
+            :class="{ active: currentCategoryId === category.id }"
+            @click="switchCategory(category.id)"
+          >
+            <text class="category-tab-name">{{ category.name }}</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view class="product-list-wrapper">
+      <scroll-view class="product-list" scroll-y>
+        <view class="product-items">
+          <view v-for="product in filteredProducts" :key="product.id" class="product-item">
+            <view class="image-wrapper" @click="goToDetail(product)">
+              <image class="product-image" :src="getImageUrl(product.image)" mode="aspectFill"></image>
+              <view class="hot-badge" v-if="product.isNewProduct === 1">新品</view>
+            </view>
+            <view class="product-info">
+              <text class="product-name" @click="goToDetail(product)">
+                <text class="self-tag" v-if="product.bizType === 2">健康</text>
+                <text class="self-tag2" v-if="product.isHospitalStarFormula === 1">院藏推荐</text>
+                <text class="self-tag3" v-if="product.isPrescription === 1">处方</text>
+                {{ product.name }}
+              </text>
+              <text class="product-desc" v-if="product.description">{{ product.description }}</text>
+              <view class="product-footer">
+                <text class="product-unit">{{ product.specText || product.unit || '' }}</text>
+                <view class="product-price-row">
+                  <view v-if="isProductVerified(product.id)" class="quantity-selector">
+                    <button class="quantity-btn" @click="decreaseQuantity(product)">-</button>
+                    <text class="quantity-text">{{ getProductQuantity(product.id) }}</text>
+                    <button class="quantity-btn" @click="increaseQuantity(product)">+</button>
+                  </view>
+                  <template v-else>
+                    <text class="product-price">￥{{ Number(product.price || 0).toFixed(2) }}</text>
+                    <view class="add-btn" :id="`select-btn-${product.id}`" @click="goToNotice(product)">+</view>
+                  </template>
+                </view>
+              </view>
+            </view>
+          </view>
+          <view v-if="filteredProducts.length === 0" class="empty-state">暂无符合条件的商品</view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view class="cart-bar">
+      <view class="cart-icon-wrapper" id="cart-icon-target" @click="showCart">
+        <view class="cart-icon">
+          <uni-icons type="cart" size="30" color="#ffffff"></uni-icons>
+        </view>
+        <view class="cart-badge" v-if="cartCount > 0">{{ cartCount }}</view>
+      </view>
+      <view class="cart-info">
+        <text class="cart-total">￥ {{ totalPrice.toFixed(2) }}</text>
+        <text class="cart-tip">健康产品将统一进入确认订单流程</text>
+      </view>
+      <button class="submit-btn" @click="handleSubmit">去结算</button>
+    </view>
+
+    <TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
+
+    <view
+      v-if="showFlyBall"
+      class="fly-ball"
+      :style="{
+        left: flyBallStyle.left + 'px',
+        top: flyBallStyle.top + 'px',
+        transform: `translate(-50%, -50%) scale(${flyBallStyle.scale})`
+      }"
+    ></view>
+  </view>
+</template>
+
+<script>
 import {
   STORAGE_KEY_CURRENT_CONSULTATION_ID,
   STORAGE_KEY_USER_REGISTER
 } from '@/utils/storage.js'
 import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
 import {
+  addCartItem,
+  calculateTotalPrice,
+  calculateTotalQuantity,
   getCartEntries,
   getCartProductQuantity,
   loadCartItems,
-  calculateTotalPrice,
-  calculateTotalQuantity,
-  setCartItemQuantity,
+  prepareCheckout,
   removeFromCart,
-  prepareCheckout
+  resolveCartCompatibility,
+  setCartItemQuantity
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
+import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
 const HEALTH_BIZ_TYPE = 2
@@ -213,7 +206,7 @@ export default {
         this.loadVerifiedProductsFromStorage()
       } catch (error) {
         console.error('loadProducts failed:', error)
-        uni.showToast({ title: '加载失败', icon: 'none' })
+        uni.showToast({ title: '加载商品失败', icon: 'none' })
       } finally {
         uni.hideLoading()
       }
@@ -272,6 +265,37 @@ export default {
         })
         return
       }
+
+      const flow = resolveCartCompatibility(product, {
+        ignoreProductId: product?.id
+      })
+      if (!flow.valid) {
+        uni.showToast({
+          title: flow.message,
+          icon: 'none'
+        })
+        return
+      }
+
+      if (!hasBoundQuestionnaire(product)) {
+        const success = addCartItem(product, 1, {
+          questionnairePassed: true
+        })
+        if (!success) {
+          uni.showToast({
+            title: '加入购物车失败',
+            icon: 'none'
+          })
+          return
+        }
+        this.loadVerifiedProductsFromStorage()
+        uni.showToast({
+          title: '已加入购物车',
+          icon: 'success'
+        })
+        return
+      }
+
       uni.navigateTo({
         url: `/pages/products/product_notice?id=${product.id}&quantity=1&action=cart`
       })
@@ -344,9 +368,6 @@ export default {
     goToHistory() {
       uni.navigateTo({ url: '/pages/order/order_list' })
     },
-    goBack() {
-      uni.navigateBack()
-    },
     handleTabChange(tab) {
       this.currentTab = tab
     },
@@ -356,8 +377,7 @@ export default {
   }
 }
 </script>
-  
-  <style scoped>
+<style scoped>
   .product-container {
 	width: 100%;
 	min-height: 100vh;
@@ -504,7 +524,7 @@ export default {
 	flex-shrink: 0;
   }
   
-  /* 横向分类Tabs */
+  /* 妯悜鍒嗙被Tabs */
   .category-tabs-wrapper {
 	background-color: #ffffff;
 	border-bottom: 1rpx solid #e5e5e5;
@@ -915,5 +935,5 @@ export default {
 	transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 	box-shadow: 0 4rpx 12rpx rgba(255, 107, 107, 0.5);
   }
-  /* Tab Bar 样式已移至组件中 */
+  /* Tab Bar 鏍峰紡宸茬Щ鑷崇粍浠朵腑 */
   </style>
