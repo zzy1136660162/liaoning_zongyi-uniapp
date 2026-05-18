@@ -1,5 +1,8 @@
 <template>
-  <view class="product-container">
+  <scroll-view class="product-container" scroll-y :scroll-top="scrollTop" @scroll="onPageScroll" :bounces="!isAtBottom">
+    <view class="top-banner">
+      <image class="top-banner-img" src="https://smf.lntcm.com/static/img/yiyuan.jpg" mode="widthFix" />
+    </view>
     <view class="hospital-intro">
       <view class="logo-wrap">
         <image class="hospital-logo" src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png" mode="aspectFit" />
@@ -159,7 +162,7 @@
         transform: `translate(-50%, -50%) scale(${flyBallStyle.scale})`
       }"
     ></view>
-  </view>
+  </scroll-view>
 </template>
 
 <script>
@@ -201,7 +204,10 @@ export default {
       categoryList: [],
       isScrolled: false,
       sortType: '',
-      sortOrder: 'desc'
+      sortOrder: 'desc',
+      bannerCollapsed: false,
+      isAtBottom: false,
+      scrollTop: 0
     }
   },
   computed: {
@@ -254,6 +260,13 @@ export default {
   },
   methods: {
     getImageUrl,
+    onPageScroll(e) {
+      this.isScrolled = e.detail.scrollTop > 100
+      const scrollHeight = e.detail.scrollHeight
+      const clientHeight = e.detail.clientHeight
+      const scrollTop = e.detail.scrollTop
+      this.isAtBottom = scrollTop + clientHeight >= scrollHeight - 10
+    },
     toggleSort(type) {
       if (type === '') {
         this.sortType = ''
@@ -428,7 +441,7 @@ scroll-view ::-webkit-scrollbar {
 }
 .product-container {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
   background-color: #f5f5f5;
 }
 
@@ -630,6 +643,7 @@ scroll-view ::-webkit-scrollbar {
 .product-list {
   overflow: scroll;
   flex: 1;
+  margin-bottom: 110rpx;
 }
 
 .product-items {
@@ -891,12 +905,24 @@ scroll-view ::-webkit-scrollbar {
   box-shadow: 0 4rpx 12rpx rgba(255, 107, 107, 0.5);
 }
 
+.top-banner {
+  width: 100%;
+  overflow: hidden;
+}
+
+.top-banner-img {
+  width: 100%;
+  display: block;
+}
+
 .hospital-intro {
   display: flex;
   align-items: flex-start;
   background: linear-gradient(135deg, #fafafa, #fff);
   padding: 30rpx 30rpx 10rpx 30rpx;
   position: relative;
+  margin-top: -80rpx;
+  z-index: 10;
 }
 
 .logo-wrap {
