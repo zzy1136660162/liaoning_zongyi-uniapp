@@ -3,7 +3,7 @@
     <view class="top-banner">
       <image class="top-banner-img" src="https://smf.lntcm.com/static/img/yiyuan.jpg" mode="widthFix" />
     </view>
-    <view class="hospital-intro">
+    <view class="hospital-intro" :class="{ collapsed: imageCollapsed }">
       <view class="logo-wrap">
         <image class="hospital-logo" src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png" mode="aspectFit" />
         <view class="logo-badge">官方旗舰店</view>
@@ -11,8 +11,8 @@
       <view class="hospital-info">
         <view class="hospital-name-row">
           <view class="hospital-badge">医院自营</view>
-          <text class="hospital-name">辽宁中医药大学附属医院商城</text>
-          <text class="verify-icon">✓</text>
+          <text class="hospital-name">辽宁中医药大学附属医院云商城</text>
+          <!-- <text class="verify-icon">✓</text> -->
         </view>
         <view class="hospital-desc">权威认证 · 品质保障 · 放心购药</view>
         <view class="hospital-tags">
@@ -204,7 +204,8 @@ export default {
       categoryList: [],
       isScrolled: false,
       sortType: '',
-      sortOrder: 'desc'
+      sortOrder: 'desc',
+      imageCollapsed: false
     }
   },
   computed: {
@@ -248,6 +249,9 @@ export default {
     this.currentTab = 'home'
     uni.$on('refreshProductsList', this.loadVerifiedProductsFromStorage)
     this.loadProducts()
+    setTimeout(() => {
+      this.imageCollapsed = true
+    }, 2000)
   },
   onShow() {
     this.loadVerifiedProductsFromStorage()
@@ -482,7 +486,7 @@ scroll-view ::-webkit-scrollbar {
 
 .main-content {
   display: flex;
-  height: calc(100vh - 580rpx);
+  height: calc(100vh - 500rpx);
   overflow: scroll;
   padding-bottom: 150rpx;
 }
@@ -909,8 +913,13 @@ scroll-view ::-webkit-scrollbar {
   background: linear-gradient(135deg, #fafafa, #fff);
   padding: 30rpx 30rpx 10rpx 30rpx;
   position: relative;
-  margin-top: -50rpx;
+  margin-top: -40rpx;
   z-index: 10;
+  transition: margin-top 1.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.hospital-intro.collapsed {
+  margin-top: -400rpx;
 }
 
 .logo-wrap {
