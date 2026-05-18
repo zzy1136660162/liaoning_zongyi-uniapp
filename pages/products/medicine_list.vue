@@ -1,65 +1,55 @@
 <template>
   <view class="product-container">
-    <view class="hospital-intro">
+    <view class="top-banner">
+      <image class="top-banner-img" src="https://smf.lntcm.com/static/img/yiyuan.jpg" mode="widthFix" />
+    </view>
+
+    <view class="hospital-intro" :class="{ collapsed: imageCollapsed }">
       <view class="logo-wrap">
-        <image class="hospital-logo" src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png" mode="aspectFit" />
+        <image
+          class="hospital-logo"
+          src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png"
+          mode="aspectFit"
+        />
         <view class="logo-badge">官方旗舰店</view>
       </view>
+
       <view class="hospital-info">
         <view class="hospital-name-row">
           <view class="hospital-badge">医院自营</view>
-          <text class="hospital-name">辽宁中医药大学附属医院商城</text>
-          <text class="verify-icon">✓</text>
+          <text class="hospital-name">辽宁中医药大学附属医院云商城</text>
+          <text class="verify-icon">V</text>
         </view>
         <view class="hospital-desc">权威认证 · 品质保障 · 放心购药</view>
         <view class="hospital-tags">
           <view class="tag-item">
-            <text class="tag-icon">🛡️</text>
+            <text class="tag-icon">正</text>
             <text class="tag-text">正品保证</text>
           </view>
           <view class="tag-item">
-            <text class="tag-icon">⏰</text>
-            <text class="tag-text">24h发货</text>
+            <text class="tag-icon">24h</text>
+            <text class="tag-text">快速发货</text>
           </view>
           <view class="tag-item">
-            <text class="tag-icon">📋</text>
+            <text class="tag-icon">方</text>
             <text class="tag-text">在线开方</text>
           </view>
           <view class="tag-item">
-            <text class="tag-icon">🚚</text>
+            <text class="tag-icon">配</text>
             <text class="tag-text">专业包装</text>
           </view>
         </view>
-        <!-- <view class="hospital-stats">
-          <view class="stat-item">
-            <text class="stat-value">9999+</text>
-            <text class="stat-label">月销量</text>
-          </view>
-          <view class="stat-divider"></view>
-          <view class="stat-item">
-            <text class="stat-value">4.9</text>
-            <text class="stat-label">综合评分</text>
-          </view>
-          <view class="stat-divider"></view>
-          <view class="stat-item">
-            <text class="stat-value">100%</text>
-            <text class="stat-label">好评率</text>
-          </view>
-        </view> -->
       </view>
-      <text class="arrow-icon">›</text>
+
+      <text class="arrow-icon">></text>
     </view>
+
     <view class="intro-divider"></view>
 
     <view class="search-section">
       <view class="search-bar">
         <uni-icons type="search" size="18" color="#999999"></uni-icons>
-        <input
-          v-model="searchKeyword"
-          class="search-input"
-          placeholder="搜索商品名称、适用症状或功效"
-          @input="handleSearch"
-        />
+        <input v-model="searchKeyword" class="search-input" placeholder="搜索院内药品" @input="handleSearch" />
         <button class="search-btn" @click="handleSearch">搜索</button>
       </view>
     </view>
@@ -80,10 +70,10 @@
       <view class="product-list-wrapper">
         <view class="product-list-header">
           <view class="header-left">
-            <text class="section-title">药方</text>
-            <view class="prescription-title" @click="switchToHorizontalLayout">
+            <text class="section-title">药房商品</text>
+            <view class="switch-icon-btn" @click="switchToHorizontalLayout">
               <image
-                class="prescription-icon"
+                class="switch-icon"
                 :src="getImageUrl('/profile/liaoning_zongyi/list_icon1.png')"
                 mode="aspectFit"
               ></image>
@@ -94,11 +84,11 @@
               </view>
               <view class="sort-btn" :class="{ active: sortType === 'sales' }" @click="toggleSort('sales')">
                 <text class="sort-text">销量</text>
-                <text class="sort-arrow" :class="{ desc: sortType === 'sales' && sortOrder === 'desc' }">↑</text>
+                <text class="sort-arrow" :class="{ desc: sortType === 'sales' && sortOrder === 'desc' }">^</text>
               </view>
               <view class="sort-btn" :class="{ active: sortType === 'price' }" @click="toggleSort('price')">
                 <text class="sort-text">价格</text>
-                <text class="sort-arrow" :class="{ desc: sortType === 'price' && sortOrder === 'desc' }">↑</text>
+                <text class="sort-arrow" :class="{ desc: sortType === 'price' && sortOrder === 'desc' }">^</text>
               </view>
             </view>
           </view>
@@ -114,16 +104,22 @@
                   mode="aspectFill"
                   @click="goToDetail(product)"
                 ></image>
-                <view class="hot-badge" v-if="product.isNewProduct === 1">新品</view>
+                <view v-if="product.isNewProduct === 1" class="hot-badge">新</view>
               </view>
+
               <view class="product-info">
                 <text class="product-name" @click="goToDetail(product)">
-                  <text class="self-tag" v-if="product.bizType === 1">本院</text>
-                  <text class="self-tag2" v-if="product.isHospitalStarFormula === 1">院藏名方</text>
-                  <text class="self-tag3" v-if="product.isNewProduct === 1">上新</text>
+                  <text v-if="product.bizType === 1" class="self-tag">自研</text>
+                  <text v-if="product.isHospitalStarFormula === 1" class="self-tag2">院藏王牌制剂</text>
+                  <text v-if="product.isNewProduct === 1" class="self-tag3">重磅新品</text>
                   {{ product.name }}
                 </text>
-                <text class="product-desc" v-if="product.description">{{ product.description }}</text>
+
+                <text v-if="product.description" class="product-desc">{{ product.description }}</text>
+                <text v-if="product.specText || product.unit" class="product-unit">
+                  {{ product.specText || product.unit }}
+                </text>
+
                 <view class="product-footer">
                   <view class="product-price-row">
                     <view v-if="isProductVerified(product.id)" class="quantity-selector">
@@ -139,6 +135,7 @@
                 </view>
               </view>
             </view>
+
             <view v-if="filteredProducts.length === 0" class="empty-placeholder">暂无符合条件的商品</view>
           </view>
         </scroll-view>
@@ -146,16 +143,18 @@
     </view>
 
     <view class="cart-bar">
-      <view class="cart-icon-wrapper" id="cart-icon-target" @click="showCart">
+      <view id="cart-icon-target" class="cart-icon-wrapper" @click="showCart">
         <view class="cart-icon">
           <uni-icons type="cart" size="30" color="#ffffff"></uni-icons>
         </view>
-        <view class="cart-badge" v-if="cartCount > 0">{{ cartCount }}</view>
+        <view v-if="cartCount > 0" class="cart-badge">{{ cartCount }}</view>
       </view>
+
       <view class="cart-info">
         <text class="cart-total">￥{{ totalPrice.toFixed(2) }}</text>
         <text class="cart-tip">已选商品可统一进入处方申请流程</text>
       </view>
+
       <button class="submit-btn" @click="handleSubmit">去结算</button>
     </view>
 
@@ -214,7 +213,8 @@ export default {
       loadedCategories: {},
       categoryList: [],
       sortType: '',
-      sortOrder: 'desc'
+      sortOrder: 'desc',
+      imageCollapsed: false
     }
   },
   computed: {
@@ -230,6 +230,7 @@ export default {
           (product.description && product.description.toLowerCase().includes(keyword))
         )
       }
+
       if (this.sortType) {
         products = [...products].sort((a, b) => {
           if (this.sortType === 'sales') {
@@ -245,6 +246,7 @@ export default {
           return 0
         })
       }
+
       return products
     },
     cartCount() {
@@ -258,6 +260,9 @@ export default {
     this.currentTab = 'home'
     uni.$on('refreshProductsList', this.loadVerifiedProductsFromStorage)
     this.loadProducts()
+    setTimeout(() => {
+      this.imageCollapsed = true
+    }, 2000)
   },
   onShow() {
     this.loadVerifiedProductsFromStorage()
@@ -285,7 +290,7 @@ export default {
         const categoryList = await getCategoryList(HOSPITAL_BIZ_TYPE)
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categories = [
-          { id: 'all', name: '全部', products: [] },
+          { id: 'all', name: '全部分类', products: [] },
           ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
         ]
         await this.loadAllProducts()
@@ -459,469 +464,29 @@ export default {
   }
 }
 </script>
+
 <style scoped>
 ::-webkit-scrollbar {
   display: none;
 }
+
 scroll-view ::-webkit-scrollbar {
   display: none;
 }
+
 .product-container {
   width: 100%;
-  min-height: 100vh;
   background-color: #f5f5f5;
 }
 
-.banner-section {
+.top-banner {
   width: 100%;
-  margin-bottom: 20rpx;
   overflow: hidden;
 }
 
-.banner-image {
+.top-banner-img {
   width: 100%;
-  height: auto;
   display: block;
-}
-
-.search-section {
-  padding: 20rpx 30rpx;
-  background-color: #ffffff;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.search-bar {
-  display: flex;
-  align-items: center;
-  background-color: #f5f5f5;
-  border-radius: 50rpx;
-  padding: 6rpx 10rpx 6rpx 30rpx;
-}
-
-.search-input {
-  flex: 1;
-  font-size: 28rpx;
-  color: #333333;
-  padding-right: 10rpx;
-}
-
-.search-btn {
-  background-color: #4A90E2;
-  color: #ffffff;
-  font-size: 26rpx;
-  padding: 0rpx 24rpx;
-  border-radius: 40rpx;
-  border: none;
-  margin-left: 10rpx;
-  flex-shrink: 0;
-}
-
-.main-content {
-  display: flex;
-  height: calc(100vh - 450rpx);
-  overflow: scroll;
-  padding-bottom: 50rpx;
-}
-
-.category-nav {
-  width: 200rpx;
-  background-color: #ffffff;
-  border-right: 1rpx solid #e5e5e5;
-  padding-bottom: 20rpx;
-}
-
-.category-item {
-  padding: 30rpx 20rpx;
-  text-align: center;
-  border-left: 4rpx solid transparent;
-  transition: all 0.3s;
-}
-
-.category-item.active {
-  background-color: #f0f8ff;
-  border-left-color: #4A90E2;
-}
-
-.category-item.active .category-name {
-  color: #4A90E2;
-  font-weight: 500;
-}
-
-.category-name {
-  font-size: 28rpx;
-  color: #666666;
-}
-
-.product-list-wrapper {
-  padding: 20rpx;
-  flex: 1;
-  background-color: #ffffff;
-  display: flex;
-  flex-direction: column;
-}
-
-.product-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20rpx 20rpx 16rpx 20rpx;
-  border-bottom: 1rpx solid #f0f0f0;
-}
-
-.section-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  background: #333;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  position: relative;
-  padding-left: 12rpx;
-}
-
-.section-title::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 6rpx;
-  height: 24rpx;
-  background: linear-gradient(135deg, #4A90E2 0%, #6BB3FF 100%);
-  border-radius: 3rpx;
-}
-
-.prescription-title {
-  width: 56rpx;
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 16rpx;
-  background: #f5f8ff;
-  border: 1rpx solid #d7e7ff;
-  flex-shrink: 0;
-}
-
-.prescription-icon {
-  width: 32rpx;
-  height: 32rpx;
-  flex-shrink: 0;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-}
-
-.sort-section {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.sort-btn {
-  display: flex;
-  align-items: center;
-  gap: 4rpx;
-  padding: 6rpx 14rpx;
-  border-radius: 20rpx;
-  background: #f5f5f5;
-  transition: all 0.2s ease;
-}
-
-.sort-btn.active {
-  background: linear-gradient(135deg, #4A90E2 0%, #67B26F 100%);
-}
-
-.sort-text {
-  font-size: 24rpx;
-  color: #666666;
-}
-
-.sort-btn.active .sort-text {
-  color: #ffffff;
-}
-
-.sort-arrow {
-  font-size: 20rpx;
-  color: #999999;
-  transition: all 0.2s ease;
-}
-
-.sort-btn.active .sort-arrow {
-  color: #ffffff;
-}
-
-.sort-arrow.desc {
-  transform: rotate(180deg);
-}
-
-.product-list {
-  overflow: scroll;
-  flex: 1;
-}
-
-.product-items {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-}
-
-.product-item {
-  width: 100%;
-  background-color: #ffffff;
-  border-radius: 16rpx;
-  overflow: hidden;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: row;
-  box-sizing: border-box;
-  padding: 20rpx;
-  gap: 20rpx;
-}
-
-.product-image {
-  width: 200rpx;
-  height: 200rpx;
-  flex-shrink: 0;
-  background-color: #f5f5f5;
-  border-radius: 12rpx;
-}
-
-.image-wrapper {
-  position: relative;
-}
-
-.hot-badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  background-color: #ff4b4b;
-  color: #ffffff;
-  font-size: 20rpx;
-  font-weight: bold;
-  padding: 4rpx 10rpx;
-  border-radius: 0 12rpx 0 12rpx;
-}
-
-.product-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-height: 120rpx;
-}
-
-.product-name {
-  font-size: 28rpx;
-  font-weight: 500;
-  color: #333333;
-  margin-bottom: 8rpx;
-  line-height: 1.4;
-  word-wrap: break-word;
-  word-break: break-all;
-}
-
-.self-tag,
-.self-tag2,
-.self-tag3 {
-  display: inline-block;
-  color: #fff;
-  font-size: 20rpx;
-  padding: 2rpx 8rpx;
-  border-radius: 4rpx;
-  margin-right: 8rpx;
-  vertical-align: middle;
-}
-
-.self-tag {
-  background: #ff4b4b;
-}
-
-.self-tag2 {
-  background: #333;
-  color: #d4af37;
-}
-
-.self-tag3 {
-  background: #00c792;
-}
-
-.product-desc {
-  font-size: 22rpx;
-  color: #999999;
-  margin-bottom: 12rpx;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.product-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-  margin-top: auto;
-}
-
-.product-unit {
-  font-size: 22rpx;
-  color: #999999;
-}
-
-.product-price-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10rpx;
-}
-
-.product-price {
-  font-size: 30rpx;
-  font-weight: bold;
-  color: #ff6b6b;
-}
-
-.add-btn {
-  width: 44rpx;
-  height: 44rpx;
-  background-color: #ff4b4b;
-  color: #ffffff;
-  font-size: 40rpx;
-  font-weight: 300;
-  border-radius: 50%;
-  display: flex;
-  justify-content: center;
-  line-height: 1;
-}
-
-.quantity-selector {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  justify-content: flex-end;
-  flex: 1;
-}
-
-.quantity-btn {
-  width: 44rpx;
-  height: 44rpx;
-  background-color: #4A90E2;
-  color: #ffffff;
-  font-size: 26rpx;
-  border-radius: 50%;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.quantity-text {
-  font-size: 26rpx;
-  color: #333333;
-  min-width: 36rpx;
-  text-align: center;
-}
-
-.cart-bar {
-  position: fixed;
-  bottom: calc(100rpx + env(safe-area-inset-bottom));
-  left: 0;
-  right: 0;
-  height: 120rpx;
-  background-color: #ffffff;
-  border-top: 1rpx solid #e5e5e5;
-  display: flex;
-  align-items: center;
-  padding: 0 30rpx;
-  z-index: 100;
-  box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
-  box-sizing: border-box;
-}
-
-.cart-icon-wrapper {
-  position: relative;
-  width: 80rpx;
-  height: 80rpx;
-  margin-right: 20rpx;
-}
-
-.cart-icon {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 50%;
-  background-color: #4A90E2;
-  color: #ffffff;
-  font-size: 40rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-}
-
-.cart-badge {
-  position: absolute;
-  top: -10rpx;
-  right: -10rpx;
-  background-color: #ff6b6b;
-  color: #ffffff;
-  font-size: 20rpx;
-  min-width: 32rpx;
-  height: 32rpx;
-  border-radius: 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8rpx;
-}
-
-.cart-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.cart-total {
-  font-size: 36rpx;
-  font-weight: bold;
-  color: #333333;
-  margin-bottom: 4rpx;
-}
-
-.cart-tip {
-  font-size: 20rpx;
-  color: #999999;
-}
-
-.submit-btn {
-  background-color: #4A90E2;
-  color: #ffffff;
-  font-size: 32rpx;
-  padding: 4rpx 60rpx;
-  border-radius: 60rpx;
-  border: none;
-  font-weight: 500;
-}
-
-.fly-ball {
-  position: fixed;
-  width: 30rpx;
-  height: 30rpx;
-  background-color: #ff6b6b;
-  border-radius: 50%;
-  z-index: 9999;
-  pointer-events: none;
-  transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  box-shadow: 0 4rpx 12rpx rgba(255, 107, 107, 0.5);
 }
 
 .hospital-intro {
@@ -930,6 +495,13 @@ scroll-view ::-webkit-scrollbar {
   background: linear-gradient(135deg, #fafafa, #fff);
   padding: 30rpx 30rpx 10rpx 30rpx;
   position: relative;
+  margin-top: -40rpx;
+  z-index: 10;
+  transition: margin-top 1.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.hospital-intro.collapsed {
+  margin-top: -400rpx;
 }
 
 .logo-wrap {
@@ -989,7 +561,7 @@ scroll-view ::-webkit-scrollbar {
 
 .verify-icon {
   color: #52c41a;
-  font-size: 26rpx;
+  font-size: 24rpx;
   margin-left: 8rpx;
 }
 
@@ -1005,6 +577,7 @@ scroll-view ::-webkit-scrollbar {
   align-items: center;
   gap: 12rpx;
   margin-bottom: 16rpx;
+  flex-wrap: wrap;
 }
 
 .tag-item {
@@ -1019,6 +592,7 @@ scroll-view ::-webkit-scrollbar {
 .tag-icon {
   font-size: 18rpx;
   margin-right: 4rpx;
+  color: #4a90e2;
 }
 
 .tag-text {
@@ -1026,70 +600,463 @@ scroll-view ::-webkit-scrollbar {
   color: #666;
 }
 
-.hospital-stats {
-  display: flex;
-  align-items: center;
-  background: linear-gradient(135deg, #fff8e1, #fff);
-  padding: 12rpx 16rpx;
-  border-radius: 8rpx;
-  border: 1rpx solid #ffe58f;
-}
-
-.stat-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.stat-value {
-  font-size: 28rpx;
-  font-weight: bold;
-  color: #e63939;
-}
-
-.stat-label {
-  font-size: 18rpx;
-  color: #999;
-  margin-top: 2rpx;
-}
-
-.stat-divider {
-  width: 1rpx;
-  height: 40rpx;
-  background: #ffe58f;
-}
-
-.tag {
-  font-size: 22rpx;
-  color: #666;
-}
-
-.tag-sep {
-  color: #ddd;
-  font-size: 20rpx;
-}
-
-.intro-action-btn {
-  width: 64rpx;
-  height: 64rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 16rpx;
-  border-radius: 18rpx;
-  background: #f5f8ff;
-  border: 1rpx solid #d7e7ff;
-  flex-shrink: 0;
-}
-
-.intro-action-icon {
-  width: 34rpx;
-  height: 34rpx;
+.arrow-icon {
+  font-size: 40rpx;
+  color: #ccc;
+  margin-left: 12rpx;
+  align-self: center;
 }
 
 .intro-divider {
   height: 16rpx;
   background: #f5f5f5;
+}
+
+.search-section {
+  padding: 20rpx 30rpx;
+  background-color: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  background-color: #f5f5f5;
+  border-radius: 50rpx;
+  padding: 6rpx 10rpx 6rpx 30rpx;
+}
+
+.search-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #333333;
+  padding-right: 10rpx;
+}
+
+.search-btn {
+  background-color: #4a90e2;
+  color: #ffffff;
+  font-size: 26rpx;
+  padding: 0 24rpx;
+  border-radius: 40rpx;
+  border: none;
+  margin-left: 10rpx;
+  flex-shrink: 0;
+}
+
+.main-content {
+  display: flex;
+  height: calc(100vh - 500rpx);
+  overflow: scroll;
+  padding-bottom: 150rpx;
+}
+
+.category-nav {
+  width: 200rpx;
+  background-color: #ffffff;
+  border-right: 1rpx solid #e5e5e5;
+  padding-bottom: 20rpx;
+}
+
+.category-item {
+  padding: 30rpx 20rpx;
+  text-align: center;
+  border-left: 4rpx solid transparent;
+  transition: all 0.3s;
+}
+
+.category-item.active {
+  background-color: #f0f8ff;
+  border-left-color: #4a90e2;
+}
+
+.category-item.active .category-name {
+  color: #4a90e2;
+  font-weight: 500;
+}
+
+.category-name {
+  font-size: 28rpx;
+  color: #666666;
+}
+
+.product-list-wrapper {
+  padding: 20rpx;
+  flex: 1;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 20rpx 16rpx 20rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  background: #333;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  position: relative;
+  padding-left: 12rpx;
+}
+
+.section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6rpx;
+  height: 24rpx;
+  background: linear-gradient(135deg, #4a90e2 0%, #6bb3ff 100%);
+  border-radius: 3rpx;
+}
+
+.switch-icon-btn {
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16rpx;
+  background: #f5f8ff;
+  border: 1rpx solid #d7e7ff;
+  flex-shrink: 0;
+}
+
+.switch-icon {
+  width: 32rpx;
+  height: 32rpx;
+  flex-shrink: 0;
+}
+
+.sort-section {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.sort-btn {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 20rpx;
+  background: #f5f5f5;
+  transition: all 0.2s ease;
+}
+
+.sort-btn.active {
+  background: linear-gradient(135deg, #4a90e2 0%, #67b26f 100%);
+}
+
+.sort-text {
+  font-size: 24rpx;
+  color: #666666;
+}
+
+.sort-btn.active .sort-text {
+  color: #ffffff;
+}
+
+.sort-arrow {
+  font-size: 20rpx;
+  color: #999999;
+  transition: all 0.2s ease;
+}
+
+.sort-btn.active .sort-arrow {
+  color: #ffffff;
+}
+
+.sort-arrow.desc {
+  transform: rotate(180deg);
+}
+
+.product-list {
+  overflow: scroll;
+  flex: 1;
+}
+
+.product-items {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.product-item {
+  width: 100%;
+  background-color: #ffffff;
+  border-radius: 16rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: row;
+  box-sizing: border-box;
+  padding: 20rpx;
+  gap: 20rpx;
+}
+
+.image-wrapper {
+  position: relative;
+}
+
+.product-image {
+  width: 200rpx;
+  height: 200rpx;
+  flex-shrink: 0;
+  background-color: #f5f5f5;
+  border-radius: 12rpx;
+}
+
+.hot-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background-color: #ff4b4b;
+  color: #ffffff;
+  font-size: 20rpx;
+  font-weight: bold;
+  padding: 4rpx 10rpx;
+  border-radius: 0 12rpx 0 12rpx;
+}
+
+.product-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 120rpx;
+}
+
+.product-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #333333;
+  margin-bottom: 8rpx;
+  line-height: 1.4;
+  word-wrap: break-word;
+  word-break: break-all;
+}
+
+.self-tag,
+.self-tag2,
+.self-tag3 {
+  display: inline-block;
+  color: #fff;
+  font-size: 20rpx;
+  padding: 2rpx 8rpx;
+  border-radius: 4rpx;
+  margin-right: 8rpx;
+  vertical-align: middle;
+}
+
+.self-tag {
+  background: #ff4b4b;
+}
+
+.self-tag2 {
+  background: #333333;
+  color: #d4af37;
+}
+
+.self-tag3 {
+  background: #00c792;
+}
+
+.product-desc {
+  font-size: 22rpx;
+  color: #999999;
+  margin-bottom: 12rpx;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.product-unit {
+  font-size: 22rpx;
+  color: #999999;
+  margin-bottom: 8rpx;
+}
+
+.product-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: auto;
+}
+
+.product-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10rpx;
+}
+
+.product-price {
+  font-size: 30rpx;
+  font-weight: bold;
+  color: #ff6b6b;
+}
+
+.add-btn {
+  width: 44rpx;
+  height: 44rpx;
+  background-color: #ff4b4b;
+  color: #ffffff;
+  font-size: 40rpx;
+  font-weight: 300;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  line-height: 1;
+}
+
+.quantity-selector {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  justify-content: flex-end;
+  flex: 1;
+}
+
+.quantity-btn {
+  width: 44rpx;
+  height: 44rpx;
+  background-color: #4a90e2;
+  color: #ffffff;
+  font-size: 26rpx;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.quantity-text {
+  font-size: 26rpx;
+  color: #333333;
+  min-width: 36rpx;
+  text-align: center;
+}
+
+.empty-placeholder {
+  padding: 60rpx 20rpx;
+  text-align: center;
+  color: #999999;
+  font-size: 26rpx;
+}
+
+.cart-bar {
+  position: fixed;
+  bottom: calc(100rpx + env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  height: 120rpx;
+  background-color: #ffffff;
+  border-top: 1rpx solid #e5e5e5;
+  display: flex;
+  align-items: center;
+  padding: 0 30rpx;
+  z-index: 100;
+  box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
+}
+
+.cart-icon-wrapper {
+  position: relative;
+  width: 80rpx;
+  height: 80rpx;
+  margin-right: 20rpx;
+}
+
+.cart-icon {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background-color: #4a90e2;
+  color: #ffffff;
+  font-size: 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.cart-badge {
+  position: absolute;
+  top: -10rpx;
+  right: -10rpx;
+  background-color: #ff6b6b;
+  color: #ffffff;
+  font-size: 20rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8rpx;
+}
+
+.cart-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.cart-total {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #333333;
+  margin-bottom: 4rpx;
+}
+
+.cart-tip {
+  font-size: 20rpx;
+  color: #999999;
+}
+
+.submit-btn {
+  background-color: #4a90e2;
+  color: #ffffff;
+  font-size: 32rpx;
+  padding: 4rpx 60rpx;
+  border-radius: 60rpx;
+  border: none;
+  font-weight: 500;
+}
+
+.fly-ball {
+  position: fixed;
+  width: 30rpx;
+  height: 30rpx;
+  background-color: #ff6b6b;
+  border-radius: 50%;
+  z-index: 9999;
+  pointer-events: none;
+  transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-shadow: 0 4rpx 12rpx rgba(255, 107, 107, 0.5);
 }
 </style>

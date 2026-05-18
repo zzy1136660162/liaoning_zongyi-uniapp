@@ -56,7 +56,8 @@
     {
       "path": "pages/products/medicine_list",
       "style": {
-        "navigationBarTitleText": "商品列表"
+        "navigationBarTitleText": "商品列表",
+        "navigationStyle": "custom"
       }
     },
     {
@@ -137,7 +138,7 @@
         {
           "path": "prescription_list",
           "style": {
-            "navigationBarTitleText": "处方记录",
+            "navigationBarTitleText": "药品处方",
             "navigationBarBackgroundColor": "#ffffff"
           }
         },
