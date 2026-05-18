@@ -13,153 +13,153 @@
     <view class="price-box">
       <view class="price-main">
         <view class="price-left">
-          <view class="price-tag">闂備礁鎽滈崰搴∥涘Δ鍛鐟滃海绮嬮幒妤佺叆閻庯綆鍓欓ˉ?/view>
+          <view class="price-tag">商品价格</view>
           <view class="price-info">
-            <text class="price-unit">闂?/text>
+            <text class="price-unit">￥</text>
             <text class="price-num">{{ priceInteger }}</text>
             <text class="price-decimal">.{{ priceDecimal }}</text>
           </view>
         </view>
         <view class="price-right">
           <view class="sales-box">
-            <text class="sales-icon">婵☆偓绲介崯顖炲汲?/text>
-            <text class="sales-count">闁诲海鎳撻幉陇銇愰崘顔兼瀬?{{ product.salesVolume || 0 }}</text>
+            <text class="sales-icon">🔥</text>
+            <text class="sales-count">已售 {{ product.salesVolume || 0 }}</text>
           </view>
         </view>
       </view>
       <!-- <view class="trust-badges">
-        <view class="trust-item"><image class="trust-icon" src="/static/logotou.png" mode="aspectFit" /><text class="trust-text">闂備礁鎲￠悧鏇⑩€﹀畡鎵虫瀺鐎光偓閸曨剙娈滃銈呯箰濞诧箓宕?/text></view>
-        <view class="trust-item"><text class="trust-icon">婵☆偓绲介崯顖滅矆婢舵劖鐓?/text><text class="trust-text">婵犳鍠楃换鎰緤娴犲绠圭憸搴ｇ矚閸楃偐鏀藉┑鐘插椤?/text></view>
-        <view class="trust-item"><text class="trust-icon">婵☆偓绲介崯顖滀焊?/text><text class="trust-text">闂佽崵濮甸崝锕傚储濞差亜绠梺顒€绉寸猾宥夋煟濡绲婚柟?/text></view>
-        <view class="trust-item"><text class="trust-icon">婵☆偓绲介崯顖烆敊?/text><text class="trust-text">濠电偞鍨堕幐濠氬箰妞嬪海绠旈柣鏂垮悑閸嬪鏌嶉崫鍕偓濠氬Χ?/text></view>
-        <view class="trust-item"><text class="trust-icon">闂?/text><text class="trust-text">24h闂備礁鎲￠悷锕傚垂婵傜绠?/text></view>
+        <view class="trust-item"><image class="trust-icon" src="/static/logotou.png" mode="aspectFit" /><text class="trust-text">医院自营</text></view>
+        <view class="trust-item"><text class="trust-icon">🛡️</text><text class="trust-text">正品保证</text></view>
+        <view class="trust-item"><text class="trust-icon">💯</text><text class="trust-text">购买无忧</text></view>
+        <view class="trust-item"><text class="trust-icon">🚚</text><text class="trust-text">专业物流</text></view>
+        <view class="trust-item"><text class="trust-icon">⏰</text><text class="trust-text">24h发货</text></view>
       </view> -->
     </view>
 
     <view class="goods-info">
       <view class="goods-name-row">
-        <text class="self-developed-tag" v-if="product.bizType === 1">闂備胶鍘ч〃搴㈢閻愮儤鍋?/text>
-        <text class="new-product-tag" v-if="product.isHospitalStarFormula === 1">闂傚倸鍊哥€氥劑宕归悡骞稑鐣濋崟顒€浠㈤柣搴秵閸撴瑩路閸岀偞鐓曢柟鐑樻礃绾儳顭?/text>
-        <text class="star-product-tag" v-if="product.isNewProduct === 1">闂傚倷鐒﹁ぐ鍐矓閸泙澶嬬節閸パ勵棟闂佸搫顦扮€笛囧箚?/text>
+        <text class="self-developed-tag" v-if="product.bizType === 1">自研</text>
+        <text class="new-product-tag" v-if="product.isHospitalStarFormula === 1">院藏王牌制剂</text>
+        <text class="star-product-tag" v-if="product.isNewProduct === 1">重磅新品</text>
         <text class="goods-name">{{ product.name }}&nbsp;{{ product.description }}</text>
       </view>
       <view class="goods-sub" v-if="product.subtitle || product.indications">{{ product.indications }}</view>
-      <view class="drug-reminder">{{ product.isPrescription === 1 ? 'Prescription drug, use under medical guidance' : 'OTC drug, follow the instructions before use' }}</view>
+      <view class="drug-reminder">{{ product.isPrescription === 1 ? '处方药，请在医师指导下购买和使用' : '非处方药，请按说明书或药师指导使用' }}</view>
     </view>
 
     <view class="policy-overlay" v-if="showPolicy" @click="closePolicyDrawer">
       <view class="policy-drawer" @click.stop>
         <view class="policy-header">
-          <text class="policy-title">闂傚倷绶￠崑鈧柛瀣崌閺岀喖鐛崹顔句紘闂侀€涚串缁插潡骞忛悩纰樺亾濞戞鎴︼綖?/text>
-          <view class="policy-close" @click="closePolicyDrawer">闂?/view>
+          <text class="policy-title">退换货说明</text>
+          <view class="policy-close" @click="closePolicyDrawer">×</view>
         </view>
         <view class="policy-body">
           <view class="policy-section">
-            <text class="policy-section-title"><text class="check-icon">闂?/text> 濠电偞鍨堕幐鍝ョ矓閻㈢鏋佹い鏇楀亾妤犵偞鍔栭幏鍛槹鎼搭喕绱濆┑鐘灩閻忓牓寮插鍏炬盯濡舵径瀣哗闂佺硶鍓濋悷锕傚汲閻樼粯鈷戞い鎰枎娴滈箖姊?/text>
-            <text class="policy-content">闂備浇鍋愰悺鏃堝垂娴兼潙绠圭憸蹇旂閿曞倹鍊烽柟娈垮枦婢规﹢姊虹紒姗嗘畽妞ゎ偄顦甸幃楣冨煛閸涱厾鏌堥梺绯曞墲椤ㄥ棝骞嗛崒鐐寸叆婵炴垶顭囬悞鍛婄箾閸涱厽鎹ｉ柟宄扮秺婵℃悂鍩℃担璇′画闂傚倸鍊搁崑鍡涘闯閿濆鈧倿鎳為妷銉х獮闂佸搫绉堕弫鍝ョ矆婢跺ň妲堥柟缁㈠灠娴滃墽绱撻崒娆戭槮缂佺粯鍔欏顐︻敇閵忕姷顦╁┑鐐叉▕娴滄牠宕戦幘鎰佹僵妞ゆ帒鍊搁悡鎴炵箾閹寸偞灏紒澶屾暬瀵偊顢氶埀顒勭嵁閹邦厾鐟归柍褜鍓熼崺鈧い鎴ｆ娴滈箖姊虹涵鍜佸殐婵炵厧娼￠崺鈧?/text>
+            <text class="policy-section-title"><text class="check-icon">✓</text> 不支持七天无理由退换</text>
+            <text class="policy-content">药品属于特殊商品，除质量问题外，一经售出通常不支持退换。</text>
           </view>
           <view class="policy-section">
-            <text class="policy-section-title"><text class="check-icon">闂?/text> 闂備礁鎽滈崕鎰板窗閺嶎厼绠栨俊銈勮兌閳瑰秵绻濋棃娑卞剱妞?/text>
-            <text class="policy-content">濠电姷顣介埀顒€鍟块埀顒€鐏濋妴鎺楁嚋閻㈡娲搁梺绯曞墲椤曟挳骞掑Δ浣镐缓闂侀潧顭堥崝宀€绮婇埡鍛拻闁稿被鍊曞▍宥嗐亜閿濆嫮鐭欓柡浣哥Ф娴狅箓鎸婃径搴敼闂備浇澹堟ご绋款潖婵犳碍鐒鹃柟缁㈠枤瀹撲線鏌涢幇顓炵祷闂佷即浜堕弻銈囩驳鐎ｎ亞浠╃紓浣广仜閸嬫捇姊洪悷鎵憼闁绘娲滄禍鍛婂鐎涙ǚ鎸冮梺闈涚箞閸ㄨ櫣绮婇弻銉︾厱闊洦鎸鹃敍宥嗐亜椤愶絿澧遍柍褜鍓欑粻宥夊磹閺囥垹绠伴柍鍝勫暞鐎氭碍銇勯顐㈠幋闁?/text>
+            <text class="policy-section-title"><text class="check-icon">✓</text> 售后保障</text>
+            <text class="policy-content">如需了解用药问题，可联系平台药师或医院相关科室咨询。</text>
           </view>
         </view>
         <view class="policy-footer">
-          <view class="policy-confirm-btn" @click="closePolicyDrawer">闂備胶鎳撻悺銊╁垂瑜版帗鍋傞柨鐔哄У閻掑ジ鏌熼幑鎰毢闁?/view>
+          <view class="policy-confirm-btn" @click="closePolicyDrawer">我知道了</view>
         </view>
       </view>
     </view>
 
     <view class="select-section">
-      <view class="select-label">闁诲海鎳撻幉锟犳偂閿熺姴鐒?/view>
+      <view class="select-label">已选</view>
       <view class="select-value">
         <text>{{ selectedSpec }}</text>
-        <text class="select-num"> 闂佺厧顕、妾?quantity }}</text>
+        <text class="select-num"> ×{{ quantity }}</text>
       </view>
     </view>
 
     <view class="drug-manual-card" @click="showManualDrawer">
       <view class="manual-item">
-        <view class="manual-item-title">闂備浇鍋愰悺鏃堝垂閾忣偅娅犻悹鎭掑妿绾惧ジ鏌涢弴銊ュ闁?/view>
-        <view class="manual-item-content">{{ product.ingredients || 'No information available' }}</view>
+        <view class="manual-item-title">药物组成</view>
+        <view class="manual-item-content">{{ product.ingredients || '暂无信息' }}</view>
       </view>
       <view class="manual-divider"></view>
       <view class="manual-item">
-        <view class="manual-item-title">闂備焦妞垮鍧楀礉瀹ュ洦鍏滈柛顐ｆ礃閸嬨劑鏌曟繛鐐珔婵?/view>
-        <view class="manual-item-content">{{ product.usageDesc || 'No information available' }}</view>
+        <view class="manual-item-title">用法用量</view>
+        <view class="manual-item-content">{{ product.usageDesc || '暂无信息' }}</view>
       </view>
-      <view class="manual-arrow">闂?/view>
+      <view class="manual-arrow">›</view>
     </view>
 
     <view class="policy-row" @click="showPolicyDrawer">
-      <text class="policy-text">濠电偞鍨堕幐鍝ョ矓閻㈢鏋佹い鏇楀亾妤犵偞鍔栭幏鍛槹鎼搭喕绱濆┑鐘灩閻忓牓寮插鍏炬盯濡舵径瀣哗闂佺硶鍓濋悷锕傚汲閻樼粯鈷戞い鎰枎娴滈箖姊?闁?闂備礁鎽滈崕鎰板窗閺嶎厼绠栨俊銈呮噹鐎氬鈧箍鍎遍幊搴綖?/text>
-      <text class="select-arrow">闂?/text>
+      <text class="policy-text">不支持七天无理由退换 · 售后服务</text>
+      <text class="select-arrow">›</text>
     </view>
     <view class="delivery-row">
-      <text class="delivery-label">闂傚倷鐒﹀妯肩矓瑜版帒鐒?/text>
+      <text class="delivery-label">配送</text>
       <image class="sf-logo" src="https://smf.lntcm.com/static/logo/sf.png" mode="aspectFit" />
-      <text class="delivery-text">濠碉紕鍋戦崐娑橆浖閵娧勫皫闁圭虎鍠楅悡鈧悗骞垮劚椤︻偊宕戦幘瀵哥懝濠电姴瀚ˇ顕€姊洪崫鍕殺闁糕晜鐗犲鏌ュΨ閿旂虎娴勯梺闈涱槶閸庢娊寮舵禒瀣拻闁告洦鍋呴崳娲煛娴ｅ憡璐￠柟椋庮攰椤﹀弶绻濋埀顒勫箻椤斿ジ鏁滈梺閫炲苯澧紒瀣樀瀹曨偊宕熼锝囧讲</text>
+      <text class="delivery-text">顺丰配送，时效以实际收货地址为准</text>
     </view>
 
     <view class="promise-box">
       <view class="promise-item">
-        <text class="promise-icon">闂?/text>
-        <text class="promise-text">闂備礁鎲￠悧鏇⑩€﹀畡鎵虫瀺鐎光偓閸曨剙娈滃銈呯箰濡盯宕?/text>
+        <text class="promise-icon">✓</text>
+        <text class="promise-text">医院自研</text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">闂?/text>
-        <text class="promise-text">婵犳鍠楃换鎰緤娴犲绠圭憸搴ｇ矚閸楃偐鏀介悗锝庡亽閸?/text>
+        <text class="promise-icon">✓</text>
+        <text class="promise-text">正品保障</text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">闂?/text>
-        <text class="promise-text">濠电偞鍨堕幐濠氬箰妞嬪海绠旈柣鏂垮悑閸ゆ帗銇勯弽銊︾殤闁?/text>
+        <text class="promise-icon">✓</text>
+        <text class="promise-text">专业药师</text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">闂?/text>
-        <text class="promise-text">濠碉紕鍋戦崐娑橆浖閵娧勫皫闁圭虎鍠楅崑瀣煃閸濆嫬鈧濡?/text>
+        <text class="promise-icon">✓</text>
+        <text class="promise-text">顺丰物流</text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">闂?/text>
-        <text class="promise-text">闂傚倸鍊搁幊蹇涘礉濡ゅ拑缍栭柛鈩冾焽閳瑰秵绻濋棃娑欐悙鐞?/text>
+        <text class="promise-icon">✓</text>
+        <text class="promise-text">隐私保护</text>
       </view>
     </view>
 
     <view class="drawer-overlay" v-if="showManual" @click="closeManualDrawer">
       <view class="drawer-content drawer-green-card" @click.stop>
         <view class="drawer-header">
-          <text class="drawer-title">闂備焦妞垮鍧楀礉韫囨挾鏆ら柛灞剧矋鐎氭岸鎮楀☉娅虫垿锝?/text>
-          <view class="drawer-close" @click="closeManualDrawer">闂?/view>
+          <text class="drawer-title">用药说明</text>
+          <view class="drawer-close" @click="closeManualDrawer">×</view>
         </view>
         <scroll-view class="drawer-body" scroll-y>
           <view class="drawer-section" v-if="product.ingredients">
-            <text class="drawer-label">闂備線娼уΛ娆撳礉閺嶎厼鍨傛慨姗嗗幘椤╁嘲鈹戦钘夊闁?/text>
+            <text class="drawer-label">【成份】</text>
             <text class="drawer-text">{{ product.ingredients }}</text>
           </view>
           <view class="drawer-section" v-if="product.indications">
-            <text class="drawer-label">闂備線娼уΛ娆撳礉閺囩喐鍙忔繛鎴欏灪閸ゅ嫰鏌熺€涙ê绗掗柣锔界矋缁绘稓浠﹂崜褎鑿囬梺?/text>
+            <text class="drawer-label">【功能主治】</text>
             <text class="drawer-text">{{ product.indications }}</text>
           </view>
           <view class="drawer-section" v-if="usageText">
-            <text class="drawer-label">闂備線娼уΛ娆撳礉濡ゅ懎鏋侀柕鍫濇噳閺嬫牠鏌￠崶鈺佇ｉ柡鍡楃箻濮婃椽骞撻幒鏃傜杽闂?/text>
+            <text class="drawer-label">【用法用量】</text>
             <text class="drawer-text">{{ usageText }}</text>
           </view>
           <view class="drawer-section" v-if="product.adverseReactions">
-            <text class="drawer-label">闂備線娼уΛ娆撳礉閹烘梻绠斿鑸靛姈閸ゅ本銇勯弽銊ㄥ闁告劏鍋撻梺鍦帶閻°劑寮婚敐澶婄劦?/text>
+            <text class="drawer-label">【不良反应】</text>
             <text class="drawer-text">{{ product.adverseReactions }}</text>
           </view>
           <view class="drawer-section" v-if="product.contraindication">
-            <text class="drawer-label">闂備線娼уΛ娆撳礉濡ゅ懌鈧懘鏁冩担铏规澑闁诲繒鍋熼崕鐢稿磻?/text>
+            <text class="drawer-label">【禁忌】</text>
             <text class="drawer-text">{{ product.contraindication }}</text>
           </view>
           <view class="drawer-section" v-if="product.precautions">
-            <text class="drawer-label">闂備線娼уΛ娆撳礉閺嶎厼鏋侀柣鎰惈缁犳盯鐓崶褎鎹ｉ柣銊﹀灥椤啴濡堕崨顖滄殯闂?/text>
+            <text class="drawer-label">【注意事项】</text>
             <text class="drawer-text">{{ product.precautions }}</text>
           </view>
           <view class="drawer-section" v-if="product.storageCondition">
-            <text class="drawer-label">闂備線娼уΛ娆撳礉濡崵鈻旈柡灞诲劜鐎电娀鐓崶褜鍎岄柛?/text>
+            <text class="drawer-label">【贮藏】</text>
             <text class="drawer-text">{{ product.storageCondition }}</text>
           </view>
           <view class="drawer-section" v-if="product.manufacturer">
-            <text class="drawer-label">闂備線娼уΛ娆撳礉濡ゅ懎鏋侀柟鎯ь嚟椤╄尙鎲稿鍛殾闁绘柨鎲℃刊瀵糕偓骞垮劚閸熺娀宕?/text>
+            <text class="drawer-label">【生产单位】</text>
             <text class="drawer-text">{{ product.manufacturer }}</text>
           </view>
         </scroll-view>
@@ -171,19 +171,19 @@
     <view class="pharmacist-card">
       <view class="pharmacist-avatar-wrap">
         <image class="pharmacist-avatar" :src="pharmacistAvatar" mode="aspectFill" />
-        <view class="online-tag">闂備線娼荤拹鐔煎礉鎼淬劌鍚?/view>
+        <view class="online-tag">在线</view>
       </view>
       <view class="pharmacist-detail">
-        <view class="pharmacist-name">闂備焦妞垮鍧楀礉韫囨挾鏆ら柛宀€鍋涘浠嬫煏婵犲海鍘涢柛?/view>
-        <view class="pharmacist-desc">闂備礁鎼悧鍡浰囬棃娴虫盯鎳滅喊澶岀煑濠碘槅鍨伴幖顐ゆ媼閺屻儲鐓曟繝褍鐏濇慨鈧銈嗘礃椤ㄥ棛绮欐径鎰闁肩⒈鍓涢幊婵嬫⒑閼测晝鎽傞柛銊﹀缁參鍩€?/view>
+        <view class="pharmacist-name">用药咨询</view>
+        <view class="pharmacist-desc">有问题可咨询专业药师</view>
       </view>
-      <view class="consult-btn" @click.stop="goConsult">闂備礁鎲￠崵搴ㄥ礉韫囨侗鏁?/view>
+      <view class="consult-btn" @click.stop="goConsult">咨询</view>
     </view>
      <view class="split-line"></view>
     <view class="recommend-section" :class="{ 'combo-section': recommendTab === 'combo', 'star-section': recommendTab === 'star' }">
       <view class="recommend-tabs">
-        <view class="recommend-tab" :class="{ active: recommendTab === 'combo' }" @click="switchRecommendTab('combo')">闂備焦妞垮鍧楀礉韫囨挾鏆ら柛灞剧矌绾惧ジ鏌涢弴銊ヤ簼闁?/view>
-        <view class="recommend-tab" :class="{ active: recommendTab === 'star' }" @click="switchRecommendTab('star')">闂備礁鎼€氼剛鈧稈鏅涘嵄闁挎梻鏅々鑼喐瀹ュ绠?/view>
+        <view class="recommend-tab" :class="{ active: recommendTab === 'combo' }" @click="switchRecommendTab('combo')">用药组合</view>
+        <view class="recommend-tab" :class="{ active: recommendTab === 'star' }" @click="switchRecommendTab('star')">明星产品</view>
       </view>
       <view class="recommend-content">
         <scroll-view class="recommend-scroll" scroll-x v-if="recommendTab === 'combo' && comboProducts.length > 0">
@@ -192,7 +192,7 @@
             <view class="recommend-info">
               <text class="recommend-name">{{ item.name }}</text>
               <view class="recommend-bottom">
-                <text class="recommend-price">闂備浇娉曢崳銉モ枔瀹?Number(item.price || 0).toFixed(2) }}</text>
+                <text class="recommend-price">￥{{ Number(item.price || 0).toFixed(2) }}</text>
                 <view class="recommend-add-btn" :class="{ 'has-quantity': cartQuantities[item.id] > 0 }" @click.stop="flyToCart($event, item)">
                   <text v-if="cartQuantities[item.id]">{{ cartQuantities[item.id] }}</text>
                   <text v-else>+</text>
@@ -201,14 +201,14 @@
             </view>
           </view>
         </scroll-view>
-        <view v-else-if="recommendTab === 'combo'" class="empty-block">闂備礁鎼Λ妤呭磹閻熸嫈娑㈠Χ閸モ晝锛滈梺鍛婃处閸嬪懘宕愰妶澶嬬厵闁诡厽甯掓慨鈧悗?/view>
+        <view v-else-if="recommendTab === 'combo'" class="empty-block">暂无组合推荐</view>
         <scroll-view class="recommend-scroll" scroll-x v-else-if="starProducts.length > 0">
           <view class="recommend-item" v-for="item in starProducts" :key="item.id" @click="goToDetail(item)">
             <image class="recommend-img" :src="getImageUrl(item.image)" mode="aspectFit" />
             <view class="recommend-info">
               <text class="recommend-name">{{ item.name }}</text>
               <view class="recommend-bottom">
-                <text class="recommend-price">闂備浇娉曢崳銉モ枔瀹?Number(item.price || 0).toFixed(2) }}</text>
+                <text class="recommend-price">￥{{ Number(item.price || 0).toFixed(2) }}</text>
                 <view class="recommend-add-btn" :class="{ 'has-quantity': cartQuantities[item.id] > 0 }" @click.stop="flyToCart($event, item)">
                   <text v-if="cartQuantities[item.id]">{{ cartQuantities[item.id] }}</text>
                   <text v-else>+</text>
@@ -217,9 +217,9 @@
             </view>
           </view>
         </scroll-view>
-        <view v-else class="empty-block">闂備礁鎼Λ妤呭磹閻熸嫈娑㈠Χ婢跺﹤寮烽柟鍏肩暘閸ㄩ缚顤傚┑鐐茬摠缁倿宕橀埡鍌氬壃</view>
+        <view v-else class="empty-block">暂无明星产品</view>
       </view>
-      <view class="combo-disclaimer" v-if="recommendTab === 'combo'">*闂備焦妞垮鍧楀礉韫囨挾鏆ら柛灞剧矌绾惧ジ鏌涢弴銊ヤ簼闁稿鍊曢湁闁绘ê寮堕崳鍝ョ磼閸撲焦鏆€规洩缍佸畷鎺戔攽閸愩劋澹曢梺鍛婂姌濞夋洜绮堟径鎰厸闁割偅鑹炬禍鍓х磽閸屾瑧顦﹂柣妤€鎳忕粋宥夊箳濡も偓缁€宀勬偣閸パ冪骇濡ゆ梹绻涢幋鐐村碍闁圭⒈鍋婂畷?/view>
+      <view class="combo-disclaimer" v-if="recommendTab === 'combo'">*用药组合仅供参考，最终以医嘱为准</view>
 
       <view class="flying-dot" v-if="flyingDot.show" :style="{ left: flyingDot.x + 'px', top: flyingDot.y + 'px' }"></view>
     </view>
@@ -227,20 +227,20 @@
     <view class="split-line"></view>
 
     <view class="detail-header">
-      <view class="detail-tab" :class="{ active: detailTab === 'desc' }" @click="switchDetailTab('desc')">闂佽崵濮村ù鍕⒔閸曨垰纾?/view>
-      <view class="detail-tab" :class="{ active: detailTab === 'review' }" @click="switchDetailTab('review')">闂佽崵濮村ú銈団偓姘间邯閹?/view>
+      <view class="detail-tab" :class="{ active: detailTab === 'desc' }" @click="switchDetailTab('desc')">详情</view>
+      <view class="detail-tab" :class="{ active: detailTab === 'review' }" @click="switchDetailTab('review')">评价</view>
     </view>
 
     <view class="detail-body" v-if="detailTab === 'desc'">
-      <view class="detail-title">{{ product.detailTitle || 'Product details' }}</view>
+      <view class="detail-title">{{ product.detailTitle || '商品详情' }}</view>
       <rich-text v-if="product.intro" class="detail-richtext" :nodes="formatRichText(product.intro)"></rich-text>
-      <view v-else class="empty-block">闂備礁鎼Λ妤呭磹閻熸嫈娑㈠Χ婢跺﹦鍊為梺缁樺姦閸撴岸鎮楅鈧幃褰掑炊閻戣姤顎嶉梺?/view>
+      <view v-else class="empty-block">暂无图文详情</view>
       <view class="detail-images" v-if="showDetailImages">
         <image v-for="(img, idx) in productImages" :key="idx" :src="img" mode="widthFix" class="detail-img" />
       </view>
 
       <!-- <view class="spec-list">
-        <view class="spec-title">闂備浇鍋愰悺鏃堝垂娴兼潙绠圭憸鏂跨暦濞差亝鍊绘俊顖滅帛鐎氳櫕绻涢敐鍛闁告挻绻冪€?/view>
+        <view class="spec-title">药品基本信息</view>
         <view class="spec-item" v-for="item in specItems" :key="item.label">
           <text class="spec-label">{{ item.label }}</text>
           <text class="spec-value">{{ item.value }}</text>
@@ -248,7 +248,7 @@
       </view> -->
 
       <view class="usage-box" v-if="specItems.length > 0">
-        <view class="usage-title">闂備浇鍋愰悺鏃堝垂娴兼潙绠圭憸鏂跨暦濞差亝鍊绘俊顖滅帛鐎氳櫕绻涢敐鍛闁告挻绻冪€?/view>
+        <view class="usage-title">药品基本信息</view>
         <view class="usage-list">
           <view class="usage-item" v-for="item in specItems" :key="item.label">
             <text class="usage-label">{{ item.label }}</text>
@@ -258,7 +258,7 @@
       </view>
 
       <view class="usage-box" v-if="usageItems.length > 0">
-        <view class="usage-title">闂備焦妞垮鍧楀礉韫囨挾鏆ら柛灞剧矋鐎氭岸鎮楀☉娅虫垿锝?/view>
+        <view class="usage-title">用药说明</view>
         <view class="usage-list">
           <view class="usage-item" v-for="item in usageItems" :key="item.label">
             <text class="usage-label">{{ item.label }}</text>
@@ -269,33 +269,37 @@
     </view>
 
     <view class="detail-body" v-if="detailTab === 'review'">
-      <view class="empty-block">闂備礁鎼Λ妤呭磹閻熸嫈娑㈠Χ閸ャ劌鐝伴梺鍛婃处娴滅偤鐛?/view>
+      <view class="empty-block">暂无评价</view>
     </view>
 
     <view class="reminder-bar">
       <text class="reminder-icon">!</text>
-      <text class="reminder-text">闂佽崵濮村ú鈺併€掗崷顓炲灊闁冲搫鍟扮壕濂告煕閳╁啰鈯曟い顐㈩樀閹綊宕堕妸锔绘健閻庤鎸搁崐鍨暦椤愶絾濯寸紒娑橆儏濞堫垶姊洪崫鍕仼缂併劌銈稿畷婵嬫偄閻撳海顓洪梺鍝勮癁閸曨喖鎯堥梻浣告啞閻楃偤顢氳缁參鍩€椤掑嫭鐓忛柛鈩冩礃缁佹壆鈧鎸搁崐濠氬极椤曗偓瀹曞ジ鎮㈡搴⑩枌闂佽娴烽弫璇参涚捄銊х當闁告侗鍠楁刊鎾偣閹帒濡介柡鍡楃箻閺屾洟宕卞Δ鈧埀顒冩閻ｇ敻宕掗悙韫炊婵炶揪绲块…鍫ユ儊閸洘鍋″ù锝呮啞閸ｅ湱鈧鍣ｉˉ鎾诲箯閻樼鍋撳☉娅虫垿锝為弽顓熷仯闁搞儺浜濋懙鐟懊瑰鍕闁逞屽墮濠€閬嶅磻閵堝拋鐎舵い鏍仜缂佲晠鎮归崫鍕儓闁绘挸鍊块弻锝夊Ω閵夈儺浠奸梺鍝勬噷閸ㄨ棄鐣烽锝嗗闁汇値鍨抽ˇ浼存⒑閸涘﹤鐏ユ俊顐㈤叄閸┾偓?/text>
+      <text class="reminder-text">请仔细阅读药品说明书或在医师、药师指导下使用。药品包装及说明请以实际收到的商品为准。</text>
     </view>
 
-    <view class="customer-service-float" @click="showCustomerService">闂佽楠哥粻宥夊垂閸濆嫸鑰?/view>
+
 
     <view class="bottom-space"></view>
 
     <view class="bottom-bar">
       <view class="bottom-left">
         <view class="action-icon-btn" @click="toggleCollect">
-          <text class="action-icon">{{ isCollected ? '闂? : '闂? }}</text>
-          <text class="action-text">{{ isCollected ? 'Saved' : 'Favorite' }}</text>
+          <text class="action-icon">{{ isCollected ? '★' : '☆' }}</text>
+          <text class="action-text">{{ isCollected ? '已收藏' : '收藏' }}</text>
         </view>
         <view class="action-icon-btn" @click="goCart">
-          <text class="action-icon">婵☆偓绲介崯顖滃?/text>
-          <text class="action-text">闂佽崵濮甸崝锕傚储閻愵剚娅犻柟绋垮婵?/text>
+          <text class="action-icon">🛒</text>
+          <text class="action-text">购物车</text>
           <view class="cart-badge" v-if="cartCount > 0">{{ cartCount > 99 ? '99+' : cartCount }}</view>
+        </view>
+        <view class="action-icon-btn" @click="showCustomerService">
+          <text class="action-icon">☎️</text>
+          <text class="action-text">客服</text>
         </view>
       </view>
       <view class="bottom-right">
-        <view class="btn-add-cart" @click="addCart">闂備礁鎲″缁樻叏閹绢喖鐭楅柛鈩冪懄鐎氱粯銇勯幘璺盒㈤柍閿嬬墵瀵?/view>
-        <view class="btn-buy" @click="buyNow">缂傚倷鐒﹂弻銊╊敄閸涱厾鏆ら柛鈩冪懄鐎氱粯銇勯幘瀵哥畺閻?/view>
+        <view class="btn-add-cart" @click="addCart">加入购物车</view>
+        <view class="btn-buy" @click="buyNow">立即购买</view>
       </view>
     </view>
   </view>
@@ -316,7 +320,7 @@ import {
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
-import { BIZ_TYPE_HEALTH_GOODS, hasBoundQuestionnaire } from '@/utils/product-biz.js'
+import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 import { getToken } from '@/utils/request.js'
 
 const createEmptyProduct = () => ({
@@ -374,6 +378,7 @@ const recommendTab = ref('combo')
 const cartQuantities = ref({})
 const comboProducts = ref([])
 const starProducts = ref([])
+const pharmacistAvatar = getImageUrl('https://smf.lntcm.com/static/medicine/yaoshi1.svg')
 
 const productImages = computed(() => {
   if (product.value.images && product.value.images.length > 0) {
@@ -384,8 +389,8 @@ const productImages = computed(() => {
 
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
-const requiresQuestionnaire = computed(() => hasBoundQuestionnaire(product.value))
-const selectedSpec = computed(() => product.value.specText || product.value.packageSpec || product.value.unit || 'Not specified')
+const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
+const selectedSpec = computed(() => product.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
 const priceInteger = computed(() => {
   const [integer = '0'] = Number(product.value.price || 0).toFixed(2).split('.')
   return integer
@@ -395,36 +400,36 @@ const priceDecimal = computed(() => {
   return decimal
 })
 const originTypeText = computed(() => {
-  if (product.value.originType === 1) return 'In-house'
-  if (product.value.originType === 2) return 'Purchased'
+  if (product.value.originType === 1) return '国产'
+  if (product.value.originType === 2) return '进口'
   return ''
 })
 
 const specItems = computed(() => {
   return [
-    { label: 'Product', value: product.value.name },
-    { label: 'Spec', value: product.value.specText },
-    { label: 'Package', value: product.value.packageSpec },
-    { label: 'Dosage form', value: product.value.dosageForm },
-    { label: 'Appearance', value: product.value.appearanceDesc },
-    { label: 'Validity', value: product.value.validityPeriod },
-    { label: 'Origin type', value: originTypeText.value },
-    { label: 'Approval No.', value: product.value.approvalNumber },
-    { label: 'Manufacturer', value: product.value.manufacturer },
-    { label: 'Standard', value: product.value.executionStandard },
-    { label: 'Tips', value: product.value.warmTips }
+    { label: '药品名称', value: product.value.name },
+    { label: '规格', value: product.value.specText },
+    { label: '包装', value: product.value.packageSpec },
+    { label: '剂型', value: product.value.dosageForm },
+    { label: '性状', value: product.value.appearanceDesc },
+    { label: '有效期', value: product.value.validityPeriod },
+    { label: '产地类型', value: originTypeText.value },
+    { label: '批准文号', value: product.value.approvalNumber },
+    { label: '生产单位', value: product.value.manufacturer },
+    { label: '执行标准', value: product.value.executionStandard },
+    { label: '温馨提示', value: product.value.warmTips }
   ].filter(item => item.value)
 })
 
 const usageItems = computed(() => {
   return [
-    { label: 'Ingredients', value: product.value.ingredients },
-    { label: 'Indications', value: product.value.indications },
-    { label: 'Usage', value: usageText.value },
-    { label: 'Adverse reactions', value: product.value.adverseReactions },
-    { label: 'Contraindications', value: product.value.contraindication },
-    { label: 'Precautions', value: product.value.precautions },
-    { label: 'Storage', value: product.value.storageCondition }
+    { label: '药物组成', value: product.value.ingredients },
+    { label: '功能主治', value: product.value.indications },
+    { label: '用法用量', value: usageText.value },
+    { label: '不良反应', value: product.value.adverseReactions },
+    { label: '禁忌', value: product.value.contraindication },
+    { label: '注意事项', value: product.value.precautions },
+    { label: '贮藏', value: product.value.storageCondition }
   ].filter(item => item.value)
 })
 
@@ -477,13 +482,13 @@ const applyProduct = (source) => {
 
 const loadProduct = async (id) => {
   try {
-    uni.showLoading({ title: '闂備礁鎲″缁樻叏閹灐褰掑炊閵娧€鏋?..' })
+    uni.showLoading({ title: '加载中...' })
     const response = await getProductDetail(id)
     applyProduct(response)
   } catch (error) {
     console.error('loadProduct failed:', error)
     uni.showToast({
-      title: error.message || 'Failed to load product',
+      title: error.message || '加载失败',
       icon: 'none'
     })
   } finally {
@@ -601,16 +606,16 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
 
   const nextQuantity = Math.max(1, Number(selectedQuantity) || 1)
   const alreadyPassed = hasQuestionnairePassed(targetProduct.id)
-  if (hasBoundQuestionnaire(targetProduct) && !alreadyPassed) {
+  if (Number(targetProduct.needQuestionnaire) === 1 && !alreadyPassed) {
     return navigateToNotice(targetProduct, nextQuantity, mode)
   }
 
   const saved = addCartItem(targetProduct, nextQuantity, {
-    questionnairePassed: !hasBoundQuestionnaire(targetProduct) || alreadyPassed
+    questionnairePassed: Number(targetProduct.needQuestionnaire) !== 1 || alreadyPassed
   })
   if (!saved) {
     uni.showToast({
-      title: 'Failed to add to cart',
+      title: '加入购物车失败',
       icon: 'none'
     })
     return false
@@ -627,7 +632,7 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
   }
 
   uni.showToast({
-    title: 'Added to cart',
+    title: '已加入购物车',
     icon: 'success'
   })
   return true
@@ -668,7 +673,7 @@ const goBack = () => {
 }
 const handleMore = () => {
   uni.showActionSheet({
-    itemList: ['Back to list', 'View cart'],
+    itemList: ['返回商品列表', '查看购物车'],
     success: ({ tapIndex }) => {
       if (tapIndex === 0) {
         uni.navigateTo({ url: '/pages/products/medicine_list' })
@@ -680,15 +685,15 @@ const handleMore = () => {
 }
 const goConsult = () => {
   uni.showToast({
-    title: 'Online consultation is coming soon',
+    title: '在线咨询功能建设中',
     icon: 'none'
   })
 }
 const showCustomerService = () => {
   uni.showModal({
-    title: 'Contact service',
+    title: '客服电话',
     content: '82961387',
-    confirmText: 'OK',
+    confirmText: '拨打',
     success: ({ confirm }) => {
       if (!confirm) {
         return
@@ -697,7 +702,7 @@ const showCustomerService = () => {
         phoneNumber: '82961387',
         fail: () => {
           uni.showToast({
-            title: 'Unable to place the call',
+            title: '拨号失败',
             icon: 'none'
           })
         }
@@ -1489,7 +1494,7 @@ onShow(() => {
 }
 
 .pharmacist-name::before {
-  content: '*';
+  content: '⚕️';
   margin-right: 8rpx;
   font-size: 28rpx;
 }
@@ -1672,25 +1677,6 @@ onShow(() => {
   line-height: 1.6;
 }
 
-.customer-service-float {
-  position: fixed;
-  right: 24rpx;
-  bottom: 150rpx;
-  z-index: 120;
-  min-width: 88rpx;
-  height: 88rpx;
-  padding: 0 24rpx;
-  border-radius: 44rpx;
-  background: linear-gradient(135deg, #00c792, #00a676);
-  color: #fff;
-  font-size: 28rpx;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 12rpx 32rpx rgba(0, 167, 118, 0.24);
-}
-
 .bottom-space {
   height: 40rpx;
 }
@@ -1758,6 +1744,12 @@ onShow(() => {
   border-radius: 40rpx;
   font-size: 28rpx;
   font-weight: bold;
+}
+
+.btn-service {
+  background: linear-gradient(135deg, #4A90E2, #67B26F);
+  color: #fff;
+  margin-right: 16rpx;
 }
 
 .btn-add-cart {
