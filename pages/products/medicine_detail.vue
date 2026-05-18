@@ -277,7 +277,7 @@
       <text class="reminder-text">请仔细阅读药品说明书或在医师、药师指导下使用。药品包装及说明请以实际收到的商品为准。</text>
     </view>
 
-    <view class="customer-service-float" @click="showCustomerService">客服</view>
+    
 
     <view class="bottom-space"></view>
 
@@ -292,8 +292,13 @@
           <text class="action-text">购物车</text>
           <view class="cart-badge" v-if="cartCount > 0">{{ cartCount > 99 ? '99+' : cartCount }}</view>
         </view>
+        <view class="action-icon-btn" @click="showCustomerService">
+          <text class="action-icon">☎️</text>
+          <text class="action-text">客服</text>
+        </view>
       </view>
       <view class="bottom-right">
+        <!-- <view class="btn-service" @click="showCustomerService">客服</view> -->
         <view class="btn-add-cart" @click="addCart">加入购物车</view>
         <view class="btn-buy" @click="buyNow">立即购买</view>
       </view>
@@ -374,6 +379,7 @@ const recommendTab = ref('combo')
 const cartQuantities = ref({})
 const comboProducts = ref([])
 const starProducts = ref([])
+const pharmacistAvatar = getImageUrl('https://smf.lntcm.com/static/medicine/yaoshi1.svg')
 
 const productImages = computed(() => {
   if (product.value.images && product.value.images.length > 0) {
@@ -1672,25 +1678,6 @@ onShow(() => {
   line-height: 1.6;
 }
 
-.customer-service-float {
-  position: fixed;
-  right: 24rpx;
-  bottom: 150rpx;
-  z-index: 120;
-  min-width: 88rpx;
-  height: 88rpx;
-  padding: 0 24rpx;
-  border-radius: 44rpx;
-  background: linear-gradient(135deg, #00c792, #00a676);
-  color: #fff;
-  font-size: 28rpx;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 12rpx 32rpx rgba(0, 167, 118, 0.24);
-}
-
 .bottom-space {
   height: 40rpx;
 }
@@ -1758,6 +1745,12 @@ onShow(() => {
   border-radius: 40rpx;
   font-size: 28rpx;
   font-weight: bold;
+}
+
+.btn-service {
+  background: linear-gradient(135deg, #4A90E2, #67B26F);
+  color: #fff;
+  margin-right: 16rpx;
 }
 
 .btn-add-cart {
