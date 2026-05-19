@@ -2,7 +2,7 @@
   <view class="product-container">
     <view class="top-banner">
       <image class="top-banner-img" src="https://smf.lntcm.com/static/img/yiyuan.jpg" mode="widthFix" />
-    </view>
+  </view>
     <view class="hospital-intro" :class="{ collapsed: imageCollapsed }">
       <view class="logo-wrap">
         <image class="hospital-logo" src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png" mode="aspectFit" />
