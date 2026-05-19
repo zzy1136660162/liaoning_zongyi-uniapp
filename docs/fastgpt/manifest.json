@@ -1,0 +1,86 @@
+{
+  "source": "C:\\Users\\11366\\Downloads\\lnzy_product.xls",
+  "generatedAt": "2026-05-19T11:21:05",
+  "productCount": 12,
+  "files": {
+    "prompt": "system-prompt.md",
+    "guide": "import-guide.md",
+    "catalog": "knowledge-base/lnzy_product_catalog.md",
+    "combinedKnowledgeBase": "knowledge-base/lnzy_product_knowledge_base.md",
+    "productDirectory": "knowledge-base/products"
+  },
+  "products": [
+    {
+      "id": "1",
+      "productName": "一效散 散剂 50g/盒",
+      "price": "99.00",
+      "specText": "50g/盒"
+    },
+    {
+      "id": "3",
+      "productName": "养阴清肺饮合剂 500ml/瓶 250ml/瓶",
+      "price": "99.00",
+      "specText": "500ml/瓶，250ml/瓶"
+    },
+    {
+      "id": "16",
+      "productName": "人参养血合剂 500ml/瓶",
+      "price": "99.00",
+      "specText": "500ml/瓶"
+    },
+    {
+      "id": "17",
+      "productName": "增智健脑合剂500ml/瓶",
+      "price": "99.10",
+      "specText": "500ml/瓶"
+    },
+    {
+      "id": "18",
+      "productName": "强心宁合剂 500ml/瓶",
+      "price": "95.00",
+      "specText": "500ml/瓶"
+    },
+    {
+      "id": "19",
+      "productName": "山楂降脂片 0.31g/片",
+      "price": "99.00",
+      "specText": "0.31g/片"
+    },
+    {
+      "id": "20",
+      "productName": "水调散 50g/袋",
+      "price": "99.00",
+      "specText": "50g/袋"
+    },
+    {
+      "id": "21",
+      "productName": "化痰散 散剂 5g/袋",
+      "price": "99.00",
+      "specText": "5g/袋"
+    },
+    {
+      "id": "22",
+      "productName": "温胆丸 丸剂 6g/丸",
+      "price": "99.00",
+      "specText": "6g/丸"
+    },
+    {
+      "id": "23",
+      "productName": "小儿清肺合剂 250ml/瓶",
+      "price": "99.00",
+      "specText": "250ml/瓶"
+    },
+    {
+      "id": "24",
+      "productName": "新身痛逐瘀合剂 500ml/瓶",
+      "price": "99.00",
+      "specText": "500ml/瓶"
+    },
+    {
+      "id": "25",
+      "productName": "止咳散 散剂 5g/袋",
+      "price": "99.00",
+      "specText": "5g/袋"
+    }
+  ]
+}
