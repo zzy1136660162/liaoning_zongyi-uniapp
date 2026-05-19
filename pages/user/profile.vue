@@ -1,121 +1,229 @@
 <template>
   <view class="profile-page">
-    <!-- 用户信息头部 -->
     <view class="user-header">
       <view class="user-info">
         <view class="avatar-wrapper">
-          <image class="avatar" :src="avatarSrc" mode="aspectFill"></image>
+          <image
+            class="avatar"
+            :src="avatarSrc"
+            mode="aspectFill"
+          />
         </view>
         <view class="user-details">
-          <view class="name">{{ userInfo.realName || '微信用户' }}</view>
-          <view class="card-number">就诊卡号: {{ userInfo.idNumber || '暂无' }}</view>
+          <view class="name">
+            {{ userInfo.realName || '微信用户' }}
+          </view>
+          <view class="card-number">
+            就诊卡号: {{ userInfo.idNumber || '暂无' }}
+          </view>
         </view>
       </view>
     </view>
 
-    <!-- 订单状态卡片 -->
     <view class="order-status-card">
       <view class="order-header">
-        <text class="order-title">我的订单</text>
-        <view class="view-all" @click="goToOrderList">
+        <text class="order-title">
+          我的订单
+        </text>
+        <view
+          class="view-all"
+          @click="goToOrderList"
+        >
           <text>全部订单</text>
-          <text class="arrow">›</text>
+          <text class="arrow">
+            >
+          </text>
         </view>
       </view>
       <view class="order-status-list">
-        <view class="status-item" @click="goToOrderListByStatus(0)">
+        <view
+          class="status-item"
+          @click="goToOrderListByStatus(0)"
+        >
           <view class="status-icon">
-            <uni-icons type="wallet" size="32" color="#333333"></uni-icons>
+            <uni-icons
+              type="wallet"
+              size="32"
+              color="#333333"
+            />
           </view>
-          <text class="status-text">待支付</text>
-          <view class="status-badge" v-if="orderStats.pending > 0">{{ orderStats.pending }}</view>
+          <text class="status-text">
+            待支付
+          </text>
+          <view
+            v-if="orderStats.pending > 0"
+            class="status-badge"
+          >
+            {{ orderStats.pending }}
+          </view>
         </view>
-        <view class="status-item" @click="goToOrderListByStatus(1)">
+        <view
+          class="status-item"
+          @click="goToOrderListByStatus(1)"
+        >
           <view class="status-icon">
-            <image class="status-img" :src="successIcon" mode="aspectFit"></image>
+            <image
+              class="status-img"
+              :src="successIcon"
+              mode="aspectFit"
+            />
           </view>
-          <text class="status-text">已支付</text>
-          <view class="status-badge" v-if="orderStats.paid > 0">{{ orderStats.paid }}</view>
+          <text class="status-text">
+            已支付
+          </text>
+          <view
+            v-if="orderStats.paid > 0"
+            class="status-badge"
+          >
+            {{ orderStats.paid }}
+          </view>
         </view>
-        <view class="status-item" @click="goToOrderListByStatus(4)">
+        <view
+          class="status-item"
+          @click="goToOrderListByStatus(4)"
+        >
           <view class="status-icon">
-            <uni-icons type="closeempty" size="32" color="#333333"></uni-icons>
+            <uni-icons
+              type="closeempty"
+              size="32"
+              color="#333333"
+            />
           </view>
-          <text class="status-text">已作废</text>
-          <view class="status-badge" v-if="orderStats.cancelled > 0">{{ orderStats.cancelled }}</view>
+          <text class="status-text">
+            已取消
+          </text>
+          <view
+            v-if="orderStats.cancelled > 0"
+            class="status-badge"
+          >
+            {{ orderStats.cancelled }}
+          </view>
         </view>
-        <view class="status-item" @click="goToOrderListByStatus('refund')">
+        <view
+          class="status-item"
+          @click="goToOrderListByStatus('refund')"
+        >
           <view class="status-icon">
-            <uni-icons type="loop" size="32" color="#333333"></uni-icons>
+            <uni-icons
+              type="loop"
+              size="32"
+              color="#333333"
+            />
           </view>
-          <text class="status-text">退/换</text>
-          <view class="status-badge" v-if="orderStats.refund > 0">{{ orderStats.refund }}</view>
+          <text class="status-text">
+            退款/售后
+          </text>
+          <view
+            v-if="orderStats.refund > 0"
+            class="status-badge"
+          >
+            {{ orderStats.refund }}
+          </view>
         </view>
       </view>
     </view>
 
-    <!-- 我的服务 -->
     <view class="service-section">
-      <view class="section-title">我的服务</view>
+      <view class="section-title">
+        我的服务
+      </view>
       <view class="service-grid">
-        <view class="service-item" @click="goToAddressList">
+        <view
+          class="service-item"
+          @click="goToAddressList"
+        >
           <view class="service-icon">
-            <uni-icons type="location" size="32" color="#4A90E2"></uni-icons>
+            <uni-icons
+              type="location"
+              size="32"
+              color="#4A90E2"
+            />
           </view>
-          <text class="service-text">收货地址</text>
+          <text class="service-text">
+            收货地址
+          </text>
         </view>
-        <view class="service-item" @click="goToPatientList">
+        <view
+          class="service-item"
+          @click="goToPatientList"
+        >
           <view class="service-icon">
-            <uni-icons type="person" size="32" color="#4A90E2"></uni-icons>
+            <uni-icons
+              type="person"
+              size="32"
+              color="#4A90E2"
+            />
           </view>
-          <text class="service-text">就诊人管理</text>
+          <text class="service-text">
+            就诊人管理
+          </text>
         </view>
-        <view class="service-item">
-          <!-- 暂时注释企业微信客服，使用微信原生客服 -->
-          
-          <view class="service-item" @click="handleContact">
-            <view class="service-icon">
-              <uni-icons type="chat" size="32" color="#4A90E2"></uni-icons>
-            </view>
-            <text class="service-text">联系客服</text>
+        <view
+          class="service-item"
+          @click="handleContact"
+        >
+          <view class="service-icon">
+            <uni-icons
+              type="chat"
+              size="32"
+              color="#4A90E2"
+            />
           </view>
-         
-          <!-- <button class="contact-button" open-type="contact" bindcontact="handleContact">
-            <view class="service-icon">
-              <uni-icons type="chat" size="32" color="#4A90E2"></uni-icons>
-            </view>
-            <text class="service-text">联系客服</text>
-          </button> -->
+          <text class="service-text">
+            联系客服
+          </text>
+          <text class="service-tip">
+            人工客服 / AI 客服
+          </text>
         </view>
       </view>
     </view>
 
-    <!-- 设置 -->
     <view class="settings-section">
-      <view class="section-title">设置</view>
-      <view class="settings-item" @click="handleLogout">
+      <view class="section-title">
+        设置
+      </view>
+      <view
+        class="settings-item"
+        @click="handleLogout"
+      >
         <view class="settings-left">
-          <uni-icons type="close" size="32" color="#e64340"></uni-icons>
-          <text class="settings-text">退出登录</text>
+          <uni-icons
+            type="close"
+            size="32"
+            color="#e64340"
+          />
+          <text class="settings-text">
+            退出登录
+          </text>
         </view>
-        <text class="settings-arrow">›</text>
+        <text class="settings-arrow">
+          {{ '>' }}
+        </text>
       </view>
     </view>
 
-    <!-- Tab Bar 导航栏 -->
-    <TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
+    <TabBar
+      :current="currentTab"
+      :cart-count="cartCount"
+      @change="handleTabChange"
+    />
   </view>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+import { computed, onMounted, ref } from 'vue'
 import { getUserProfile, logout } from '@/api/auth.js'
 import { getMyOrders } from '@/api/order.js'
-import { STORAGE_KEY_USER_REGISTER, STORAGE_KEY_TOKEN, STORAGE_KEY_VERIFIED_PRODUCTS, STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
-import { loadCartItems, calculateTotalQuantity } from '@/utils/cart.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
+import { logButtonClick, logPageView } from '@/utils/accessLog.js'
+import { loadCartItems, calculateTotalQuantity } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
+import {
+  STORAGE_KEY_TOKEN,
+  STORAGE_KEY_USER_REGISTER,
+  STORAGE_KEY_VERIFIED_PRODUCTS
+} from '@/utils/storage.js'
 
 const userInfo = ref({
   realName: '',
@@ -123,123 +231,96 @@ const userInfo = ref({
   idNumber: ''
 })
 
-// 头像与图标地址（通过 getImageUrl 统一处理）
 const avatarSrc = computed(() => getImageUrl('/profile/liaoning_zongyi/zaixian_mingyi_logo.png'))
 const successIcon = computed(() => getImageUrl('/profile/liaoning_zongyi/success.png'))
 
 const currentTab = ref('mine')
-
-// 购物车相关数据
 const cartItems = ref([])
 const cartCount = ref(0)
 
 const orderStats = ref({
-  pending: 0,      // 待支付
-  paid: 0,         // 已支付
-  cancelled: 0,    // 已作废
-  refund: 0        // 退/换
+  pending: 0,
+  paid: 0,
+  cancelled: 0,
+  refund: 0
 })
 
-// ✅ 从API加载用户信息
 const loadUserProfile = async () => {
   try {
     uni.showLoading({ title: '加载中...' })
-    
+
     const userData = await getUserProfile()
-    
-    console.log('用户信息:', userData)
-    
+
     if (userData) {
       userInfo.value = {
         realName: userData.userName || '',
         phone: userData.phone || '',
         idNumber: userData.idCardNo || ''
       }
-      
-      // 更新本地缓存
+
       uni.setStorageSync(STORAGE_KEY_USER_REGISTER, userInfo.value)
     }
-    
+
     uni.hideLoading()
   } catch (error) {
     console.error('加载用户信息失败:', error)
     uni.hideLoading()
-    
-    // API失败时从本地加载
+
     try {
       const localUserInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
       if (localUserInfo) {
         userInfo.value = localUserInfo
       }
-    } catch (e) {
-      console.error('从本地加载用户信息失败:', e)
+    } catch (storageError) {
+      console.error('读取本地用户信息失败:', storageError)
     }
   }
 }
 
-// ✅ 退出登录
 const handleLogout = async () => {
   uni.showModal({
     title: '提示',
     content: '确定要退出登录吗？',
     success: async (res) => {
-      if (res.confirm) {
-        try {
-          uni.showLoading({ title: '退出中...' })
-          
-          await logout()
-          
-          // 清除本地缓存
-          uni.removeStorageSync(STORAGE_KEY_TOKEN)
-          uni.removeStorageSync(STORAGE_KEY_USER_REGISTER)
-          
-          uni.hideLoading()
-          uni.showToast({
-            title: '已退出登录',
-            icon: 'success'
-          })
-          
-          // 跳转到注册页并传递 redirectUrl
-          setTimeout(() => {
-            uni.reLaunch({
-              url: `/pages/register/register?redirectUrl=${encodeURIComponent(getCurrentRoute())}`
-            })
-          }, 1500)
-        } catch (error) {
-          console.error('退出登录失败:', error)
-          uni.hideLoading()
-          
-          // 即使API失败，也清除本地缓存
-          uni.removeStorageSync(STORAGE_KEY_TOKEN)
-          uni.removeStorageSync(STORAGE_KEY_USER_REGISTER)
-          
-          uni.showToast({
-            title: '已退出登录',
-            icon: 'success'
-          })
-          
-          setTimeout(() => {
-            uni.reLaunch({
-              url: `/pages/register/register?redirectUrl=${encodeURIComponent(getCurrentRoute())}`
-            })
-          }, 1500)
-        }
+      if (!res.confirm) {
+        return
       }
+
+      try {
+        uni.showLoading({ title: '退出中...' })
+        await logout()
+      } catch (error) {
+        console.error('退出登录失败:', error)
+      } finally {
+        uni.removeStorageSync(STORAGE_KEY_TOKEN)
+        uni.removeStorageSync(STORAGE_KEY_USER_REGISTER)
+        uni.hideLoading()
+      }
+
+      uni.showToast({
+        title: '已退出登录',
+        icon: 'success'
+      })
+
+      setTimeout(() => {
+        uni.reLaunch({
+          url: `/pages/register/register?redirectUrl=${encodeURIComponent(getCurrentRoute())}`
+        })
+      }, 1500)
     }
   })
 }
 
-// 加载订单统计数据
 const loadOrderStats = async () => {
   try {
     const orderList = await getMyOrders()
-    
+
     if (orderList && orderList.length > 0) {
       orderStats.value = {
-        pending: orderList.filter(o => (o.orderStatus === 0 || o.status === 0) && (o.payStatus === 0 || o.payStatus === undefined)).length,
-        paid: orderList.filter(o => (o.payStatus === 1 || o.orderStatus === 1 || o.orderStatus === 2 || o.orderStatus === 3) && o.orderStatus !== 4).length,
-        cancelled: orderList.filter(o => o.orderStatus === 4).length,
-        refund: orderList.filter(o => o.payStatus === 2 || o.payStatus === 3).length
+        pending: orderList.filter((item) => (item.orderStatus === 0 || item.status === 0) && (item.payStatus === 0 || item.payStatus === undefined)).length,
+        paid: orderList.filter((item) => (item.payStatus === 1 || item.orderStatus === 1 || item.orderStatus === 2 || item.orderStatus === 3) && item.orderStatus !== 4).length,
+        cancelled: orderList.filter((item) => item.orderStatus === 4).length,
+        refund: orderList.filter((item) => item.payStatus === 2 || item.payStatus === 3).length
       }
     }
   } catch (error) {
@@ -257,12 +338,12 @@ const goToOrderListByStatus = (status) => {
   const statusMap = {
     0: '待支付',
     1: '已支付',
-    4: '已作废',
-    'refund': '退换'
+    4: '已取消',
+    refund: '退款'
   }
-  logButtonClick(`查看${statusMap[status] || '订单'}`, 'USER_PROFILE', '', { status: status })
 
-  // 退货状态特殊处理：跳转到退货申请列表
+  logButtonClick(`查看${statusMap[status] || '订单'}`, 'USER_PROFILE', '', { status })
+
   if (status === 'refund') {
     uni.navigateTo({
       url: '/pages/order/refund_list'
@@ -270,21 +351,17 @@ const goToOrderListByStatus = (status) => {
     return
   }
 
-  let url = '/pages/order/order_list'
-
-  // 根据状态映射到订单列表页面的标签页
   const statusParamMap = {
-    0: 'pending',    // 待支付 -> pending
-    1: 'shipping',   // 已支付 -> shipping (待发货)
-    2: 'received',   // 待收货 -> received
-    3: 'completed',  // 已完成 -> completed
-    4: 'all',        // 已作废 -> all (全部)
+    0: 'pending',
+    1: 'shipping',
+    2: 'received',
+    3: 'completed',
+    4: 'all'
   }
 
-  const statusParam = statusParamMap[status] || 'all'
-  url += `?status=${statusParam}`
-
-  uni.navigateTo({ url })
+  uni.navigateTo({
+    url: `/pages/order/order_list?status=${statusParamMap[status] || 'all'}`
+  })
 }
 
 const goToAddressList = () => {
@@ -301,51 +378,49 @@ const goToPatientList = () => {
   })
 }
 
-const handleContact = (e) => {
-  logButtonClick('联系客服', 'USER_PROFILE')
+const openHumanCustomerService = () => {
+  logButtonClick('人工客服', 'USER_PROFILE')
 
-  console.log('客服联系事件:', e.detail)
-
-  // 处理客服联系结果
-  // if (e.detail.errMsg === 'enterContact:ok') {
-  //   console.log('用户成功进入客服会话')
-  // } else {
-  //   console.log('客服联系失败:', e.detail.errMsg)
-  //   uni.showToast({
-  //     title: '客服功能暂时不可用',
-  //     icon: 'none'
-  //   })
-  // }
-
-  // 暂时注释企业微信客服实现，以备后续切换
- //  辽宁中医
- console.log({
-  extInfo:{url: 'https://work.weixin.qq.com/kfid/kfcc92471bfa5f832db'}, // 企业微信客服URL
-    corpId: '', // 企业ID
- })
-  // 打开企业微信客服
   uni.openCustomerServiceChat({
-    extInfo:{url: 'https://work.weixin.qq.com/kfid/kfc79feecc56cb032bc'}, // 企业微信客服URL
-    corpId: 'ww55d1004932944831', // 企业ID
-    success: (res) => {
-      console.log('打开客服成功:', res)
+    extInfo: {
+      url: 'https://work.weixin.qq.com/kfid/kfc79feecc56cb032bc'
     },
-    fail: (err) => {
-      console.error('打开客服失败:', err)
-      // 如果企业微信客服不可用，显示友好提示
+    corpId: 'ww55d1004932944831',
+    success: (res) => {
+      console.log('打开人工客服成功:', res)
+    },
+    fail: (error) => {
+      console.error('打开人工客服失败:', error)
       uni.showToast({
-        title: '客服功能暂时不可用',
+        title: '人工客服暂时不可用',
         icon: 'none'
       })
     }
   })
-  
 }
 
-const goToPrescriptionList = () => {
-  logButtonClick('我的处方', 'USER_PROFILE')
+const openAiCustomerService = () => {
+  logButtonClick('AI客服', 'USER_PROFILE')
   uni.navigateTo({
-    url: '/pages/order/prescription_list'
+    url: '/pages/ai/chat'
+  })
+}
+
+const handleContact = () => {
+  logButtonClick('联系客服', 'USER_PROFILE')
+
+  uni.showActionSheet({
+    itemList: ['人工客服', 'AI客服'],
+    success: (res) => {
+      if (res.tapIndex === 0) {
+        openHumanCustomerService()
+        return
+      }
+
+      if (res.tapIndex === 1) {
+        openAiCustomerService()
+      }
+    }
   })
 }
 
@@ -353,28 +428,23 @@ const handleTabChange = (tab) => {
   currentTab.value = tab
 }
 
-// 加载购物车数据（只加载购物车中的商品）
 const loadCartData = async () => {
   try {
-    // 先从购物车获取需要的产品ID
     const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-    const productIds = Object.keys(verifiedProducts).filter(id => verifiedProducts[id])
-    
+    const productIds = Object.keys(verifiedProducts).filter((id) => verifiedProducts[id])
+
     if (productIds.length === 0) {
-      // 如果购物车为空，直接设置数量为0
       cartItems.value = []
       cartCount.value = 0
       return
     }
-    
-    // 为购物车中的商品创建虚拟分类结构
+
     const cartCategory = {
       id: 'cart_items',
       name: '购物车商品',
       products: []
     }
-    
-    // 逐个获取购物车商品的详细信息（只加载需要的商品）
+
     const { getProductDetail } = await import('@/api/product.js')
     for (const productId of productIds) {
       try {
@@ -386,21 +456,17 @@ const loadCartData = async () => {
             description: productDetail.subTitle || productDetail.description,
             image: productDetail.coverImage || productDetail.image,
             price: productDetail.price,
-            unit: productDetail.unit || '份',
+            unit: productDetail.unit || '件',
             notice: productDetail.usageDesc || productDetail.notice
           })
         }
-      } catch (err) {
-        console.error(`获取商品${productId}详情失败:`, err)
+      } catch (error) {
+        console.error(`获取商品 ${productId} 详情失败:`, error)
       }
     }
-    
-    // 使用相同的工具函数计算购物车数据
+
     cartItems.value = loadCartItems([cartCategory])
     cartCount.value = calculateTotalQuantity(cartItems.value)
-    
-    console.log('个人中心页面购物车数量:', cartCount.value)
-    console.log('购物车项目:', cartItems.value)
   } catch (error) {
     console.error('加载购物车数据失败:', error)
     cartItems.value = []
@@ -415,17 +481,22 @@ onMounted(() => {
   loadCartData()
 })
 
-// Helper: 获取当前页面完整路径（带查询参数），用于回跳 redirectUrl
 const getCurrentRoute = () => {
   try {
     const pages = getCurrentPages()
-    const cur = pages[pages.length - 1] || {}
-    let route = cur.route || '/pages/user/profile'
-    const options = cur.options || {}
-    const qs = Object.keys(options).map(k => `${k}=${encodeURIComponent(options[k])}`).join('&')
-    if (qs) route += `?${qs}`
+    const currentPage = pages[pages.length - 1] || {}
+    let route = currentPage.route || '/pages/user/profile'
+    const options = currentPage.options || {}
+    const queryString = Object.keys(options)
+      .map((key) => `${key}=${encodeURIComponent(options[key])}`)
+      .join('&')
+
+    if (queryString) {
+      route += `?${queryString}`
+    }
+
     return route
-  } catch (e) {
+  } catch (error) {
     return '/pages/user/profile'
   }
 }
@@ -438,10 +509,9 @@ const getCurrentRoute = () => {
   padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
 }
 
-/* 用户信息头部 */
 .user-header {
-  background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%);
-  padding: 60rpx 30rpx 80rpx 30rpx;
+  background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+  padding: 60rpx 30rpx 80rpx;
   position: relative;
 }
 
@@ -486,7 +556,6 @@ const getCurrentRoute = () => {
   color: #ffffff;
 }
 
-/* 订单状态卡片 */
 .order-status-card {
   background: #ffffff;
   border-radius: 24rpx 24rpx 0 0;
@@ -554,6 +623,7 @@ const getCurrentRoute = () => {
 .status-text {
   font-size: 24rpx;
   color: #333333;
+  text-align: center;
 }
 
 .status-badge {
@@ -575,7 +645,6 @@ const getCurrentRoute = () => {
   border: 2rpx solid #ffffff;
 }
 
-/* 我的服务 */
 .service-section {
   margin: 20rpx;
   background: #ffffff;
@@ -593,7 +662,7 @@ const getCurrentRoute = () => {
 .service-grid {
   display: flex;
   justify-content: space-around;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .service-item {
@@ -602,7 +671,6 @@ const getCurrentRoute = () => {
   align-items: center;
   flex: 1;
   padding: 20rpx 0;
-  cursor: pointer;
   transition: all 0.3s;
 }
 
@@ -629,7 +697,14 @@ const getCurrentRoute = () => {
   text-align: center;
 }
 
-/* 设置 */
+.service-tip {
+  margin-top: 10rpx;
+  font-size: 20rpx;
+  line-height: 1.4;
+  color: #8b96a6;
+  text-align: center;
+}
+
 .settings-section {
   margin: 20rpx;
   background: #ffffff;
@@ -642,7 +717,6 @@ const getCurrentRoute = () => {
   align-items: center;
   justify-content: space-between;
   padding: 24rpx 0;
-  cursor: pointer;
   transition: all 0.3s;
 }
 
@@ -668,25 +742,4 @@ const getCurrentRoute = () => {
   font-size: 32rpx;
   color: #999999;
 }
-
-/* 客服按钮样式 */
-.contact-button {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-  padding: 20rpx 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.contact-button:active {
-  transform: scale(0.95);
-  opacity: 0.7;
-}
-
-/* Tab Bar 样式已移至组件中 */
-
 </style>

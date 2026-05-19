@@ -126,6 +126,26 @@ export const STORAGE_KEY_CURRENT_CONSULTATION_ID = 'current_consultation_id'
  */
 export const STORAGE_KEY_CHECKOUT_PRODUCT_IDS = 'checkout_product_ids'
 
+// ==================== AI 客服相关 ====================
+/**
+ * 智能客服当前会话 ID
+ * 存储格式: string
+ */
+export const STORAGE_KEY_AI_CHAT_ID = 'ai_chat_id'
+
+/**
+ * 智能客服消息列表
+ * 存储格式: Array<{
+ *   id: string,
+ *   role: 'assistant' | 'user' | 'system',
+ *   content: string,
+ *   htmlContent: string,
+ *   status: 'sending' | 'sent' | 'error',
+ *   createdAt: number
+ * }>
+ */
+export const STORAGE_KEY_AI_CHAT_MESSAGES = 'ai_chat_messages'
+
 // ==================== 订单相关 ====================
 /**
  * 处方订单列表

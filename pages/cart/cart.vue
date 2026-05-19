@@ -261,7 +261,7 @@ export default {
     },
     goShopping() {
       uni.navigateTo({
-        url: '/pages/products/medicine_index'
+        url: '/pages/products/medicine_list'
       })
     },
     goToCheckout() {

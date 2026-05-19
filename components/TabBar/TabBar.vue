@@ -50,7 +50,7 @@ export default {
 
       if (tab === 'home') {
         uni.redirectTo({
-          url: '/pages/products/medicine_index'
+          url: '/pages/products/medicine_list'
         })
       } else if (tab === 'cart') {
         uni.redirectTo({
