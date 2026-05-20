@@ -1,29 +1,60 @@
 <template>
-  <view class="page" :class="{ 'page-lock': showManual || showPolicy }">
-
+  <view
+    class="page"
+    :class="{ 'page-lock': showManual || showPolicy }"
+  >
     <view class="banner-wrapper">
-      <swiper class="banner" :indicator-dots="true" :autoplay="productImages.length > 1" :interval="3000" indicator-color="rgba(255,255,255,0.4)" indicator-active-color="#fff" @change="handleBannerChange">
-        <swiper-item v-for="(img, idx) in productImages" :key="idx">
-          <image class="banner-img" :src="img" mode="aspectFill" />
+      <swiper
+        class="banner"
+        :indicator-dots="true"
+        :autoplay="productImages.length > 1"
+        :interval="3000"
+        indicator-color="rgba(255,255,255,0.4)"
+        indicator-active-color="#fff"
+        @change="handleBannerChange"
+      >
+        <swiper-item
+          v-for="(img, idx) in productImages"
+          :key="idx"
+        >
+          <image
+            class="banner-img"
+            :src="img"
+            mode="aspectFill"
+          />
         </swiper-item>
       </swiper>
-      <view class="banner-index">{{ currentIndex }}/{{ productImages.length }}</view>
+      <view class="banner-index">
+        {{ currentIndex }}/{{ productImages.length }}
+      </view>
     </view>
-    <view class="split-line"></view>
+    <view class="split-line" />
     <view class="price-box">
       <view class="price-main">
         <view class="price-left">
-          <view class="price-tag">商品价格</view>
+          <view class="price-tag">
+            商品价格
+          </view>
           <view class="price-info">
-            <text class="price-unit">￥</text>
-            <text class="price-num">{{ priceInteger }}</text>
-            <text class="price-decimal">.{{ priceDecimal }}</text>
+            <text class="price-unit">
+              ￥
+            </text>
+            <text class="price-num">
+              {{ priceInteger }}
+            </text>
+            <text class="price-decimal">
+              .{{ priceDecimal }}
+            </text>
           </view>
         </view>
         <view class="price-right">
           <view class="sales-box">
-            <text class="sales-icon">🔥</text>
-            <text class="sales-count">已售 {{ product.salesVolume || 0 }}</text>
+            <text class="sales-icon">
+              🔥
+            </text>
+            <text class="sales-count">
+              已售 {{ product.salesVolume || 0 }}
+            </text>
           </view>
         </view>
       </view>
@@ -38,205 +69,519 @@
 
     <view class="goods-info">
       <view class="goods-name-row">
-        <text class="self-developed-tag" v-if="product.bizType === 1">自研</text>
-        <text class="new-product-tag" v-if="product.isHospitalStarFormula === 1">院藏王牌制剂</text>
-        <text class="star-product-tag" v-if="product.isNewProduct === 1">重磅新品</text>
-        <text class="goods-name">{{ product.name }}&nbsp;{{ product.description }}</text>
+        <text
+          v-if="product.bizType === 1"
+          class="self-developed-tag"
+        >
+          自研
+        </text>
+        <text
+          v-if="product.isHospitalStarFormula === 1"
+          class="new-product-tag"
+        >
+          院藏王牌制剂
+        </text>
+        <text
+          v-if="product.isNewProduct === 1"
+          class="star-product-tag"
+        >
+          重磅新品
+        </text>
+        <text class="goods-name">
+          {{ product.name }}&nbsp;{{ product.description }}
+        </text>
       </view>
-      <view class="goods-sub" v-if="product.subtitle || product.indications">{{ product.indications }}</view>
-      <view class="drug-reminder">{{ product.isPrescription === 1 ? '处方药，请在医师指导下购买和使用' : '非处方药，请按说明书或药师指导使用' }}</view>
+      <view
+        v-if="product.subtitle || product.indications"
+        class="goods-sub"
+      >
+        {{ product.indications }}
+      </view>
+      <view class="drug-reminder">
+        {{ product.isPrescription === 1 ? '处方药，请在医师指导下购买和使用' : '非处方药，请按说明书或药师指导使用' }}
+      </view>
     </view>
 
-    <view class="policy-overlay" v-if="showPolicy" @click="closePolicyDrawer">
-      <view class="policy-drawer" @click.stop>
+    <view
+      v-if="showPolicy"
+      class="policy-overlay"
+      @click="closePolicyDrawer"
+    >
+      <view
+        class="policy-drawer"
+        @click.stop
+      >
         <view class="policy-header">
-          <text class="policy-title">退换货说明</text>
-          <view class="policy-close" @click="closePolicyDrawer">×</view>
+          <text class="policy-title">
+            退换货说明
+          </text>
+          <view
+            class="policy-close"
+            @click="closePolicyDrawer"
+          >
+            ×
+          </view>
         </view>
         <view class="policy-body">
           <view class="policy-section">
-            <text class="policy-section-title"><text class="check-icon">✓</text> 不支持七天无理由退换</text>
-            <text class="policy-content">药品属于特殊商品，除质量问题外，一经售出通常不支持退换。</text>
+            <text class="policy-section-title">
+              <text class="check-icon">
+                ✓
+              </text> 不支持七天无理由退换
+            </text>
+            <text class="policy-content">
+              药品属于特殊商品，除质量问题外，一经售出通常不支持退换。
+            </text>
           </view>
           <view class="policy-section">
-            <text class="policy-section-title"><text class="check-icon">✓</text> 售后保障</text>
-            <text class="policy-content">如需了解用药问题，可联系平台药师或医院相关科室咨询。</text>
+            <text class="policy-section-title">
+              <text class="check-icon">
+                ✓
+              </text> 售后保障
+            </text>
+            <text class="policy-content">
+              如需了解用药问题，可联系平台药师或医院相关科室咨询。
+            </text>
           </view>
         </view>
         <view class="policy-footer">
-          <view class="policy-confirm-btn" @click="closePolicyDrawer">我知道了</view>
+          <view
+            class="policy-confirm-btn"
+            @click="closePolicyDrawer"
+          >
+            我知道了
+          </view>
         </view>
       </view>
     </view>
 
     <view class="select-section">
-      <view class="select-label">已选</view>
+      <view class="select-label">
+        已选
+      </view>
       <view class="select-value">
         <text>{{ selectedSpec }}</text>
-        <text class="select-num"> ×{{ quantity }}</text>
+        <text class="select-num">
+          ×{{ quantity }}
+        </text>
       </view>
     </view>
 
-    <view class="drug-manual-card" @click="showManualDrawer">
+    <view
+      class="drug-manual-card"
+      @click="showManualDrawer"
+    >
       <view class="manual-item">
-        <view class="manual-item-title">药物组成</view>
-        <view class="manual-item-content">{{ product.ingredients || '暂无信息' }}</view>
+        <view class="manual-item-title">
+          药物组成
+        </view>
+        <view class="manual-item-content">
+          {{ product.ingredients || '暂无信息' }}
+        </view>
       </view>
-      <view class="manual-divider"></view>
+      <view class="manual-divider" />
       <view class="manual-item">
-        <view class="manual-item-title">用法用量</view>
-        <view class="manual-item-content">{{ product.usageDesc || '暂无信息' }}</view>
+        <view class="manual-item-title">
+          用法用量
+        </view>
+        <view class="manual-item-content">
+          {{ product.usageDesc || '暂无信息' }}
+        </view>
       </view>
-      <view class="manual-arrow">›</view>
+      <view class="manual-arrow">
+        ›
+      </view>
     </view>
 
-    <view class="policy-row" @click="showPolicyDrawer">
-      <text class="policy-text">不支持七天无理由退换 · 售后服务</text>
-      <text class="select-arrow">›</text>
+    <view
+      class="policy-row"
+      @click="showPolicyDrawer"
+    >
+      <text class="policy-text">
+        不支持七天无理由退换 · 售后服务
+      </text>
+      <text class="select-arrow">
+        ›
+      </text>
     </view>
     <view class="delivery-row">
-      <text class="delivery-label">配送</text>
-      <image class="sf-logo" src="https://smf.lntcm.com/static/logo/sf.png" mode="aspectFit" />
-      <text class="delivery-text">顺丰配送，时效以实际收货地址为准</text>
+      <text class="delivery-label">
+        配送
+      </text>
+      <image
+        class="sf-logo"
+        src="https://smf.lntcm.com/static/logo/sf.png"
+        mode="aspectFit"
+      />
+      <text class="delivery-text">
+        顺丰配送，时效以实际收货地址为准
+      </text>
     </view>
 
     <view class="promise-box">
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">医院自研</text>
+        <text class="promise-icon">
+          ✓
+        </text>
+        <text class="promise-text">
+          医院自研
+        </text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">正品保障</text>
+        <text class="promise-icon">
+          ✓
+        </text>
+        <text class="promise-text">
+          正品保障
+        </text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">专业药师</text>
+        <text class="promise-icon">
+          ✓
+        </text>
+        <text class="promise-text">
+          专业药师
+        </text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">顺丰物流</text>
+        <text class="promise-icon">
+          ✓
+        </text>
+        <text class="promise-text">
+          顺丰物流
+        </text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">✓</text>
-        <text class="promise-text">隐私保护</text>
+        <text class="promise-icon">
+          ✓
+        </text>
+        <text class="promise-text">
+          隐私保护
+        </text>
       </view>
     </view>
 
-    <view class="drawer-overlay" v-if="showManual" @click="closeManualDrawer">
-      <view class="drawer-content drawer-green-card" @click.stop>
+    <view
+      v-if="showManual"
+      class="drawer-overlay"
+      @click="closeManualDrawer"
+    >
+      <view
+        class="drawer-content drawer-green-card"
+        @click.stop
+      >
         <view class="drawer-header">
-          <text class="drawer-title">用药说明</text>
-          <view class="drawer-close" @click="closeManualDrawer">×</view>
+          <text class="drawer-title">
+            用药说明
+          </text>
+          <view
+            class="drawer-close"
+            @click="closeManualDrawer"
+          >
+            ×
+          </view>
         </view>
-        <scroll-view class="drawer-body" scroll-y>
-          <view class="drawer-section" v-if="product.ingredients">
-            <text class="drawer-label">【成份】</text>
-            <text class="drawer-text">{{ product.ingredients }}</text>
+        <scroll-view
+          class="drawer-body"
+          scroll-y
+        >
+          <view
+            v-if="product.ingredients"
+            class="drawer-section"
+          >
+            <text class="drawer-label">
+              【成份】
+            </text>
+            <text class="drawer-text">
+              {{ product.ingredients }}
+            </text>
           </view>
-          <view class="drawer-section" v-if="product.indications">
-            <text class="drawer-label">【功能主治】</text>
-            <text class="drawer-text">{{ product.indications }}</text>
+          <view
+            v-if="product.indications"
+            class="drawer-section"
+          >
+            <text class="drawer-label">
+              【功能主治】
+            </text>
+            <text class="drawer-text">
+              {{ product.indications }}
+            </text>
           </view>
-          <view class="drawer-section" v-if="usageText">
-            <text class="drawer-label">【用法用量】</text>
-            <text class="drawer-text">{{ usageText }}</text>
+          <view
+            v-if="usageText"
+            class="drawer-section"
+          >
+            <text class="drawer-label">
+              【用法用量】
+            </text>
+            <text class="drawer-text">
+              {{ usageText }}
+            </text>
           </view>
-          <view class="drawer-section" v-if="product.adverseReactions">
-            <text class="drawer-label">【不良反应】</text>
-            <text class="drawer-text">{{ product.adverseReactions }}</text>
+          <view
+            v-if="product.adverseReactions"
+            class="drawer-section"
+          >
+            <text class="drawer-label">
+              【不良反应】
+            </text>
+            <text class="drawer-text">
+              {{ product.adverseReactions }}
+            </text>
           </view>
-          <view class="drawer-section" v-if="product.contraindication">
-            <text class="drawer-label">【禁忌】</text>
-            <text class="drawer-text">{{ product.contraindication }}</text>
+          <view
+            v-if="product.contraindication"
+            class="drawer-section"
+          >
+            <text class="drawer-label">
+              【禁忌】
+            </text>
+            <text class="drawer-text">
+              {{ product.contraindication }}
+            </text>
           </view>
-          <view class="drawer-section" v-if="product.precautions">
-            <text class="drawer-label">【注意事项】</text>
-            <text class="drawer-text">{{ product.precautions }}</text>
+          <view
+            v-if="product.precautions"
+            class="drawer-section"
+          >
+            <text class="drawer-label">
+              【注意事项】
+            </text>
+            <text class="drawer-text">
+              {{ product.precautions }}
+            </text>
           </view>
-          <view class="drawer-section" v-if="product.storageCondition">
-            <text class="drawer-label">【贮藏】</text>
-            <text class="drawer-text">{{ product.storageCondition }}</text>
+          <view
+            v-if="product.storageCondition"
+            class="drawer-section"
+          >
+            <text class="drawer-label">
+              【贮藏】
+            </text>
+            <text class="drawer-text">
+              {{ product.storageCondition }}
+            </text>
           </view>
-          <view class="drawer-section" v-if="product.manufacturer">
-            <text class="drawer-label">【生产单位】</text>
-            <text class="drawer-text">{{ product.manufacturer }}</text>
+          <view
+            v-if="product.manufacturer"
+            class="drawer-section"
+          >
+            <text class="drawer-label">
+              【生产单位】
+            </text>
+            <text class="drawer-text">
+              {{ product.manufacturer }}
+            </text>
           </view>
         </scroll-view>
       </view>
     </view>
 
-    <view class="split-line"></view>
+    <view class="split-line" />
 
     <view class="pharmacist-card">
       <view class="pharmacist-avatar-wrap">
-        <image class="pharmacist-avatar" :src="pharmacistAvatar" mode="aspectFill" />
-        <view class="online-tag">在线</view>
+        <image
+          class="pharmacist-avatar"
+          :src="pharmacistAvatar"
+          mode="aspectFill"
+        />
+        <view class="online-tag">
+          在线
+        </view>
       </view>
       <view class="pharmacist-detail">
-        <view class="pharmacist-name">用药咨询</view>
-        <view class="pharmacist-desc">有问题可咨询专业药师</view>
+        <view class="pharmacist-name">
+          用药咨询
+        </view>
+        <view class="pharmacist-desc">
+          有问题可咨询专业药师
+        </view>
       </view>
-      <view class="consult-btn" @click.stop="goConsult">咨询</view>
+      <view
+        class="consult-btn"
+        @click.stop="goConsult"
+      >
+        咨询
+      </view>
     </view>
-     <view class="split-line"></view>
-    <view class="recommend-section" :class="{ 'combo-section': recommendTab === 'combo', 'star-section': recommendTab === 'star' }">
+    <view class="split-line" />
+    <view
+      class="recommend-section"
+      :class="{ 'combo-section': recommendTab === 'combo', 'star-section': recommendTab === 'star' }"
+    >
       <view class="recommend-tabs">
-        <view class="recommend-tab" :class="{ active: recommendTab === 'combo' }" @click="switchRecommendTab('combo')">用药组合</view>
-        <view class="recommend-tab" :class="{ active: recommendTab === 'star' }" @click="switchRecommendTab('star')">明星产品</view>
+        <view
+          class="recommend-tab"
+          :class="{ active: recommendTab === 'combo' }"
+          @click="switchRecommendTab('combo')"
+        >
+          用药组合
+        </view>
+        <view
+          class="recommend-tab"
+          :class="{ active: recommendTab === 'star' }"
+          @click="switchRecommendTab('star')"
+        >
+          药品浏览
+        </view>
       </view>
       <view class="recommend-content">
-        <scroll-view class="recommend-scroll" scroll-x v-if="recommendTab === 'combo' && comboProducts.length > 0">
-          <view class="recommend-item" v-for="item in comboProducts" :key="item.id" @click="goToDetail(item)">
-            <image class="recommend-img" :src="getImageUrl(item.image)" mode="aspectFit" />
+        <scroll-view
+          v-if="recommendTab === 'combo' && comboProducts.length > 0"
+          class="recommend-scroll"
+          scroll-x
+        >
+          <view
+            v-for="item in comboProducts"
+            :key="item.id"
+            class="recommend-item"
+            @click="goToDetail(item)"
+          >
+            <image
+              class="recommend-img"
+              :src="getImageUrl(item.image)"
+              mode="aspectFit"
+            />
             <view class="recommend-info">
-              <text class="recommend-name">{{ item.name }}</text>
+              <text class="recommend-name">
+                {{ item.name }}
+              </text>
               <view class="recommend-bottom">
-                <text class="recommend-price">￥{{ Number(item.price || 0).toFixed(2) }}</text>
-                <view class="recommend-add-btn" :class="{ 'has-quantity': cartQuantities[item.id] > 0 }" @click.stop="flyToCart($event, item)">
-                  <text v-if="cartQuantities[item.id]">{{ cartQuantities[item.id] }}</text>
-                  <text v-else>+</text>
+                <text class="recommend-price">
+                  ￥{{ Number(item.price || 0).toFixed(2) }}
+                </text>
+                <view
+                  class="recommend-add-btn"
+                  :class="{ 'has-quantity': cartQuantities[item.id] > 0 }"
+                  @click.stop="flyToCart($event, item)"
+                >
+                  <text v-if="cartQuantities[item.id]">
+                    {{ cartQuantities[item.id] }}
+                  </text>
+                  <text v-else>
+                    +
+                  </text>
                 </view>
               </view>
             </view>
           </view>
         </scroll-view>
-        <view v-else-if="recommendTab === 'combo'" class="empty-block">暂无组合推荐</view>
-        <scroll-view class="recommend-scroll" scroll-x v-else-if="starProducts.length > 0">
-          <view class="recommend-item" v-for="item in starProducts" :key="item.id" @click="goToDetail(item)">
-            <image class="recommend-img" :src="getImageUrl(item.image)" mode="aspectFit" />
+        <view
+          v-else-if="recommendTab === 'combo'"
+          class="empty-block"
+        >
+          暂无组合推荐
+        </view>
+        <scroll-view
+          v-else-if="starProducts.length > 0"
+          class="recommend-scroll"
+          scroll-x
+        >
+          <view
+            v-for="item in starProducts"
+            :key="item.id"
+            class="recommend-item"
+            @click="goToDetail(item)"
+          >
+            <image
+              class="recommend-img"
+              :src="getImageUrl(item.image)"
+              mode="aspectFit"
+            />
             <view class="recommend-info">
-              <text class="recommend-name">{{ item.name }}</text>
+              <text class="recommend-name">
+                {{ item.name }}
+              </text>
               <view class="recommend-bottom">
-                <text class="recommend-price">￥{{ Number(item.price || 0).toFixed(2) }}</text>
-                <view class="recommend-add-btn" :class="{ 'has-quantity': cartQuantities[item.id] > 0 }" @click.stop="flyToCart($event, item)">
-                  <text v-if="cartQuantities[item.id]">{{ cartQuantities[item.id] }}</text>
-                  <text v-else>+</text>
+                <text class="recommend-price">
+                  ￥{{ Number(item.price || 0).toFixed(2) }}
+                </text>
+                <view
+                  class="recommend-add-btn"
+                  :class="{ 'has-quantity': cartQuantities[item.id] > 0 }"
+                  @click.stop="flyToCart($event, item)"
+                >
+                  <text v-if="cartQuantities[item.id]">
+                    {{ cartQuantities[item.id] }}
+                  </text>
+                  <text v-else>
+                    +
+                  </text>
                 </view>
               </view>
             </view>
           </view>
         </scroll-view>
-        <view v-else class="empty-block">暂无明星产品</view>
+        <view
+          v-else
+          class="empty-block"
+        >
+          暂无其他推荐
+        </view>
       </view>
-      <view class="combo-disclaimer" v-if="recommendTab === 'combo'">*用药组合仅供参考，最终以医嘱为准</view>
+      <view
+        v-if="recommendTab === 'combo'"
+        class="combo-disclaimer"
+      >
+        *用药组合仅供参考，最终以医嘱为准
+      </view>
 
-      <view class="flying-dot" v-if="flyingDot.show" :style="{ left: flyingDot.x + 'px', top: flyingDot.y + 'px' }"></view>
+      <view
+        v-if="flyingDot.show"
+        class="flying-dot"
+        :style="{ left: flyingDot.x + 'px', top: flyingDot.y + 'px' }"
+      />
     </view>
 
-    <view class="split-line"></view>
+    <view class="split-line" />
 
     <view class="detail-header">
-      <view class="detail-tab" :class="{ active: detailTab === 'desc' }" @click="switchDetailTab('desc')">详情</view>
-      <view class="detail-tab" :class="{ active: detailTab === 'review' }" @click="switchDetailTab('review')">评价</view>
+      <view
+        class="detail-tab"
+        :class="{ active: detailTab === 'desc' }"
+        @click="switchDetailTab('desc')"
+      >
+        详情
+      </view>
+      <view
+        class="detail-tab"
+        :class="{ active: detailTab === 'review' }"
+        @click="switchDetailTab('review')"
+      >
+        评价
+      </view>
     </view>
 
-    <view class="detail-body" v-if="detailTab === 'desc'">
-      <view class="detail-title">{{ product.detailTitle || '商品详情' }}</view>
-      <rich-text v-if="product.intro" class="detail-richtext" :nodes="formatRichText(product.intro)"></rich-text>
-      <view v-else class="empty-block">暂无图文详情</view>
-      <view class="detail-images" v-if="showDetailImages">
-        <image v-for="(img, idx) in productImages" :key="idx" :src="img" mode="widthFix" class="detail-img" />
+    <view
+      v-if="detailTab === 'desc'"
+      class="detail-body"
+    >
+      <view class="detail-title">
+        {{ product.detailTitle || '商品详情' }}
+      </view>
+      <rich-text
+        v-if="product.intro"
+        class="detail-richtext"
+        :nodes="formatRichText(product.intro)"
+      />
+      <view
+        v-else
+        class="empty-block"
+      >
+        暂无图文详情
+      </view>
+      <view
+        v-if="showDetailImages"
+        class="detail-images"
+      >
+        <image
+          v-for="(img, idx) in productImages"
+          :key="idx"
+          :src="img"
+          mode="widthFix"
+          class="detail-img"
+        />
       </view>
 
       <!-- <view class="spec-list">
@@ -247,59 +592,130 @@
         </view>
       </view> -->
 
-      <view class="usage-box" v-if="specItems.length > 0">
-        <view class="usage-title">药品基本信息</view>
+      <view
+        v-if="specItems.length > 0"
+        class="usage-box"
+      >
+        <view class="usage-title">
+          药品基本信息
+        </view>
         <view class="usage-list">
-          <view class="usage-item" v-for="item in specItems" :key="item.label">
-            <text class="usage-label">{{ item.label }}</text>
-            <text class="usage-text">{{ item.value }}</text>
+          <view
+            v-for="item in specItems"
+            :key="item.label"
+            class="usage-item"
+          >
+            <text class="usage-label">
+              {{ item.label }}
+            </text>
+            <text class="usage-text">
+              {{ item.value }}
+            </text>
           </view>
         </view>
       </view>
 
-      <view class="usage-box" v-if="usageItems.length > 0">
-        <view class="usage-title">用药说明</view>
+      <view
+        v-if="usageItems.length > 0"
+        class="usage-box"
+      >
+        <view class="usage-title">
+          用药说明
+        </view>
         <view class="usage-list">
-          <view class="usage-item" v-for="item in usageItems" :key="item.label">
-            <text class="usage-label">{{ item.label }}</text>
-            <text class="usage-text">{{ item.value }}</text>
+          <view
+            v-for="item in usageItems"
+            :key="item.label"
+            class="usage-item"
+          >
+            <text class="usage-label">
+              {{ item.label }}
+            </text>
+            <text class="usage-text">
+              {{ item.value }}
+            </text>
           </view>
         </view>
       </view>
     </view>
 
-    <view class="detail-body" v-if="detailTab === 'review'">
-      <view class="empty-block">暂无评价</view>
+    <view
+      v-if="detailTab === 'review'"
+      class="detail-body"
+    >
+      <view class="empty-block">
+        暂无评价
+      </view>
     </view>
 
     <view class="reminder-bar">
-      <text class="reminder-icon">!</text>
-      <text class="reminder-text">请仔细阅读药品说明书或在医师、药师指导下使用。药品包装及说明请以实际收到的商品为准。</text>
+      <text class="reminder-icon">
+        !
+      </text>
+      <text class="reminder-text">
+        请仔细阅读药品说明书或在医师、药师指导下使用。药品包装及说明请以实际收到的商品为准。
+      </text>
     </view>
 
 
 
-    <view class="bottom-space"></view>
+    <view class="bottom-space" />
 
     <view class="bottom-bar">
       <view class="bottom-left">
-        <view class="action-icon-btn" @click="toggleCollect">
-          <text class="action-icon">{{ isCollected ? '★' : '☆' }}</text>
-          <text class="action-text">{{ isCollected ? '已收藏' : '收藏' }}</text>
+        <view
+          class="action-icon-btn"
+          @click="toggleCollect"
+        >
+          <text class="action-icon">
+            {{ isCollected ? '★' : '☆' }}
+          </text>
+          <text class="action-text">
+            {{ isCollected ? '已收藏' : '收藏' }}
+          </text>
         </view>
-        <view class="action-icon-btn" @click="goCart">
-          <text class="action-icon">🛒</text>
-          <text class="action-text">购物车</text>
-          <view class="cart-badge" v-if="cartCount > 0">{{ cartCount > 99 ? '99+' : cartCount }}</view>
+        <view
+          class="action-icon-btn"
+          @click="goCart"
+        >
+          <text class="action-icon">
+            🛒
+          </text>
+          <text class="action-text">
+            购物车
+          </text>
+          <view
+            v-if="cartCount > 0"
+            class="cart-badge"
+          >
+            {{ cartCount > 99 ? '99+' : cartCount }}
+          </view>
         </view>
-        <view class="action-icon-btn" @click="showCustomerService">
-          <text class="action-icon">☎️</text>
-          <text class="action-text">客服</text>
+        <view
+          class="action-icon-btn"
+          @click="showCustomerService"
+        >
+          <text class="action-icon">
+            ☎️
+          </text>
+          <text class="action-text">
+            客服
+          </text>
         </view>
       </view>
       <view class="bottom-right">
-        <view class="btn-add-cart" @click="addCart">加入购物车</view>
-        <view class="btn-buy" @click="buyNow">立即购买</view>
+        <view
+          class="btn-add-cart"
+          @click="addCart"
+        >
+          加入购物车
+        </view>
+        <view
+          class="btn-buy"
+          @click="buyNow"
+        >
+          立即购买
+        </view>
       </view>
     </view>
   </view>

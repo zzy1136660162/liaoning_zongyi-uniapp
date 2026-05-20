@@ -1,97 +1,146 @@
 <template>
   <view class="page">
-
     <!-- 状态栏占位（适配刘海等）-->
     <view class="safe-top" />
 
 
     <view style="padding: 20rpx;">
-
-
       <!-- 页面内容 -->
-      <scroll-view class="body body-scroll" scrollY>
-
+      <scroll-view
+        class="body body-scroll"
+        scroll-y
+      >
         <!-- 指定药品 卡片 -->
         <view class="card">
-          <view class="card-title">指定药品</view>
           <view
-              class="card-body"
-              v-for="(item, index) in cartItems"
-              :key="item.id"
-              :style="{marginBottom: index < cartItems.length - 1 ? '20rpx' : '0'}"
+            v-for="(item, index) in cartItems"
+            :key="item.id"
+            class="card-body"
+            :style="{marginBottom: index < cartItems.length - 1 ? '20rpx' : '0'}"
           >
             <view class="med-left">
-              <image class="med-thumb" :src="getImageUrl(item.image)" mode="aspectFill" />
-              <view class="med-qty" v-if="item.quantity">×{{ item.quantity }}</view>
+              <image
+                class="med-thumb"
+                :src="getImageUrl(item.image)"
+                mode="aspectFill"
+              />
+              <view
+                v-if="item.quantity"
+                class="med-qty"
+              >
+                {{ item.quantity }}
+              </view>
             </view>
 
             <view class="med-right">
-              <view class="med-name">{{ item.name }}</view>
-              <view class="med-price">¥{{ item.price.toFixed(2) }}</view>
+              <view class="med-name">
+                {{ item.name }}
+              </view>
+              <view class="med-price-row">
+                <view class="med-price">
+                  ¥{{ item.price.toFixed(2) }}
+                </view>
+                <uni-number-box
+                  :value="item.quantity || 1"
+                  :min="1"
+                  :max="99"
+                  size="small"
+                  @change="(val) => onQuantityChange(item, val)"
+                />
+              </view>
             </view>
-          </view>
-          <view class="modify-wrapper">
-            <view class="modify" @click="onModify">修改</view>
           </view>
         </view>
 
         <!-- 就诊人信息 -->
         <view class="section">
-          <view class="section-title">就诊人信息</view>
+          <view class="section-title">
+            就诊人信息
+          </view>
 
           <view class="patient-row">
-            <view class="label"><text class="required">*</text> 就诊人</view>
+            <view class="label">
+              <text class="required">
+                *
+              </text> 就诊人
+            </view>
 
             <view class="patients">
               <view
-                  class="patient-item"
-                  v-for="p in patients"
-                  :key="p.id"
+                v-for="p in patients"
+                :key="p.id"
+                class="patient-item"
               >
                 <view class="patient-chip-wrapper">
-                <view
+                  <view
                     class="patient-chip"
                     :class="{active: selectedPatient && selectedPatient.id === p.id}"
                     @click="selectPatient(p)"
-                >
-                  {{ p.name }}
-                </view>
-                  <view
-                      class="delete-icon"
-                      v-if="p.id"
-                      @click.stop="onDeletePatient(p.id)"
                   >
-                    <uni-icons type="close" size="14" color="#fff"></uni-icons>
+                    {{ p.name }}
+                  </view>
+                  <view
+                    v-if="p.id"
+                    class="delete-icon"
+                    @click.stop="onDeletePatient(p.id)"
+                  >
+                    <uni-icons
+                      type="close"
+                      size="14"
+                      color="#fff"
+                    />
                   </view>
                 </view>
               </view>
 
-              <view class="patient-add" @click="onAddPatient">＋ 添加就诊人</view>
+              <view
+                class="patient-add"
+                @click="onAddPatient"
+              >
+                ＋ 添加就诊人
+              </view>
             </view>
           </view>
         </view>
 
         <!-- 占位（让页面更接近你示意图的空白） -->
-        <view style="height: 40vh"></view>
-
+        <view style="height: 40vh" />
       </scroll-view>
     </view>
     <!-- 底部固定提交栏 -->
     <view class="footer">
       <view class="footer-left">
         <view class="icon-bag">
-          <uni-icons type="cart" size="24" color="#4a90e2"></uni-icons>
-          <text class="badge" v-if="totalQuantity > 0">{{ totalQuantity }}</text>
+          <uni-icons
+            type="cart"
+            size="24"
+            color="#4a90e2"
+          />
+          <text
+            v-if="totalQuantity > 0"
+            class="badge"
+          >
+            {{ totalQuantity }}
+          </text>
         </view>
         <view class="total">
-          <text class="price">¥{{ totalPrice.toFixed(2) }}</text>
-          <text class="note"> 不含复诊费，实际金额以结算为准</text>
+          <text class="price">
+            ¥{{ totalPrice.toFixed(2) }}
+          </text>
+          <text class="note">
+            不含邮费，实际金额以结算为准
+          </text>
         </view>
       </view>
 
-      <button class="submit-btn" type="primary" @click="onSubmit">提&nbsp;交</button>
+      <button
+        class="submit-btn"
+        type="primary"
+        @click="onSubmit"
+      >
+        提&nbsp;交
+      </button>
     </view>
-
   </view>
 </template>
 
@@ -259,6 +308,12 @@ const loadProducts = async () => {
   }
 }
 
+const onQuantityChange = (item, val) => {
+  if (item) {
+    item.quantity = val
+  }
+}
+
 const onModify = () => {
   uni.navigateBack()
 }
@@ -363,12 +418,12 @@ onUnmounted(() => {
 /* Safe area 顶部填充（适配状态栏高度）*/
 .safe-top {
   height: env(safe-area-inset-top);
-  background: #fff;
+  background: linear-gradient(135deg, #4a90e2, #67c6ff);
 }
 
 /* 整体背景 */
 .page {
-  background: #f6f7fb;
+  background: linear-gradient(180deg, #f0f6ff 0%, #f6f7fb 30%, #f6f7fb 100%);
   min-height: 100vh;
 }
 
@@ -403,63 +458,91 @@ onUnmounted(() => {
 
 /* 页面滚动区 */
 .body-scroll {
-  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
 }
 
 /* 卡片 */
 .card {
   background: #fff;
-  border-radius: 8rpx;
-  padding: 20rpx;
-  margin-bottom: 20rpx;
-  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.03);
+  border-radius: 20rpx;
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 8rpx 30rpx rgba(74,144,226,0.1);
+  border: 1rpx solid rgba(74,144,226,0.08);
 }
 .card-title {
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 600;
   text-align: center;
-  margin-bottom: 10rpx;
+  margin-bottom: 24rpx;
   color: #333;
+  position: relative;
+  padding-bottom: 16rpx;
+}
+.card-title::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 80rpx;
+  height: 6rpx;
+  background: linear-gradient(90deg, #4a90e2, #67c6ff);
+  border-radius: 3rpx;
 }
 .card-body {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   position: relative;
-  padding-bottom: 20rpx;
-  border-bottom: 1rpx solid #f0f0f0;
+  padding: 20rpx;
+  background: linear-gradient(135deg, #fafbfc, #f5f7fa);
+  border-radius: 16rpx;
+  margin-bottom: 16rpx;
+  transition: all 0.3s;
 }
 .card-body:last-of-type {
   border-bottom: none;
-  padding-bottom: 0;
+  padding-bottom: 20rpx;
+  margin-bottom: 0;
 }
 .modify-wrapper {
   text-align: right;
-  margin-top: 10rpx;
-  padding-top: 10rpx;
-  border-top: 1rpx solid #f0f0f0;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx dashed #e0e6f0;
 }
 .med-left {
   position: relative;
   width: 160rpx;
   height: 160rpx;
   margin-right: 20rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  box-shadow: 0 6rpx 16rpx rgba(0,0,0,0.1);
 }
 .med-thumb {
   width: 100%;
   height: 100%;
-  border-radius: 8rpx;
-  background: #eee;
+  border-radius: 16rpx;
+  background: linear-gradient(135deg, #f0f0f0, #e8e8e8);
 }
 .med-qty {
   position: absolute;
-  right: -10rpx;
-  top: -10rpx;
-  background: #fff;
-  color: #333;
-  padding: 6rpx 12rpx;
-  border-radius: 16rpx;
-  font-size: 26rpx;
-  border: 1rpx solid #ddd;
+  right: 0rpx;
+  top: 0rpx;
+  background: linear-gradient(135deg, #ff6b6b, #ee5a5a);
+  color: #fff;
+  min-width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  font-size: 24rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10rpx;
+  box-sizing: border-box;
+  box-shadow: 0 4rpx 12rpx rgba(255,107,107,0.4);
 }
 
 .med-right {
@@ -469,11 +552,29 @@ onUnmounted(() => {
   font-size: 30rpx;
   font-weight: 600;
   color: #333;
+  margin-bottom: 10rpx;
+  line-height: 1.4;
+}
+.med-spec {
+  font-size: 24rpx;
+  color: #888;
   margin-bottom: 12rpx;
+  background: linear-gradient(135deg, #f0f4ff, #e8f0fe);
+  padding: 6rpx 14rpx;
+  border-radius: 8rpx;
+  display: inline-block;
 }
 .med-price {
-  color: #e64340;
-  font-size: 28rpx;
+  color: #ff6b6b;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.med-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14rpx;
 }
 
 .modify {
@@ -481,39 +582,58 @@ onUnmounted(() => {
   right: 14rpx;
   top: 14rpx;
   color: #4a90e2;
-  font-size: 28rpx;
+  font-size: 26rpx;
+  padding: 10rpx 20rpx;
+  background: linear-gradient(135deg, #f0f6ff, #e8f0fe);
+  border-radius: 24rpx;
 }
 
 /* section */
 .section {
-  margin-top: 20rpx;
+  margin-top: 24rpx;
   background: #fff;
-  padding: 24rpx;
-  border-radius: 8rpx;
-  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.03);
+  padding: 28rpx;
+  border-radius: 20rpx;
+  box-shadow: 0 8rpx 30rpx rgba(74,144,226,0.1);
+  border: 1rpx solid rgba(74,144,226,0.08);
 }
 .section-title {
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 700;
   text-align: center;
-  margin-bottom: 18rpx;
+  margin-bottom: 24rpx;
+  color: #333;
+  position: relative;
+  padding-bottom: 16rpx;
+}
+.section-title::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 80rpx;
+  height: 6rpx;
+  background: linear-gradient(90deg, #4a90e2, #67c6ff);
+  border-radius: 3rpx;
 }
 .patient-row {
   display: flex;
   flex-direction: column;
 }
 .label {
-  font-size: 26rpx;
+  font-size: 28rpx;
   color: #666;
-  margin-bottom: 18rpx;
+  margin-bottom: 20rpx;
+  font-weight: 500;
 }
-.required { color: #e64340; margin-right: 6rpx; }
+.required { color: #ff6b6b; margin-right: 6rpx; }
 
 /* 就诊人 chips */
 .patients {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 16rpx;
   flex-wrap: wrap;
 }
 
@@ -529,40 +649,46 @@ onUnmounted(() => {
 }
 
 .patient-chip {
-  padding: 12rpx 28rpx;
-  border-radius: 36rpx;
-  background: #f4f7ff;
+  padding: 14rpx 32rpx;
+  border-radius: 40rpx;
+  background: linear-gradient(135deg, #f0f6ff, #e8f0fe);
   color: #4a90e2;
-  font-size: 26rpx;
-  border: 1rpx solid transparent;
+  font-size: 28rpx;
+  border: 2rpx solid #d4e4ff;
+  transition: all 0.3s;
 }
 .patient-chip.active {
-  background: #2a82e4;
+  background: linear-gradient(135deg, #4a90e2, #67c6ff);
   color: #fff;
-  border-color: rgba(0,0,0,0.06);
-  box-shadow: 0 2rpx 6rpx rgba(42,130,228,0.12);
+  border-color: transparent;
+  box-shadow: 0 6rpx 20rpx rgba(74,144,226,0.35);
+  transform: scale(1.05);
 }
 
 .delete-icon {
-  width: 24rpx;
-  height: 24rpx;
+  width: 28rpx;
+  height: 28rpx;
   border-radius: 50%;
-  background: rgba(255, 102, 102, 0.8);
-  margin-left: -12rpx;
+  background: linear-gradient(135deg, #ff6b6b, #ff4757);
+  margin-left: -14rpx;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2rpx 8rpx rgba(255,107,107,0.4);
 }
 .delete-icon:hover {
-  background: rgba(255, 102, 102, 1);
+  transform: scale(1.15);
 }
 
 .patient-add {
-  padding: 12rpx 18rpx;
-  color: #3e86e4;
-  font-size: 26rpx;
+  padding: 14rpx 24rpx;
+  color: #4a90e2;
+  font-size: 28rpx;
+  background: linear-gradient(135deg, #f0f6ff, #e8f0fe);
+  border-radius: 40rpx;
+  border: 2rpx dashed #4a90e2;
 }
 
 /* footer 固定底部 */
@@ -571,15 +697,15 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  min-height: 120rpx;
+  min-height: 130rpx;
   background: #fff;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18rpx 24rpx;
+  padding: 20rpx 30rpx;
   padding-top: 0;
-  padding-bottom: calc(18rpx + env(safe-area-inset-bottom));
-  box-shadow: 0 -6rpx 18rpx rgba(0,0,0,0.06);
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  box-shadow: 0 -8rpx 30rpx rgba(0,0,0,0.08);
   z-index: 100;
 }
 
@@ -587,48 +713,56 @@ onUnmounted(() => {
 .footer-left {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 16rpx;
 }
 .icon-bag {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 12rpx;
-  background: #f0f6ff;
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 18rpx;
+  background: linear-gradient(135deg, #f0f6ff, #e8f4ff);
   display:flex;
   align-items:center;
   justify-content:center;
   position: relative;
+  box-shadow: 0 6rpx 16rpx rgba(74,144,226,0.15);
 }
 .badge {
   position: absolute;
-  top: -8rpx;
-  right: -8rpx;
-  background: #ff4d4f;
+  top: -6rpx;
+  right: -6rpx;
+  background: linear-gradient(135deg, #ff6b6b, #ff4757);
   color: #fff;
-  padding: 4rpx 8rpx;
-  border-radius: 16rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 20rpx;
   font-size: 22rpx;
+  font-weight: 600;
+  box-shadow: 0 2rpx 10rpx rgba(255,75,87,0.4);
 }
 .total .price {
-  font-size: 30rpx;
-  color: #e64340;
-  font-weight: 600;
+  font-size: 38rpx;
+  color: #ff6b6b;
+  font-weight: 700;
 }
 .total .note {
   display: block;
   font-size: 22rpx;
   color: #999;
+  margin-top: 4rpx;
 }
 
 /* 提交按钮 */
 .submit-btn {
   margin: 0;
-  background: #2a82e4;
+  background: linear-gradient(135deg, #4a90e2, #67c6ff);
   color: #fff;
-  padding: 0 35rpx;
-  border-radius: 50rpx;
-  font-size: 30rpx;
+  padding: 0 56rpx;
+  height: 88rpx;
+  border-radius: 44rpx;
+  font-size: 32rpx;
+  font-weight: 600;
   border: none;
+  box-shadow: 0 8rpx 24rpx rgba(74,144,226,0.35);
+  letter-spacing: 2rpx;
 }
 </style>
   
