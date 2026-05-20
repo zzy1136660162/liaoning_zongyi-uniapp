@@ -1,36 +1,71 @@
 <template>
   <view class="product-container">
     <view class="top-banner">
-      <image class="top-banner-img" src="https://smf.lntcm.com/static/img/yiyuan1.jpg" mode="widthFix" />
-  </view>
-    <view class="hospital-intro" :class="{ collapsed: imageCollapsed }">
+      <image
+        class="top-banner-img"
+        src="https://smf.lntcm.com/static/img/yiyuan1.jpg"
+        mode="widthFix"
+      />
+    </view>
+    <view
+      class="hospital-intro"
+      :class="{ collapsed: imageCollapsed }"
+    >
       <view class="logo-wrap">
-        <image class="hospital-logo" src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png" mode="aspectFit" />
-        <view class="logo-badge">官方旗舰店</view>
+        <image
+          class="hospital-logo"
+          src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png"
+          mode="aspectFit"
+        />
+        <view class="logo-badge">
+          官方旗舰店
+        </view>
       </view>
       <view class="hospital-info">
         <view class="hospital-name-row">
-          <view class="hospital-badge">医院自营</view>
-          <text class="hospital-name">辽宁中医药大学附属医院云商城</text>
+          <view class="hospital-badge">
+            医院自营
+          </view>
+          <text class="hospital-name">
+            辽宁中医药大学附属医院云商城
+          </text>
           <!-- <text class="verify-icon">✓</text> -->
         </view>
-        <view class="hospital-desc">权威认证 · 品质保障 · 放心购药</view>
+        <view class="hospital-desc">
+          权威认证 · 品质保障 · 放心购药
+        </view>
         <view class="hospital-tags">
           <view class="tag-item">
-            <text class="tag-icon">🛡️</text>
-            <text class="tag-text">正品保证</text>
+            <text class="tag-icon">
+              🛡️
+            </text>
+            <text class="tag-text">
+              正品保证
+            </text>
           </view>
           <view class="tag-item">
-            <text class="tag-icon">⏰</text>
-            <text class="tag-text">24h发货</text>
+            <text class="tag-icon">
+              ⏰
+            </text>
+            <text class="tag-text">
+              24h发货
+            </text>
           </view>
           <view class="tag-item">
-            <text class="tag-icon">📋</text>
-            <text class="tag-text">在线开方</text>
+            <text class="tag-icon">
+              📋
+            </text>
+            <text class="tag-text">
+              在线开方
+            </text>
           </view>
           <view class="tag-item">
-            <text class="tag-icon">🚚</text>
-            <text class="tag-text">专业包装</text>
+            <text class="tag-icon">
+              🚚
+            </text>
+            <text class="tag-text">
+              专业包装
+            </text>
           </view>
         </view>
         <!-- <view class="hospital-stats">
@@ -50,48 +85,102 @@
           </view>
         </view> -->
       </view>
-      <text class="arrow-icon">›</text>
+      <text class="arrow-icon">
+        ›
+      </text>
     </view>
-    <view class="intro-divider"></view>
+    <view class="intro-divider" />
 
     <view class="search-section">
       <view class="search-bar">
-        <uni-icons type="search" size="18" color="#999999"></uni-icons>
-        <input class="search-input" placeholder="搜索院内药品" v-model="searchKeyword" @input="handleSearch" />
-        <button class="search-btn" @click="handleSearch">搜索</button>
+        <uni-icons
+          type="search"
+          size="18"
+          color="#999999"
+        />
+        <input
+          v-model="searchKeyword"
+          class="search-input"
+          placeholder="搜索院内药品"
+          @input="handleSearch"
+        >
+        <button
+          class="search-btn"
+          @click="handleSearch"
+        >
+          搜索
+        </button>
       </view>
     </view>
 
     <view class="main-content">
-      <scroll-view class="category-nav" scroll-y>
+      <scroll-view
+        class="category-nav"
+        scroll-y
+      >
         <view
-          class="category-item"
           v-for="category in categories"
           :key="category.id"
+          class="category-item"
           :class="{ active: currentCategoryId === category.id }"
           @click="switchCategory(category.id)"
         >
-          <text class="category-name">{{ category.name }}</text>
+          <text class="category-name">
+            {{ category.name }}
+          </text>
         </view>
       </scroll-view>
 
       <view class="product-list-wrapper">
         <view class="product-list-header">
           <view class="header-left">
-            <view class="prescription-title" @click="switchToHorizontalLayout">
-              <text class="prescription-text">药方</text>
+            <view
+              class="prescription-title"
+              @click="switchToHorizontalLayout"
+            >
+              <text class="prescription-text">
+                药方
+              </text>
             </view>
             <view class="sort-section">
-              <view class="sort-btn" :class="{ active: sortType === '' }" @click="toggleSort('')">
-                <text class="sort-text">综合</text>
+              <view
+                class="sort-btn"
+                :class="{ active: sortType === '' }"
+                @click="toggleSort('')"
+              >
+                <text class="sort-text">
+                  综合
+                </text>
               </view>
-              <view class="sort-btn" :class="{ active: sortType === 'sales' }" @click="toggleSort('sales')">
-                <text class="sort-text">销量</text>
-                <text class="sort-arrow" :class="{ desc: sortType === 'sales' && sortOrder === 'desc' }">↓</text>
+              <view
+                class="sort-btn"
+                :class="{ active: sortType === 'sales' }"
+                @click="toggleSort('sales')"
+              >
+                <text class="sort-text">
+                  销量
+                </text>
+                <text
+                  class="sort-arrow"
+                  :class="{ desc: sortType === 'sales' && sortOrder === 'desc' }"
+                >
+                  ↓
+                </text>
               </view>
-              <view class="sort-btn" :class="{ active: sortType === 'price' }" @click="toggleSort('price')">
-                <text class="sort-text">价格</text>
-                <text class="sort-arrow" :class="{ desc: sortType === 'price' && sortOrder === 'desc' }">↓</text>
+              <view
+                class="sort-btn"
+                :class="{ active: sortType === 'price' }"
+                @click="toggleSort('price')"
+              >
+                <text class="sort-text">
+                  价格
+                </text>
+                <text
+                  class="sort-arrow"
+                  :class="{ desc: sortType === 'price' && sortOrder === 'desc' }"
+                >
+                  ↓
+                </text>
               </view>
             </view>
           </view>
@@ -101,32 +190,86 @@
           </view> -->
         </view>
 
-        <scroll-view class="product-list" scroll-y>
+        <scroll-view
+          class="product-list"
+          scroll-y
+        >
           <view class="product-items">
-            <view class="product-item" v-for="product in filteredProducts" :key="product.id">
+            <view
+              v-for="product in filteredProducts"
+              :key="product.id"
+              class="product-item"
+            >
               <view class="image-wrapper">
-                <image class="product-image" :src="getImageUrl(product.image)" mode="aspectFill" @click="goToDetail(product)"></image>
-                <view class="hot-badge" v-if="product.isNewProduct === 1">新</view>
+                <image
+                  class="product-image"
+                  :src="getImageUrl(product.image)"
+                  mode="aspectFill"
+                  @click="goToDetail(product)"
+                />
+                <view
+                  v-if="product.isNewProduct === 1"
+                  class="hot-badge"
+                >
+                  新
+                </view>
               </view>
               <view class="product-info">
-                <text class="product-name" @click="goToDetail(product)">
-                  <text class="self-tag" v-if="product.bizType === 1">自研</text>
-                  <text class="self-tag2" v-if="product.isHospitalStarFormula === 1">院藏王牌制剂</text>
-                  <text class="self-tag3" v-if="product.isNewProduct === 1">重磅新品</text>
+                <text
+                  class="product-name"
+                  @click="goToDetail(product)"
+                >
+                  <text
+                    v-if="product.bizType === 1"
+                    class="self-tag"
+                  >
+                    自研
+                  </text>
+                  <text
+                    v-if="product.isHospitalStarFormula === 1"
+                    class="self-tag2"
+                  >
+                    院藏王牌制剂
+                  </text>
+                  <text
+                    v-if="product.isNewProduct === 1"
+                    class="self-tag3"
+                  >
+                    重磅新品
+                  </text>
                   {{ product.name }}
                 </text>
-                <text class="product-desc" v-if="product.description">{{ product.description }}</text>
+                <text
+                  v-if="product.description"
+                  class="product-desc"
+                >
+                  {{ product.description }}
+                </text>
                 <view class="product-footer">
                   <!-- <text class="product-unit">{{ product.specText || product.unit || '' }}</text> -->
                   <view class="product-price-row">
-                    <view v-if="isProductVerified(product.id)" class="quantity-selector">
-                      <button class="quantity-btn" @click="decreaseQuantity(product)">-</button>
-                      <text class="quantity-text">{{ getProductQuantity(product.id) }}</text>
-                      <button class="quantity-btn" @click="increaseQuantity(product)">+</button>
+                    <view
+                      v-if="getProductQuantity(product.id) > 0"
+                      class="quantity-selector"
+                    >
+                      <uni-number-box
+                        :value="getProductQuantity(product.id)"
+                        :min="0"
+                        :max="999"
+                        :step="1"
+                        @change="(val) => onNumberBoxChange(product, val)"
+                      />
                     </view>
                     <template v-else>
-                      <text class="product-price">￥{{ Number(product.price || 0).toFixed(2) }}</text>
-                      <view class="add-btn" @click="goToNotice(product)">+</view>
+                      <text class="product-price">
+                        ￥{{ Number(product.price || 0).toFixed(2) }}
+                      </text>
+                      <view
+                        class="add-btn"
+                        @click.stop="handleAddToCart(product)"
+                      >
+                        +
+                      </view>
                     </template>
                   </view>
                 </view>
@@ -151,17 +294,21 @@
       <button class="submit-btn" @click="handleSubmit">提交</button>
     </view> -->
 
-    <TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
+    <TabBar
+      :current="currentTab"
+      :cart-count="cartCount"
+      @change="handleTabChange"
+    />
 
     <view
-      class="fly-ball"
       v-if="showFlyBall"
+      class="fly-ball"
       :style="{
         left: flyBallStyle.left + 'px',
         top: flyBallStyle.top + 'px',
         transform: `translate(-50%, -50%) scale(${flyBallStyle.scale})`
       }"
-    ></view>
+    />
   </view>
 </template>
 
@@ -169,20 +316,23 @@
 import { STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
 import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
 import {
+  addCartItem,
   getCartEntries,
+  getCartProductInfo,
   getCartProductQuantity,
   loadCartItems,
   calculateTotalPrice,
   calculateTotalQuantity,
   setCartItemQuantity,
   removeFromCart,
-  prepareCheckout
+  prepareCheckout,
+  resolveCartCompatibility
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
-const HOSPITAL_BIZ_TYPE = 1
+const PRODUCT_BIZ_TYPE_FILTER = null // null=全部, 1=医院制剂, 2=健康产品
 
 export default {
   components: { TabBar },
@@ -199,6 +349,7 @@ export default {
         scale: 1
       },
       verifiedProducts: {},
+      zeroQuantityProducts: {},
       currentTab: 'home',
       loadedCategories: {},
       categoryList: [],
@@ -261,6 +412,46 @@ export default {
   },
   methods: {
     getImageUrl,
+    removeZeroQuantityMarker(productId) {
+      const normalizedId = String(productId)
+      if (!this.zeroQuantityProducts[normalizedId]) {
+        return
+      }
+      const nextZeroQuantityProducts = { ...this.zeroQuantityProducts }
+      delete nextZeroQuantityProducts[normalizedId]
+      this.zeroQuantityProducts = nextZeroQuantityProducts
+    },
+    setZeroQuantityMarker(productId) {
+      const normalizedId = String(productId)
+      this.zeroQuantityProducts = {
+        ...this.zeroQuantityProducts,
+        [normalizedId]: true
+      }
+    },
+    debugProductQuantityState(productId, source = 'unknown') {
+      const normalizedId = String(productId)
+      const storageEntry = getCartProductInfo(normalizedId)
+      const storageQuantity = getCartProductQuantity(normalizedId, 0)
+      const zeroTracked = !!this.zeroQuantityProducts[normalizedId]
+      const verified = !!this.verifiedProducts[normalizedId]
+      const selectorVisible = storageQuantity > 0 || zeroTracked
+
+      console.log('[medicine_list][quantity-debug]', {
+        source,
+        productId: normalizedId,
+        storageQuantity,
+        zeroTracked,
+        verified,
+        selectorVisible,
+        storageEntry,
+        zeroQuantityKeys: Object.keys(this.zeroQuantityProducts),
+        verifiedKeys: Object.keys(this.verifiedProducts),
+        cartItems: this.cartItems.map(item => ({
+          id: String(item.id),
+          quantity: item.quantity
+        }))
+      })
+    },
     toggleSort(type) {
       if (type === '') {
         this.sortType = ''
@@ -276,15 +467,15 @@ export default {
     async loadProducts() {
       try {
         uni.showLoading({ title: '加载中...' })
-        const categoryList = await getCategoryList(HOSPITAL_BIZ_TYPE)
+        const categoryList = await getCategoryList(PRODUCT_BIZ_TYPE_FILTER)
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categories = [
           { id: 'all', name: '全部分类', products: [] },
           ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
         ]
         await this.loadAllProducts()
-        this.$set(this.loadedCategories, 'all', true)
-        this.loadVerifiedProductsFromStorage()
+        this.loadedCategories.all = true
+        this.loadVerifiedProductsFromStorage('loadProducts')
       } catch (error) {
         console.error('loadProducts failed:', error)
         uni.showToast({ title: '加载失败', icon: 'none' })
@@ -293,7 +484,7 @@ export default {
       }
     },
     async loadAllProducts() {
-      const productPage = await getCategoryProducts(null, 1, 100, HOSPITAL_BIZ_TYPE)
+      const productPage = await getCategoryProducts(null, 1, 100, PRODUCT_BIZ_TYPE_FILTER)
       const productList = productPage.records || productPage.list || []
       const allProducts = productList.map(item => mapProductListItem(item))
       const allCategory = this.categories.find(cat => cat.id === 'all')
@@ -303,19 +494,35 @@ export default {
     },
     async loadCategoryProducts(categoryId) {
       if (this.loadedCategories[categoryId]) return
-      const productPage = await getCategoryProducts(categoryId, 1, 100, HOSPITAL_BIZ_TYPE)
+      const productPage = await getCategoryProducts(categoryId, 1, 100, PRODUCT_BIZ_TYPE_FILTER)
       const productList = productPage.records || productPage.list || []
       const products = productList.map(item => mapProductListItem(item))
       const category = this.categories.find(cat => cat.id === categoryId)
       if (category) {
         category.products = products
-        this.$set(this.loadedCategories, categoryId, true)
+        this.loadedCategories[categoryId] = true
       }
     },
-    loadVerifiedProductsFromStorage() {
+    loadVerifiedProductsFromStorage(source = 'unknown', focusProductId = '') {
       try {
         this.verifiedProducts = getCartEntries()
+        const nextZeroQuantityProducts = { ...this.zeroQuantityProducts }
+        Object.keys(nextZeroQuantityProducts).forEach((productId) => {
+          if (this.verifiedProducts[String(productId)]) {
+            delete nextZeroQuantityProducts[String(productId)]
+          }
+        })
+        this.zeroQuantityProducts = nextZeroQuantityProducts
         this.cartItems = loadCartItems(this.categories)
+        console.log('[medicine_list] loadVerifiedProductsFromStorage', {
+          source,
+          verifiedKeys: Object.keys(this.verifiedProducts),
+          zeroQuantityKeys: Object.keys(this.zeroQuantityProducts),
+          cartItemIds: this.cartItems.map(item => String(item.id))
+        })
+        if (focusProductId) {
+          this.debugProductQuantityState(focusProductId, `${source}:after-load`)
+        }
       } catch (error) {
         console.error('loadVerifiedProductsFromStorage failed:', error)
       }
@@ -325,28 +532,94 @@ export default {
       if (categoryId === 'all') {
         if (!this.loadedCategories.all) {
           await this.loadAllProducts()
-          this.$set(this.loadedCategories, 'all', true)
+          this.loadedCategories.all = true
         }
-        this.loadVerifiedProductsFromStorage()
+        this.loadVerifiedProductsFromStorage('switchCategory:all')
         return
       }
       await this.loadCategoryProducts(categoryId)
-      this.loadVerifiedProductsFromStorage()
+      this.loadVerifiedProductsFromStorage(`switchCategory:${categoryId}`)
     },
     goToDetail(product) {
       uni.navigateTo({
         url: `/pages/products/medicine_detail?id=${product.id}`
       })
     },
-    goToNotice(product) {
-      if (!getToken()) {
+    buildListRedirect() {
+      return '/pages/products/medicine_list'
+    },
+    ensureLogin() {
+      if (getToken()) {
+        return true
+      }
+      uni.navigateTo({
+        url: `/pages/register/register?redirect=${encodeURIComponent(this.buildListRedirect())}`
+      })
+      return false
+    },
+    ensureCartCompatible(product) {
+      const result = resolveCartCompatibility(product, {
+        ignoreProductId: product?.id
+      })
+      if (!result.valid) {
+        uni.showToast({
+          title: result.message,
+          icon: 'none'
+        })
+        return false
+      }
+      return true
+    },
+    hasQuestionnairePassed(productId) {
+      const entry = getCartProductInfo(productId)
+      return !!(entry && entry.questionnairePassed)
+    },
+    showQuantitySelector(productId) {
+      const normalizedId = String(productId)
+      return this.getProductQuantity(productId) > 0 || !!this.zeroQuantityProducts[normalizedId]
+    },
+    getDisplayQuantity(productId) {
+      return Math.max(0, this.getProductQuantity(productId))
+    },
+    handleAddToCart(product) {
+      if (!product?.id) {
+        return
+      }
+      if (!this.ensureLogin()) {
+        return
+      }
+      if (!this.ensureCartCompatible(product)) {
+        return
+      }
+
+      const nextQuantity = Math.max(1, this.getProductQuantity(product.id) || 1)
+      const alreadyPassed = this.hasQuestionnairePassed(product.id)
+      if (Number(product.needQuestionnaire) === 1 && !alreadyPassed) {
         uni.navigateTo({
-          url: '/pages/register/register?redirect=/pages/products/medicine_list'
+          url: `/pages/products/product_notice?id=${product.id}&quantity=${nextQuantity}&action=cart`
         })
         return
       }
-      uni.navigateTo({
-        url: `/pages/products/product_notice?id=${product.id}&quantity=1&action=cart`
+
+      const success = addCartItem(product, nextQuantity, {
+        questionnairePassed: Number(product.needQuestionnaire) !== 1 || alreadyPassed
+      })
+      if (!success) {
+        uni.showToast({
+          title: '加入购物车失败',
+          icon: 'none'
+        })
+        return
+      }
+
+      this.removeZeroQuantityMarker(product.id)
+      this.loadVerifiedProductsFromStorage('handleAddToCart', product.id)
+      this.$nextTick(() => {
+        this.debugProductQuantityState(product.id, 'handleAddToCart:nextTick')
+      })
+      uni.showToast({
+        title: '已加入购物车',
+        icon: 'success'
       })
     },
     isProductVerified(productId) {
@@ -356,18 +629,67 @@ export default {
       return getCartProductQuantity(productId, 0)
     },
     increaseQuantity(product) {
-      const nextQuantity = this.getProductQuantity(product.id) + 1
+      const current = this.getProductQuantity(product.id)
+      console.log('[medicine_list] increaseQuantity:start', {
+        productId: String(product.id),
+        current,
+        zeroTracked: !!this.zeroQuantityProducts[String(product.id)]
+      })
+      if (current <= 0) {
+        this.debugProductQuantityState(product.id, 'increaseQuantity:before-handleAddToCart')
+        this.handleAddToCart(product)
+        return
+      }
+      const nextQuantity = current + 1
       setCartItemQuantity(product.id, nextQuantity)
-      this.loadVerifiedProductsFromStorage()
+      this.removeZeroQuantityMarker(product.id)
+      this.loadVerifiedProductsFromStorage('increaseQuantity', product.id)
+      this.$nextTick(() => {
+        this.debugProductQuantityState(product.id, 'increaseQuantity:nextTick')
+      })
     },
     decreaseQuantity(product) {
       const current = this.getProductQuantity(product.id)
-      if (current <= 1) {
-        removeFromCart(product.id)
-      } else {
-        setCartItemQuantity(product.id, current - 1)
+      console.log('[medicine_list] decreaseQuantity:start', {
+        productId: String(product.id),
+        current,
+        zeroTracked: !!this.zeroQuantityProducts[String(product.id)]
+      })
+      if (current <= 0) {
+        this.debugProductQuantityState(product.id, 'decreaseQuantity:blocked-at-zero')
+        return
       }
-      this.loadVerifiedProductsFromStorage()
+
+      const nextQuantity = Math.max(current - 1, 0)
+      if (nextQuantity === 0) {
+        removeFromCart(product.id)
+        this.setZeroQuantityMarker(product.id)
+        console.log('[medicine_list] decreaseQuantity:removed-from-cart', {
+          productId: String(product.id),
+          nextQuantity,
+          zeroQuantityKeys: Object.keys(this.zeroQuantityProducts)
+        })
+      } else {
+        setCartItemQuantity(product.id, nextQuantity)
+      }
+      this.loadVerifiedProductsFromStorage('decreaseQuantity', product.id)
+      this.$nextTick(() => {
+        this.debugProductQuantityState(product.id, 'decreaseQuantity:nextTick')
+      })
+    },
+    onNumberBoxChange(product, val) {
+      const current = this.getProductQuantity(product.id)
+      if (val > current) {
+        this.increaseQuantity(product)
+      } else if (val < current) {
+        if (val <= 0) {
+          removeFromCart(product.id)
+          this.loadVerifiedProductsFromStorage()
+        } else {
+          setCartItemQuantity(product.id, val)
+          this.loadVerifiedProductsFromStorage()
+        }
+      }
     },
     showCart() {
       uni.navigateTo({ url: '/pages/cart/cart' })
@@ -792,10 +1114,15 @@ scroll-view ::-webkit-scrollbar {
   border-radius: 50%;
   border: none;
   display: flex;
-  align-items: center;
   justify-content: center;
   padding: 0;
   flex-shrink: 0;
+  line-height: 1.5;
+}
+
+.quantity-btn.disabled {
+  background-color: #d9d9d9;
+  color: #ffffff;
 }
 
 .quantity-text {
