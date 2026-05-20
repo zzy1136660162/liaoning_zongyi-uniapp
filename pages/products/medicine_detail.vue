@@ -1909,12 +1909,6 @@ onShow(() => {
   align-items: center;
 }
 
-.pharmacist-name::before {
-  content: '⚕️';
-  margin-right: 8rpx;
-  font-size: 28rpx;
-}
-
 .pharmacist-desc {
   font-size: 24rpx;
   color: #666;
