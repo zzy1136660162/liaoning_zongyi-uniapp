@@ -74,11 +74,14 @@ const buildCartEntry = (productId, partial = {}, legacyQuantities = {}) => {
   }
 }
 
-const normalizeCartData = (rawData) => {
+const normalizeCartData = (rawData, options = {}) => {
+  const { includeLegacyIds = true } = options
   const legacyQuantities = readLegacyQuantities()
   const normalized = {}
   const source = rawData && typeof rawData === 'object' ? rawData : {}
-  const ids = uniqueIds([...Object.keys(source), ...Object.keys(legacyQuantities)])
+  const ids = includeLegacyIds
+    ? uniqueIds([...Object.keys(source), ...Object.keys(legacyQuantities)])
+    : uniqueIds(Object.keys(source))
 
   ids.forEach((productId) => {
     const value = source[productId]
@@ -115,7 +118,7 @@ const readCartData = () => {
 }
 
 const writeCartData = (cartData) => {
-  const normalized = normalizeCartData(cartData)
+  const normalized = normalizeCartData(cartData, { includeLegacyIds: false })
   const legacyQuantities = {}
 
   Object.entries(normalized).forEach(([productId, entry]) => {
@@ -294,11 +297,21 @@ export const removeFromCart = (productIds) => {
     }
 
     const cartData = readCartData()
+    console.log('[cart] removeFromCart:before', {
+      ids,
+      cartKeys: Object.keys(cartData),
+      legacyKeys: Object.keys(readLegacyQuantities())
+    })
     ids.forEach((productId) => {
       delete cartData[productId]
     })
 
     writeCartData(cartData)
+    console.log('[cart] removeFromCart:after', {
+      ids,
+      cartKeys: Object.keys(readCartData()),
+      legacyKeys: Object.keys(readLegacyQuantities())
+    })
     updateCheckoutIdsAfterRemoval(ids)
     return true
   } catch (error) {

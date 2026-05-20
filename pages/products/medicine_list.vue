@@ -119,14 +119,14 @@
                 <view class="product-footer">
                   <!-- <text class="product-unit">{{ product.specText || product.unit || '' }}</text> -->
                   <view class="product-price-row">
-                    <view v-if="isProductVerified(product.id)" class="quantity-selector">
-                      <button class="quantity-btn" @click="decreaseQuantity(product)">-</button>
-                      <text class="quantity-text">{{ getProductQuantity(product.id) }}</text>
-                      <button class="quantity-btn" @click="increaseQuantity(product)">+</button>
+                    <view v-if="showQuantitySelector(product.id)" class="quantity-selector">
+                      <button class="quantity-btn" :class="{ disabled: getDisplayQuantity(product.id) === 0 }" @click.stop="decreaseQuantity(product)">-</button>
+                      <text class="quantity-text">{{ getDisplayQuantity(product.id) }}</text>
+                      <button class="quantity-btn" @click.stop="increaseQuantity(product)">+</button>
                     </view>
                     <template v-else>
                       <text class="product-price">￥{{ Number(product.price || 0).toFixed(2) }}</text>
-                      <view class="add-btn" @click="goToNotice(product)">+</view>
+                      <view class="add-btn" @click.stop="handleAddToCart(product)">+</view>
                     </template>
                   </view>
                 </view>
@@ -169,20 +169,23 @@
 import { STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
 import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
 import {
+  addCartItem,
   getCartEntries,
+  getCartProductInfo,
   getCartProductQuantity,
   loadCartItems,
   calculateTotalPrice,
   calculateTotalQuantity,
   setCartItemQuantity,
   removeFromCart,
-  prepareCheckout
+  prepareCheckout,
+  resolveCartCompatibility
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
-const HOSPITAL_BIZ_TYPE = 1
+const PRODUCT_BIZ_TYPE_FILTER = null // null=全部, 1=医院制剂, 2=健康产品
 
 export default {
   components: { TabBar },
@@ -199,6 +202,7 @@ export default {
         scale: 1
       },
       verifiedProducts: {},
+      zeroQuantityProducts: {},
       currentTab: 'home',
       loadedCategories: {},
       categoryList: [],
@@ -261,6 +265,46 @@ export default {
   },
   methods: {
     getImageUrl,
+    removeZeroQuantityMarker(productId) {
+      const normalizedId = String(productId)
+      if (!this.zeroQuantityProducts[normalizedId]) {
+        return
+      }
+      const nextZeroQuantityProducts = { ...this.zeroQuantityProducts }
+      delete nextZeroQuantityProducts[normalizedId]
+      this.zeroQuantityProducts = nextZeroQuantityProducts
+    },
+    setZeroQuantityMarker(productId) {
+      const normalizedId = String(productId)
+      this.zeroQuantityProducts = {
+        ...this.zeroQuantityProducts,
+        [normalizedId]: true
+      }
+    },
+    debugProductQuantityState(productId, source = 'unknown') {
+      const normalizedId = String(productId)
+      const storageEntry = getCartProductInfo(normalizedId)
+      const storageQuantity = getCartProductQuantity(normalizedId, 0)
+      const zeroTracked = !!this.zeroQuantityProducts[normalizedId]
+      const verified = !!this.verifiedProducts[normalizedId]
+      const selectorVisible = storageQuantity > 0 || zeroTracked
+
+      console.log('[medicine_list][quantity-debug]', {
+        source,
+        productId: normalizedId,
+        storageQuantity,
+        zeroTracked,
+        verified,
+        selectorVisible,
+        storageEntry,
+        zeroQuantityKeys: Object.keys(this.zeroQuantityProducts),
+        verifiedKeys: Object.keys(this.verifiedProducts),
+        cartItems: this.cartItems.map(item => ({
+          id: String(item.id),
+          quantity: item.quantity
+        }))
+      })
+    },
     toggleSort(type) {
       if (type === '') {
         this.sortType = ''
@@ -276,15 +320,15 @@ export default {
     async loadProducts() {
       try {
         uni.showLoading({ title: '加载中...' })
-        const categoryList = await getCategoryList(HOSPITAL_BIZ_TYPE)
+        const categoryList = await getCategoryList(PRODUCT_BIZ_TYPE_FILTER)
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categories = [
           { id: 'all', name: '全部分类', products: [] },
           ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
         ]
         await this.loadAllProducts()
-        this.$set(this.loadedCategories, 'all', true)
-        this.loadVerifiedProductsFromStorage()
+        this.loadedCategories.all = true
+        this.loadVerifiedProductsFromStorage('loadProducts')
       } catch (error) {
         console.error('loadProducts failed:', error)
         uni.showToast({ title: '加载失败', icon: 'none' })
@@ -293,7 +337,7 @@ export default {
       }
     },
     async loadAllProducts() {
-      const productPage = await getCategoryProducts(null, 1, 100, HOSPITAL_BIZ_TYPE)
+      const productPage = await getCategoryProducts(null, 1, 100, PRODUCT_BIZ_TYPE_FILTER)
       const productList = productPage.records || productPage.list || []
       const allProducts = productList.map(item => mapProductListItem(item))
       const allCategory = this.categories.find(cat => cat.id === 'all')
@@ -303,19 +347,35 @@ export default {
     },
     async loadCategoryProducts(categoryId) {
       if (this.loadedCategories[categoryId]) return
-      const productPage = await getCategoryProducts(categoryId, 1, 100, HOSPITAL_BIZ_TYPE)
+      const productPage = await getCategoryProducts(categoryId, 1, 100, PRODUCT_BIZ_TYPE_FILTER)
       const productList = productPage.records || productPage.list || []
       const products = productList.map(item => mapProductListItem(item))
       const category = this.categories.find(cat => cat.id === categoryId)
       if (category) {
         category.products = products
-        this.$set(this.loadedCategories, categoryId, true)
+        this.loadedCategories[categoryId] = true
       }
     },
-    loadVerifiedProductsFromStorage() {
+    loadVerifiedProductsFromStorage(source = 'unknown', focusProductId = '') {
       try {
         this.verifiedProducts = getCartEntries()
+        const nextZeroQuantityProducts = { ...this.zeroQuantityProducts }
+        Object.keys(nextZeroQuantityProducts).forEach((productId) => {
+          if (this.verifiedProducts[String(productId)]) {
+            delete nextZeroQuantityProducts[String(productId)]
+          }
+        })
+        this.zeroQuantityProducts = nextZeroQuantityProducts
         this.cartItems = loadCartItems(this.categories)
+        console.log('[medicine_list] loadVerifiedProductsFromStorage', {
+          source,
+          verifiedKeys: Object.keys(this.verifiedProducts),
+          zeroQuantityKeys: Object.keys(this.zeroQuantityProducts),
+          cartItemIds: this.cartItems.map(item => String(item.id))
+        })
+        if (focusProductId) {
+          this.debugProductQuantityState(focusProductId, `${source}:after-load`)
+        }
       } catch (error) {
         console.error('loadVerifiedProductsFromStorage failed:', error)
       }
@@ -325,28 +385,94 @@ export default {
       if (categoryId === 'all') {
         if (!this.loadedCategories.all) {
           await this.loadAllProducts()
-          this.$set(this.loadedCategories, 'all', true)
+          this.loadedCategories.all = true
         }
-        this.loadVerifiedProductsFromStorage()
+        this.loadVerifiedProductsFromStorage('switchCategory:all')
         return
       }
       await this.loadCategoryProducts(categoryId)
-      this.loadVerifiedProductsFromStorage()
+      this.loadVerifiedProductsFromStorage(`switchCategory:${categoryId}`)
     },
     goToDetail(product) {
       uni.navigateTo({
         url: `/pages/products/medicine_detail?id=${product.id}`
       })
     },
-    goToNotice(product) {
-      if (!getToken()) {
+    buildListRedirect() {
+      return '/pages/products/medicine_list'
+    },
+    ensureLogin() {
+      if (getToken()) {
+        return true
+      }
+      uni.navigateTo({
+        url: `/pages/register/register?redirect=${encodeURIComponent(this.buildListRedirect())}`
+      })
+      return false
+    },
+    ensureCartCompatible(product) {
+      const result = resolveCartCompatibility(product, {
+        ignoreProductId: product?.id
+      })
+      if (!result.valid) {
+        uni.showToast({
+          title: result.message,
+          icon: 'none'
+        })
+        return false
+      }
+      return true
+    },
+    hasQuestionnairePassed(productId) {
+      const entry = getCartProductInfo(productId)
+      return !!(entry && entry.questionnairePassed)
+    },
+    showQuantitySelector(productId) {
+      const normalizedId = String(productId)
+      return this.getProductQuantity(productId) > 0 || !!this.zeroQuantityProducts[normalizedId]
+    },
+    getDisplayQuantity(productId) {
+      return Math.max(0, this.getProductQuantity(productId))
+    },
+    handleAddToCart(product) {
+      if (!product?.id) {
+        return
+      }
+      if (!this.ensureLogin()) {
+        return
+      }
+      if (!this.ensureCartCompatible(product)) {
+        return
+      }
+
+      const nextQuantity = Math.max(1, this.getProductQuantity(product.id) || 1)
+      const alreadyPassed = this.hasQuestionnairePassed(product.id)
+      if (Number(product.needQuestionnaire) === 1 && !alreadyPassed) {
         uni.navigateTo({
-          url: '/pages/register/register?redirect=/pages/products/medicine_list'
+          url: `/pages/products/product_notice?id=${product.id}&quantity=${nextQuantity}&action=cart`
         })
         return
       }
-      uni.navigateTo({
-        url: `/pages/products/product_notice?id=${product.id}&quantity=1&action=cart`
+
+      const success = addCartItem(product, nextQuantity, {
+        questionnairePassed: Number(product.needQuestionnaire) !== 1 || alreadyPassed
+      })
+      if (!success) {
+        uni.showToast({
+          title: '加入购物车失败',
+          icon: 'none'
+        })
+        return
+      }
+
+      this.removeZeroQuantityMarker(product.id)
+      this.loadVerifiedProductsFromStorage('handleAddToCart', product.id)
+      this.$nextTick(() => {
+        this.debugProductQuantityState(product.id, 'handleAddToCart:nextTick')
+      })
+      uni.showToast({
+        title: '已加入购物车',
+        icon: 'success'
       })
     },
     isProductVerified(productId) {
@@ -356,18 +482,53 @@ export default {
       return getCartProductQuantity(productId, 0)
     },
     increaseQuantity(product) {
-      const nextQuantity = this.getProductQuantity(product.id) + 1
+      const current = this.getProductQuantity(product.id)
+      console.log('[medicine_list] increaseQuantity:start', {
+        productId: String(product.id),
+        current,
+        zeroTracked: !!this.zeroQuantityProducts[String(product.id)]
+      })
+      if (current <= 0) {
+        this.debugProductQuantityState(product.id, 'increaseQuantity:before-handleAddToCart')
+        this.handleAddToCart(product)
+        return
+      }
+      const nextQuantity = current + 1
       setCartItemQuantity(product.id, nextQuantity)
-      this.loadVerifiedProductsFromStorage()
+      this.removeZeroQuantityMarker(product.id)
+      this.loadVerifiedProductsFromStorage('increaseQuantity', product.id)
+      this.$nextTick(() => {
+        this.debugProductQuantityState(product.id, 'increaseQuantity:nextTick')
+      })
     },
     decreaseQuantity(product) {
       const current = this.getProductQuantity(product.id)
-      if (current <= 1) {
-        removeFromCart(product.id)
-      } else {
-        setCartItemQuantity(product.id, current - 1)
+      console.log('[medicine_list] decreaseQuantity:start', {
+        productId: String(product.id),
+        current,
+        zeroTracked: !!this.zeroQuantityProducts[String(product.id)]
+      })
+      if (current <= 0) {
+        this.debugProductQuantityState(product.id, 'decreaseQuantity:blocked-at-zero')
+        return
       }
-      this.loadVerifiedProductsFromStorage()
+
+      const nextQuantity = Math.max(current - 1, 0)
+      if (nextQuantity === 0) {
+        removeFromCart(product.id)
+        this.setZeroQuantityMarker(product.id)
+        console.log('[medicine_list] decreaseQuantity:removed-from-cart', {
+          productId: String(product.id),
+          nextQuantity,
+          zeroQuantityKeys: Object.keys(this.zeroQuantityProducts)
+        })
+      } else {
+        setCartItemQuantity(product.id, nextQuantity)
+      }
+      this.loadVerifiedProductsFromStorage('decreaseQuantity', product.id)
+      this.$nextTick(() => {
+        this.debugProductQuantityState(product.id, 'decreaseQuantity:nextTick')
+      })
     },
     showCart() {
       uni.navigateTo({ url: '/pages/cart/cart' })
@@ -796,6 +957,11 @@ scroll-view ::-webkit-scrollbar {
   justify-content: center;
   padding: 0;
   flex-shrink: 0;
+}
+
+.quantity-btn.disabled {
+  background-color: #d9d9d9;
+  color: #ffffff;
 }
 
 .quantity-text {
