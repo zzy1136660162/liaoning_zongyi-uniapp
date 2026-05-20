@@ -1,7 +1,7 @@
 <template>
   <view class="product-container">
     <view class="top-banner">
-      <image class="top-banner-img" src="https://smf.lntcm.com/static/img/yiyuan.jpg" mode="widthFix" />
+      <image class="top-banner-img" src="https://smf.lntcm.com/static/img/yiyuan1.jpg" mode="widthFix" />
   </view>
     <view class="hospital-intro" :class="{ collapsed: imageCollapsed }">
       <view class="logo-wrap">

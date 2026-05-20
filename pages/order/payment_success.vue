@@ -166,7 +166,7 @@ const goHome = () => {
 
   // 璺宠浆鍒颁骇鍝佸垪琛ㄩ〉闈?
   uni.redirectTo({
-    url: '/pages/products/medicine_index'
+    url: '/pages/products/medicine_list'
   })
 }
 </script>
