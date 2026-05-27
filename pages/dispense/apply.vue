@@ -101,6 +101,32 @@
               </view>
             </view>
           </view>
+
+          <view
+            v-if="selectedBizType !== BIZ_TYPE_HEALTH_GOODS"
+            class="consultation-mode-row"
+          >
+            <view class="label">
+              接诊方式
+            </view>
+
+            <view class="consultation-mode-switch">
+              <view
+                class="consultation-mode-item"
+                :class="{ active: consultationMode === CONSULTATION_MODE_AI }"
+                @click="selectConsultationMode(CONSULTATION_MODE_AI)"
+              >
+                AI接诊开方
+              </view>
+              <view
+                class="consultation-mode-item"
+                :class="{ active: consultationMode === CONSULTATION_MODE_MANUAL }"
+                @click="selectConsultationMode(CONSULTATION_MODE_MANUAL)"
+              >
+                人工接诊开方
+              </view>
+            </view>
+          </view>
         </view>
 
         <!-- 占位（让页面更接近你示意图的空白） -->
@@ -241,6 +267,7 @@ const selectedPatient = ref(null)
 const selectedBizType = ref(1)
 const agreementChecked = ref(false)
 const showAgreement = ref(false)
+const consultationMode = ref(CONSULTATION_MODE_AI)
 
 const totalPrice = computed(() => calculateTotalPrice(cartItems.value))
 const totalQuantity = computed(() => calculateTotalQuantity(cartItems.value))
@@ -426,6 +453,17 @@ const onAddPatient = () => {
   })
 }
 
+const selectConsultationMode = (mode) => {
+  if (consultationMode.value === mode) {
+    return
+  }
+  consultationMode.value = mode
+  logButtonClick('切换接诊方式', 'DISPENSE_APPLY', mode, {
+    patientName: selectedPatient.value?.name,
+    productCount: cartItems.value.length
+  })
+}
+
 const agreementContent = `"在线常见病、慢性病复诊"是一项在线诊疗服务（以下简称"本服务"）。本服务由入驻平台的互联网医院及其医务人员向您提供。作为平台方，我们将对平台内的互联网医院及医务人员采取必要的平台管理措施，督促其严格按照医疗卫生法律法规和诊疗规范及互联网在线诊疗规范。您在使用本服务之前，请务必仔细阅读下列文本。在此郑重提示：一旦您使用了本服务，即表示您已经完整、准确的了解了本声明所提示的所有内容，并同意接受本声明全部条款的约束。
 
 根据《互联网诊疗管理办法（试行）》、《互联网医院管理办法（试行）》、《远程医疗服务管理办法（试行）》等法规的要求，您应知晓互联网诊疗相关的执业规则并接受风险告知并签署知情同意书。
@@ -507,20 +545,6 @@ const navigateToConsultation = (selectedItemIds, mode) => {
   })
 }
 
-const showConsultationModeSelector = (selectedItemIds) => {
-  uni.showActionSheet({
-    itemList: ['人工接诊开方', 'AI接诊开方'],
-    success: ({ tapIndex }) => {
-      const selectedMode = tapIndex === 0 ? CONSULTATION_MODE_MANUAL : CONSULTATION_MODE_AI
-      logButtonClick('选择接诊方式', 'DISPENSE_APPLY', selectedMode, {
-        patientName: selectedPatient.value?.name,
-        productCount: cartItems.value.length
-      })
-      navigateToConsultation(selectedItemIds, selectedMode)
-    }
-  })
-}
-
 const onSubmit = () => {
   if (selectedBizType.value !== BIZ_TYPE_HEALTH_GOODS && !selectedPatient.value) {
     uni.showToast({ title: '请先选择就诊人', icon: 'none' })
@@ -545,7 +569,7 @@ const onSubmit = () => {
     return
   }
 
-  showConsultationModeSelector(selectedItemIds)
+  navigateToConsultation(selectedItemIds, consultationMode.value)
 }
 
 onMounted(() => {
@@ -803,9 +827,10 @@ onUnmounted(() => {
 }
 
 .patient-chip-wrapper {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   position: relative;
+  padding-right: 18rpx;
 }
 
 .patient-chip {
@@ -830,7 +855,11 @@ onUnmounted(() => {
   height: 28rpx;
   border-radius: 50%;
   background: linear-gradient(135deg, #ff6b6b, #ff4757);
-  margin-left: -14rpx;
+  position: absolute;
+  top: -8rpx;
+  right: 0;
+  margin-left: 0;
+  z-index: 2;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -849,6 +878,36 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #f0f6ff, #e8f0fe);
   border-radius: 40rpx;
   border: 2rpx dashed #4a90e2;
+}
+
+.consultation-mode-row {
+  margin-top: 28rpx;
+}
+
+.consultation-mode-switch {
+  display: flex;
+  gap: 16rpx;
+  padding: 12rpx;
+  background: linear-gradient(135deg, #f4f8ff, #edf4ff);
+  border-radius: 24rpx;
+  border: 2rpx solid rgba(74,144,226,0.12);
+}
+
+.consultation-mode-item {
+  flex: 1;
+  text-align: center;
+  padding: 22rpx 16rpx;
+  border-radius: 18rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #5f6f86;
+  transition: all 0.25s ease;
+}
+
+.consultation-mode-item.active {
+  background: linear-gradient(135deg, #4a90e2, #67c6ff);
+  color: #fff;
+  box-shadow: 0 10rpx 24rpx rgba(74,144,226,0.22);
 }
 
 /* 协议弹窗 */

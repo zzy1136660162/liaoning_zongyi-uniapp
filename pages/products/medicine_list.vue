@@ -35,37 +35,29 @@
           权威认证 · 品质保障 · 放心购药
         </view>
         <view class="hospital-tags">
-          <view class="tag-item">
-            <text class="tag-icon">
-              🛡️
-            </text>
-            <text class="tag-text">
-              正品保证
-            </text>
-          </view>
-          <view class="tag-item">
-            <text class="tag-icon">
-              ⏰
-            </text>
-            <text class="tag-text">
-              24h发货
-            </text>
-          </view>
-          <view class="tag-item">
-            <text class="tag-icon">
-              📋
-            </text>
-            <text class="tag-text">
-              在线开方
-            </text>
-          </view>
-          <view class="tag-item">
-            <text class="tag-icon">
-              🚚
-            </text>
-            <text class="tag-text">
-              专业包装
-            </text>
+          <view class="journey-strip">
+            <template
+              v-for="(step, index) in flowSteps"
+              :key="step"
+            >
+              <view
+                class="journey-step"
+                :class="{ featured: index === 2 }"
+              >
+                <text class="journey-step-index">
+                  {{ index + 1 }}
+                </text>
+                <text class="journey-step-text">
+                  {{ step }}
+                </text>
+              </view>
+              <text
+                v-if="index < flowSteps.length - 1"
+                class="journey-arrow"
+              >
+                {{ '>' }}
+              </text>
+            </template>
           </view>
         </view>
         <!-- <view class="hospital-stats">
@@ -121,13 +113,33 @@
         <view
           v-for="category in categories"
           :key="category.id"
-          class="category-item"
-          :class="{ active: currentCategoryId === category.id }"
-          @click="switchCategory(category.id)"
+          class="category-group"
         >
-          <text class="category-name">
-            {{ category.name }}
-          </text>
+          <view
+            class="category-item"
+            :class="{ active: currentCategoryId === category.id }"
+            @click="switchCategory(category.id)"
+          >
+            <text class="category-name">
+              {{ category.name }}
+            </text>
+          </view>
+          <view
+            v-if="currentCategoryId === category.id && category.children && category.children.length > 0"
+            class="sub-category-inline"
+          >
+            <view
+              v-for="subCategory in getInlineSubCategories(category)"
+              :key="subCategory.id"
+              class="sub-category-inline-item"
+              :class="{ active: currentSubCategoryId === subCategory.id }"
+              @click.stop="switchSubCategory(subCategory.id)"
+            >
+              <text class="sub-category-inline-name">
+                {{ subCategory.name }}
+              </text>
+            </view>
+          </view>
         </view>
       </scroll-view>
 
@@ -331,6 +343,7 @@ import {
 import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
+import { buildCategoryTree, normalizeCategoryId } from '@/utils/category-tree.js'
 
 const PRODUCT_BIZ_TYPE_FILTER = null // null=全部, 1=医院制剂, 2=健康产品
 
@@ -338,9 +351,12 @@ export default {
   components: { TabBar },
   data() {
     return {
+      flowSteps: ['选择药品', '完善问诊信息', '资讯医生开药', '购买药品'],
       searchKeyword: '',
       currentCategoryId: 'all',
+      currentSubCategoryId: '',
       categories: [],
+      categoryTree: [],
       cartItems: [],
       showFlyBall: false,
       flyBallStyle: {
@@ -360,11 +376,21 @@ export default {
     }
   },
   computed: {
+    currentCategory() {
+      return this.categories.find(cat => cat.id === this.currentCategoryId) || null
+    },
+    activeSubCategories() {
+      return this.currentCategory?.children || []
+    },
     filteredProducts() {
-      const category = this.categories.find(cat => cat.id === this.currentCategoryId)
+      const category = this.currentCategory
       if (!category) return []
 
       let products = category.products || []
+      const currentSubCategoryId = normalizeCategoryId(this.currentSubCategoryId)
+      if (currentSubCategoryId && !this.isAllSubCategoryId(currentSubCategoryId)) {
+        products = products.filter(product => normalizeCategoryId(product.categoryId) === currentSubCategoryId)
+      }
       if (this.searchKeyword.trim()) {
         const keyword = this.searchKeyword.trim().toLowerCase()
         products = products.filter(product =>
@@ -469,12 +495,24 @@ export default {
         uni.showLoading({ title: '加载中...' })
         const categoryList = await getCategoryList(PRODUCT_BIZ_TYPE_FILTER)
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
+        this.categoryTree = buildCategoryTree(this.categoryList)
         this.categories = [
-          { id: 'all', name: '全部分类', products: [] },
-          ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
+          { id: 'all', name: '全部分类', products: [], children: [] },
+          ...this.categoryTree.map(cat => ({
+            id: normalizeCategoryId(cat.id),
+            name: cat.name,
+            parentId: normalizeCategoryId(cat.parentId),
+            products: [],
+            children: (cat.children || []).map(child => ({
+              ...child,
+              id: normalizeCategoryId(child.id),
+              parentId: normalizeCategoryId(child.parentId)
+            }))
+          }))
         ]
         await this.loadAllProducts()
         this.loadedCategories.all = true
+        this.syncCurrentSubCategory()
         this.loadVerifiedProductsFromStorage('loadProducts')
       } catch (error) {
         console.error('loadProducts failed:', error)
@@ -529,16 +567,50 @@ export default {
     },
     async switchCategory(categoryId) {
       this.currentCategoryId = categoryId
+      this.currentSubCategoryId = ''
       if (categoryId === 'all') {
         if (!this.loadedCategories.all) {
           await this.loadAllProducts()
           this.loadedCategories.all = true
         }
+        this.syncCurrentSubCategory()
         this.loadVerifiedProductsFromStorage('switchCategory:all')
         return
       }
       await this.loadCategoryProducts(categoryId)
+      this.syncCurrentSubCategory()
       this.loadVerifiedProductsFromStorage(`switchCategory:${categoryId}`)
+    },
+    switchSubCategory(subCategoryId) {
+      this.currentSubCategoryId = normalizeCategoryId(subCategoryId)
+    },
+    buildAllSubCategoryId(categoryId) {
+      return `all:${normalizeCategoryId(categoryId)}`
+    },
+    isAllSubCategoryId(subCategoryId) {
+      return normalizeCategoryId(subCategoryId).startsWith('all:')
+    },
+    getInlineSubCategories(category) {
+      const categoryId = normalizeCategoryId(category?.id)
+      const children = Array.isArray(category?.children) ? category.children : []
+      return [
+        {
+          id: this.buildAllSubCategoryId(categoryId),
+          name: '全部分类'
+        },
+        ...children
+      ]
+    },
+    syncCurrentSubCategory() {
+      const category = this.categories.find(cat => cat.id === this.currentCategoryId)
+      if (!category || !Array.isArray(category.children) || category.children.length === 0) {
+        this.currentSubCategoryId = ''
+        return
+      }
+      const currentId = normalizeCategoryId(this.currentSubCategoryId)
+      const inlineSubCategories = this.getInlineSubCategories(category)
+      const exists = inlineSubCategories.some(child => normalizeCategoryId(child.id) === currentId)
+      this.currentSubCategoryId = exists ? currentId : this.buildAllSubCategoryId(category.id)
     },
     goToDetail(product) {
       uni.navigateTo({
@@ -820,6 +892,10 @@ scroll-view ::-webkit-scrollbar {
   padding-bottom: 20rpx;
 }
 
+.category-group {
+  position: relative;
+}
+
 .category-item {
   padding: 30rpx 20rpx;
   text-align: center;
@@ -840,6 +916,50 @@ scroll-view ::-webkit-scrollbar {
 .category-name {
   font-size: 28rpx;
   color: #666666;
+}
+
+.sub-category-inline {
+  padding: 6rpx 0 14rpx 0;
+  background: linear-gradient(180deg, rgba(245,249,255,0.92), rgba(255,255,255,0.98));
+}
+
+.sub-category-inline-item {
+  position: relative;
+  padding: 16rpx 14rpx 16rpx 34rpx;
+  margin: 0 10rpx 6rpx 18rpx;
+  border-radius: 16rpx;
+}
+
+.sub-category-inline-item::before {
+  content: '';
+  position: absolute;
+  left: 18rpx;
+  top: 50%;
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: #bfd3ea;
+  transform: translateY(-50%);
+}
+
+.sub-category-inline-item.active {
+  background: rgba(74,144,226,0.1);
+}
+
+.sub-category-inline-item.active::before {
+  background: #4a90e2;
+  box-shadow: 0 0 0 6rpx rgba(74,144,226,0.12);
+}
+
+.sub-category-inline-name {
+  font-size: 22rpx;
+  color: #7b8da3;
+  line-height: 1.4;
+}
+
+.sub-category-inline-item.active .sub-category-inline-name {
+  color: #2d5f9a;
+  font-weight: 700;
 }
 
 .product-list-wrapper {
@@ -1319,9 +1439,61 @@ scroll-view ::-webkit-scrollbar {
 
 .hospital-tags {
   display: flex;
+  margin-bottom: 12rpx;
+}
+
+.journey-strip {
+  display: flex;
   align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
+  flex-wrap: wrap;
+  row-gap: 8rpx;
+  column-gap: 8rpx;
+  padding: 8rpx 0;
+}
+
+.journey-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  min-height: 40rpx;
+  padding: 6rpx 12rpx;
+  border-radius: 999rpx;
+  background: rgba(244,248,255,0.95);
+  color: #6f8296;
+}
+
+.journey-step.featured {
+  background: rgba(74,144,226,0.12);
+  color: #2f6fb2;
+}
+
+.journey-step-index {
+  width: 24rpx;
+  height: 24rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16rpx;
+  font-weight: 700;
+  background: rgba(74,144,226,0.1);
+  color: #4a90e2;
+}
+
+.journey-step.featured .journey-step-index {
+  background: rgba(74,144,226,0.14);
+  color: #2f6fb2;
+}
+
+.journey-step-text {
+  font-size: 20rpx;
+  font-weight: 500;
+}
+
+.journey-arrow {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #a7b6c5;
 }
 
 .tag-item {

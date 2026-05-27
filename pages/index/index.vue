@@ -23,7 +23,7 @@ import { getImageUrl } from '@/utils/config.js'
 export default {
 	data() {
 		return {
-			bgImage: getImageUrl('/profile/liaoning_zongyi/index_bg.jpg'),
+			bgImage: getImageUrl('/profile/liaoning_zongyi/index_bg.jpg?v=0.01'),
 			countdown: 5,
 			timer: null
 		}

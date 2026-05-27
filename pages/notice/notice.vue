@@ -7,9 +7,7 @@
 				
 				<scroll-view 
 					class="notice-list" 
-					scroll-y 
-					:lower-threshold="10"
-					@scrolltolower="handleScrollToLower"
+					scroll-y
 				>
 						<view class="notice-item" v-for="(item, index) in noticeList" :key="index">
 							<text class="item-number">{{ index + 1 }}.</text>
@@ -52,7 +50,6 @@ export default {
 			countdown: 3, // 倒计时秒数
 			countdownTimer: null, // 倒计时定时器
 			isCountdownFinished: false, // 倒计时是否完成
-				hasScrolledToBottom: false, // 是否滚动到底部
 				noticeList: [
 					'院内制剂（特色便民）是为复诊患者提供的便民线上自费医疗（包括亚健康及稳定的慢性病患者）;',
 					'病情为急、危、重症、病情不稳定、慢性病未控制者；孕妇、中药过敏史患者；初诊患者等，不推荐使用，请到医院就诊;',
@@ -63,20 +60,14 @@ export default {
 			}
 		},
 	computed: {
-		// 是否可以确认（倒计时完成 + 滚动到底部 + 勾选确认）
+		// 是否可以确认（倒计时完成 + 勾选确认）
 		canConfirm() {
-			return this.isCountdownFinished && this.hasScrolledToBottom && this.isChecked
+			return this.isCountdownFinished && this.isChecked
 		},
 		// 按钮文字
 			confirmButtonText() {
 				if (!this.isCountdownFinished) {
 					return `我是复诊，我已阅知 (${this.countdown}s)`
-				}
-				if (!this.hasScrolledToBottom) {
-					return '请上滑查看全部内容'
-				}
-				if (!this.isChecked) {
-					return '我是复诊，我已阅知'
 				}
 				return '我是复诊，我已阅知'
 			}
@@ -110,10 +101,6 @@ export default {
 				}
 			}, 1000)
 		},
-		// 滚动到底部事件（scroll-view 的 scrolltolower 事件）
-		handleScrollToLower() {
-			this.hasScrolledToBottom = true
-		},
 		toggleCheckbox() {
 			this.isChecked = !this.isChecked
 		},
@@ -122,11 +109,6 @@ export default {
 				if (!this.isCountdownFinished) {
 					uni.showToast({
 						title: '请等待倒计时结束',
-						icon: 'none'
-					})
-				} else if (!this.hasScrolledToBottom) {
-					uni.showToast({
-						title: '请上滑查看全部内容',
 						icon: 'none'
 					})
 				} else if (!this.isChecked) {
@@ -196,14 +178,14 @@ export default {
 }
 
 .notice-list {
-	height: 320px;
-	max-height: 320px;
+	height: 350px;
+	max-height: 350px;
 	margin-bottom: 40rpx;
 }
 
 .notice-item {
 	display: flex;
-	margin-bottom: 30rpx;
+	margin-bottom: 1rpx;
 	line-height: 1.8;
 }
 
