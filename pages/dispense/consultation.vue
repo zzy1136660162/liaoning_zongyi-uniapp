@@ -40,6 +40,7 @@
     
     <!-- 查看处方按钮 -->
     <view class="footer" v-if="showPrescriptionBtn">
+      <view class="prescription-status-banner">处方审核通过</view>
       <button class="prescription-btn" @click="viewPrescription">查看处方</button>
     </view>
   </view>
@@ -50,14 +51,16 @@ import { ref, onMounted, nextTick } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { createConsultation } from '@/api/consultation.js'
 import { getProductDetail } from '@/api/product.js'
-import { STORAGE_KEY_USER_REGISTER, STORAGE_KEY_VERIFIED_PRODUCTS, STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
+import { STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
 import { getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
 import { getImageUrl } from '@/utils/config.js'
 import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
-
-const doctorName = ref('线上名医')
-const doctorAvatar = ref('/profile/liaoning_zongyi/zaixian_mingyi_logo.png')
+import { AI_DOCTOR, CONSULTATION_MODE_AI, CONSULTATION_MODE_MANUAL, normalizeConsultationMode } from '@/utils/consultation-mode.js'
+	
+const consultationMode = ref(CONSULTATION_MODE_AI)
+const doctorName = ref(AI_DOCTOR.name)
+const doctorAvatar = ref(AI_DOCTOR.avatar)
 const doctorId = ref(null)
 
 const messages = ref([
@@ -122,15 +125,19 @@ const scrollToMessage = (index) => {
   })
 }
 
-const onClose = () => {
-  uni.navigateBack({ delta: 1 })
-}
-
 const viewPrescription = () => {
   const ids = selectedProductIds.value.length > 0
     ? selectedProductIds.value
     : getCurrentCheckoutProductIds()
-  const query = ids.length > 0 ? `?selectedItems=${ids.join(',')}` : ''
+  const queryParts = []
+  if (ids.length > 0) {
+    queryParts.push(`selectedItems=${ids.join(',')}`)
+  }
+  const consultationId = uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+  if (consultationId) {
+    queryParts.push(`consultationId=${consultationId}`)
+  }
+  const query = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
   uni.navigateTo({
     url: `/pages/order/prescription_list${query}`
   })
@@ -161,16 +168,17 @@ const loadProductsForConsultation = async () => {
 // ✅ 创建咨询
 const createConsultationRecord = async () => {
   try {
-    const userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
     const products = await loadProductsForConsultation()
     const flow = resolveProductFlow(products)
     if (!flow.valid || flow.bizType === BIZ_TYPE_HEALTH_GOODS) {
       return null
     }
 
-    // 取医生ID（默认使用购物车第一件商品的医生）
+    // AI模式回退到商品默认医生；人工模式使用上页传入的真实医生ID
     const firstProduct = products[0]
-    doctorId.value = firstProduct?.doctorId || null
+    if (consultationMode.value === CONSULTATION_MODE_AI && !doctorId.value) {
+      doctorId.value = firstProduct?.doctorId || null
+    }
 
     // 将购物车内所有已勾选商品作为处方明细传递到后端
     // 优先使用本地存储的商品数量（由上页 apply.vue 存储），回退到商品对象中的数量或 1
@@ -194,8 +202,8 @@ const createConsultationRecord = async () => {
     
     const consultationData = {
       consultType: 1, // 在线咨询
-      symptomDesc: '复诊开药',
-      historyDesc: '',
+      symptomDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? '人工接诊复诊开药' : 'AI接诊复诊开药',
+      historyDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? `人工接诊医生：${doctorName.value}` : 'AI药师接诊',
       doctorId: doctorId.value,
       diagnosis: firstProduct?.prescriptionDiagnosis || '复诊开药',
       usageNote: firstProduct?.usageDesc || '',
@@ -254,11 +262,19 @@ onLoad((options) => {
   } else {
     selectedProductIds.value = getCurrentCheckoutProductIds()
   }
+  consultationMode.value = normalizeConsultationMode(options?.consultationMode)
+  if (options?.doctorId) {
+    doctorId.value = Number(options.doctorId)
+  }
   if (options?.doctorName) {
     doctorName.value = decodeURIComponent(options.doctorName)
+  } else if (consultationMode.value === CONSULTATION_MODE_AI) {
+    doctorName.value = AI_DOCTOR.name
   }
   if (options?.doctorAvatar) {
     doctorAvatar.value = decodeURIComponent(options.doctorAvatar)
+  } else if (consultationMode.value === CONSULTATION_MODE_AI) {
+    doctorAvatar.value = AI_DOCTOR.avatar
   }
 })
 </script>
@@ -401,6 +417,18 @@ onLoad((options) => {
   box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.08);
   z-index: 100;
   animation: slideUp 0.3s ease-out;
+}
+
+.prescription-status-banner {
+  margin-bottom: 20rpx;
+  padding: 18rpx 24rpx;
+  border-radius: 18rpx;
+  background: linear-gradient(135deg, #e8f8ee 0%, #f6fff8 100%);
+  border: 1rpx solid rgba(31, 138, 76, 0.15);
+  color: #1f8a4c;
+  font-size: 28rpx;
+  font-weight: 600;
+  text-align: center;
 }
 
 @keyframes slideUp {

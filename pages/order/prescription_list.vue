@@ -81,7 +81,7 @@
               <!-- 医师信息 -->
               <view class="prescription-info">
                 <text class="info-label">医师:</text>
-                <text class="info-value">{{ cartItem.doctorName || '医师' }}</text>
+                <text class="info-value">{{ currentPrescriptionDoctorName || cartItem.doctorName || '医师' }}</text>
               </view>
 
               <!-- 商品说明 -->
@@ -337,6 +337,15 @@ const syncSelectedCartState = () => {
 
         // 保存当前处方信息，用于显示就诊时间等
         currentPrescription.value = apiPrescription
+        if (apiPrescription.doctorName && categories.value.length > 0) {
+          categories.value = categories.value.map(category => ({
+            ...category,
+            products: (category.products || []).map(product => ({
+              ...product,
+              doctorName: apiPrescription.doctorName
+            }))
+          }))
+        }
       }
 
       uni.hideLoading()
@@ -391,7 +400,7 @@ const syncSelectedCartState = () => {
                 quantity: getCartProductQuantity(productId, 1),
                 unit: productDetail.unit || '份',
                 notice: productDetail.usageDesc || productDetail.notice,
-                doctorName: productDetail.doctorName || '医师'
+                doctorName: currentPrescriptionDoctorName.value || productDetail.doctorName || '医师'
               })
             }
           } else {
@@ -424,6 +433,10 @@ const syncSelectedCartState = () => {
     if (!time) return ''
     const d = dayjs(time)
     return d.isValid() ? d.format('YYYY-MM-DD HH:mm') : time
+  })
+
+  const currentPrescriptionDoctorName = computed(() => {
+    return currentPrescription.value?.doctorName || ''
   })
 
   // ==================== 购物车相关计算属性 ====================

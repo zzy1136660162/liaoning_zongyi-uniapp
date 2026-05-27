@@ -234,17 +234,16 @@ const loadConsultationDetail = async (id) => {
       consultation.value.id = consultationData.id
       consultation.value.doctorName = consultationData.doctorName || '线上医生'
       consultation.value.doctorId = consultationData.doctorId || null
+      consultation.value.doctorTitle = consultationData.doctorTitle || consultation.value.doctorTitle
       consultation.value.department = consultationData.department || '便捷配药门诊'
       consultation.value.hospital = consultationData.hospitalName || consultation.value.hospital
       consultation.value.medicineName = consultationData.medicineName || consultationData.symptoms
       consultation.value.medicineQuantity = consultationData.quantity || 0
+      consultation.value.doctorAvatar = consultationData.doctorAvatar || consultation.value.doctorAvatar
       
       // 如果有医生ID，从医生表获取医生详情（包括头像）
       if (consultation.value.doctorId) {
         await loadDoctorDetail(consultation.value.doctorId)
-      } else if (consultationData.doctorAvatar) {
-        // 如果咨询详情中有医生头像，直接使用
-        consultation.value.doctorAvatar = consultationData.doctorAvatar
       }
     }
     
@@ -791,4 +790,3 @@ const onViewConversation = () => {
   color: #4A90E2;
 }
 </style>
-

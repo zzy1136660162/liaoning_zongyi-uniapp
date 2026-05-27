@@ -105,7 +105,9 @@ const allCartItems = ref([]) // 所有购物车商品
 
 const prescription = ref({
   id: '',
+  doctorId: null,
   doctorName: '',
+  doctorTitle: '',
   doctorAvatar: '',
   department: '',
   consultationTime: '',
@@ -259,6 +261,27 @@ const fillConsultationTime = async (consultationId) => {
     if (detail && detail.createdAt) {
       prescription.value.consultationTime = detail.createdAt
     }
+    if (detail && detail.doctorId) {
+      prescription.value.doctorId = detail.doctorId
+    }
+    if (detail && detail.doctorName) {
+      prescription.value.doctorName = detail.doctorName
+    }
+    if (detail && detail.department) {
+      prescription.value.department = detail.department
+    }
+    if (detail && detail.hospitalName) {
+      prescription.value.hospital = detail.hospitalName
+    }
+    if (detail && detail.doctorAvatar) {
+      prescription.value.doctorAvatar = detail.doctorAvatar
+    }
+    if (detail && detail.doctorTitle) {
+      prescription.value.doctorTitle = detail.doctorTitle
+    }
+    if (detail && detail.outpatientNo) {
+      prescription.value.outpatientNo = detail.outpatientNo
+    }
   } catch (e) {
     console.warn('查询咨询创建时间失败', e)
   }
@@ -274,8 +297,12 @@ const enrichByProduct = async (productId) => {
     if (product) {
       prescription.value.diagnosis = product.prescriptionDiagnosis || prescription.value.diagnosis
       prescription.value.productId = product.id || prescription.value.productId
-      prescription.value.doctorId = product.doctorId || prescription.value.doctorId
-      prescription.value.doctorName = product.doctorName || prescription.value.doctorName
+      if (!prescription.value.doctorId) {
+        prescription.value.doctorId = product.doctorId || prescription.value.doctorId
+      }
+      if (!prescription.value.doctorName) {
+        prescription.value.doctorName = product.doctorName || prescription.value.doctorName
+      }
 
       // 如果商品列表为空，用商品数据补齐一条
       if (!allCartItems.value.length) {
@@ -773,4 +800,3 @@ const onGoToOrder = () => {
   color: #fff;
 }
 </style>
-

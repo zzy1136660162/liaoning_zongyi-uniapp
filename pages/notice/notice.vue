@@ -3,7 +3,7 @@
 		<image class="bg-image" :src="bgImage" mode="aspectFill"></image>
 		<view class="content-wrapper">
 			<view class="notice-card">
-				<view class="title">便捷配药注意事项告知</view>
+					<view class="title">院内制剂（特色便民）告知书</view>
 				
 				<scroll-view 
 					class="notice-list" 
@@ -11,15 +11,11 @@
 					:lower-threshold="10"
 					@scrolltolower="handleScrollToLower"
 				>
-					<view class="notice-item" v-for="(item, index) in noticeList" :key="index">
-						<text class="item-number">{{ index + 1 }}.</text>
-						<text class="item-text">{{ item }}</text>
-					</view>
-					<view class="work-time">
-						<text class="work-time-label">工作时间：</text>
-						<text class="work-time-text">周一至周五 8:00~11:30，13:00~16:30</text>
-					</view>
-				</scroll-view>
+						<view class="notice-item" v-for="(item, index) in noticeList" :key="index">
+							<text class="item-number">{{ index + 1 }}.</text>
+							<text class="item-text">{{ item }}</text>
+						</view>
+					</scroll-view>
 				
 				<view class="button-group">
 					<button 
@@ -38,7 +34,7 @@
 					<view class="checkbox" :class="{ checked: isChecked }">
 						<text class="checkbox-icon" v-if="isChecked">✓</text>
 					</view>
-					<text class="checkbox-text">我已仔细阅读告知书详细内容,并充分知晓风险</text>
+						<text class="checkbox-text">我已仔细阅读告知书详细内容，并充分知晓风险</text>
 				</view>
 			</view>
 		</view>
@@ -56,37 +52,35 @@ export default {
 			countdown: 3, // 倒计时秒数
 			countdownTimer: null, // 倒计时定时器
 			isCountdownFinished: false, // 倒计时是否完成
-			hasScrolledToBottom: false, // 是否滚动到底部
-			noticeList: [
-				'便捷配药是为复诊患者提供的便捷线上自费服务项目(包括亚健康及稳定的慢性病患者)。',
-				'病情复杂或危重、慢性病未控制等患者，不推荐使用。',
-				'为了您的健康，每次最多可配到2种处方，每种处方最多配28贴。',
-				'因所有膏方、神阙修身贴和小儿运脾开胃贴等制作周期长，预计7~10天发货，敬请理解，感谢支持!',
-				'咨询电话:82961387 或 82961300 或 82961600',
-				'线上退费:菜单栏一我的信息一个人中心一我的一我的处方单一进行中一选择想要退费的订单。(申请退费后，预计3-5个工作日费用原路返回，该日所有订单都将退费且无法撤回退费申请，请知晓。)',
-				'快递发出后不予退换，中药茶饮请放阴凉通风干燥处保存。'
-			]
-		}
-	},
+				hasScrolledToBottom: false, // 是否滚动到底部
+				noticeList: [
+					'院内制剂（特色便民）是为复诊患者提供的便民线上自费医疗（包括亚健康及稳定的慢性病患者）;',
+					'病情为急、危、重症、病情不稳定、慢性病未控制者；孕妇、中药过敏史患者；初诊患者等，不推荐使用，请到医院就诊;',
+					'如需复诊续方也可通过互联网医院【咨询复诊】发起问诊;',
+					'院内制剂药品仅支持顺丰配送（辽宁省内），可通过公众号【药品配送】查看订单及物流信息，邮费到付;',
+					'互联网医院服务电话：15502605457。\n顺丰电话：15041291828'
+				]
+			}
+		},
 	computed: {
 		// 是否可以确认（倒计时完成 + 滚动到底部 + 勾选确认）
 		canConfirm() {
 			return this.isCountdownFinished && this.hasScrolledToBottom && this.isChecked
 		},
 		// 按钮文字
-		confirmButtonText() {
-			if (!this.isCountdownFinished) {
-				return `我是复诊,我已阅知 (${this.countdown}s)`
+			confirmButtonText() {
+				if (!this.isCountdownFinished) {
+					return `我是复诊，我已阅知 (${this.countdown}s)`
+				}
+				if (!this.hasScrolledToBottom) {
+					return '请上滑查看全部内容'
+				}
+				if (!this.isChecked) {
+					return '我是复诊，我已阅知'
+				}
+				return '我是复诊，我已阅知'
 			}
-			if (!this.hasScrolledToBottom) {
-				return '请上滑查看全部内容'
-			}
-			if (!this.isChecked) {
-				return '我是复诊,我已阅知'
-			}
-			return '我是复诊,我已阅知'
-		}
-	},
+		},
 	onLoad() {
 		// 页面加载时开始倒计时
 		this.startCountdown()
@@ -221,31 +215,13 @@ export default {
 	flex-shrink: 0;
 }
 
-.item-text {
-	font-size: 28rpx;
-	color: #666666;
-	flex: 1;
-	line-height: 1.8;
-}
-
-.work-time {
-	margin-top: 30rpx;
-	margin-bottom: 40rpx;
-	padding-top: 30rpx;
-	border-top: 2rpx solid #f0f0f0;
-	text-align: left;
-}
-
-.work-time-label {
-	font-size: 28rpx;
-	color: #333333;
-	font-weight: 500;
-}
-
-.work-time-text {
-	font-size: 28rpx;
-	color: #333333;
-}
+	.item-text {
+		font-size: 28rpx;
+		color: #666666;
+		flex: 1;
+		line-height: 1.8;
+		white-space: pre-line;
+	}
 
 .button-group {
 	display: flex;

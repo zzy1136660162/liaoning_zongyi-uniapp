@@ -226,6 +226,12 @@ import { deriveGenderFromId, deriveAgeFromId } from '@/utils/patient.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
 import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
+import {
+  AI_DOCTOR,
+  CONSULTATION_MODE_AI,
+  CONSULTATION_MODE_MANUAL,
+  getConsultationDoctorByMode
+} from '@/utils/consultation-mode.js'
 
 const cartItems = ref([])
 const categories = ref([])
@@ -379,10 +385,6 @@ const onQuantityChange = (item, val) => {
   }
 }
 
-const onModify = () => {
-  uni.navigateBack()
-}
-
 const selectPatient = (patient) => {
   logButtonClick('选择就诊人', 'DISPENSE_APPLY', patient?.id?.toString() || '', {
     patientName: patient?.name
@@ -484,6 +486,41 @@ const showAgreementDialog = () => {
   showAgreement.value = true
 }
 
+const navigateToConsultation = (selectedItemIds, mode) => {
+  const query = [
+    `selectedItems=${selectedItemIds.join(',')}`,
+    `consultationMode=${mode}`
+  ]
+
+  if (mode === CONSULTATION_MODE_MANUAL) {
+    const doctor = getConsultationDoctorByMode(CONSULTATION_MODE_MANUAL)
+    query.push(`doctorId=${doctor.id}`)
+    query.push(`doctorName=${encodeURIComponent(doctor.name)}`)
+    query.push(`doctorAvatar=${encodeURIComponent(doctor.avatar)}`)
+  } else {
+    query.push(`doctorName=${encodeURIComponent(AI_DOCTOR.name)}`)
+    query.push(`doctorAvatar=${encodeURIComponent(AI_DOCTOR.avatar)}`)
+  }
+
+  uni.navigateTo({
+    url: `/pages/dispense/consultation?${query.join('&')}`
+  })
+}
+
+const showConsultationModeSelector = (selectedItemIds) => {
+  uni.showActionSheet({
+    itemList: ['人工接诊开方', 'AI接诊开方'],
+    success: ({ tapIndex }) => {
+      const selectedMode = tapIndex === 0 ? CONSULTATION_MODE_MANUAL : CONSULTATION_MODE_AI
+      logButtonClick('选择接诊方式', 'DISPENSE_APPLY', selectedMode, {
+        patientName: selectedPatient.value?.name,
+        productCount: cartItems.value.length
+      })
+      navigateToConsultation(selectedItemIds, selectedMode)
+    }
+  })
+}
+
 const onSubmit = () => {
   if (selectedBizType.value !== BIZ_TYPE_HEALTH_GOODS && !selectedPatient.value) {
     uni.showToast({ title: '请先选择就诊人', icon: 'none' })
@@ -508,9 +545,7 @@ const onSubmit = () => {
     return
   }
 
-  uni.navigateTo({
-    url: `/pages/dispense/consultation?selectedItems=${selectedItemIds.join(',')}`
-  })
+  showConsultationModeSelector(selectedItemIds)
 }
 
 onMounted(() => {
