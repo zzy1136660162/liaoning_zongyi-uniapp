@@ -125,7 +125,7 @@
             </text>
           </view>
           <view
-            v-if="currentCategoryId === category.id && category.children && category.children.length > 0"
+            v-if="currentCategoryId === category.id && category.children && category.children.length > 0 && !isCategoryCollapsed(category.id)"
             class="sub-category-inline"
           >
             <view
@@ -355,6 +355,7 @@ export default {
       searchKeyword: '',
       currentCategoryId: 'all',
       currentSubCategoryId: '',
+      collapsedCategoryIds: [],
       categories: [],
       categoryTree: [],
       cartItems: [],
@@ -566,8 +567,20 @@ export default {
       }
     },
     async switchCategory(categoryId) {
+      const normalizedCategoryId = normalizeCategoryId(categoryId)
+      const isCurrentCategory = this.currentCategoryId === normalizedCategoryId
+      if (isCurrentCategory && this.hasInlineSubCategories(normalizedCategoryId)) {
+        if (this.isCategoryCollapsed(normalizedCategoryId)) {
+          this.expandCategory(normalizedCategoryId)
+        } else {
+          this.collapseCategory(normalizedCategoryId)
+        }
+        return
+      }
+
       this.currentCategoryId = categoryId
       this.currentSubCategoryId = ''
+      this.expandCategory(normalizedCategoryId)
       if (categoryId === 'all') {
         if (!this.loadedCategories.all) {
           await this.loadAllProducts()
@@ -590,6 +603,24 @@ export default {
     isAllSubCategoryId(subCategoryId) {
       return normalizeCategoryId(subCategoryId).startsWith('all:')
     },
+    hasInlineSubCategories(categoryId) {
+      const category = this.categories.find(cat => cat.id === normalizeCategoryId(categoryId))
+      return !!(category && Array.isArray(category.children) && category.children.length > 0)
+    },
+    isCategoryCollapsed(categoryId) {
+      return this.collapsedCategoryIds.includes(normalizeCategoryId(categoryId))
+    },
+    expandCategory(categoryId) {
+      const normalizedCategoryId = normalizeCategoryId(categoryId)
+      this.collapsedCategoryIds = this.collapsedCategoryIds.filter(id => id !== normalizedCategoryId)
+    },
+    collapseCategory(categoryId) {
+      const normalizedCategoryId = normalizeCategoryId(categoryId)
+      if (this.collapsedCategoryIds.includes(normalizedCategoryId)) {
+        return
+      }
+      this.collapsedCategoryIds = [...this.collapsedCategoryIds, normalizedCategoryId]
+    },
     getInlineSubCategories(category) {
       const categoryId = normalizeCategoryId(category?.id)
       const children = Array.isArray(category?.children) ? category.children : []
@@ -607,6 +638,7 @@ export default {
         this.currentSubCategoryId = ''
         return
       }
+      this.expandCategory(category.id)
       const currentId = normalizeCategoryId(this.currentSubCategoryId)
       const inlineSubCategories = this.getInlineSubCategories(category)
       const exists = inlineSubCategories.some(child => normalizeCategoryId(child.id) === currentId)
