@@ -116,14 +116,14 @@
                 :class="{ active: consultationMode === CONSULTATION_MODE_AI }"
                 @click="selectConsultationMode(CONSULTATION_MODE_AI)"
               >
-                AI接诊开方
+                AI在线实时接诊开方
               </view>
               <view
                 class="consultation-mode-item"
                 :class="{ active: consultationMode === CONSULTATION_MODE_MANUAL }"
                 @click="selectConsultationMode(CONSULTATION_MODE_MANUAL)"
               >
-                人工接诊开方
+                指定医生接诊开方
               </view>
             </view>
           </view>

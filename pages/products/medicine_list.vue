@@ -35,6 +35,9 @@
           权威认证 · 品质保障 · 放心购药
         </view>
         <view class="hospital-tags">
+          <text class="journey-title">
+            流程
+          </text>
           <view class="journey-strip">
             <template
               v-for="(step, index) in flowSteps"
@@ -1471,7 +1474,16 @@ scroll-view ::-webkit-scrollbar {
 
 .hospital-tags {
   display: flex;
+  flex-direction: column;
   margin-bottom: 12rpx;
+}
+
+.journey-title {
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 1;
+  color: #8e644e;
+  letter-spacing: 2rpx;
 }
 
 .journey-strip {
