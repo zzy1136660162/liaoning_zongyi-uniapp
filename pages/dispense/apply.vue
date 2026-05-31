@@ -116,7 +116,7 @@
                 :class="{ active: consultationMode === CONSULTATION_MODE_AI }"
                 @click="selectConsultationMode(CONSULTATION_MODE_AI)"
               >
-                AI在线实时接诊开方
+                在线实时接诊开方
               </view>
               <view
                 class="consultation-mode-item"

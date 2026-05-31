@@ -17,9 +17,9 @@
           src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png"
           mode="aspectFit"
         />
-        <view class="logo-badge">
+        <!-- <view class="logo-badge">
           官方旗舰店
-        </view>
+        </view> -->
       </view>
       <view class="hospital-info">
         <view class="hospital-name-row">
@@ -27,14 +27,14 @@
             医院自营
           </view>
           <text class="hospital-name">
-            辽宁中医药大学附属医院云商城
+            辽宁中医药大学附属医院
           </text>
           <!-- <text class="verify-icon">✓</text> -->
         </view>
         <view class="hospital-desc">
-          权威认证 · 品质保障 · 放心购药
+          权威认证 · 品质保障 · 放心购买
         </view>
-        <view class="hospital-tags">
+        <!-- <view class="hospital-tags">
           <text class="journey-title">
             流程
           </text>
@@ -62,7 +62,7 @@
               </text>
             </template>
           </view>
-        </view>
+        </view> -->
         <!-- <view class="hospital-stats">
           <view class="stat-item">
             <text class="stat-value">9999+</text>
@@ -84,6 +84,16 @@
         ›
       </text>
     </view>
+    <view class="flow-steps">
+      <text class="flow-text">流程</text>
+      <text class="flow-item">1.选择制剂</text>
+      <text class="flow-arrow">›</text>
+      <text class="flow-item">2.完善问诊信息</text>
+      <text class="flow-arrow">›</text>
+      <text class="flow-item">3.咨询医生开方</text>
+      <text class="flow-arrow">›</text>
+      <text class="flow-item">4.购买制剂</text>
+    </view>
     <view class="intro-divider" />
 
     <view class="search-section">
@@ -96,7 +106,7 @@
         <input
           v-model="searchKeyword"
           class="search-input"
-          placeholder="搜索院内药品"
+          placeholder="搜索院内制剂"
           @input="handleSearch"
         >
         <button
@@ -154,7 +164,7 @@
               @click="switchToHorizontalLayout"
             >
               <text class="prescription-text">
-                药方
+                制剂
               </text>
             </view>
             <view class="sort-section">
@@ -1393,7 +1403,7 @@ scroll-view ::-webkit-scrollbar {
   display: flex;
   align-items: flex-start;
   background: linear-gradient(135deg, #fafafa, #fff);
-  padding: 30rpx 30rpx 10rpx 30rpx;
+  padding: 30rpx 30rpx 15rpx 30rpx;
   position: relative;
   margin-top: -40rpx;
   z-index: 10;
@@ -1470,6 +1480,29 @@ scroll-view ::-webkit-scrollbar {
   color: #999;
   margin-bottom: 12rpx;
   letter-spacing: 1rpx;
+}
+
+.flow-steps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 16rpx 20rpx;
+  background: linear-gradient(135deg, #f0f7ff, #e8f4ff);
+}
+.flow-text {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #4a90e2;
+  margin-right: 12rpx;
+}
+.flow-item {
+  font-size: 22rpx;
+  color: #333;
+}
+.flow-arrow {
+  font-size: 24rpx;
+  color: #4a90e2;
+  margin: 0 8rpx;
 }
 
 .hospital-tags {
