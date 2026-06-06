@@ -53,6 +53,12 @@
         "navigationBarTitleText": "商品详情"
       }
     },
+	{
+	  "path": "pages/products/therapy_detail",
+	  "style": {
+	    "navigationBarTitleText": "传统疗法详情"
+	  }
+	},
     {
       "path": "pages/products/medicine_list",
       "style": {
@@ -63,7 +69,7 @@
     {
       "path": "pages/products/product_notice",
       "style": {
-        "navigationBarTitleText": "用药须知"
+        "navigationBarTitleText": "制剂须知"
       }
     },
     {
@@ -107,7 +113,7 @@
         {
           "path": "apply",
           "style": {
-            "navigationBarTitleText": "申请配药"
+            "navigationBarTitleText": "申请配制剂"
           }
         },
         {
@@ -145,7 +151,7 @@
         {
           "path": "prescription_list",
           "style": {
-            "navigationBarTitleText": "药品处方",
+            "navigationBarTitleText": "制剂处方",
             "navigationBarBackgroundColor": "#ffffff"
           }
         },

@@ -69,23 +69,8 @@
 
     <view class="goods-info">
       <view class="goods-name-row">
-        <text
-          v-if="product.bizType === 1"
-          class="self-developed-tag"
-        >
-          自研
-        </text>
-        <text
-          v-if="product.isHospitalStarFormula === 1"
-          class="new-product-tag"
-        >
-          院藏王牌制剂
-        </text>
-        <text
-          v-if="product.isNewProduct === 1"
-          class="star-product-tag"
-        >
-          重磅新品
+        <text class="therapy-tag">
+          传统疗法
         </text>
         <text class="goods-name">
           {{ product.name }}&nbsp;{{ product.description }}
@@ -96,9 +81,6 @@
         class="goods-sub"
       >
         {{ product.indications }}
-      </view>
-      <view class="drug-reminder">
-        {{ product.isPrescription === 1 ? '处方药，请在医师指导下购买和使用' : '制剂，请按说明书或医生指导使用' }}
       </view>
     </view>
 
@@ -127,10 +109,9 @@
             <text class="policy-section-title">
               <text class="check-icon">
                 ✓
-              </text> 不支持七天无理由退换
+              </text> 支持七天无理由退换
             </text>
-            <text class="policy-content">
-              制剂属于特殊商品，除质量问题外，一经售出通常不支持退换。
+            <text class="policy-content">支持七天无理由退换，随时可退。
             </text>
           </view>
           <view class="policy-section">
@@ -140,7 +121,7 @@
               </text> 售后保障
             </text>
             <text class="policy-content">
-              如需了解制剂问题，可联系平台医生或医院相关科室咨询。
+              如需了解相关问题，可联系平台医生或医院相关科室咨询。
             </text>
           </view>
         </view>
@@ -168,37 +149,11 @@
     </view>
 
     <view
-      class="drug-manual-card"
-      @click="showManualDrawer"
-    >
-      <view class="manual-item">
-        <view class="manual-item-title">
-          制剂组成
-        </view>
-        <view class="manual-item-content">
-          {{ product.ingredients || '暂无信息' }}
-        </view>
-      </view>
-      <view class="manual-divider" />
-      <view class="manual-item">
-        <view class="manual-item-title">
-          用法用量
-        </view>
-        <view class="manual-item-content">
-          {{ product.usageDesc || '暂无信息' }}
-        </view>
-      </view>
-      <view class="manual-arrow">
-        ›
-      </view>
-    </view>
-
-    <view
       class="policy-row"
       @click="showPolicyDrawer"
     >
       <text class="policy-text">
-        不支持七天无理由退换 · 售后服务
+        支持七天无理由退换 · 售后服务
       </text>
       <text class="select-arrow">
         ›
@@ -208,13 +163,8 @@
       <text class="delivery-label">
         配送
       </text>
-      <image
-        class="sf-logo"
-        src="https://smf.lntcm.com/static/logo/sf.png"
-        mode="aspectFit"
-      />
       <text class="delivery-text">
-        顺丰配送，时效以实际收货地址为准
+        自提 来医院线下体验
       </text>
     </view>
 
@@ -248,7 +198,7 @@
           ✓
         </text>
         <text class="promise-text">
-          顺丰物流
+          线下体验
         </text>
       </view>
       <view class="promise-item">
@@ -623,18 +573,9 @@
           使用说明
         </view>
         <view class="usage-list">
-          <view
-            v-for="item in usageItems"
-            :key="item.label"
-            class="usage-item"
-          >
-            <text class="usage-label">
-              {{ item.label }}
-            </text>
-            <text class="usage-text">
-              {{ item.value }}
-            </text>
-          </view>
+          <text class="usage-text">
+            凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
+          </text>
         </view>
       </view>
     </view>
@@ -648,14 +589,14 @@
       </view>
     </view>
 
-    <view class="reminder-bar">
+    <!-- <view class="reminder-bar">
       <text class="reminder-icon">
         !
       </text>
       <text class="reminder-text">
-        请仔细阅读说明书或在医师、药师指导下使用。商品包装及说明请以实际收到的商品为准。
+        凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
       </text>
-    </view>
+    </view> -->
 
 
 
@@ -1408,38 +1349,20 @@ onShow(() => {
   vertical-align: middle;
 }
 
-.self-developed-tag,
-.new-product-tag,
-.star-product-tag,
+.therapy-tag,
 .goods-name {
   vertical-align: middle;
 }
 
-.self-developed-tag,
-.new-product-tag,
-.star-product-tag {
-  font-size: 20rpx;
-  padding: 4rpx 10rpx;
-  border-radius: 4rpx;
-  font-weight: bold;
-  flex-shrink: 0;
-  margin-right: 12rpx;
+.therapy-tag {
+  font-size: 22rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  font-weight: 600;
+  margin-right: 16rpx;
   margin-bottom: 8rpx;
   display: inline;
-}
-
-.self-developed-tag {
-  background: #ff4b4b;
-  color: #fff;
-}
-
-.new-product-tag {
-  background: #4a4a4a;
-  color: #d4af37;
-}
-
-.star-product-tag {
-  background: #00c792;
+  background: linear-gradient(135deg, #4a90e2, #67c6ff);
   color: #fff;
 }
 
@@ -1454,12 +1377,6 @@ onShow(() => {
 .goods-sub {
   font-size: 26rpx;
   color: #888;
-  margin-top: 8rpx;
-}
-
-.drug-reminder {
-  font-size: 24rpx;
-  color: #999;
   margin-top: 8rpx;
 }
 
