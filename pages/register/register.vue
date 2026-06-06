@@ -113,6 +113,7 @@ import {
 } from '@/utils/storage.js'
 import { sendSmsCode, login, ensureWeChatIdentity, getWeChatUserProfile } from '@/api/auth.js'
 import { saveToken } from '@/utils/request.js'
+import { redirectToWithFallback } from '@/utils/navigate.js'
 import { logPageView } from '@/api/access-log.js'
 
 export default {
@@ -354,9 +355,9 @@ export default {
 				
 				// 8. 鐧诲綍鎴愬姛鍚庤烦杞?
 				setTimeout(() => {
-					// 濡傛灉鏈?redirect 鍙傛暟锛岃烦杞埌鎸囧畾椤甸潰锛屽惁鍒欒烦杞埌棣栭〉
-					const targetUrl = this.redirectUrl || '/pages/products/medicine_list'
-					uni.redirectTo({ url: targetUrl })
+					const rawUrl = this.redirectUrl || '/pages/products/medicine_list'
+					const targetUrl = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`
+					redirectToWithFallback(targetUrl)
 				}, 1500)
 				
 			} catch (error) {

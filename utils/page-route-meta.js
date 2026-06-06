@@ -22,6 +22,7 @@ export const PAGE_ROUTE_META = {
   'pages/products/priducts_detail': { pageType: 'HEALTH_PRODUCT_DETAIL', title: '健康商品详情' },
   'pages/products/medicine_index': { pageType: 'MEDICINE_INDEX', title: '商城首页' },
   'pages/products/medicine_detail': { pageType: 'MEDICINE_DETAIL', title: '制剂商品详情' },
+  'pages/products/therapy_detail': { pageType: 'THERAPY_DETAIL', title: '传统疗法详情' },
   'pages/products/medicine_list': { pageType: 'MEDICINE_LIST', title: '制剂商品列表' },
   'pages/products/product_notice': { pageType: 'PRODUCT_NOTICE', title: '用药须知' },
   'pages/products/product_questionnaire': { pageType: 'PRODUCT_QUESTIONNAIRE', title: '健康问卷' },

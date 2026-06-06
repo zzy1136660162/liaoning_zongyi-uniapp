@@ -19,6 +19,8 @@
 </template>
 
 <script>
+import { redirectToWithFallback } from '@/utils/navigate.js'
+
 export default {
   name: 'TabBar',
   props: {
@@ -49,17 +51,11 @@ export default {
       }
 
       if (tab === 'home') {
-        uni.redirectTo({
-          url: '/pages/products/medicine_list'
-        })
+        redirectToWithFallback('/pages/products/medicine_list')
       } else if (tab === 'cart') {
-        uni.redirectTo({
-          url: '/pages/cart/cart'
-        })
+        redirectToWithFallback('/pages/cart/cart')
       } else if (tab === 'mine') {
-        uni.redirectTo({
-          url: '/pages/user/profile'
-        })
+        redirectToWithFallback('/pages/user/profile')
       }
     }
   }

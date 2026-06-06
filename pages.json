@@ -53,12 +53,12 @@
         "navigationBarTitleText": "商品详情"
       }
     },
-	{
-	  "path": "pages/products/therapy_detail",
-	  "style": {
-	    "navigationBarTitleText": "传统疗法详情"
-	  }
-	},
+    {
+      "path": "pages/products/therapy_detail",
+      "style": {
+        "navigationBarTitleText": "传统疗法详情"
+      }
+    },
     {
       "path": "pages/products/medicine_list",
       "style": {

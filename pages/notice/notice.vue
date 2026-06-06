@@ -40,6 +40,8 @@
 </template>
 
 <script>
+import { redirectToWithFallback } from '@/utils/navigate.js'
+
 import { getImageUrl } from '@/utils/config.js'
 import { logPageView } from '@/api/access-log.js'
 export default {
@@ -119,16 +121,10 @@ export default {
 				}
 				return
 			}
-			// 跳转到产品列表页面
-			uni.redirectTo({
-				url: '/pages/products/medicine_list'
-			})
+			redirectToWithFallback('/pages/products/medicine_list')
 		},
 		handleBrowse() {
-			// 仅浏览，跳转到产品列表页面
-			uni.redirectTo({
-				url: '/pages/products/medicine_list'
-			})
+			redirectToWithFallback('/pages/products/medicine_list')
 		}
 	}
 }
