@@ -13,6 +13,7 @@
   - `lnzy_order_item.refund_status`、`refund_quantity`、`refund_reason` 字段
 - [ ] 验证初始化数据：
   - 退货配置表数据
+  - 
 
 ### 后端部署
 - [ ] 编译并部署后端服务
