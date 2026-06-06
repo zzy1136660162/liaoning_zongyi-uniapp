@@ -131,6 +131,7 @@ import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
 import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
+import { subscribeCartUpdated } from '@/utils/cart-events.js'
 
 const HEALTH_BIZ_TYPE = 2
 
@@ -151,7 +152,8 @@ export default {
       verifiedProducts: {},
       currentTab: 'home',
       loadedCategories: {},
-      categoryList: []
+      categoryList: [],
+      unsubscribeCartUpdated: null
     }
   },
   computed: {
@@ -179,6 +181,9 @@ export default {
   onLoad() {
     this.currentTab = 'home'
     uni.$on('refreshProductsList', this.loadVerifiedProductsFromStorage)
+    this.unsubscribeCartUpdated = subscribeCartUpdated(() => {
+      this.loadVerifiedProductsFromStorage()
+    })
     this.loadProducts()
   },
   onShow() {
@@ -186,6 +191,10 @@ export default {
   },
   onUnload() {
     uni.$off('refreshProductsList', this.loadVerifiedProductsFromStorage)
+    if (this.unsubscribeCartUpdated) {
+      this.unsubscribeCartUpdated()
+      this.unsubscribeCartUpdated = null
+    }
   },
   methods: {
     getImageUrl,

@@ -46,6 +46,27 @@ export const getConsultationDoctorByMode = (mode) => {
   return AI_DOCTOR
 }
 
+/** 从咨询记录解析展示用医师姓名（与 consultation 页一致） */
+export const resolveConsultationDoctorName = (consultation) => {
+  if (!consultation) {
+    return ''
+  }
+  if (consultation.doctorName) {
+    return consultation.doctorName
+  }
+  const history = consultation.historyDesc || ''
+  if (history.includes('AI') || history.includes('AI药师')) {
+    return AI_DOCTOR.name
+  }
+  if (history.includes('人工接诊医生：')) {
+    const match = history.match(/人工接诊医生：(.+)/)
+    if (match && match[1]) {
+      return match[1].trim()
+    }
+  }
+  return ''
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     CONSULTATION_MODE_AI,
@@ -53,6 +74,7 @@ if (typeof module !== 'undefined') {
     AI_DOCTOR,
     MANUAL_DOCTORS,
     normalizeConsultationMode,
-    getConsultationDoctorByMode
+    getConsultationDoctorByMode,
+    resolveConsultationDoctorName
   }
 }

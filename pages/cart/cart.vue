@@ -1,6 +1,6 @@
 <template>
 	<view class="cart-container">
-		<!-- 璐墿杞︽爣棰樻爮 -->
+		<!-- 购物车标题栏 -->
 		<view class="cart-header">
 			<view class="header-left">
 				<text class="header-title">🛒 我的购物车</text>
@@ -12,33 +12,39 @@
 			<view class="deco-dot dot3"></view>
 		</view>
 
-		<!-- 璐墿杞﹀唴瀹瑰尯鍩?-->
+		<!-- 购物车内容区域 -->
 		<view class="cart-content">
-			<!-- 绌鸿喘鐗╄溅鐘舵€?-->
+			<!-- 空购物车状态 -->
 			<view class="empty-cart" v-if="cartItems.length === 0">
 				<image class="empty-icon" :src="getImageUrl('/profile/liaoning_zongyi/empty_cart.png')" mode="aspectFit"></image>
 				<text class="empty-text">购物车还是空的</text>
 				<button class="go-shopping-btn" @click="goShopping">去逛逛</button>
 			</view>
 
-			<!-- 璐墿杞﹀晢鍝佸垪琛?-->
+			<!-- 购物车商品列表 -->
 			<view class="cart-list" v-else>
-				<view class="cart-item" v-for="item in cartItems" :key="item.id">
-					<!-- 閫夋嫨妗?-->
+				<view
+					class="cart-item"
+					:class="{ unavailable: item.available === false }"
+					v-for="item in cartItems"
+					:key="item.id"
+				>
+					<!-- 选择框 -->
 					<view class="checkbox-wrapper" @click="toggleItemSelection(item.id)">
 						<view class="checkbox" :class="{ checked: selectedItems.includes(item.id) }">
 							<uni-icons type="checkmarkempty" size="16" color="#ffffff" v-if="selectedItems.includes(item.id)"></uni-icons>
 						</view>
 					</view>
 
-					<!-- 鍟嗗搧淇℃伅 -->
+					<!-- 商品信息 -->
 					<view class="item-content">
 						<image class="item-image" :src="getImageUrl(item.image)" mode="aspectFill" @click="goToProductDetail(item)"></image>
 						<view class="item-info">
 							<text class="item-name" @click="goToProductDetail(item)">{{ item.name }}</text>
-									<text class="item-desc">规格：{{ item.specText }}</text>
+							<text class="item-desc">规格：{{ item.specText || '—' }}</text>
+							<text v-if="item.available === false" class="item-unavailable">商品已下架</text>
 							<view class="item-bottom">
-									<text class="item-price">¥{{ item.price.toFixed(2) }}</text>
+								<text class="item-price">¥{{ formatPrice(item.price) }}</text>
 								<view class="quantity-controls">
 									<button class="quantity-btn" @click="decreaseQuantity(item)">-</button>
 									<text class="quantity-text">{{ item.quantity }}</text>
@@ -48,7 +54,7 @@
 						</view>
 					</view>
 
-					<!-- 鍒犻櫎鎸夐挳锛堢紪杈戞ā寮忎笅鏄剧ず锛?-->
+					<!-- 删除按钮（编辑模式下显示） -->
 					<view class="delete-btn" v-if="isEditMode" @click="removeItem(item.id)">
 						<uni-icons type="trash" size="20" color="#ff6b6b"></uni-icons>
 					</view>
@@ -56,7 +62,7 @@
 			</view>
 		</view>
 
-		<!-- 搴曢儴缁撶畻鏍?-->
+		<!-- 底部结算栏 -->
 		<view class="checkout-bar" v-if="cartItems.length > 0">
 			<view class="select-all-wrapper" @click="toggleSelectAll">
 				<view class="checkbox" :class="{ checked: isAllSelected }">
@@ -75,32 +81,61 @@
 			</button>
 		</view>
 
-		<!-- Tab Bar 瀵艰埅鏍?-->
 		<TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
 	</view>
 </template>
 
 <script>
+import { getCartList } from '@/api/cart.js'
+import { getProductDetail } from '@/api/product.js'
 import {
   STORAGE_KEY_CURRENT_CONSULTATION_ID,
   STORAGE_KEY_USER_REGISTER
 } from '@/utils/storage.js'
-import { getProductDetail } from '@/api/product.js'
 import {
   getCartEntries,
+  getCartTotalQuantity,
+  buildCategoriesFromServerCart,
   loadCartItems,
   calculateTotalPrice,
-  calculateTotalQuantity,
   setCartItemQuantity,
   prepareCheckout,
   removeFromCart,
   updateProductSelection,
   updateMultipleSelections
 } from '@/utils/cart.js'
+import { applyServerCartToLocal } from '@/utils/cart-sync.js'
+import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
-import { logPageView } from '@/api/access-log.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
+import { BASE_URL } from '@/utils/config.js'
+
+const parseCartLoadError = (error) => {
+  const statusCode = error?.statusCode
+  const bizCode = error?.code
+  const message = error?.message || error?.errMsg || ''
+
+  if (statusCode === 404) {
+    return {
+      reason: 'API_NOT_FOUND',
+      hint: '后端未部署 GET /api/cart（常见：生产环境 springboot 未更新）。已自动改用本地购物车。'
+    }
+  }
+  if (statusCode === 401 || bizCode === 401) {
+    return { reason: 'UNAUTHORIZED', hint: '登录态失效，将使用本地购物车' }
+  }
+  if (statusCode === 500 || bizCode === 500) {
+    return { reason: 'SERVER_ERROR', hint: '服务端 500，请查看 springboot 日志' }
+  }
+  if (String(message).includes('timeout') || String(message).includes('fail')) {
+    return { reason: 'NETWORK', hint: `网络异常(${BASE_URL})，将使用本地购物车` }
+  }
+  return {
+    reason: 'UNKNOWN',
+    hint: message || '未知错误，将使用本地购物车'
+  }
+}
 
 export default {
   components: {
@@ -112,12 +147,14 @@ export default {
       categories: [],
       selectedItems: [],
       isEditMode: false,
-      currentTab: 'cart'
+      currentTab: 'cart',
+      loading: false,
+      unsubscribeCartUpdated: null
     }
   },
   computed: {
     cartCount() {
-      return calculateTotalQuantity(this.cartItems)
+      return getCartTotalQuantity()
     },
     selectedItemCount() {
       return this.selectedItems.length
@@ -132,17 +169,99 @@ export default {
   },
   onLoad() {
     this.currentTab = 'cart'
+    this.unsubscribeCartUpdated = subscribeCartUpdated(() => {
+      this.loadCartPageData()
+    })
   },
   onShow() {
-    this.loadCategories()
-    logPageView('CART')
+    this.loadCartPageData()
+  },
+  onUnload() {
+    if (this.unsubscribeCartUpdated) {
+      this.unsubscribeCartUpdated()
+      this.unsubscribeCartUpdated = null
+    }
   },
   methods: {
     getImageUrl,
-    async loadCategories() {
+    formatPrice(price) {
+      return Number(price || 0).toFixed(2)
+    },
+    async loadCartPageData() {
+      if (this.loading) {
+        console.log('[cart] loadCartPageData skipped: already loading')
+        return
+      }
+
+      this.loading = true
+      const hasToken = Boolean(getToken())
+      console.log('[cart] loadCartPageData start', { hasToken, baseUrl: BASE_URL })
+
+      try {
+        if (hasToken) {
+          await this.loadCartFromServer()
+          console.log('[cart] loadCartPageData done (server)', {
+            itemCount: this.cartItems.length,
+            cartCount: this.cartCount
+          })
+          return
+        }
+
+        console.log('[cart] loadCartPageData: no token, use local fallback')
+        await this.loadLocalCartFallback()
+        console.log('[cart] loadCartPageData done (local)', {
+          itemCount: this.cartItems.length,
+          cartCount: this.cartCount
+        })
+      } catch (error) {
+        const { reason, hint } = parseCartLoadError(error)
+        console.warn('[cart] loadCartPageData server path failed, fallback to local', {
+          reason,
+          hint,
+          statusCode: error?.statusCode,
+          bizCode: error?.code,
+          message: error?.message || error?.errMsg
+        })
+
+        try {
+          await this.loadLocalCartFallback()
+          console.log('[cart] loadCartPageData fallback ok', {
+            itemCount: this.cartItems.length,
+            cartCount: this.cartCount
+          })
+        } catch (fallbackError) {
+          console.error('[cart] loadCartPageData fallback failed', fallbackError)
+          this.categories = []
+          this.cartItems = []
+          this.selectedItems = []
+        }
+      } finally {
+        this.loading = false
+      }
+    },
+    async loadCartFromServer() {
+      const startedAt = Date.now()
+      const serverItems = await getCartList()
+      const normalizedItems = Array.isArray(serverItems) ? serverItems : []
+
+      if (!Array.isArray(serverItems)) {
+        console.warn('[cart] loadCartFromServer: response is not array, use empty list', serverItems)
+      }
+
+      console.log('[cart] loadCartFromServer apply', {
+        ms: Date.now() - startedAt,
+        count: normalizedItems.length
+      })
+
+      applyServerCartToLocal(normalizedItems)
+      this.categories = buildCategoriesFromServerCart(normalizedItems)
+      this.loadCartData()
+    },
+    async loadLocalCartFallback() {
       try {
         const cartEntries = getCartEntries()
         const productIds = Object.keys(cartEntries)
+        console.log('[cart] loadLocalCartFallback', { productIds })
 
         if (productIds.length === 0) {
           this.categories = []
@@ -182,11 +301,9 @@ export default {
         this.categories = [cartCategory]
         this.loadCartData()
       } catch (error) {
-        console.error('loadCategories failed:', error)
+        console.error('loadLocalCartFallback failed:', error)
         this.categories = []
         this.loadCartData()
-      } finally {
-        uni.hideLoading()
       }
     },
     loadCartData() {
@@ -230,7 +347,7 @@ export default {
       const nextQuantity = Number(item.quantity || 1) - 1
       if (nextQuantity <= 0) {
         removeFromCart(item.id)
-        this.loadCategories()
+        this.loadCartPageData()
         return
       }
       setCartItemQuantity(item.id, nextQuantity)
@@ -249,7 +366,7 @@ export default {
             uni.showToast({ title: '删除失败', icon: 'none' })
             return
           }
-          this.loadCategories()
+          this.loadCartPageData()
           uni.showToast({ title: '删除成功', icon: 'success' })
         }
       })
@@ -267,7 +384,7 @@ export default {
     goToCheckout() {
       if (this.isEditMode) {
         if (this.selectedItems.length === 0) {
-					uni.showToast({ title: '请选择要删除的商品', icon: 'none' })
+          uni.showToast({ title: '请选择要删除的商品', icon: 'none' })
           return
         }
         uni.showModal({
@@ -283,7 +400,7 @@ export default {
               return
             }
             this.isEditMode = false
-            this.loadCategories()
+            this.loadCartPageData()
             uni.showToast({ title: '删除成功', icon: 'success' })
           }
         })
@@ -291,7 +408,15 @@ export default {
       }
 
       if (this.selectedItems.length === 0) {
-			uni.showToast({ title: '请选择要结算的商品', icon: 'none' })
+        uni.showToast({ title: '请选择要结算的商品', icon: 'none' })
+        return
+      }
+
+      const unavailableSelected = this.cartItems.filter(
+        item => this.selectedItems.includes(item.id) && item.available === false
+      )
+      if (unavailableSelected.length > 0) {
+        uni.showToast({ title: '所选商品含已下架商品', icon: 'none' })
         return
       }
 
@@ -345,20 +470,6 @@ export default {
   padding-bottom: calc(  env(safe-area-inset-bottom));
 }
 
-/* Banner鍖哄煙 */
-.banner-section {
-  width: 100%;
-  margin-bottom: 20rpx;
-  overflow: hidden;
-  background: #ffffff;
-}
-
-.banner-image {
-  width: 100%;
-  height: 180rpx;
-  display: block;
-}
-
 .cart-header {
   display: flex;
   align-items: center;
@@ -377,19 +488,6 @@ export default {
   font-weight: bold;
   color: #ffffff;
   letter-spacing: 2rpx;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-}
-
-.edit-btn {
-  font-size: 26rpx;
-  color: #ffffff;
-  padding: 8rpx 20rpx;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 30rpx;
 }
 
 .header-decoration {
@@ -424,7 +522,7 @@ export default {
 
 .cart-content {
   flex: 1;
-  padding: 0 20rpx calc(120rpx + 100rpx + env(safe-area-inset-bottom) + 20rpx) 20rpx; /* 搴曢儴鍐呰竟璺濓細缁撶畻鏍忛珮搴?120rpx) + TabBar楂樺害(100rpx + 瀹夊叏鍖哄煙) + 棰濆闂磋窛(40rpx) */
+  padding: 0 20rpx calc(120rpx + 100rpx + env(safe-area-inset-bottom) + 20rpx) 20rpx;
 }
 
 .empty-cart {
@@ -485,6 +583,10 @@ export default {
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
+}
+
+.cart-item.unavailable {
+  opacity: 0.65;
 }
 
 .checkbox-wrapper {
@@ -565,6 +667,12 @@ export default {
   -webkit-box-orient: vertical;
   line-height: 1.4;
   font-weight: 400;
+}
+
+.item-unavailable {
+  font-size: 22rpx;
+  color: #e74c3c;
+  margin-bottom: 8rpx;
 }
 
 .item-bottom {
@@ -697,9 +805,6 @@ export default {
   color: #999999;
 }
 
-/* Tab Bar 鏍峰紡宸茬Щ鑷崇粍浠朵腑 */
-
-/* 鎮仠鏁堟灉 */
 .cart-item:hover {
   transform: translateY(-2rpx);
   box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.1);

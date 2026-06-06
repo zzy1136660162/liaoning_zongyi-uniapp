@@ -72,10 +72,13 @@
           <text class="value">¥0.00</text>
         </view> -->
         <view class="cost-row">
-          <text class="label">快递费</text>
+          <view class="label-with-note">
+            <text class="label">运费（到付）</text>
+            <text class="freight-note">运费计算供参考，以实际支付为准</text>
+          </view>
           <view class="value-container">
             <text v-if="calculatingFreight" class="value calculating">计算中...</text>
-            <text v-else class="value">¥{{ orderInfo.cost.shippingFee.toFixed(2) }}</text>
+            <text v-else class="value freight-ref">约¥{{ orderInfo.cost.shippingFee.toFixed(2) }}</text>
           </view>
         </view>
       </view>
@@ -119,7 +122,7 @@ const orderInfo = ref({
     distributor: '辽宁中医药大学附属医院',
     logistics: '顺丰快递',
     purchaseMethod: '药品配送-在线支付',
-    shippingPaymentMethod: '在线支付'
+    shippingPaymentMethod: '到付（货到付款给快递员）'
   },
   cost: {
     medicineCost: 0,
@@ -299,7 +302,7 @@ const loadOrderInfo = () => {
         purchaseMethod: selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
           ? '健康产品-在线支付'
           : '药品配送-在线支付',
-        shippingPaymentMethod: '在线支付'
+        shippingPaymentMethod: '到付（货到付款给快递员）'
       }
       orderInfo.value.cost = {
         ...orderInfo.value.cost,
@@ -442,7 +445,7 @@ const calculateTotal = () => {
     // 代煎费用（示例）
     total += 0
   }
-  total += orderInfo.value.cost.shippingFee
+  // 到付：运费不计入合计，仅作参考展示
   orderInfo.value.total = total
 }
 
@@ -496,7 +499,7 @@ const submitOrder = async () => {
     // ✅ 调用后端API创建订单
     const orderData = {
       addressId: selectedAddress.value.id,
-      shippingFee: orderInfo.value.cost.shippingFee || 0,
+      shippingFee: 0,
       consultationId: selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
         ? null
         : (uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID) || null),
@@ -704,6 +707,21 @@ const submitOrder = async () => {
 .value.calculating {
   color: #999;
   font-size: 24rpx;
+}
+
+.label-with-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.freight-note {
+  font-size: 20rpx;
+  color: #ff9900;
+}
+
+.freight-ref {
+  color: #999;
 }
 
 .order-item {

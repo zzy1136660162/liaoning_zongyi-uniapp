@@ -321,6 +321,9 @@ export default {
 				// 5. 淇濆瓨Token
 				if (result && result.token) {
 					saveToken(result.token)
+					import('@/utils/cart-sync.js').then(({ syncCartOnLogin }) => {
+						syncCartOnLogin()
+					})
 				}
 				
 				// 6. 淇濆瓨鍚庣杩斿洖鐨勫熀纭€鐢ㄦ埛淇℃伅

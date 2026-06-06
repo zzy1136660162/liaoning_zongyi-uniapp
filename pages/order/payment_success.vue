@@ -37,6 +37,7 @@
       <!-- 鎻愮ず淇℃伅 -->
       <view class="tip-section">
         <text class="tip-text">订单已提交，我们将尽快为您处理</text>
+        <text class="tip-text">运费到付，由快递员收取，以实际支付为准</text>
       </view>
     </view>
     

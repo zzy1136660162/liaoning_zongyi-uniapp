@@ -117,7 +117,19 @@ const readCartData = () => {
   return normalizeCartData(raw)
 }
 
-const writeCartData = (cartData) => {
+const emitCartUpdated = () => {
+  uni.$emit('cartUpdated')
+}
+
+const triggerRemoteSync = (action, payload) => {
+  import('./cart-sync.js').then((mod) => {
+    mod.handleCartRemoteSync(action, payload).catch((error) => {
+      console.warn('cart remote sync failed:', error)
+    })
+  })
+}
+
+const writeCartData = (cartData, options = {}) => {
   const normalized = normalizeCartData(cartData, { includeLegacyIds: false })
   const legacyQuantities = {}
 
@@ -129,6 +141,26 @@ const writeCartData = (cartData) => {
 
   uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, normalized)
   uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, legacyQuantities)
+
+  if (!options.silent) {
+    emitCartUpdated()
+  }
+
+  if (!options.suppressSync) {
+    if (options.syncProductIds?.length) {
+      triggerRemoteSync('upsert', options.syncProductIds)
+    }
+    if (options.syncRemoveIds?.length) {
+      triggerRemoteSync('remove', options.syncRemoveIds)
+    }
+    if (options.syncClear) {
+      triggerRemoteSync('clear')
+    }
+  }
+}
+
+export const replaceCartData = (cartData) => {
+  writeCartData(cartData, { suppressSync: true })
 }
 
 const resolveProductId = (productOrId) => {
@@ -248,7 +280,7 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
       timestamp: Date.now()
     }
 
-    writeCartData(cartData)
+    writeCartData(cartData, { syncProductIds: [productId] })
     return true
   } catch (error) {
     console.error('addCartItem failed:', error)
@@ -281,7 +313,7 @@ export const setCartItemQuantity = (productId, quantity) => {
       quantity: toPositiveInt(quantity, 1),
       timestamp: Date.now()
     }
-    writeCartData(cartData)
+    writeCartData(cartData, { syncProductIds: [normalizedId] })
     return true
   } catch (error) {
     console.error('setCartItemQuantity failed:', error)
@@ -297,21 +329,11 @@ export const removeFromCart = (productIds) => {
     }
 
     const cartData = readCartData()
-    console.log('[cart] removeFromCart:before', {
-      ids,
-      cartKeys: Object.keys(cartData),
-      legacyKeys: Object.keys(readLegacyQuantities())
-    })
     ids.forEach((productId) => {
       delete cartData[productId]
     })
 
-    writeCartData(cartData)
-    console.log('[cart] removeFromCart:after', {
-      ids,
-      cartKeys: Object.keys(readCartData()),
-      legacyKeys: Object.keys(readLegacyQuantities())
-    })
+    writeCartData(cartData, { syncRemoveIds: ids })
     updateCheckoutIdsAfterRemoval(ids)
     return true
   } catch (error) {
@@ -322,8 +344,7 @@ export const removeFromCart = (productIds) => {
 
 export const clearCart = () => {
   try {
-    uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, {})
-    uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, {})
+    writeCartData({}, { syncClear: true })
     clearCheckoutProductIds()
     return true
   } catch (error) {
@@ -342,7 +363,7 @@ export const updateProductSelection = (productId, selected) => {
 
     cartData[normalizedId].selected = toFlag(selected, true)
     cartData[normalizedId].timestamp = Date.now()
-    writeCartData(cartData)
+    writeCartData(cartData, { syncProductIds: [normalizedId] })
     return true
   } catch (error) {
     console.error('updateProductSelection failed:', error)
@@ -353,14 +374,16 @@ export const updateProductSelection = (productId, selected) => {
 export const updateMultipleSelections = (selectionMap = {}) => {
   try {
     const cartData = readCartData()
+    const changedIds = []
     Object.entries(selectionMap).forEach(([productId, selected]) => {
       const normalizedId = normalizeId(productId)
       if (cartData[normalizedId]) {
         cartData[normalizedId].selected = toFlag(selected, true)
         cartData[normalizedId].timestamp = Date.now()
+        changedIds.push(normalizedId)
       }
     })
-    writeCartData(cartData)
+    writeCartData(cartData, { syncProductIds: changedIds })
     return true
   } catch (error) {
     console.error('updateMultipleSelections failed:', error)
@@ -473,6 +496,35 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
     console.error('loadCartItems failed:', error)
     return []
   }
+}
+
+export const mapServerCartItemToProduct = (item = {}) => {
+  const productId = item.productId ?? item.id
+  return {
+    id: productId,
+    productId,
+    name: item.productName || '',
+    productName: item.productName || '',
+    description: item.subTitle || '',
+    image: item.coverImage || '',
+    coverImage: item.coverImage || '',
+    price: Number(item.price || 0),
+    unit: item.unit || '件',
+    specText: item.specText || item.subTitle || '',
+    bizType: item.bizType,
+    goodsMerchantType: item.goodsMerchantType,
+    needQuestionnaire: toNumber(item.needQuestionnaire, 0),
+    available: item.available !== false
+  }
+}
+
+export const buildCategoriesFromServerCart = (serverItems = []) => {
+  const products = (Array.isArray(serverItems) ? serverItems : []).map(mapServerCartItemToProduct)
+  return [{
+    id: 'cart_items',
+    name: '购物车商品',
+    products
+  }]
 }
 
 export const calculateTotalPrice = (cartItems = []) => {

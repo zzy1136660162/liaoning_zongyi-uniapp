@@ -45,6 +45,10 @@
             <text class="info-value">{{ detail.department }}</text>
           </view>
           <view class="info-col">
+            <text class="info-label">开方医师：</text>
+            <text class="info-value">{{ detail.doctorName || '—' }}</text>
+          </view>
+          <view class="info-col">
             <text class="info-label">开方日期：</text>
             <text class="info-value">{{ formatDate(detail.date) }}</text>
           </view>
@@ -133,7 +137,8 @@ import {
   STORAGE_KEY_VERIFIED_PRODUCTS,
   STORAGE_KEY_PRODUCT_QUANTITIES, STORAGE_KEY_SELECTED_PRODUCTS
 } from '@/utils/storage.js'
-import { getPrescriptionDetail, getPrescriptionItems } from '@/api/consultation.js'
+import { getPrescriptionDetail, getPrescriptionItems, getConsultationDetail } from '@/api/consultation.js'
+import { resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
 import { getProductDetail } from '@/api/product.js'
 import { getOrderByPrescriptionId, getMyOrders } from '@/api/order.js'
 import { getImageUrl } from '@/utils/config.js'
@@ -155,8 +160,9 @@ export default {
         formulaName: '',
         packCount: 1,
         usage: '',
-        pharmacistName: '王某某',
-        productPrice: 4.51, // 单价，与商品详情页和复诊详情页保持一致
+        doctorName: '',
+        pharmacistName: '',
+        productPrice: 0,
         prescriptionItems: [], // 处方药品列表
         // 签名与关联医生/药师信息（按 id 映射）
         associatedDoctors: {}, // { [doctorId]: { name, signatureUrl, title, hospital } }
@@ -210,13 +216,9 @@ export default {
     }
   },
   async onLoad(options) {
-    // 保存页面参数
     this.pageOptions.prescriptionNo = options.prescriptionNo || null
-
-    // 从 storage 加载用户信息
     this.loadUserInfo()
 
-    // 接收处方单号参数
     if (options.prescriptionNo) {
       await this.loadPrescriptionById(options.prescriptionNo)
     }
@@ -266,20 +268,70 @@ export default {
     // 这样可以覆盖 URL 参数中的性别和年龄，确保身份证号的信息优先级最高
     this.ensureGenderAndAgeFromIdCard()
 
-    // 获取订单状态信息（等待所有异步操作完成后）
-    this.loadOrderStatus()
+    await this.loadOrderStatus()
 
-    // 记录页面访问日志
     logPageView('处方详情', '用户进入处方详情页面')
   },
   methods: {
     // 图片URL处理函数
     getImageUrl,
 
+    async applyDoctorFromPrescription(prescriptionData) {
+      if (!prescriptionData) {
+        return
+      }
+      const doctorId = prescriptionData.doctorId || prescriptionData.doctor_id || null
+      if (doctorId) {
+        try {
+          const doc = await getDoctorDetail(doctorId)
+          if (doc) {
+            this.detail.doctorId = doctorId
+            this.detail.doctorName = doc.name || this.detail.doctorName
+            this.detail.department = doc.department || this.detail.department
+            const signatureUrl = doc.signatureUrl || doc.signature_url || doc.signature || ''
+            if (signatureUrl) {
+              this.detail.doctorSignatureUrl = getImageUrl(signatureUrl)
+            }
+            return
+          }
+        } catch (e) {
+          console.warn('从处方 doctorId 获取医师失败', e)
+        }
+      }
+
+      const consultationId = prescriptionData.consultationId || prescriptionData.consultation_id
+      if (consultationId) {
+        try {
+          const consultation = await getConsultationDetail(consultationId)
+          const displayName = resolveConsultationDoctorName(consultation)
+          if (displayName) {
+            this.detail.doctorName = displayName
+          }
+          if (consultation.department) {
+            this.detail.department = consultation.department
+          }
+          if (consultation.doctorId && !this.detail.doctorSignatureUrl) {
+            const doc = await getDoctorDetail(consultation.doctorId)
+            if (doc) {
+              this.detail.doctorId = consultation.doctorId
+              const signatureUrl = doc.signatureUrl || doc.signature_url || ''
+              if (signatureUrl) {
+                this.detail.doctorSignatureUrl = getImageUrl(signatureUrl)
+              }
+              if (!this.detail.doctorName) {
+                this.detail.doctorName = doc.name || ''
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('从咨询记录补全医师信息失败', e)
+        }
+      }
+    },
+
     // 从订单信息更新处方详情
     updateDetailFromOrder(orderInfo) {
-      // 更新基本信息
-      if (orderInfo.doctorName) {
+      if (orderInfo.doctorName && !this.detail.doctorName) {
         this.detail.doctorName = orderInfo.doctorName
       }
       if (orderInfo.prescriptionDiagnosis) {
@@ -363,8 +415,10 @@ export default {
             this.orderStatus.logisticsCompany = orderInfo.logisticsCompany || '顺丰快递'
           }
 
-          // 从订单信息更新处方详情
           this.updateDetailFromOrder(orderInfo)
+          if (!this.detail.doctorName && orderInfo.doctorId) {
+            await this.applyDoctorFromPrescription({ doctorId: orderInfo.doctorId })
+          }
 
           console.log('通过处方ID查询到订单状态:', this.orderStatus)
           console.log('从订单更新处方详情:', this.detail)
@@ -605,14 +659,23 @@ export default {
           this.detail.department = prescriptionData.department || '便捷配药门诊'
           this.detail.date = prescriptionData.consultationTime || prescriptionData.createdAt || ''
 
-          // 记录医生ID，后续加载医生签名
           this.detail.doctorId = prescriptionData.doctorId || null
+          await this.applyDoctorFromPrescription(prescriptionData)
 
           // 获取处方药品列表
           try {
             const prescriptionItems = await getPrescriptionItems(id)
             this.detail.prescriptionItems = prescriptionItems || []
             console.log('处方药品列表:', prescriptionItems)
+            if (this.detail.prescriptionItems.length > 0) {
+              const firstItem = this.detail.prescriptionItems[0]
+              if (firstItem.price) {
+                this.detail.productPrice = Number(firstItem.price)
+              }
+              if (firstItem.quantity) {
+                this.detail.packCount = Number(firstItem.quantity) || this.detail.packCount
+              }
+            }
 
             // 针对每个处方项，查询商品详情以获得 usage_desc、doctor_id、pharmacist_id 等信息
             const doctorIds = new Set()
@@ -695,18 +758,15 @@ export default {
               const firstDoctorId = productDetail.doctorId || productDetail.doctor_id || productDetail.doctor || null
               const firstPharmacistId = productDetail.pharmacistId || productDetail.pharmacist_id || productDetail.pharmacist || null
 
-              if (firstDoctorId) {
+              if (firstDoctorId && !this.detail.doctorName) {
                 try {
-                  console.log('使用首项product的doctorId去获取医生详情:', firstDoctorId)
                   const doc = await getDoctorDetail(firstDoctorId)
-                  console.log('首项关联医生详情返回', doc)
                   if (doc) {
-                    // 显示医生表中的 avatarUrl（兼容多种字段名）
                     const signatureUrl = doc.signatureUrl
-                    this.detail.doctorSignatureUrl = getImageUrl(signatureUrl)
-                    console.log('set detail.doctorSignatureUrl =', this.detail.doctorSignatureUrl, 'raw avatar field=', signatureUrl)
-                    // 补充医生基础信息
-                    this.detail.doctorName = this.detail.doctorName || doc.name || this.detail.doctorName
+                    if (signatureUrl && !this.detail.doctorSignatureUrl) {
+                      this.detail.doctorSignatureUrl = getImageUrl(signatureUrl)
+                    }
+                    this.detail.doctorName = doc.name || this.detail.doctorName
                   }
                 } catch (docErr) {
                   console.warn('获取首项商品关联医生信息失败:', docErr)
@@ -808,7 +868,9 @@ export default {
 
       // 构建订单信息
       // 使用统一的单价和数量计算总价（与商品详情页和复诊详情页保持一致）
-      const unitPrice = this.detail.productPrice || 4.51 // 单价，默认与商品详情页一致
+      const unitPrice = this.detail.productPrice
+        || (this.detail.prescriptionItems[0] && this.detail.prescriptionItems[0].price)
+        || 0
       const quantity = this.detail.packCount || 1
       const totalPrice = parseFloat((unitPrice * quantity).toFixed(2))
 

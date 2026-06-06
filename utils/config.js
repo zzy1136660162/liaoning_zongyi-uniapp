@@ -168,5 +168,15 @@ export const API_PATHS = {
         GET_BY_PRODUCT: (productId) => `/api/questionnaire/product/${productId}`, // 根据商品ID获取问卷
         GET_BY_ID: (id) => `/api/questionnaire/${id}`,   // 根据问卷ID获取问卷
         SUBMIT: '/api/questionnaire/submit',              // 提交问卷答案
+    },
+
+    // 购物车模块
+    CART: {
+        LIST: '/api/cart',
+        UPSERT_ITEM: '/api/cart/items',
+        UPDATE_ITEM: (productId) => `/api/cart/items/${productId}`,
+        DELETE_ITEM: (productId) => `/api/cart/items/${productId}`,
+        DELETE_ITEMS: '/api/cart/items',
+        SYNC: '/api/cart/sync',
     }
 }

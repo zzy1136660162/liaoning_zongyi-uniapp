@@ -94,11 +94,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCategoryProducts, mapProductListItem } from '@/api/product.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getCartTotalQuantity } from '@/utils/cart.js'
+import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
 const HOSPITAL_BIZ_TYPE = 1
@@ -155,6 +156,21 @@ const goDetail = (item) => {
 }
 
 const handleTabChange = () => {}
+
+let unsubscribeCartUpdated = null
+
+onMounted(() => {
+  unsubscribeCartUpdated = subscribeCartUpdated(() => {
+    loadCartCount()
+  })
+})
+
+onUnmounted(() => {
+  if (unsubscribeCartUpdated) {
+    unsubscribeCartUpdated()
+    unsubscribeCartUpdated = null
+  }
+})
 
 onLoad(() => {
   loadFeaturedProducts()

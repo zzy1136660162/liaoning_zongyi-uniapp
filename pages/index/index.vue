@@ -94,6 +94,10 @@ export default {
 							saveToken(loginResult.token)
 							console.log('✅ 已保存 Token')
 
+							import('@/utils/cart-sync.js').then(({ syncCartOnLogin }) => {
+								syncCartOnLogin()
+							})
+
 							const userInfoData = {
 								userId: loginResult.userId,
 								phone: loginResult.phone || userInfo?.phone || '',

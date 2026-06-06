@@ -174,11 +174,8 @@ const createConsultationRecord = async () => {
       return null
     }
 
-    // AI模式回退到商品默认医生；人工模式使用上页传入的真实医生ID
+    // 人工模式使用上页传入的真实医生ID；AI模式不写入商品默认医生，避免下游展示与「AI药师」不一致
     const firstProduct = products[0]
-    if (consultationMode.value === CONSULTATION_MODE_AI && !doctorId.value) {
-      doctorId.value = firstProduct?.doctorId || null
-    }
 
     // 将购物车内所有已勾选商品作为处方明细传递到后端
     // 优先使用本地存储的商品数量（由上页 apply.vue 存储），回退到商品对象中的数量或 1

@@ -357,6 +357,7 @@ import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { buildCategoryTree, normalizeCategoryId } from '@/utils/category-tree.js'
+import { subscribeCartUpdated } from '@/utils/cart-events.js'
 
 const PRODUCT_BIZ_TYPE_FILTER = null // null=全部, 1=医院制剂, 2=健康产品
 
@@ -386,7 +387,8 @@ export default {
       isScrolled: false,
       sortType: '',
       sortOrder: 'desc',
-      imageCollapsed: false
+      imageCollapsed: false,
+      unsubscribeCartUpdated: null
     }
   },
   computed: {
@@ -439,6 +441,9 @@ export default {
   onLoad() {
     this.currentTab = 'home'
     uni.$on('refreshProductsList', this.loadVerifiedProductsFromStorage)
+    this.unsubscribeCartUpdated = subscribeCartUpdated(() => {
+      this.loadVerifiedProductsFromStorage('cartUpdated')
+    })
     this.loadProducts()
     setTimeout(() => {
       this.imageCollapsed = true
@@ -449,6 +454,10 @@ export default {
   },
   onUnload() {
     uni.$off('refreshProductsList', this.loadVerifiedProductsFromStorage)
+    if (this.unsubscribeCartUpdated) {
+      this.unsubscribeCartUpdated()
+      this.unsubscribeCartUpdated = null
+    }
   },
   methods: {
     getImageUrl,

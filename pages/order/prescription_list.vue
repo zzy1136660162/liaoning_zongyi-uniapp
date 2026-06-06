@@ -157,6 +157,7 @@ import {
 // ==================== API 接口 ====================
 import { getConsultationDetail } from '@/api/consultation.js'
 import { getProductDetail } from '@/api/product.js'
+import { resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
 
 // ==================== 其他 ====================
 import { logPageView } from '@/api/access-log.js'
@@ -264,12 +265,14 @@ const syncSelectedCartState = () => {
    * 页面挂载时初始化数据
    */
   onMounted(async () => {
+    const consultationId = uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+    if (consultationId) {
+      await loadSingleConsultation(consultationId)
+    }
     await loadProducts()
     loadUserInfo()
-    loadSelectedProducts() // 恢复用户之前的选择状态
-    loadUserInfo()
+    loadSelectedProducts()
 
-    // 记录页面访问日志
     logPageView('处方列表', '用户进入处方列表页面')
   })
   
@@ -320,7 +323,7 @@ const syncSelectedCartState = () => {
         const apiPrescription = {
           id: consultation.id || String(1),
           visitNo: consultation.consultationNo || consultation.id,
-          doctorName: consultation.doctorName || '医生',
+          doctorName: resolveConsultationDoctorName(consultation) || '医生',
           department: consultation.department || '便捷配药门诊',
           consultationTime: consultation.consultationTime || consultation.createdAt,
           diagnosis: consultation.diagnosis || '待诊断',

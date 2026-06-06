@@ -722,7 +722,7 @@
 </template>
 
 <script setup>
-import { computed, getCurrentInstance, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, onUnmounted, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
@@ -735,6 +735,7 @@ import {
   prepareCheckout,
   resolveCartCompatibility
 } from '@/utils/cart.js'
+import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { logPageView } from '@/api/access-log.js'
 import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 import { getToken } from '@/utils/request.js'
@@ -1194,6 +1195,23 @@ onLoad((options) => {
   }
 
   loadCartCount()
+})
+
+let unsubscribeCartUpdated = null
+
+onMounted(() => {
+  unsubscribeCartUpdated = subscribeCartUpdated(() => {
+    loadCartCount()
+    loadQuantityFromStorage()
+    loadRecommendCartQuantities()
+  })
+})
+
+onUnmounted(() => {
+  if (unsubscribeCartUpdated) {
+    unsubscribeCartUpdated()
+    unsubscribeCartUpdated = null
+  }
 })
 
 onShow(() => {

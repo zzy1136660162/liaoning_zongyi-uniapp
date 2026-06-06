@@ -56,6 +56,28 @@ const getCurrentPage = () => {
   return ''
 }
 
+const LOG_DEDUP_MS = 1500
+const logDedupCache = new Map()
+
+const shouldSkipDuplicateLog = (cacheKey) => {
+  const now = Date.now()
+  const lastAt = logDedupCache.get(cacheKey)
+  if (lastAt && now - lastAt < LOG_DEDUP_MS) {
+    return true
+  }
+  logDedupCache.set(cacheKey, now)
+
+  if (logDedupCache.size > 300) {
+    const expiredBefore = now - LOG_DEDUP_MS * 20
+    logDedupCache.forEach((time, key) => {
+      if (time < expiredBefore) {
+        logDedupCache.delete(key)
+      }
+    })
+  }
+  return false
+}
+
 // 获取来源页面
 const getReferer = () => {
   try {
@@ -86,26 +108,37 @@ export const logAccess = async (options = {}) => {
       pageType = '',
       pageId = '',
       buttonName = '',
+      accessTitle = '',
       extraData = {}
     } = options
 
     // 获取设备信息
     const deviceInfo = getDeviceInfo()
     const currentPage = getCurrentPage()
-    const referer = getReferer()
+    const referer = extraData.refererRoute ? `/${extraData.refererRoute}` : getReferer()
+    const resolvedPageType = pageType || currentPage.split('/').pop().replace('.vue', '').toUpperCase()
+    const resolvedAccessTitle = accessTitle || extraData.accessTitle || resolvedPageType
+    const requestUri = extraData.route ? `/${extraData.route}` : (currentPage ? `/${currentPage}` : '')
+    const dedupKey = `${actionType}:${requestUri}:${pageId || ''}:${buttonName || ''}`
+
+    if (shouldSkipDuplicateLog(dedupKey)) {
+      return
+    }
 
     // 构建日志数据
     const logData = {
       actionType: actionType,
-      pageType: pageType || currentPage.split('/').pop().replace('.vue', '').toUpperCase(),
+      pageType: resolvedPageType,
+      accessType: resolvedPageType,
+      accessTitle: resolvedAccessTitle,
       pageId: pageId || '',
       // 使用小程序 sessionKey 作为会话ID，便于服务端追踪
       sessionId: getStoredWeChatSessionKey() || undefined,
       // 使用本地持久化的 clientId 作为客户端标识
       clientId: getOrCreateClientId(),
-      requestUri: '/' + currentPage,
+      requestUri: requestUri || (currentPage ? `/${currentPage}` : ''),
       deviceType: deviceInfo.deviceType,
-      referer: referer ? '/' + referer : '',
+      referer: referer ? (referer.startsWith('/') ? referer : `/${referer}`) : '',
       extraData: JSON.stringify({
         ...extraData,
         buttonName: buttonName,
@@ -152,11 +185,17 @@ const buildAuthHeaderIfExists = () => {
  * @param {Object} extraData 扩展信息（可选）
  */
 export const logPageView = (pageType, pageId = '', extraData = {}) => {
+  const normalizedExtra = typeof pageId === 'object' && pageId !== null && !Array.isArray(pageId)
+    ? pageId
+    : extraData
+  const normalizedPageId = typeof pageId === 'object' ? '' : String(pageId || '')
+
   logAccess({
     actionType: 'PAGE_VIEW',
     pageType: pageType,
-    pageId: pageId,
-    extraData: extraData
+    pageId: normalizedPageId,
+    accessTitle: normalizedExtra.accessTitle || pageType,
+    extraData: normalizedExtra
   })
 }
 
@@ -173,6 +212,7 @@ export const logButtonClick = (buttonName, pageType = '', pageId = '', extraData
     pageType: pageType,
     pageId: pageId,
     buttonName: buttonName,
+    accessTitle: buttonName,
     extraData: extraData
   })
 }

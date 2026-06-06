@@ -72,8 +72,11 @@
           <text class="value">¥0.00</text>
         </view>
         <view class="cost-row">
-          <text class="label">快递费</text>
-          <text class="value">¥{{ orderInfo.cost.shippingFee.toFixed(2) }}</text>
+          <view class="label-with-note">
+            <text class="label">运费（到付）</text>
+            <text class="freight-note">运费计算供参考，以实际支付为准</text>
+          </view>
+          <text class="value freight-ref">约¥{{ orderInfo.cost.shippingFee.toFixed(2) }}</text>
         </view>
       </view>
     </scroll-view>
@@ -113,7 +116,7 @@ const orderInfo = ref({
     distributor: '辽宁中医药大学附属医院',
     logistics: '顺丰快递',
     purchaseMethod: '药品配送-在线支付',
-    shippingPaymentMethod: '在线支付'
+    shippingPaymentMethod: '到付（货到付款给快递员）'
   },
   cost: {
     medicineCost: 0,
@@ -267,7 +270,7 @@ const calculateTotal = () => {
     // 代煎费用（示例）
     total += 0
   }
-  total += orderInfo.value.cost.shippingFee
+  // 到付：运费不计入合计，仅作参考展示
   orderInfo.value.total = total
 }
 
@@ -337,7 +340,7 @@ const submitOrder = async () => {
     // 显示支付选择弹窗
     uni.showModal({
       title: '选择支付方式',
-      content: '商品费用和快递费将分别支付给医院和物流公司',
+      content: '仅在线支付商品费用，运费到付（货到付款给快递员）',
       confirmText: '微信支付',
       cancelText: '取消',
       success: async (res) => {
@@ -555,6 +558,21 @@ const submitOrder = async () => {
   display: flex;
   align-items: center;
   gap: 12rpx;
+}
+
+.label-with-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.freight-note {
+  font-size: 20rpx;
+  color: #ff9900;
+}
+
+.freight-ref {
+  color: #999;
 }
 
 .checkbox {

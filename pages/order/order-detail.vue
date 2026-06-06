@@ -84,6 +84,7 @@
   import { getProductDetail } from '@/api/product.js'
   import { getDoctorDetail } from '@/api/hospital.js'
   import { getConsultationDetail, getPrescriptionByConsultation, getPrescriptionDetail } from '@/api/consultation.js'
+  import { resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
   import { getOrderDetail } from '@/api/order.js'
   import { checkCanApplyRefund } from '@/api/refund.js'
   import { getImageUrl } from '@/utils/config.js'
@@ -109,7 +110,10 @@
           doctorTitle: '',
           department: '',
           doctorId: null,
-          orderStatus: null // 订单状态：3为已完成
+          orderStatus: null, // 订单状态：3为已完成
+          routeStatusDesc: '', // 顺丰最新路由描述
+          logisticsNo: '', // 运单号
+          shippingPaymentMethod: '' // 运费支付方式（到付）
         },
         allCartItems: [] // 订单商品列表
       }
@@ -160,13 +164,21 @@
     },
     computed: {
       infoList() {
-        return [
+        const list = [
           // 优先展示 lnzy_prescription 表的 id（prescriptionId），回退到 prescriptionNo 文案
           { label: '处方单号', labelKey: 'prescriptionId', value: this.order.prescriptionId || this.order.prescriptionNo },
           { label: '临床诊断', labelKey: 'diagnosis', value: this.order.diagnosis },
           { label: '开方医生', labelKey: 'doctor', value: this.order.doctor },
-          { label: '开方医院', labelKey: 'hospital', value: this.order.hospital }
+          { label: '开方医院', labelKey: 'hospital', value: this.order.hospital },
+          { label: '运费', labelKey: 'shippingPaymentMethod', value: this.order.shippingPaymentMethod || '到付，以实际为准' }
         ]
+        if (this.order.routeStatusDesc) {
+          list.push({ label: '物流状态', labelKey: 'routeStatusDesc', value: this.order.routeStatusDesc })
+        }
+        if (this.order.logisticsNo) {
+          list.push({ label: '运单号', labelKey: 'logisticsNo', value: this.order.logisticsNo })
+        }
+        return list
       },
       doctorAvatar() {
         return getImageUrl(this.order.doctorAvatar || '/liaoning_zongyi/zaixian_mingyi_logo.png')
@@ -268,9 +280,14 @@
 
           if (orderDetail) {
             // 设置订单基本信息
-            this.order.amount = orderDetail.totalAmount || orderDetail.amount || '0.00'
+            this.order.amount = orderDetail.payableAmount || orderDetail.totalAmount || orderDetail.amount || '0.00'
             this.order.statusText = this.getStatusText(orderDetail.orderStatus)
+            this.order.orderStatus = orderDetail.orderStatus
             this.order.time = this.formatDateTime(orderDetail.createdAt || orderDetail.createTime)
+            // 物流/运费（到付）信息
+            this.order.shippingPaymentMethod = orderDetail.shippingPaymentMethod || '到付，以实际为准'
+            this.order.routeStatusDesc = orderDetail.routeStatusDesc || ''
+            this.order.logisticsNo = orderDetail.logisticsNo || ''
 
             // 设置处方信息
             if (orderDetail.prescriptionId) {
@@ -316,15 +333,14 @@
               console.log('从订单设置 allCartItems:', this.allCartItems)
             }
 
-            // 根据商品信息补全医生/处方信息（从所有商品中收集诊断信息）
             await this.enrichDiagnosisFromAllProducts()
+            if (this.order.prescriptionId) {
+              await this.applyDoctorFromPrescription(this.order.prescriptionId)
+            }
             const productId = (this.allCartItems[0] && this.allCartItems[0].id) || null
-            console.log('准备从商品补全诊断信息，商品首项id:', productId)
             if (productId) {
               await this.enrichByProduct(productId)
             }
-
-            // 如果有处方ID，从处方详情获取更多信息
             if (this.order.prescriptionId) {
               await this.fillPrescriptionInfo(this.order.prescriptionId)
             }
@@ -441,9 +457,11 @@
           const product = await getProductDetail(productId)
           if (product) {
             // 诊断信息已通过 enrichDiagnosisFromAllProducts 处理，这里不再覆盖
-            this.order.doctorId = product.doctorId || this.order.doctorId
-            this.order.doctorName = product.doctorName || this.order.doctorName
-            this.order.doctor = this.order.doctorName
+            if (!this.order.doctorName) {
+              this.order.doctorId = product.doctorId || this.order.doctorId
+              this.order.doctorName = product.doctorName || this.order.doctorName
+              this.order.doctor = this.order.doctorName
+            }
             // 补齐商品列表首项图片
             if (!this.allCartItems.length) {
               this.allCartItems = [{
@@ -604,7 +622,43 @@
         }
       },
       
-      // 获取订单状态文本
+      async applyDoctorFromPrescription(prescriptionId) {
+        if (!prescriptionId) {
+          return
+        }
+        try {
+          const prescription = await getPrescriptionDetail(prescriptionId)
+          if (!prescription) {
+            return
+          }
+          const doctorId = prescription.doctorId || prescription.doctor_id
+          if (doctorId) {
+            const doctor = await getDoctorDetail(doctorId)
+            if (doctor) {
+              this.order.doctorId = doctorId
+              this.order.doctorName = doctor.name || this.order.doctorName
+              this.order.doctor = doctor.name || this.order.doctor
+              this.order.doctorTitle = doctor.title || this.order.doctorTitle
+              this.order.doctorAvatar = doctor.avatarUrl || this.order.doctorAvatar
+              this.order.hospital = doctor.hospitalName || this.order.hospital
+              this.order.department = doctor.department || this.order.department
+              return
+            }
+          }
+          const consultationId = prescription.consultationId || prescription.consultation_id
+          if (consultationId) {
+            const consultation = await getConsultationDetail(consultationId)
+            const displayName = resolveConsultationDoctorName(consultation)
+            if (displayName) {
+              this.order.doctorName = displayName
+              this.order.doctor = displayName
+            }
+          }
+        } catch (e) {
+          console.warn('从处方补全医师信息失败', e)
+        }
+      },
+
       getStatusText(status) {
         const statusMap = {
           0: '待支付',

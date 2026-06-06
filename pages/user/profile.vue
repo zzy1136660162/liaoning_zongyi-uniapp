@@ -212,17 +212,18 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { getUserProfile, logout } from '@/api/auth.js'
 import { getMyOrders } from '@/api/order.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { logButtonClick, logPageView } from '@/utils/accessLog.js'
-import { loadCartItems, calculateTotalQuantity } from '@/utils/cart.js'
+import { getCartTotalQuantity } from '@/utils/cart.js'
+import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { getImageUrl } from '@/utils/config.js'
 import {
   STORAGE_KEY_TOKEN,
-  STORAGE_KEY_USER_REGISTER,
-  STORAGE_KEY_VERIFIED_PRODUCTS
+  STORAGE_KEY_USER_REGISTER
 } from '@/utils/storage.js'
 
 const userInfo = ref({
@@ -235,8 +236,8 @@ const avatarSrc = computed(() => getImageUrl('/profile/liaoning_zongyi/zaixian_m
 const successIcon = computed(() => getImageUrl('/profile/liaoning_zongyi/success.png'))
 
 const currentTab = ref('mine')
-const cartItems = ref([])
 const cartCount = ref(0)
+let unsubscribeCartUpdated = null
 
 const orderStats = ref({
   pending: 0,
@@ -428,57 +429,27 @@ const handleTabChange = (tab) => {
   currentTab.value = tab
 }
 
-const loadCartData = async () => {
-  try {
-    const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-    const productIds = Object.keys(verifiedProducts).filter((id) => verifiedProducts[id])
-
-    if (productIds.length === 0) {
-      cartItems.value = []
-      cartCount.value = 0
-      return
-    }
-
-    const cartCategory = {
-      id: 'cart_items',
-      name: '购物车商品',
-      products: []
-    }
-
-    const { getProductDetail } = await import('@/api/product.js')
-    for (const productId of productIds) {
-      try {
-        const productDetail = await getProductDetail(productId)
-        if (productDetail) {
-          cartCategory.products.push({
-            id: productDetail.id,
-            name: productDetail.productName || productDetail.name,
-            description: productDetail.subTitle || productDetail.description,
-            image: productDetail.coverImage || productDetail.image,
-            price: productDetail.price,
-            unit: productDetail.unit || '件',
-            notice: productDetail.usageDesc || productDetail.notice
-          })
-        }
-      } catch (error) {
-        console.error(`获取商品 ${productId} 详情失败:`, error)
-      }
-    }
-
-    cartItems.value = loadCartItems([cartCategory])
-    cartCount.value = calculateTotalQuantity(cartItems.value)
-  } catch (error) {
-    console.error('加载购物车数据失败:', error)
-    cartItems.value = []
-    cartCount.value = 0
-  }
+const refreshCartCount = () => {
+  cartCount.value = getCartTotalQuantity()
 }
 
 onMounted(() => {
   logPageView('USER_PROFILE')
   loadUserProfile()
   loadOrderStats()
-  loadCartData()
+  refreshCartCount()
+  unsubscribeCartUpdated = subscribeCartUpdated(refreshCartCount)
+})
+
+onShow(() => {
+  refreshCartCount()
+})
+
+onUnmounted(() => {
+  if (unsubscribeCartUpdated) {
+    unsubscribeCartUpdated()
+    unsubscribeCartUpdated = null
+  }
 })
 
 const getCurrentRoute = () => {
