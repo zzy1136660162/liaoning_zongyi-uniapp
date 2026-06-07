@@ -149,6 +149,7 @@ export const API_PATHS = {
         BY_PRESCRIPTION: (prescriptionId) => `/api/orders/by-prescription/${prescriptionId}`, // 通过处方ID查询订单
         CANCEL: (id) => `/api/orders/${id}/cancel`,       // 取消订单
         CONFIRM_RECEIPT: (id) => `/api/orders/${id}/confirm-receipt`, // 确认收货
+        REDEEM: '/api/orders/redeem',                              // 传统疗法扫码核销
     },
 
     // 支付模块

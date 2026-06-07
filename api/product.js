@@ -99,6 +99,7 @@ export const mapProductListItem = (product = {}) => {
     notice: usageDesc || commonUsage || '',
     salesVolume: Number(pickField(product, 'salesVolume', 'sales_volume') || 0),
     categoryId: pickField(product, 'categoryId', 'category_id'),
+    categoryCode: pickField(product, 'categoryCode', 'category_code') || '',
     bizType: Number(pickField(product, 'bizType', 'biz_type') || 1),
     goodsMerchantType: Number(pickField(product, 'goodsMerchantType', 'goods_merchant_type') || 1),
     productCategory: Number(pickField(product, 'productCategory', 'product_category') || 2),

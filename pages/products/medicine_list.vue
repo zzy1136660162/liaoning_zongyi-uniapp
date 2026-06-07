@@ -667,8 +667,10 @@ export default {
       this.currentSubCategoryId = exists ? currentId : this.buildAllSubCategoryId(category.id)
     },
     goToDetail(product) {
+      const isTherapy = product?.categoryCode === '传统疗法'
+      const page = isTherapy ? 'therapy_detail' : 'medicine_detail'
       uni.navigateTo({
-        url: `/pages/products/medicine_detail?id=${product.id}`
+        url: `/pages/products/${page}?id=${product.id}`
       })
     },
     buildListRedirect() {

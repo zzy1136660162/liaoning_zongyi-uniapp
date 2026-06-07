@@ -3,8 +3,15 @@
     <view style="padding: 20rpx;">
     <!-- 页面内容 -->
     <scroll-view class="body" scroll-y>
+      <!-- 传统疗法：到店核销提示 -->
+      <view v-if="isTherapyOrder" class="section therapy-tip-section">
+        <view class="therapy-tip-badge">传统疗法</view>
+        <view class="therapy-tip-title">到店核销，无需物流</view>
+        <view class="therapy-tip-desc">支付成功后将在订单列表生成核销二维码，到店出示即可使用。</view>
+      </view>
+
       <!-- 收货地址 -->
-      <view class="section address-section" @click="selectAddress">
+      <view v-if="!isTherapyOrder" class="section address-section" @click="selectAddress">
         <view v-if="selectedAddress" class="address-content">
           <view class="address-header">
             <text class="name">{{ selectedAddress.name }}</text>
@@ -21,7 +28,7 @@
       </view>
       
       <!-- 配送信息 -->
-      <view class="section">
+      <view v-if="!isTherapyOrder" class="section">
         <view class="section-title">配送信息</view>
         <view class="info-row">
           <text class="label">配送方</text>
@@ -71,7 +78,7 @@
           </view>
           <text class="value">¥0.00</text>
         </view> -->
-        <view class="cost-row">
+        <view v-if="!isTherapyOrder" class="cost-row">
           <view class="label-with-note">
             <text class="label">运费（到付）</text>
             <text class="freight-note">运费计算供参考，以实际支付为准</text>
@@ -90,7 +97,13 @@
         <text class="total-label">合计:</text>
         <text class="total-price">¥{{ orderInfo.total.toFixed(2) }}</text>
       </view>
-      <button class="submit-btn" :class="{ disabled: !selectedAddress }" @click="submitOrder">提交订单</button>
+      <button
+        class="submit-btn"
+        :class="{ disabled: !canSubmit }"
+        @click="submitOrder"
+      >
+        {{ isTherapyOrder ? '立即支付' : '提交订单' }}
+      </button>
     </view>
   </view>
 </template>
@@ -114,6 +127,9 @@ import { queryFreight } from '@/api/express.js'
 import { getCachedProducts, setCachedProducts, isCacheValid } from '@/utils/cache.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
 import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
+import { ORDER_TYPE_THERAPY } from '@/utils/therapy.js'
+
+const isTherapyOrder = ref(false)
 
 const orderInfo = ref({
   prescriptions: [],
@@ -139,7 +155,15 @@ const calculatingFreight = ref(false)
 const selectedProductIds = ref([])
 const selectedBizType = ref(1)
 
+const canSubmit = computed(() => {
+  if (isTherapyOrder.value) {
+    return orderInfo.value.items && orderInfo.value.items.length > 0
+  }
+  return !!selectedAddress.value
+})
+
 onLoad((options) => {
+  isTherapyOrder.value = options?.therapy === '1' || options?.therapy === 1 || options?.therapy === true
   if (options?.selectedItems) {
     selectedProductIds.value = options.selectedItems.split(',').filter(id => id.trim())
     setCheckoutProductIds(selectedProductIds.value)
@@ -154,7 +178,12 @@ onMounted(async () => {
 
   await loadProducts()
   loadOrderInfo()
-  loadAddresses()
+  if (!isTherapyOrder.value) {
+    loadAddresses()
+  } else {
+    orderInfo.value.cost.shippingFee = 0
+    calculateTotal()
+  }
 })
 
 onShow(async () => {
@@ -469,15 +498,15 @@ const submitOrder = async () => {
   console.log('2222---------submitOrder' );
   console.log('111111---------submitOrder', orderInfo.value);
   
-  // 若当前快递费缺失但已有收货地址，先计算一次再提交
-  if ((!orderInfo.value.cost || orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null) 
-      && selectedAddress.value) {
-    await calculateShippingFee()
-  }
-
-  if (!selectedAddress.value) {
-    uni.showToast({ title: '请选择收货地址', icon: 'none' })
-    return
+  if (!isTherapyOrder.value) {
+    if ((!orderInfo.value.cost || orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null)
+        && selectedAddress.value) {
+      await calculateShippingFee()
+    }
+    if (!selectedAddress.value) {
+      uni.showToast({ title: '请选择收货地址', icon: 'none' })
+      return
+    }
   }
   
   if (!orderInfo.value.items || orderInfo.value.items.length === 0) {
@@ -498,18 +527,22 @@ const submitOrder = async () => {
     
     // ✅ 调用后端API创建订单
     const orderData = {
-      addressId: selectedAddress.value.id,
       shippingFee: 0,
-      consultationId: selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
-        ? null
-        : (uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID) || null),
       items: orderInfo.value.items.map(item => ({
         productId: item.id,
         quantity: item.quantity || 1,
         price: item.price
       })),
-      remark: '', // 备注
+      remark: '',
       totalAmount: orderInfo.value.total
+    }
+    if (isTherapyOrder.value) {
+      orderData.orderType = ORDER_TYPE_THERAPY
+    } else {
+      orderData.addressId = selectedAddress.value.id
+      orderData.consultationId = selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
+        ? null
+        : (uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID) || null)
     }
     console.log('orderData', orderData)
     const order = await createOrder(orderData)
@@ -617,6 +650,35 @@ const submitOrder = async () => {
   border-radius: 8rpx;
   padding: 20rpx;
   margin-bottom: 20rpx;
+}
+
+.therapy-tip-section {
+  background: linear-gradient(135deg, #f0f9ff 0%, #ecfeff 100%);
+  border: 1rpx solid rgba(37, 99, 235, 0.12);
+}
+
+.therapy-tip-badge {
+  display: inline-block;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+  font-size: 22rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.therapy-tip-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 8rpx;
+}
+
+.therapy-tip-desc {
+  font-size: 24rpx;
+  color: #64748b;
+  line-height: 1.6;
 }
 
 .section-title {

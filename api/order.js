@@ -100,3 +100,16 @@ export const getOrderByPrescriptionId = (prescriptionId) => {
     showLoading: false // 查询订单状态不需要显示loading
   })
 }
+
+/**
+ * 传统疗法订单扫码核销
+ * @param {Object} data
+ * @param {String} data.verifyToken 加密核销令牌
+ * @param {String} [data.redeemedBy] 核销操作员
+ */
+export const redeemOrder = (data) => {
+  return post(API_PATHS.ORDER.REDEEM, data, {
+    needAuth: false,
+    showLoading: true
+  })
+}

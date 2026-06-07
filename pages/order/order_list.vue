@@ -31,7 +31,7 @@
         <view class="order-header">
           <text class="order-no">订单号: {{ order.orderNo }}</text>
           <text class="order-status" :class="'s-' + order.status">
-            {{ getStatusText(order.status) }}
+            {{ getStatusText(order.status, order) }}
           </text>
         </view>
         
@@ -51,6 +51,23 @@
             <text class="product-name">{{ item.productName }}</text>
             <text class="product-spec">×{{ item.quantity }}</text>
           </view>
+        </view>
+
+        <view
+          v-if="showTherapyQr(order)"
+          class="therapy-qr-card"
+          @click.stop
+        >
+          <view class="therapy-qr-head">
+            <text class="therapy-qr-tag">到店核销</text>
+            <text class="therapy-qr-hint">请向工作人员出示此码</text>
+          </view>
+          <image
+            class="therapy-qr-image"
+            :src="order.verifyQrBase64"
+            mode="aspectFit"
+            show-menu-by-longpress
+          />
         </view>
         
         <view class="order-footer">
@@ -108,6 +125,7 @@ import { ref, computed, onMounted } from 'vue'
 import { getMyOrders, cancelOrder, confirmReceipt } from '@/api/order.js'
 import { checkCanApplyRefund, getRefundList } from '@/api/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+import { isTherapyOrder } from '@/utils/therapy.js'
 
 const activeTab = ref('all')
 const orders = ref([])
@@ -156,6 +174,10 @@ const loadOrders = async () => {
         return {
           id: order.id,
           orderNo: order.orderNo || order.id,
+          orderType: order.orderType ?? order.order_type,
+          payStatus: order.payStatus ?? order.pay_status,
+          redeemStatus: order.redeemStatus ?? order.redeem_status,
+          verifyQrBase64: order.verifyQrBase64 || order.verify_qr_base64 || '',
           // 优先使用 orderStatus，如果没有则使用 status，最后默认为 0
           status: order.orderStatus !== null && order.orderStatus !== undefined
             ? order.orderStatus
@@ -229,8 +251,20 @@ const switchTab = (key) => {
   activeTab.value = key
 }
 
+const showTherapyQr = (order) => {
+  if (!isTherapyOrder(order)) return false
+  const paid = Number(order.payStatus) === 1 || order.status >= 1
+  const pendingRedeem = Number(order.redeemStatus) !== 1
+  return paid && pendingRedeem && !!order.verifyQrBase64
+}
+
 // 获取状态文本
-const getStatusText = (status) => {
+const getStatusText = (status, order = null) => {
+  if (order && isTherapyOrder(order)) {
+    if (status === 0) return '待支付'
+    if (Number(order.redeemStatus) === 1 || status === 3) return '已核销'
+    if (status >= 1) return '待核销'
+  }
   const statusMap = {
     0: '待支付',
     1: '待发货',
@@ -643,6 +677,47 @@ $info: #3b82f6;
   padding-top: 14rpx;
   margin-top: 12rpx;
   border-top: 1rpx solid rgba(231, 238, 248, 0.9);
+}
+
+.therapy-qr-card {
+  margin: 14rpx 0 6rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  background: linear-gradient(180deg, #f8fbff 0%, #f1f5f9 100%);
+  border: 1rpx dashed rgba(37, 99, 235, 0.22);
+  text-align: center;
+}
+
+.therapy-qr-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+  margin-bottom: 12rpx;
+}
+
+.therapy-qr-tag {
+  display: inline-block;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: rgba(37, 99, 235, 0.12);
+  color: $primary;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.therapy-qr-hint {
+  font-size: 24rpx;
+  color: $muted;
+}
+
+.therapy-qr-image {
+  width: 280rpx;
+  height: 280rpx;
+  margin: 0 auto;
+  border-radius: 12rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.08);
 }
 
 .order-amount {

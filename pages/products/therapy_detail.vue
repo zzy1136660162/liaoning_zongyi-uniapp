@@ -934,16 +934,9 @@ const goCheckout = (targetProduct) => {
   }
 
   const selectedItems = checkout.productIds.join(',')
-  if (Number(targetProduct.bizType) === BIZ_TYPE_HEALTH_GOODS) {
-    uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-    uni.navigateTo({
-      url: `/pages/order/confirm?selectedItems=${selectedItems}`
-    })
-    return true
-  }
-
+  uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
   uni.navigateTo({
-    url: `/pages/dispense/apply?selectedItems=${selectedItems}`
+    url: `/pages/order/confirm?therapy=1&selectedItems=${selectedItems}`
   })
   return true
 }
