@@ -207,6 +207,21 @@
                   ↓
                 </text>
               </view>
+              <view
+                class="sort-btn"
+                :class="{ active: sortType === 'stock' }"
+                @click="toggleSort('stock')"
+              >
+                <text class="sort-text">
+                  库存
+                </text>
+                <text
+                  class="sort-arrow"
+                  :class="{ desc: sortType === 'stock' && sortOrder === 'desc' }"
+                >
+                  ↓
+                </text>
+              </view>
             </view>
           </view>
           <!-- <view class="history-order" @click="goToHistory">
@@ -218,6 +233,8 @@
         <scroll-view
           class="product-list"
           scroll-y
+          lower-threshold="120"
+          @scrolltolower="handleLoadMore"
         >
           <view class="product-items">
             <view
@@ -245,7 +262,7 @@
                   @click="goToDetail(product)"
                 >
                   <text
-                    v-if="product.bizType === 1"
+                    v-if="isSelfDevelopedProduct(product)"
                     class="self-tag"
                   >
                     自研
@@ -270,6 +287,14 @@
                 >
                   {{ product.description }}
                 </text>
+                <view class="product-meta-tags">
+                  <text class="meta-tag">
+                    {{ getExternalUseLabel(product.isExternal) }}
+                  </text>
+                  <text class="meta-tag">
+                    {{ getColdShippingLabel(product.coldShippingType) }}
+                  </text>
+                </view>
                 <view class="product-footer">
                   <!-- <text class="product-unit">{{ product.specText || product.unit || '' }}</text> -->
                   <view class="product-price-row">
@@ -358,8 +383,15 @@ import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { buildCategoryTree, normalizeCategoryId } from '@/utils/category-tree.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
+import {
+  getColdShippingLabel,
+  getExternalUseLabel,
+  isSelfDevelopedProduct
+} from '@/utils/product-display.js'
 
 const PRODUCT_BIZ_TYPE_FILTER = null // null=全部, 1=医院制剂, 2=健康产品
+const PRODUCT_PAGE_SIZE = 20
+const PRODUCT_LIST_TTL = 5 * 60 * 1000
 
 export default {
   components: { TabBar },
@@ -383,6 +415,7 @@ export default {
       zeroQuantityProducts: {},
       currentTab: 'home',
       loadedCategories: {},
+      productPageState: {},
       categoryList: [],
       isScrolled: false,
       sortType: '',
@@ -410,25 +443,11 @@ export default {
       if (this.searchKeyword.trim()) {
         const keyword = this.searchKeyword.trim().toLowerCase()
         products = products.filter(product =>
-          product.name.toLowerCase().includes(keyword) ||
+          (product.name || '').toLowerCase().includes(keyword) ||
           (product.description && product.description.toLowerCase().includes(keyword))
         )
       }
-      if (this.sortType) {
-        products = [...products].sort((a, b) => {
-          if (this.sortType === 'sales') {
-            const aSales = a.salesVolume || 0
-            const bSales = b.salesVolume || 0
-            return this.sortOrder === 'desc' ? bSales - aSales : aSales - bSales
-          }
-          if (this.sortType === 'price') {
-            const aPrice = a.price || 0
-            const bPrice = b.price || 0
-            return this.sortOrder === 'desc' ? bPrice - aPrice : aPrice - bPrice
-          }
-          return 0
-        })
-      }
+      // 排序由后端分页接口处理，此处仅做子分类与搜索过滤
       return products
     },
     cartCount() {
@@ -452,6 +471,9 @@ export default {
   onShow() {
     this.loadVerifiedProductsFromStorage()
   },
+  onPullDownRefresh() {
+    this.handleRefreshProducts()
+  },
   onUnload() {
     uni.$off('refreshProductsList', this.loadVerifiedProductsFromStorage)
     if (this.unsubscribeCartUpdated) {
@@ -461,6 +483,9 @@ export default {
   },
   methods: {
     getImageUrl,
+    getExternalUseLabel,
+    getColdShippingLabel,
+    isSelfDevelopedProduct,
     removeZeroQuantityMarker(productId) {
       const normalizedId = String(productId)
       if (!this.zeroQuantityProducts[normalizedId]) {
@@ -511,8 +536,138 @@ export default {
         this.sortType = type
         this.sortOrder = 'desc'
       }
+      this.reloadCurrentCategoryProducts()
     },
     handleSearch() {},
+    getCategoryKey(categoryId) {
+      return normalizeCategoryId(categoryId || 'all')
+    },
+    getPageState(categoryId) {
+      const key = this.getCategoryKey(categoryId)
+      if (!this.productPageState[key]) {
+        this.$set(this.productPageState, key, {
+          pageNum: 0,
+          hasMore: true,
+          loading: false,
+          loadedAt: 0,
+          total: 0
+        })
+      }
+      return this.productPageState[key]
+    },
+    isCategoryStale(categoryId) {
+      const state = this.getPageState(categoryId)
+      if (!state.loadedAt) {
+        return true
+      }
+      return Date.now() - state.loadedAt > PRODUCT_LIST_TTL
+    },
+    mapSortField() {
+      if (this.sortType === 'sales') return 'sales'
+      if (this.sortType === 'price') return 'price'
+      if (this.sortType === 'stock') return 'stock'
+      return null
+    },
+    resetCategoryProducts(categoryId) {
+      const key = this.getCategoryKey(categoryId)
+      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === key)
+      if (category) {
+        category.products = []
+      }
+      this.$set(this.productPageState, key, {
+        pageNum: 0,
+        hasMore: true,
+        loading: false,
+        loadedAt: 0,
+        total: 0
+      })
+      delete this.loadedCategories[key]
+    },
+    async fetchProductPage(categoryId, { reset = false } = {}) {
+      const key = this.getCategoryKey(categoryId)
+      const state = this.getPageState(categoryId)
+      if (state.loading) {
+        return
+      }
+      if (!reset && !state.hasMore) {
+        return
+      }
+
+      if (reset) {
+        this.resetCategoryProducts(categoryId)
+      }
+
+      const nextPage = reset ? 1 : state.pageNum + 1
+      const apiCategoryId = key === 'all' ? null : key
+      state.loading = true
+
+      try {
+        const productPage = await getCategoryProducts(
+          apiCategoryId,
+          nextPage,
+          PRODUCT_PAGE_SIZE,
+          PRODUCT_BIZ_TYPE_FILTER,
+          this.mapSortField(),
+          this.sortType ? this.sortOrder : null
+        )
+        const productList = productPage.records || productPage.list || []
+        const mapped = productList.map(item => mapProductListItem(item))
+        const total = Number(productPage.total || 0)
+        const category = this.categories.find(cat => this.getCategoryKey(cat.id) === key)
+        if (category) {
+          const existingIds = new Set((category.products || []).map(product => String(product.id)))
+          category.products = reset
+            ? mapped
+            : [
+              ...(category.products || []),
+              ...mapped.filter(product => !existingIds.has(String(product.id)))
+            ]
+        }
+        state.pageNum = nextPage
+        state.total = total
+        const loadedCount = category?.products?.length || 0
+        state.hasMore = total > 0 ? loadedCount < total : mapped.length >= PRODUCT_PAGE_SIZE
+        state.loadedAt = Date.now()
+        if (!state.hasMore) {
+          this.loadedCategories[key] = true
+        }
+      } catch (error) {
+        console.error('fetchProductPage failed:', error)
+        throw error
+      } finally {
+        state.loading = false
+      }
+    },
+    async reloadCurrentCategoryProducts() {
+      try {
+        await this.fetchProductPage(this.currentCategoryId, { reset: true })
+        this.loadVerifiedProductsFromStorage('reloadProducts')
+      } catch (error) {
+        uni.showToast({ title: '刷新商品失败', icon: 'none' })
+      }
+    },
+    async handleRefreshProducts() {
+      try {
+        await this.fetchProductPage(this.currentCategoryId, { reset: true })
+        this.loadVerifiedProductsFromStorage('pullRefresh')
+      } catch (error) {
+        uni.showToast({ title: '刷新失败', icon: 'none' })
+      } finally {
+        uni.stopPullDownRefresh()
+      }
+    },
+    async handleLoadMore() {
+      const state = this.getPageState(this.currentCategoryId)
+      if (!state.hasMore || state.loading) {
+        return
+      }
+      try {
+        await this.fetchProductPage(this.currentCategoryId, { reset: false })
+        this.loadVerifiedProductsFromStorage('loadMore')
+      } catch (error) {
+        console.error('handleLoadMore failed:', error)
+      }
+    },
     async loadProducts() {
       try {
         uni.showLoading({ title: '加载中...' })
@@ -533,8 +688,9 @@ export default {
             }))
           }))
         ]
-        await this.loadAllProducts()
-        this.loadedCategories.all = true
+        this.productPageState = {}
+        this.loadedCategories = {}
+        await this.loadAllProducts(true)
         this.syncCurrentSubCategory()
         this.loadVerifiedProductsFromStorage('loadProducts')
       } catch (error) {
@@ -544,25 +700,18 @@ export default {
         uni.hideLoading()
       }
     },
-    async loadAllProducts() {
-      const productPage = await getCategoryProducts(null, 1, 100, PRODUCT_BIZ_TYPE_FILTER)
-      const productList = productPage.records || productPage.list || []
-      const allProducts = productList.map(item => mapProductListItem(item))
-      const allCategory = this.categories.find(cat => cat.id === 'all')
-      if (allCategory) {
-        allCategory.products = allProducts
+    async loadAllProducts(reset = false) {
+      if (!reset && this.loadedCategories.all && !this.isCategoryStale('all')) {
+        return
       }
+      await this.fetchProductPage('all', { reset: reset || this.isCategoryStale('all') })
     },
-    async loadCategoryProducts(categoryId) {
-      if (this.loadedCategories[categoryId]) return
-      const productPage = await getCategoryProducts(categoryId, 1, 100, PRODUCT_BIZ_TYPE_FILTER)
-      const productList = productPage.records || productPage.list || []
-      const products = productList.map(item => mapProductListItem(item))
-      const category = this.categories.find(cat => cat.id === categoryId)
-      if (category) {
-        category.products = products
-        this.loadedCategories[categoryId] = true
+    async loadCategoryProducts(categoryId, reset = false) {
+      const key = this.getCategoryKey(categoryId)
+      if (!reset && this.loadedCategories[key] && !this.isCategoryStale(categoryId)) {
+        return
       }
+      await this.fetchProductPage(categoryId, { reset: reset || this.isCategoryStale(categoryId) })
     },
     loadVerifiedProductsFromStorage(source = 'unknown', focusProductId = '') {
       try {
@@ -604,9 +753,8 @@ export default {
       this.currentSubCategoryId = ''
       this.expandCategory(normalizedCategoryId)
       if (categoryId === 'all') {
-        if (!this.loadedCategories.all) {
-          await this.loadAllProducts()
-          this.loadedCategories.all = true
+        if (this.isCategoryStale('all') || !this.getPageState('all').pageNum) {
+          await this.loadAllProducts(true)
         }
         this.syncCurrentSubCategory()
         this.loadVerifiedProductsFromStorage('switchCategory:all')
@@ -1030,7 +1178,7 @@ scroll-view ::-webkit-scrollbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20rpx 20rpx 16rpx 20rpx;
+  padding: 20rpx 20rpx 16rpx 0rpx;
   border-bottom: 1rpx solid #f0f0f0;
 }
 
@@ -1220,6 +1368,21 @@ scroll-view ::-webkit-scrollbar {
 
 .self-tag3 {
   background: #00c792;
+}
+
+.product-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-bottom: 10rpx;
+}
+
+.meta-tag {
+  font-size: 20rpx;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
 }
 
 .product-desc {

@@ -70,10 +70,16 @@
     <view class="goods-info">
       <view class="goods-name-row">
         <text
-          v-if="product.bizType === 1"
+          v-if="isSelfDevelopedProduct(product)"
           class="self-developed-tag"
         >
           自研
+        </text>
+        <text
+          v-if="product.isExternal === 0 || product.isExternal === 1"
+          class="external-use-tag"
+        >
+          {{ getExternalUseLabel(product.isExternal) }}
         </text>
         <text
           v-if="product.isHospitalStarFormula === 1"
@@ -209,12 +215,13 @@
         配送
       </text>
       <image
+        v-if="showSfLogo"
         class="sf-logo"
         src="https://smf.lntcm.com/static/logo/sf.png"
         mode="aspectFit"
       />
       <text class="delivery-text">
-        顺丰配送，时效以实际收货地址为准
+        {{ deliverySummary }}
       </text>
     </view>
 
@@ -739,6 +746,12 @@ import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { logPageView } from '@/api/access-log.js'
 import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 import { getToken } from '@/utils/request.js'
+import {
+  getDeliverySummary,
+  getExternalUseLabel,
+  isSelfDevelopedProduct,
+  shouldShowSfLogo
+} from '@/utils/product-display.js'
 
 const createEmptyProduct = () => ({
   id: '',
@@ -760,6 +773,10 @@ const createEmptyProduct = () => ({
   isNewProduct: 0,
   detailTitle: '',
   isStarProduct: 0,
+  isExternal: 0,
+  coldShippingType: 0,
+  isSelfDeveloped: 1,
+  stock: 0,
   indications: '',
   ingredients: '',
   commonUsage: '',
@@ -822,9 +839,16 @@ const originTypeText = computed(() => {
   return ''
 })
 
+const deliverySummary = computed(() => getDeliverySummary(product.value.coldShippingType))
+const showSfLogo = computed(() => shouldShowSfLogo(product.value.coldShippingType))
+
 const specItems = computed(() => {
+  const externalLabel = product.value.isExternal === 0 || product.value.isExternal === 1
+    ? getExternalUseLabel(product.value.isExternal)
+    : ''
   return [
     { label: '产品名称', value: product.value.name },
+    { label: '是否外用', value: externalLabel },
     { label: '规格', value: product.value.specText },
     { label: '包装', value: product.value.packageSpec },
     { label: '剂型', value: product.value.dosageForm },
@@ -1427,6 +1451,7 @@ onShow(() => {
 }
 
 .self-developed-tag,
+.external-use-tag,
 .new-product-tag,
 .star-product-tag,
 .goods-name {
@@ -1434,6 +1459,7 @@ onShow(() => {
 }
 
 .self-developed-tag,
+.external-use-tag,
 .new-product-tag,
 .star-product-tag {
   font-size: 20rpx;
@@ -1449,6 +1475,11 @@ onShow(() => {
 .self-developed-tag {
   background: #ff4b4b;
   color: #fff;
+}
+
+.external-use-tag {
+  background: #e0f2fe;
+  color: #0369a1;
 }
 
 .new-product-tag {

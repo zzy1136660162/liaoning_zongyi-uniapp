@@ -72,6 +72,18 @@
         <text class="therapy-tag">
           传统疗法
         </text>
+        <text
+          v-if="isSelfDevelopedProduct(product)"
+          class="self-developed-tag"
+        >
+          自研
+        </text>
+        <text
+          v-if="product.isExternal === 0 || product.isExternal === 1"
+          class="external-use-tag"
+        >
+          {{ getExternalUseLabel(product.isExternal) }}
+        </text>
         <text class="goods-name">
           {{ product.name }}&nbsp;{{ product.description }}
         </text>
@@ -163,8 +175,14 @@
       <text class="delivery-label">
         配送
       </text>
+      <image
+        v-if="showSfLogo"
+        class="sf-logo"
+        src="https://smf.lntcm.com/static/logo/sf.png"
+        mode="aspectFit"
+      />
       <text class="delivery-text">
-        自提 来医院线下体验
+        {{ deliverySummary }}
       </text>
     </view>
 
@@ -679,6 +697,12 @@ import {
 import { logPageView } from '@/api/access-log.js'
 import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 import { getToken } from '@/utils/request.js'
+import {
+  getDeliverySummary,
+  getExternalUseLabel,
+  isSelfDevelopedProduct,
+  shouldShowSfLogo
+} from '@/utils/product-display.js'
 
 const createEmptyProduct = () => ({
   id: '',
@@ -700,6 +724,10 @@ const createEmptyProduct = () => ({
   isNewProduct: 0,
   detailTitle: '',
   isStarProduct: 0,
+  isExternal: 0,
+  coldShippingType: 0,
+  isSelfDeveloped: 1,
+  stock: 0,
   indications: '',
   ingredients: '',
   commonUsage: '',
@@ -762,9 +790,16 @@ const originTypeText = computed(() => {
   return ''
 })
 
+const deliverySummary = computed(() => getDeliverySummary(product.value.coldShippingType))
+const showSfLogo = computed(() => shouldShowSfLogo(product.value.coldShippingType))
+
 const specItems = computed(() => {
+  const externalLabel = product.value.isExternal === 0 || product.value.isExternal === 1
+    ? getExternalUseLabel(product.value.isExternal)
+    : ''
   return [
     { label: '产品名称', value: product.value.name },
+    { label: '是否外用', value: externalLabel },
     { label: '规格', value: product.value.specText },
     { label: '包装', value: product.value.packageSpec },
     { label: '剂型', value: product.value.dosageForm },
@@ -1343,8 +1378,30 @@ onShow(() => {
 }
 
 .therapy-tag,
+.self-developed-tag,
+.external-use-tag,
 .goods-name {
   vertical-align: middle;
+}
+
+.self-developed-tag,
+.external-use-tag {
+  font-size: 20rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 4rpx;
+  font-weight: bold;
+  margin-right: 8rpx;
+  display: inline;
+}
+
+.self-developed-tag {
+  background: #ff4b4b;
+  color: #fff;
+}
+
+.external-use-tag {
+  background: #e0f2fe;
+  color: #0369a1;
 }
 
 .therapy-tag {

@@ -12,7 +12,14 @@ export const getCategoryList = (bizType = null) => {
   })
 }
 
-export const getProductsByCategory = (categoryId = null, pageNum = 1, pageSize = 10, bizType = null) => {
+export const getProductsByCategory = (
+  categoryId = null,
+  pageNum = 1,
+  pageSize = 10,
+  bizType = null,
+  sortField = null,
+  sortOrder = null
+) => {
   const payload = {
     categoryId,
     pageNum,
@@ -22,9 +29,15 @@ export const getProductsByCategory = (categoryId = null, pageNum = 1, pageSize =
   if (bizType !== null && bizType !== undefined && bizType !== '') {
     payload.bizType = bizType
   }
+  if (sortField) {
+    payload.sortField = sortField
+  }
+  if (sortOrder) {
+    payload.sortOrder = sortOrder
+  }
   return post(API_PATHS.CATEGORY.PRODUCTS, payload, {
     needAuth: true,
-    showLoading: true
+    showLoading: pageNum <= 1
   })
 }
 
@@ -109,7 +122,15 @@ export const mapProductListItem = (product = {}) => {
     isHospitalStarFormula: Number(pickField(product, 'isHospitalStarFormula', 'is_hospital_star_formula') || 0),
     isNewProduct: Number(pickField(product, 'isNewProduct', 'is_new_product') || 0),
     detailTitle: pickField(product, 'detailTitle', 'detail_title') || '',
-    isStarProduct: Number(pickField(product, 'isStarProduct', 'is_star_product') || 0)
+    isStarProduct: Number(pickField(product, 'isStarProduct', 'is_star_product') || 0),
+    stock: Number(pickField(product, 'stock') || 0),
+    isExternal: Number(pickField(product, 'isExternal', 'is_external') || 0),
+    coldShippingType: Number(pickField(product, 'coldShippingType', 'cold_shipping_type') || 0),
+    isSelfDeveloped: (() => {
+      const raw = pickField(product, 'isSelfDeveloped', 'is_self_developed')
+      if (raw === null || raw === undefined || raw === '') return 1
+      return Number(raw)
+    })()
   }
 }
 

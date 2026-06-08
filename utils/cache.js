@@ -1,29 +1,38 @@
 /**
  * 商品数据缓存工具
- * 用于缓存商品分类和产品数据，避免重复请求
+ * 用于缓存下单确认页选中的商品，避免重复请求
  */
 
-import { 
-  STORAGE_KEY_PRODUCTS_CACHE, 
-  CACHE_EXPIRE_TIME 
+import {
+  STORAGE_KEY_PRODUCTS_CACHE,
+  CHECKOUT_CACHE_EXPIRE_TIME
 } from './storage.js'
+
+const buildProductIdKey = (productIds = []) => {
+  return [...new Set((productIds || []).map(id => String(id)).filter(Boolean))].sort().join(',')
+}
 
 /**
  * 获取缓存的商品数据
- * @returns {Object|null} 缓存的数据或null
+ * @param {Array<string|number>} productIds 当前选中的商品 ID 列表，用于校验缓存是否匹配
+ * @returns {Object|null} 缓存的数据或 null
  */
-export const getCachedProducts = () => {
+export const getCachedProducts = (productIds = []) => {
   try {
     const cached = uni.getStorageSync(STORAGE_KEY_PRODUCTS_CACHE)
     if (!cached) {
       return null
     }
 
-    // 检查是否过期
     const now = Date.now()
-    if (now - cached.timestamp > cached.expireTime) {
-      // 过期了，清除缓存
+    if (now - cached.timestamp > (cached.expireTime || CHECKOUT_CACHE_EXPIRE_TIME)) {
       uni.removeStorageSync(STORAGE_KEY_PRODUCTS_CACHE)
+      return null
+    }
+
+    const requestedKey = buildProductIdKey(productIds)
+    const cachedKey = buildProductIdKey(cached.productIds || [])
+    if (requestedKey && cachedKey && requestedKey !== cachedKey) {
       return null
     }
 
@@ -37,15 +46,17 @@ export const getCachedProducts = () => {
 /**
  * 设置商品数据缓存
  * @param {Array} categories 分类列表
- * @param {Object} products 按分类ID组织的商品数据
+ * @param {Object} products 按分类 ID 组织的商品数据
+ * @param {Array<string|number>} productIds 当前选中的商品 ID 列表
  */
-export const setCachedProducts = (categories, products) => {
+export const setCachedProducts = (categories, products, productIds = []) => {
   try {
     const cacheData = {
       categories,
       products,
+      productIds: [...new Set((productIds || []).map(id => String(id)).filter(Boolean))],
       timestamp: Date.now(),
-      expireTime: CACHE_EXPIRE_TIME
+      expireTime: CHECKOUT_CACHE_EXPIRE_TIME
     }
     uni.setStorageSync(STORAGE_KEY_PRODUCTS_CACHE, cacheData)
   } catch (e) {
@@ -66,9 +77,11 @@ export const clearCachedProducts = () => {
 
 /**
  * 检查缓存是否存在且有效
+ * @param {Array<string|number>} productIds 当前选中的商品 ID 列表
  * @returns {Boolean} 是否有效
  */
-export const isCacheValid = () => {
-  const cached = getCachedProducts()
-  return cached !== null
+export const isCacheValid = (productIds = []) => {
+  return getCachedProducts(productIds) !== null
 }
+
+export { buildProductIdKey }

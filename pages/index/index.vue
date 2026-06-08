@@ -19,6 +19,7 @@ import { ensureWeChatIdentity, getUserByOpenid, loginByOpenid } from '@/api/auth
 import { STORAGE_KEY_USER_REGISTER, STORAGE_KEY_USER_INFO, STORAGE_KEY_USER_LOGIN_STATUS } from '@/utils/storage.js'
 import { getToken, saveToken } from '@/utils/request.js'
 import { getImageUrl } from '@/utils/config.js'
+import { syncCartOnLogin } from '@/utils/cart-sync.js'
 
 export default {
 	data() {
@@ -94,9 +95,7 @@ export default {
 							saveToken(loginResult.token)
 							console.log('✅ 已保存 Token')
 
-							import('@/utils/cart-sync.js').then(({ syncCartOnLogin }) => {
-								syncCartOnLogin()
-							})
+							syncCartOnLogin()
 
 							const userInfoData = {
 								userId: loginResult.userId,

@@ -242,6 +242,11 @@ export const STORAGE_KEY_PRODUCTS_CACHE = 'products_cache'
 
 /**
  * 缓存过期时间（毫秒）
- * 默认30分钟过期
+ * 下单确认页商品缓存：5 分钟
  */
-export const CACHE_EXPIRE_TIME = 30 * 60 * 1000
+export const CHECKOUT_CACHE_EXPIRE_TIME = 5 * 60 * 1000
+
+/**
+ * @deprecated 请使用 CHECKOUT_CACHE_EXPIRE_TIME
+ */
+export const CACHE_EXPIRE_TIME = CHECKOUT_CACHE_EXPIRE_TIME

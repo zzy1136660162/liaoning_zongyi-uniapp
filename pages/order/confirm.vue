@@ -226,25 +226,35 @@ const loadProducts = async () => {
     setCheckoutProductIds(currentSelectedIds)
     
     // 先检查缓存
-    if (isCacheValid()) {
-      console.log('使用缓存的商品数据')
-      const cached = getCachedProducts()
-      // 检查缓存中的商品是否包含当前选中的所有商品
-      const cachedProductIds = new Set()
-      cached.categories.forEach(cat => {
-        cat.products.forEach(p => cachedProductIds.add(String(p.id)))
+    if (isCacheValid(currentSelectedIds)) {
+      const cached = getCachedProducts(currentSelectedIds)
+      // 汇总缓存中的所有商品（按 id 建立索引，便于按当前选中项精确取用）
+      const cachedProductMap = new Map()
+      ;(cached?.categories || []).forEach(cat => {
+        ;(cat?.products || []).forEach(p => {
+          if (p && p.id !== undefined && p.id !== null) {
+            cachedProductMap.set(String(p.id), p)
+          }
+        })
       })
-      const currentProductIds = new Set(currentSelectedIds.map(id => String(id)))
-      
-      // 如果缓存包含所有需要的商品，使用缓存
-      const hasAllProducts = currentSelectedIds.every(id => cachedProductIds.has(String(id)))
-      if (hasAllProducts && cached.categories.length > 0) {
-        categories.value = cached.categories
-        const flow = resolveProductFlow(cached.categories[0]?.products || [])
+
+      // 仅当缓存覆盖了当前选中的所有商品时才复用缓存
+      const hasAllProducts = currentSelectedIds.every(id => cachedProductMap.has(String(id)))
+      if (hasAllProducts) {
+        console.log('使用缓存的商品数据')
+        // 只取当前选中的商品，避免历史缓存中多余的商品混入本次订单
+        const selectedProducts = currentSelectedIds.map(id => cachedProductMap.get(String(id)))
+        const cachedCategory = {
+          id: 'selected_items',
+          name: '订单商品',
+          products: selectedProducts
+        }
+        categories.value = [cachedCategory]
+        const flow = resolveProductFlow(selectedProducts)
         if (flow.valid) {
           selectedBizType.value = flow.bizType
         }
-        return cached.categories
+        return [cachedCategory]
       }
     }
 
@@ -282,7 +292,7 @@ const loadProducts = async () => {
     
     // 缓存数据
     const productsData = { selected_items: cartCategory.products }
-    setCachedProducts([cartCategory], productsData)
+    setCachedProducts([cartCategory], productsData, currentSelectedIds)
     
     categories.value = [cartCategory]
     const flow = resolveProductFlow(cartCategory.products)

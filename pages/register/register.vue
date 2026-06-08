@@ -115,6 +115,7 @@ import { sendSmsCode, login, ensureWeChatIdentity, getWeChatUserProfile } from '
 import { saveToken } from '@/utils/request.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
 import { logPageView } from '@/api/access-log.js'
+import { syncCartOnLogin } from '@/utils/cart-sync.js'
 
 export default {
 	data() {
@@ -322,9 +323,7 @@ export default {
 				// 5. 淇濆瓨Token
 				if (result && result.token) {
 					saveToken(result.token)
-					import('@/utils/cart-sync.js').then(({ syncCartOnLogin }) => {
-						syncCartOnLogin()
-					})
+					syncCartOnLogin()
 				}
 				
 				// 6. 淇濆瓨鍚庣杩斿洖鐨勫熀纭€鐢ㄦ埛淇℃伅

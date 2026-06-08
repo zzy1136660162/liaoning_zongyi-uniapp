@@ -25,7 +25,9 @@
       "path": "pages/products/priducts_list",
       "style": {
         "navigationBarTitleText": "健康商城",
-        "navigationBarBackgroundColor": "#ffffff"
+        "navigationBarBackgroundColor": "#ffffff",
+        "enablePullDownRefresh": true,
+        "backgroundTextStyle": "dark"
       }
     },
     {
@@ -63,7 +65,9 @@
       "path": "pages/products/medicine_list",
       "style": {
         "navigationBarTitleText": "商品列表",
-        "navigationStyle": "custom"
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundTextStyle": "dark"
       }
     },
     {
