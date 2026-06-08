@@ -261,8 +261,14 @@
                   class="product-name"
                   @click="goToDetail(product)"
                 >
+                  <text 
+                    v-if="product.categoryId === 34"
+                    class="therapy-tag"
+                  >
+                    传统疗法
+                  </text>
                   <text
-                    v-if="isSelfDevelopedProduct(product)"
+                    v-if="product.categoryId !== 34"
                     class="self-tag"
                   >
                     自研
@@ -287,14 +293,14 @@
                 >
                   {{ product.description }}
                 </text>
-                <view class="product-meta-tags">
+                <!-- <view class="product-meta-tags">
                   <text class="meta-tag">
                     {{ getExternalUseLabel(product.isExternal) }}
                   </text>
                   <text class="meta-tag">
                     {{ getColdShippingLabel(product.coldShippingType) }}
                   </text>
-                </view>
+                </view> -->
                 <view class="product-footer">
                   <!-- <text class="product-unit">{{ product.specText || product.unit || '' }}</text> -->
                   <view class="product-price-row">
@@ -1355,6 +1361,17 @@ scroll-view ::-webkit-scrollbar {
   border-radius: 4rpx;
   margin-right: 8rpx;
   vertical-align: middle;
+}
+
+.therapy-tag {
+  display: inline;
+  background: linear-gradient(135deg, #4a90e2, #67c6ff);
+  color: #fff;
+  font-size: 20rpx;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+  font-weight: bold;
+  margin-right: 8rpx;
 }
 
 .self-tag {

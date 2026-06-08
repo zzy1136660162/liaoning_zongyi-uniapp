@@ -75,12 +75,12 @@
         >
           自研
         </text>
-        <text
+        <!-- <text
           v-if="product.isExternal === 0 || product.isExternal === 1"
           class="external-use-tag"
         >
           {{ getExternalUseLabel(product.isExternal) }}
-        </text>
+        </text> -->
         <text
           v-if="product.isHospitalStarFormula === 1"
           class="new-product-tag"

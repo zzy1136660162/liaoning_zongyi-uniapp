@@ -72,18 +72,18 @@
         <text class="therapy-tag">
           传统疗法
         </text>
-        <text
+        <!-- <text
           v-if="isSelfDevelopedProduct(product)"
           class="self-developed-tag"
         >
           自研
-        </text>
-        <text
+        </text> -->
+        <!-- <text
           v-if="product.isExternal === 0 || product.isExternal === 1"
           class="external-use-tag"
         >
           {{ getExternalUseLabel(product.isExternal) }}
-        </text>
+        </text> -->
         <text class="goods-name">
           {{ product.name }}&nbsp;{{ product.description }}
         </text>
@@ -175,14 +175,8 @@
       <text class="delivery-label">
         配送
       </text>
-      <image
-        v-if="showSfLogo"
-        class="sf-logo"
-        src="https://smf.lntcm.com/static/logo/sf.png"
-        mode="aspectFit"
-      />
       <text class="delivery-text">
-        {{ deliverySummary }}
+        医院自提
       </text>
     </view>
 
