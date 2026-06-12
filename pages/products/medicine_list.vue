@@ -207,7 +207,7 @@
                   ↓
                 </text>
               </view>
-              <view
+              <!-- <view
                 class="sort-btn"
                 :class="{ active: sortType === 'stock' }"
                 @click="toggleSort('stock')"
@@ -221,7 +221,7 @@
                 >
                   ↓
                 </text>
-              </view>
+              </view> -->
             </view>
           </view>
           <!-- <view class="history-order" @click="goToHistory">
@@ -268,7 +268,7 @@
                     传统疗法
                   </text>
                   <text
-                    v-if="product.categoryId !== 34"
+                    v-if="product.isSelfDeveloped === 1"
                     class="self-tag"
                   >
                     自研
