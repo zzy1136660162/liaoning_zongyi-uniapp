@@ -149,6 +149,18 @@ export const wechatCombinePay = async (orderId, paymentData = {}) => {
 }
 
 /**
+ * 主动同步订单支付状态（补偿微信回调延迟或失败）
+ * @param {Number} orderId 订单ID
+ * @param {String} outTradeNo 商户支付单号
+ */
+export const syncPaymentByOrder = async (orderId, outTradeNo) => {
+  return post(`/api/payment/single/sync-by-order/${orderId}`, { outTradeNo }, {
+    needAuth: true,
+    showLoading: false
+  })
+}
+
+/**
  * 查询合单支付订单状态
  * @param {String} combineOutTradeNo 合单商户订单号
  */

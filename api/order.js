@@ -52,10 +52,11 @@ export const getOrderList = (orderStatus = null) => {
  * 获取订单详情
  * @param {Number} id 订单ID
  */
-export const getOrderDetail = (id) => {
+export const getOrderDetail = (id, options = {}) => {
   return get(API_PATHS.ORDER.DETAIL(id), {}, {
     needAuth: true,
-    showLoading: true
+    showLoading: true,
+    ...options
   })
 }
 

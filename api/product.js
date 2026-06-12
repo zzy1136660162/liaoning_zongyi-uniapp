@@ -1,4 +1,4 @@
-import { get, post } from '@/utils/request.js'
+import { get, post, getToken } from '@/utils/request.js'
 import { API_PATHS, getImageUrl } from '@/utils/config.js'
 
 export const getCategoryList = (bizType = null) => {
@@ -44,12 +44,17 @@ export const getProductsByCategory = (
 export const getCategoryProducts = getProductsByCategory
 
 export const getProductDetail = (id) => {
-  return get(API_PATHS.PRODUCT.DETAIL(id), {
-    _t: Date.now()
-  }, {
+  const token = getToken()
+  const options = {
     needAuth: false,
     showLoading: true
-  })
+  }
+  if (token) {
+    options.header = { Authorization: `Bearer ${token}` }
+  }
+  return get(API_PATHS.PRODUCT.DETAIL(id), {
+    _t: Date.now()
+  }, options)
 }
 
 const pickField = (product, ...keys) => {
@@ -148,6 +153,27 @@ const mapRecommendationProducts = (products = []) => {
   })
 }
 
+const mapLimitInfo = (product) => {
+  const raw = pickField(product, 'limitInfo', 'limit_info') || {}
+  const enabled = raw.enabled === true || raw.enabled === 1 || raw.enabled === '1'
+  if (!enabled) {
+    return {
+      enabled: false,
+      text: '',
+      remainingQuantity: null
+    }
+  }
+  return {
+    enabled: true,
+    periodType: Number(pickField(raw, 'periodType', 'period_type') || 0),
+    periodLabel: pickField(raw, 'periodLabel', 'period_label') || '',
+    limitQuantity: Number(pickField(raw, 'limitQuantity', 'limit_quantity') || 0),
+    purchasedQuantity: Number(pickField(raw, 'purchasedQuantity', 'purchased_quantity') || 0),
+    remainingQuantity: Number(pickField(raw, 'remainingQuantity', 'remaining_quantity') || 0),
+    text: pickField(raw, 'text') || ''
+  }
+}
+
 export const mapProductDetail = (product = {}) => {
   const listView = mapProductListItem(product)
   const coverImage = pickField(product, 'coverImage', 'cover_image', 'image', 'productImage')
@@ -183,6 +209,7 @@ export const mapProductDetail = (product = {}) => {
     detailTitle: pickField(product, 'detailTitle', 'detail_title') || '',
     isStarProduct: Number(pickField(product, 'isStarProduct', 'is_star_product') || 0),
     relatedProducts: mapRecommendationProducts(pickField(product, 'relatedProducts', 'related_products') || []),
-    starProducts: mapRecommendationProducts(pickField(product, 'starProducts', 'star_products') || [])
+    starProducts: mapRecommendationProducts(pickField(product, 'starProducts', 'star_products') || []),
+    limitInfo: mapLimitInfo(product)
   }
 }

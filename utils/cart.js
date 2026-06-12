@@ -10,7 +10,8 @@ import {
   resolveProductFlow,
   resolveProductTypeLabel
 } from './product-biz.js'
-import { handleCartRemoteSync } from './cart-sync.js'
+
+const CART_REMOTE_SYNC_EVENT = 'cartRemoteSync'
 
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value)
@@ -123,9 +124,11 @@ const emitCartUpdated = () => {
 }
 
 const triggerRemoteSync = (action, payload) => {
-  Promise.resolve(handleCartRemoteSync(action, payload)).catch((error) => {
-    console.warn('cart remote sync failed:', error)
-  })
+  try {
+    uni.$emit(CART_REMOTE_SYNC_EVENT, { action, payload })
+  } catch (error) {
+    console.warn('cart remote sync dispatch failed:', error)
+  }
 }
 
 const writeCartData = (cartData, options = {}) => {

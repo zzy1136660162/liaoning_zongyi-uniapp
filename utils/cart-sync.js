@@ -167,3 +167,19 @@ export const handleCartRemoteSync = async (action, payload) => {
       break
   }
 }
+
+const CART_REMOTE_SYNC_EVENT = 'cartRemoteSync'
+let cartRemoteSyncBound = false
+
+/** 在 App 启动时注册，避免 cart.js 与 cart-sync.js 循环依赖导致小程序编译/运行异常 */
+export const initCartRemoteSync = () => {
+  if (cartRemoteSyncBound) {
+    return
+  }
+  cartRemoteSyncBound = true
+  uni.$on(CART_REMOTE_SYNC_EVENT, ({ action, payload } = {}) => {
+    Promise.resolve(handleCartRemoteSync(action, payload)).catch((error) => {
+      console.warn('cart remote sync failed:', error)
+    })
+  })
+}

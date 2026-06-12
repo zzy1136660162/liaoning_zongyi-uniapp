@@ -1,7 +1,6 @@
 <template>
   <view class="page">
     <view class="content">
-      <!-- 鎴愬姛鍥炬爣鍜屾枃瀛?-->
       <view class="success-header">
         <view class="success-icon-wrapper">
           <view class="success-icon">
@@ -9,16 +8,15 @@
           </view>
         </view>
         <text class="success-text">支付成功</text>
+        <text v-if="syncing" class="sync-hint">正在确认订单状态...</text>
       </view>
-      
-      <!-- 鏀粯閲戦 -->
+
       <view class="amount-section">
         <text class="amount-label">支付金额</text>
-        <text class="amount-value" v-if="!loading">楼{{ (paymentInfo.amount || 0).toFixed(2) }}</text>
+        <text class="amount-value" v-if="!loading">¥{{ (paymentInfo.amount || 0).toFixed(2) }}</text>
         <text class="amount-value" v-else>加载中...</text>
       </view>
-      
-      <!-- 鏀粯淇℃伅鍗＄墖 -->
+
       <view class="info-card">
         <view class="info-row">
           <text class="info-label">支付方式</text>
@@ -29,21 +27,19 @@
           <text class="info-value order-no">{{ paymentInfo.orderNo }}</text>
         </view>
         <view class="info-row">
-          <text class="info-label">鏀粯鏃堕棿</text>
+          <text class="info-label">支付时间</text>
           <text class="info-value">{{ paymentInfo.paymentTime }}</text>
         </view>
       </view>
-      
-      <!-- 鎻愮ず淇℃伅 -->
+
       <view class="tip-section">
         <text class="tip-text">订单已提交，我们将尽快为您处理</text>
         <text class="tip-text">运费到付，由快递员收取，以实际支付为准</text>
       </view>
     </view>
-    
-    <!-- 搴曢儴鎸夐挳 -->
+
     <view class="footer">
-      <button class="complete-btn" @click="goHome">瀹屾垚</button>
+      <button class="complete-btn" @click="goHome">完成</button>
     </view>
   </view>
 </template>
@@ -53,6 +49,7 @@ import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { getOrderDetail } from '@/api/order.js'
+import { syncPaymentByOrder } from '@/api/payment.js'
 import { removeFromCart } from '@/utils/cart.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
 
@@ -64,15 +61,94 @@ const paymentInfo = ref({
 })
 
 const loading = ref(true)
+const syncing = ref(false)
+const cartCleared = ref(false)
 
-// 鏍煎紡鍖栨椂闂?
+let currentOrderId = ''
+let currentOutTradeNo = ''
+
+const PAY_STATUS_PAID = 1
+const POLL_INTERVAL_MS = 1500
+const POLL_MAX_ATTEMPTS = 12
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 const formatTime = (timeStr) => {
   if (!timeStr) return ''
   return dayjs(timeStr).format('YYYY-MM-DD HH:mm:ss')
 }
 
-// 浠庡悗绔姞杞借鍗曚俊鎭?
-const loadOrderInfo = async (orderId) => {
+const isOrderPaid = (orderData) => {
+  const payStatus = orderData?.payStatus ?? orderData?.pay_status
+  const orderStatus = orderData?.orderStatus ?? orderData?.order_status ?? orderData?.status
+  return Number(payStatus) === PAY_STATUS_PAID || Number(orderStatus) >= 1
+}
+
+const applyOrderData = (orderData) => {
+  paymentInfo.value.amount = parseFloat(orderData.paidAmount || orderData.payableAmount || orderData.totalAmount || orderData.amount || 0)
+  paymentInfo.value.orderNo = orderData.orderNo || ''
+
+  const payTime = orderData.payTime || orderData.createTime || orderData.createdAt
+  paymentInfo.value.paymentTime = formatTime(payTime)
+
+  if (orderData.paymentType) {
+    paymentInfo.value.paymentMethod = orderData.paymentType === 'single' ? '在线支付' : orderData.paymentType
+  }
+
+  if (!cartCleared.value && orderData.items && Array.isArray(orderData.items) && orderData.items.length > 0) {
+    const productIds = orderData.items
+      .map(item => item.productId)
+      .filter(Boolean)
+      .map(id => String(id))
+
+    if (productIds.length > 0) {
+      removeFromCart(productIds)
+      uni.$emit('cartUpdated')
+      cartCleared.value = true
+    }
+  }
+}
+
+const fetchOrderDetail = async (orderId) => {
+  return getOrderDetail(orderId, { showLoading: false })
+}
+
+const waitForPaymentConfirmed = async (orderId, outTradeNo) => {
+  syncing.value = true
+
+  for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const orderData = await fetchOrderDetail(orderId)
+      if (isOrderPaid(orderData)) {
+        applyOrderData(orderData)
+        return true
+      }
+    } catch (error) {
+      console.warn('轮询订单支付状态失败:', error)
+    }
+
+    if (attempt < POLL_MAX_ATTEMPTS - 1) {
+      await sleep(POLL_INTERVAL_MS)
+    }
+  }
+
+  if (outTradeNo) {
+    try {
+      await syncPaymentByOrder(orderId, outTradeNo)
+      const orderData = await fetchOrderDetail(orderId)
+      if (isOrderPaid(orderData)) {
+        applyOrderData(orderData)
+        return true
+      }
+    } catch (error) {
+      console.warn('主动同步支付状态失败:', error)
+    }
+  }
+
+  return false
+}
+
+const loadOrderInfo = async (orderId, outTradeNo = '') => {
   if (!orderId) {
     console.warn('订单ID为空，无法加载订单信息')
     loading.value = false
@@ -81,91 +157,57 @@ const loadOrderInfo = async (orderId) => {
 
   try {
     uni.showLoading({ title: '加载中...' })
-    
-    const orderData = await getOrderDetail(orderId)
-    
 
-    
-    // 鏄犲皠璁㈠崟鏁版嵁锛堜紭鍏堝睍绀哄疄浠橀噾棰?paidAmount锛?
-    paymentInfo.value.amount = parseFloat(orderData.paidAmount || orderData.totalAmount || orderData.amount || 0)
-    paymentInfo.value.orderNo = orderData.orderNo || ''
-    
-    // 鏀粯鏃堕棿锛氫紭鍏堜娇鐢?payTime锛屽鏋滄病鏈夊垯浣跨敤 createTime
-    const payTime = orderData.payTime || orderData.createTime || orderData.createdAt
-    paymentInfo.value.paymentTime = formatTime(payTime)
-    
-    // 鏀粯鏂瑰紡锛氭牴鎹?paymentType 鍒ゆ柇锛岄粯璁や负鍦ㄧ嚎鏀粯
-    if (orderData.paymentType) {
-      paymentInfo.value.paymentMethod = orderData.paymentType === 'single' ? '在线支付' : orderData.paymentType
+    const orderData = await fetchOrderDetail(orderId)
+    applyOrderData(orderData)
+
+    if (!isOrderPaid(orderData)) {
+      uni.hideLoading()
+      await waitForPaymentConfirmed(orderId, outTradeNo)
     }
-    
-    // 鉁?鏀粯鎴愬姛鍚庯紝浠庤喘鐗╄溅涓Щ闄ゅ凡涓嬪崟鐨勫晢鍝?
-    // 鍚庣鐜板湪淇濊瘉杩斿洖 items 瀛楁锛屾瘡涓?item 閮芥湁 productId 瀛楁锛堥┘宄板懡鍚嶏級
-    if (orderData.items && Array.isArray(orderData.items) && orderData.items.length > 0) {
-      // 鎻愬彇鍟嗗搧ID锛堝悗绔繑鍥炵殑鏄?productId 椹煎嘲鍛藉悕锛?
-      const productIds = orderData.items
-        .map(item => item.productId)
-        .filter(Boolean)
-        .map(id => String(id)) // 缁熶竴杞崲涓哄瓧绗︿覆锛岀‘淇濅笌璐墿杞﹀瓨鍌ㄦ牸寮忎竴鑷?
-
-      if (productIds.length > 0) {
-        const removed = removeFromCart(productIds)
-
-        // 閫氱煡鍏朵粬椤甸潰璐墿杞﹀凡鏇存柊
-        uni.$emit('cartUpdated')
-      } else {
-        console.warn('订单商品列表中没有有效的 productId')
-      }
-    } else {
-      console.warn('订单详情中没有 items 字段或 items 为空')
-    }
-
   } catch (error) {
-    console.error('鍔犺浇璁㈠崟淇℃伅澶辫触:', error)
+    console.error('加载订单信息失败:', error)
     uni.showToast({
-      title: '鍔犺浇璁㈠崟淇℃伅澶辫触',
+      title: '加载订单信息失败',
       icon: 'none',
       duration: 2000
     })
   } finally {
     uni.hideLoading()
+    syncing.value = false
     loading.value = false
   }
 }
 
 onLoad(async (options) => {
-  // 浼樺厛浠?URL 鍙傛暟鑾峰彇璁㈠崟ID
-  // 璁板綍椤甸潰璁块棶鏃ュ織
   const orderId = options.orderId || options.id
-  logPageView('鏀粯鎴愬姛椤甸潰', '鐢ㄦ埛杩涘叆鏀粯鎴愬姛椤甸潰', orderId)
+  const outTradeNo = options.combineOutTradeNo || options.outTradeNo || ''
+  currentOrderId = orderId || ''
+  currentOutTradeNo = outTradeNo
 
-  // 浼樺厛浠?URL 鍙傛暟鑾峰彇璁㈠崟ID
+  logPageView('支付成功页面', '用户进入支付成功页面', orderId)
+
   if (orderId) {
-    // 浠庡悗绔姞杞借鍗曚俊鎭?
-    await loadOrderInfo(orderId)
+    await loadOrderInfo(orderId, outTradeNo)
   } else {
-    // 濡傛灉娌℃湁璁㈠崟ID锛屼娇鐢ㄩ〉闈㈠弬鏁颁綔涓哄厹搴?
     if (options.amount) {
       paymentInfo.value.amount = parseFloat(options.amount)
     }
-    
-    // 鐢熸垚涓存椂璁㈠崟鍙凤紙浠呯敤浜庢樉绀猴紝瀹為檯搴旇浠庡悗绔幏鍙栵級
+
     paymentInfo.value.orderNo = options.outTradeNo || '临时订单号'
     paymentInfo.value.paymentTime = formatTime(new Date())
-    
+
     if (options.paymentMethod) {
       paymentInfo.value.paymentMethod = decodeURIComponent(options.paymentMethod)
     }
-    
+
     loading.value = false
   }
 })
 
 const goHome = () => {
-  // 璁板綍鎸夐挳鐐瑰嚮鏃ュ織
   logButtonClick('支付成功页面', '用户点击完成按钮', paymentInfo.value.orderNo)
 
-  // 璺宠浆鍒颁骇鍝佸垪琛ㄩ〉闈?
   uni.redirectTo({
     url: '/pages/products/medicine_list'
   })
@@ -174,15 +216,13 @@ const goHome = () => {
 
 <style scoped>
 .page {
-  /* 鏇村共鍑€鐨勬祬鐏拌摑鑳屾櫙 */
   background: #f5f7fb;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   padding-bottom: calc(112rpx + env(safe-area-inset-bottom));
 
-  /* 缁熶竴瑙嗚鍙橀噺锛堜究浜庡悗缁崲涓婚锛?*/
-  --brand: #16a34a;          /* 鏇粹€滀笓涓氣€濈殑缁胯壊 */
+  --brand: #16a34a;
   --brand-dark: #15803d;
   --text: #0f172a;
   --text-2: #64748b;
@@ -229,6 +269,12 @@ const goHome = () => {
   font-weight: 700;
   color: var(--text);
   letter-spacing: 1rpx;
+}
+
+.sync-hint {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: var(--text-2);
 }
 
 .amount-section {
@@ -284,7 +330,7 @@ const goHome = () => {
   font-size: 26rpx;
   color: var(--text);
   font-weight: 600;
-  max-width: 420rpx;        /* 闃叉璁㈠崟鍙锋妸甯冨眬鎾戠垎 */
+  max-width: 420rpx;
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -302,6 +348,7 @@ const goHome = () => {
 }
 
 .tip-text {
+  display: block;
   font-size: 24rpx;
   color: #94a3b8;
   line-height: 1.7;
@@ -321,13 +368,13 @@ const goHome = () => {
 
 .complete-btn {
   width: 100%;
-  height: 88rpx;           /* 鍏抽敭锛氫笉瑕佸お澶?*/
-  line-height: 88rpx;      /* 鍏抽敭锛氬榻愰珮搴?*/
-  background: #10b981;     /* 浠や汉鎰夋偊鐨勭豢鑹?*/
+  height: 88rpx;
+  line-height: 88rpx;
+  background: #10b981;
   color: #fff;
   font-size: 30rpx;
   font-weight: 700;
-  border-radius: 9999px;    /* 鏇?鍟嗗姟"鐨勫渾瑙掞紝涓嶇敤 50rpx 閭ｄ箞澶稿紶 */
+  border-radius: 9999px;
   border: none;
   margin: 0;
   padding: 0;
@@ -342,6 +389,4 @@ const goHome = () => {
 .complete-btn::after {
   border: none;
 }
-
 </style>
-

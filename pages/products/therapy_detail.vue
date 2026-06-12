@@ -72,18 +72,12 @@
         <text class="therapy-tag">
           传统疗法
         </text>
-        <!-- <text
-          v-if="isSelfDevelopedProduct(product)"
-          class="self-developed-tag"
+        <text
+          v-if="product.limitInfo && product.limitInfo.enabled && product.limitInfo.text"
+          class="limit-tag"
         >
-          自研
-        </text> -->
-        <!-- <text
-          v-if="product.isExternal === 0 || product.isExternal === 1"
-          class="external-use-tag"
-        >
-          {{ getExternalUseLabel(product.isExternal) }}
-        </text> -->
+          {{ product.limitInfo.text }}
+        </text>
         <text class="goods-name">
           {{ product.name }}&nbsp;{{ product.description }}
         </text>
@@ -93,6 +87,12 @@
         class="goods-sub"
       >
         {{ product.indications }}
+      </view>
+      <view
+        v-if="product.limitInfo && product.limitInfo.enabled"
+        class="limit-reminder"
+      >
+        {{ product.limitInfo.text }}<text v-if="product.limitInfo.remainingQuantity != null">，还可购买{{ product.limitInfo.remainingQuantity }}件</text>
       </view>
     </view>
 
@@ -1374,12 +1374,14 @@ onShow(() => {
 .therapy-tag,
 .self-developed-tag,
 .external-use-tag,
+.limit-tag,
 .goods-name {
   vertical-align: middle;
 }
 
 .self-developed-tag,
-.external-use-tag {
+.external-use-tag,
+.limit-tag {
   font-size: 20rpx;
   padding: 4rpx 10rpx;
   border-radius: 4rpx;
@@ -1396,6 +1398,11 @@ onShow(() => {
 .external-use-tag {
   background: #e0f2fe;
   color: #0369a1;
+}
+
+.limit-tag {
+  background: #fff7ed;
+  color: #ea580c;
 }
 
 .therapy-tag {
@@ -1421,6 +1428,12 @@ onShow(() => {
 .goods-sub {
   font-size: 26rpx;
   color: #888;
+  margin-top: 8rpx;
+}
+
+.limit-reminder {
+  font-size: 24rpx;
+  color: #ea580c;
   margin-top: 8rpx;
 }
 

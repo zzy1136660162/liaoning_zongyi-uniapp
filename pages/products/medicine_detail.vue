@@ -93,6 +93,12 @@
         >
           重磅新品
         </text>
+        <text
+          v-if="product.limitInfo && product.limitInfo.enabled && product.limitInfo.text"
+          class="limit-tag"
+        >
+          {{ product.limitInfo.text }}
+        </text>
         <text class="goods-name">
           {{ product.name }}&nbsp;{{ product.description }}
         </text>
@@ -105,6 +111,12 @@
       </view>
       <view class="drug-reminder">
         {{ product.isPrescription === 1 ? '处方药，请在医师指导下购买和使用' : '制剂，请按说明书或医生指导使用' }}
+      </view>
+      <view
+        v-if="product.limitInfo && product.limitInfo.enabled"
+        class="limit-reminder"
+      >
+        {{ product.limitInfo.text }}<text v-if="product.limitInfo.remainingQuantity != null">，还可购买{{ product.limitInfo.remainingQuantity }}件</text>
       </view>
     </view>
 
@@ -1454,6 +1466,7 @@ onShow(() => {
 .external-use-tag,
 .new-product-tag,
 .star-product-tag,
+.limit-tag,
 .goods-name {
   vertical-align: middle;
 }
@@ -1461,7 +1474,8 @@ onShow(() => {
 .self-developed-tag,
 .external-use-tag,
 .new-product-tag,
-.star-product-tag {
+.star-product-tag,
+.limit-tag {
   font-size: 20rpx;
   padding: 4rpx 10rpx;
   border-radius: 4rpx;
@@ -1492,6 +1506,11 @@ onShow(() => {
   color: #fff;
 }
 
+.limit-tag {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
 .goods-name {
   font-size: 32rpx;
   font-weight: bold;
@@ -1509,6 +1528,12 @@ onShow(() => {
 .drug-reminder {
   font-size: 24rpx;
   color: #999;
+  margin-top: 8rpx;
+}
+
+.limit-reminder {
+  font-size: 24rpx;
+  color: #ea580c;
   margin-top: 8rpx;
 }
 
