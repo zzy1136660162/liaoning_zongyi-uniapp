@@ -164,18 +164,28 @@ export default {
   },
   computed: {
     filteredProducts() {
-      const category = this.categories.find(cat => cat.id === this.currentCategoryId)
-      if (!category) return []
+      const hasSearch = this.searchKeyword.trim()
 
-      let products = category.products || []
-      if (this.searchKeyword.trim()) {
+      // 如果有搜索关键字，搜索所有分类的商品
+      if (hasSearch) {
         const keyword = this.searchKeyword.trim().toLowerCase()
-        products = products.filter(product =>
+        const allProducts = []
+        this.categories.forEach(cat => {
+          if (cat.products) {
+            allProducts.push(...cat.products)
+          }
+        })
+        return allProducts.filter(product =>
           (product.name || '').toLowerCase().includes(keyword) ||
+          (product.productName || '').toLowerCase().includes(keyword) ||
           (product.description && product.description.toLowerCase().includes(keyword))
         )
       }
-      return products
+
+      // 无搜索关键字时，显示当前分类的商品
+      const category = this.categories.find(cat => cat.id === this.currentCategoryId)
+      if (!category) return []
+      return category.products || []
     },
     cartCount() {
       return calculateTotalQuantity(this.cartItems)
@@ -369,7 +379,18 @@ export default {
       await this.loadCategoryProducts(categoryId)
       this.loadVerifiedProductsFromStorage()
     },
-    handleSearch() {},
+    handleSearch(e) {
+      // 显式更新搜索关键字，确保响应式更新
+      if (e && e.detail) {
+        this.searchKeyword = e.detail.value || ''
+      }
+
+      // 如果有搜索关键字且不在全部分类，自动切换到全部分类
+      if (this.searchKeyword.trim() && this.currentCategoryId !== 'all') {
+        this.currentCategoryId = 'all'
+        this.loadAllProducts(true)
+      }
+    },
     goToDetail(product) {
       uni.navigateTo({
         url: `/pages/products/medicine_detail?id=${product.id}`
