@@ -130,6 +130,7 @@ import { resolveProductFlow } from '@/utils/product-biz.js'
 import { ORDER_TYPE_THERAPY } from '@/utils/therapy.js'
 
 const isTherapyOrder = ref(false)
+const therapyRouteRequested = ref(false)
 
 const orderInfo = ref({
   prescriptions: [],
@@ -166,7 +167,8 @@ const canSubmit = computed(() => {
 })
 
 onLoad((options) => {
-  isTherapyOrder.value = options?.therapy === '1' || options?.therapy === 1 || options?.therapy === true
+  therapyRouteRequested.value = options?.therapy === '1' || options?.therapy === 1 || options?.therapy === true
+  isTherapyOrder.value = therapyRouteRequested.value
   if (options?.selectedItems) {
     selectedProductIds.value = options.selectedItems.split(',').filter(id => id.trim())
     setCheckoutProductIds(selectedProductIds.value)
@@ -174,6 +176,10 @@ onLoad((options) => {
     selectedProductIds.value = getCurrentCheckoutProductIds()
   }
 })
+
+const resolveTherapyOrderFlag = (flow = {}) => {
+  return therapyRouteRequested.value || !!flow.allTraditionalTherapy
+}
 
 onMounted(async () => {
   // 记录页面访问日志
@@ -282,7 +288,7 @@ const loadProducts = async () => {
         if (flow.valid) {
           selectedBizType.value = flow.bizType
           selectedRequiresConsultation.value = flow.requiresConsultation
-          isTherapyOrder.value = flow.allTraditionalTherapy
+          isTherapyOrder.value = resolveTherapyOrderFlag(flow)
         } else {
           uni.showToast({ title: flow.message, icon: 'none' })
           setTimeout(() => uni.navigateBack(), 1500)
@@ -341,7 +347,7 @@ const loadProducts = async () => {
     }
     selectedBizType.value = flow.bizType
     selectedRequiresConsultation.value = flow.requiresConsultation
-    isTherapyOrder.value = flow.allTraditionalTherapy
+    isTherapyOrder.value = resolveTherapyOrderFlag(flow)
     return [cartCategory]
   } catch (error) {
     console.error('加载商品失败:', error)
@@ -409,6 +415,11 @@ const loadOrderInfo = () => {
 }
 
 const loadAddresses = async () => {
+  if (!requiresShipping.value) {
+    selectedAddress.value = null
+    return
+  }
+
   try {
     // 先从后端获取最新地址列表
     try {
@@ -462,6 +473,7 @@ const loadAddresses = async () => {
 // 计算快递费
 const calculateShippingFee = async () => {
   if (!requiresShipping.value) {
+    console.log('跳过传统疗法运费计算')
     orderInfo.value.cost.shippingFee = 0
     calculateTotal()
     uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
@@ -636,8 +648,37 @@ const submitOrder = async () => {
         totalAmount: orderInfo.value.total
       })
       console.log('单笔支付成功:', payResult)
+      const itemCount = (orderInfo.value.items || []).reduce((sum, item) => {
+        const quantity = Number(item.quantity || 1)
+        return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
+      }, 0)
+      const paymentSuccessParams = {
+        orderId,
+        amount: orderInfo.value.total,
+        outTradeNo: payResult.outTradeNo || '',
+        paymentType: 'single',
+        orderNo: order.orderNo || '',
+        itemCount,
+        orderType: isTherapyOrder.value ? ORDER_TYPE_THERAPY : '',
+        therapy: isTherapyOrder.value ? '1' : '0'
+      }
+      const paymentSuccessUrl = '/pages/order/payment_success?' + Object.entries(paymentSuccessParams)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+        .join('&')
+      console.log('支付成功跳转参数:', paymentSuccessParams)
+      console.log('支付成功跳转URL:', paymentSuccessUrl)
       uni.redirectTo({
-        url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&outTradeNo=${payResult.outTradeNo || ''}&paymentType=single`
+        url: paymentSuccessUrl,
+        success: (res) => {
+          console.log('跳转支付成功页成功:', res, paymentSuccessUrl)
+        },
+        fail: (err) => {
+          console.error('跳转支付成功页失败:', err, paymentSuccessUrl)
+        },
+        complete: (res) => {
+          console.log('跳转支付成功页完成:', res)
+        }
       })
     } catch (error) {
       console.error('支付失败:', error)

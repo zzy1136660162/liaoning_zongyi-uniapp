@@ -267,9 +267,15 @@ const loadOrderInfo = async (orderId, outTradeNo = '') => {
   }
 
   try {
+    console.log('支付成功页开始加载订单详情:', {
+      orderId,
+      outTradeNo,
+      orderIdType: typeof orderId
+    })
     uni.showLoading({ title: '加载中...' })
 
     const orderData = await fetchOrderDetail(orderId)
+    console.log('支付成功页订单详情返回:', orderData)
     applyOrderData(orderData)
 
     if (!isOrderPaid(orderData)) {
@@ -291,9 +297,21 @@ const loadOrderInfo = async (orderId, outTradeNo = '') => {
 }
 
 onLoad(async (options) => {
+  console.log('支付成功页 onLoad 原始参数:', options)
   const orderId = options.orderId || options.id
   const outTradeNo = options.combineOutTradeNo || options.outTradeNo || ''
   currentOrderId = orderId || ''
+  console.log('支付成功页解析参数:', {
+    orderId,
+    orderIdType: typeof orderId,
+    outTradeNo,
+    paymentType: options.paymentType,
+    amount: options.amount,
+    orderNo: options.orderNo,
+    itemCount: options.itemCount,
+    orderType: options.orderType,
+    therapy: options.therapy
+  })
 
   logPageView('支付成功页面', '用户进入支付成功页面', orderId)
 

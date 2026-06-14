@@ -10,12 +10,6 @@
         @click="switchTab(tab.key)"
       >
         {{ tab.label }}
-        <view
-          v-if="tab.count > 0"
-          class="tab-badge"
-        >
-          {{ tab.count }}
-        </view>
       </view>
     </view>
 
@@ -156,13 +150,14 @@ import { isTherapyOrder } from '@/utils/therapy.js'
 const activeTab = ref('all')
 const orders = ref([])
 const ORDER_LIST_PREVIEW_LIMIT = 2
+const AFTER_SALE_ORDER_STATUSES = [5, 6, 7]
 
 const tabs = ref([
   { key: 'all', label: '全部' },
-  { key: 'pending', label: '待支付', count: 0 },
-  { key: 'shipping', label: '待发货', count: 0 },
-  { key: 'received', label: '待收货', count: 0 },
-  { key: 'completed', label: '已完成' }
+  { key: 'pending', label: '待支付' },
+  { key: 'shipping', label: '待发货' },
+  { key: 'received', label: '待收货' },
+  { key: 'afterSale', label: '退款/售后' }
 ])
 
 const normalizeRedeemVouchers = (item = {}) => {
@@ -260,6 +255,7 @@ const mapOrderListItem = (order = {}, refundInfo = null) => ({
   shippingFee: Number(order.shippingFee) || 0,
   createTime: order.createTime || order.create_time || order.createdAt || order.created_at,
   refundApplicationId: refundInfo ? refundInfo.id : null,
+  refundStatus: order.refundStatus ?? order.refund_status ?? refundInfo?.refundStatus ?? refundInfo?.status ?? null,
   items: resolveRawOrderItems(order).map(mapOrderItem)
 })
 
@@ -330,6 +326,8 @@ const loadOrders = async () => {
             (refund.createdAt && refundMap.get(orderId).createdAt < refund.createdAt)) {
           refundMap.set(orderId, {
             id: refund.id,
+            status: refund.status,
+            refundStatus: refund.refundStatus ?? refund.refund_status,
             createdAt: refund.createdAt
           })
         }
@@ -342,8 +340,6 @@ const loadOrders = async () => {
         return mapOrderListItem(order, refundInfo)
       })
       await hydrateMissingOrderItems()
-      
-      updateTabCounts()
     } else {
       orders.value = []
     }
@@ -359,13 +355,12 @@ const loadOrders = async () => {
   }
 }
 
-// 更新标签页数量
-const updateTabCounts = () => {
-  //tabs.value[0].count = orders.value.length
-  tabs.value[1].count = orders.value.filter(o => o.status === 0).length
-  tabs.value[2].count = orders.value.filter(o => o.status === 1).length
-  tabs.value[3].count = orders.value.filter(o => o.status === 2).length
-  //tabs.value[4].count = orders.value.filter(o => o.status === 3).length
+const isAfterSaleOrder = (order = {}) => {
+  const status = Number(order.status)
+  const refundStatus = Number(order.refundStatus)
+  return AFTER_SALE_ORDER_STATUSES.includes(status) ||
+    !!order.refundApplicationId ||
+    (Number.isFinite(refundStatus) && refundStatus > 0)
 }
 
 // 过滤订单
@@ -373,15 +368,23 @@ const filteredOrders = computed(() => {
   if (activeTab.value === 'all') {
     return orders.value
   }
+
+  if (activeTab.value === 'afterSale') {
+    return orders.value.filter(isAfterSaleOrder)
+  }
   
   const statusMap = {
     pending: 0,
     shipping: 1,
-    received: 2,
-    completed: 3
+    received: 2
   }
   
-  return orders.value.filter(o => o.status === statusMap[activeTab.value])
+  const status = statusMap[activeTab.value]
+  if (status === undefined) {
+    return orders.value
+  }
+
+  return orders.value.filter(o => o.status === status)
 })
 
 // 切换标签
@@ -650,23 +653,6 @@ $info: #3b82f6;
 
 .tab-item.active::after {
   width: 64rpx;
-}
-
-.tab-badge {
-  min-width: 34rpx;
-  height: 34rpx;
-  line-height: 34rpx;
-  padding: 0 10rpx;
-  background: $danger;
-  color: #fff;
-  font-size: 20rpx;
-  border-radius: 999rpx;
-  text-align: center;
-  box-shadow: 0 6rpx 14rpx rgba(239, 68, 68, 0.18);
-  position: absolute;
-  top: 8rpx;
-  right: 16rpx;
-  z-index: 30;
 }
 
 /* 列表容器：底部留安全区 */
