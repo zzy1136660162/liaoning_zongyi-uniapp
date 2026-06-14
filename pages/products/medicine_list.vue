@@ -261,7 +261,7 @@
                   class="product-name"
                   @click="goToDetail(product)"
                 >
-                  <text 
+                  <text
                     v-if="product.categoryId === 34"
                     class="therapy-tag"
                   >
@@ -427,7 +427,9 @@ export default {
       sortType: '',
       sortOrder: 'desc',
       imageCollapsed: false,
-      unsubscribeCartUpdated: null
+      unsubscribeCartUpdated: null,
+      searchTimer: null,
+      requestSeq: 0
     }
   },
   computed: {
@@ -443,17 +445,9 @@ export default {
 
       let products = category.products || []
       const currentSubCategoryId = normalizeCategoryId(this.currentSubCategoryId)
-      if (currentSubCategoryId && !this.isAllSubCategoryId(currentSubCategoryId)) {
+      if (!this.getSearchKeyword() && currentSubCategoryId && !this.isAllSubCategoryId(currentSubCategoryId)) {
         products = products.filter(product => normalizeCategoryId(product.categoryId) === currentSubCategoryId)
       }
-      if (this.searchKeyword.trim()) {
-        const keyword = this.searchKeyword.trim().toLowerCase()
-        products = products.filter(product =>
-          (product.name || '').toLowerCase().includes(keyword) ||
-          (product.description && product.description.toLowerCase().includes(keyword))
-        )
-      }
-      // 排序由后端分页接口处理，此处仅做子分类与搜索过滤
       return products
     },
     cartCount() {
@@ -485,6 +479,10 @@ export default {
     if (this.unsubscribeCartUpdated) {
       this.unsubscribeCartUpdated()
       this.unsubscribeCartUpdated = null
+    }
+    if (this.searchTimer) {
+      clearTimeout(this.searchTimer)
+      this.searchTimer = null
     }
   },
   methods: {
@@ -544,22 +542,70 @@ export default {
       }
       this.reloadCurrentCategoryProducts()
     },
-    handleSearch() {},
+    getSearchKeyword() {
+      return (this.searchKeyword || '').trim()
+    },
+    handleSearch() {
+      if (this.searchTimer) {
+        clearTimeout(this.searchTimer)
+      }
+      this.searchTimer = setTimeout(async () => {
+        this.searchTimer = null
+        if (this.getPageState(this.currentCategoryId).loading) {
+          this.handleSearch()
+          return
+        }
+        await this.reloadCurrentCategoryProducts()
+      }, 300)
+    },
     getCategoryKey(categoryId) {
       return normalizeCategoryId(categoryId || 'all')
     },
+    getQueryCategoryId(categoryId) {
+      const categoryKey = this.getCategoryKey(categoryId)
+      const currentKey = this.getCategoryKey(this.currentCategoryId)
+      const subCategoryId = normalizeCategoryId(this.currentSubCategoryId)
+      if (
+        categoryKey === currentKey &&
+        subCategoryId &&
+        !this.isAllSubCategoryId(subCategoryId)
+      ) {
+        return subCategoryId
+      }
+      return categoryId
+    },
+    getProductQuerySignature() {
+      return [
+        this.getSearchKeyword(),
+        this.mapSortField() || '',
+        this.sortType ? this.sortOrder : ''
+      ].join('|')
+    },
+    getPageStateKey(categoryId) {
+      const categoryKey = this.getCategoryKey(categoryId)
+      const queryCategoryId = this.getQueryCategoryId(categoryId)
+      return `${categoryKey}:query:${this.getCategoryKey(queryCategoryId)}:${this.getProductQuerySignature()}`
+    },
     getPageState(categoryId) {
-      const key = this.getCategoryKey(categoryId)
+      const key = this.getPageStateKey(categoryId)
       if (!this.productPageState[key]) {
         this.$set(this.productPageState, key, {
           pageNum: 0,
           hasMore: true,
           loading: false,
           loadedAt: 0,
-          total: 0
+          total: 0,
+          records: []
         })
       }
       return this.productPageState[key]
+    },
+    syncCategoryProductsFromState(categoryId) {
+      const categoryKey = this.getCategoryKey(categoryId)
+      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
+      if (category) {
+        category.products = [...(this.getPageState(categoryId).records || [])]
+      }
     },
     isCategoryStale(categoryId) {
       const state = this.getPageState(categoryId)
@@ -568,6 +614,9 @@ export default {
       }
       return Date.now() - state.loadedAt > PRODUCT_LIST_TTL
     },
+    isCategoryFullyLoaded(categoryId) {
+      return this.loadedCategories[this.getPageStateKey(categoryId)] === true
+    },
     mapSortField() {
       if (this.sortType === 'sales') return 'sales'
       if (this.sortType === 'price') return 'price'
@@ -575,23 +624,25 @@ export default {
       return null
     },
     resetCategoryProducts(categoryId) {
-      const key = this.getCategoryKey(categoryId)
-      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === key)
+      const categoryKey = this.getCategoryKey(categoryId)
+      const stateKey = this.getPageStateKey(categoryId)
+      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
       if (category) {
         category.products = []
       }
-      this.$set(this.productPageState, key, {
+      this.$set(this.productPageState, stateKey, {
         pageNum: 0,
         hasMore: true,
         loading: false,
         loadedAt: 0,
-        total: 0
+        total: 0,
+        records: []
       })
-      delete this.loadedCategories[key]
+      delete this.loadedCategories[stateKey]
     },
     async fetchProductPage(categoryId, { reset = false } = {}) {
-      const key = this.getCategoryKey(categoryId)
-      const state = this.getPageState(categoryId)
+      const categoryKey = this.getCategoryKey(categoryId)
+      let state = this.getPageState(categoryId)
       if (state.loading) {
         return
       }
@@ -601,10 +652,13 @@ export default {
 
       if (reset) {
         this.resetCategoryProducts(categoryId)
+        state = this.getPageState(categoryId)
       }
 
+      const requestSeq = ++this.requestSeq
       const nextPage = reset ? 1 : state.pageNum + 1
-      const apiCategoryId = key === 'all' ? null : key
+      const queryCategoryId = this.getQueryCategoryId(categoryId)
+      const apiCategoryId = this.getCategoryKey(queryCategoryId) === 'all' ? null : queryCategoryId
       state.loading = true
 
       try {
@@ -614,28 +668,35 @@ export default {
           PRODUCT_PAGE_SIZE,
           PRODUCT_BIZ_TYPE_FILTER,
           this.mapSortField(),
-          this.sortType ? this.sortOrder : null
+          this.sortType ? this.sortOrder : null,
+          this.getSearchKeyword()
         )
+        if (requestSeq !== this.requestSeq) {
+          return
+        }
         const productList = productPage.records || productPage.list || []
         const mapped = productList.map(item => mapProductListItem(item))
         const total = Number(productPage.total || 0)
-        const category = this.categories.find(cat => this.getCategoryKey(cat.id) === key)
+        const currentRecords = reset ? [] : (state.records || [])
+        const existingIds = new Set(currentRecords.map(product => String(product.id)))
+        const nextRecords = reset
+          ? mapped
+          : [
+            ...currentRecords,
+            ...mapped.filter(product => !existingIds.has(String(product.id)))
+          ]
+        const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
         if (category) {
-          const existingIds = new Set((category.products || []).map(product => String(product.id)))
-          category.products = reset
-            ? mapped
-            : [
-              ...(category.products || []),
-              ...mapped.filter(product => !existingIds.has(String(product.id)))
-            ]
+          category.products = nextRecords
         }
+        state.records = nextRecords
         state.pageNum = nextPage
         state.total = total
-        const loadedCount = category?.products?.length || 0
+        const loadedCount = state.records.length
         state.hasMore = total > 0 ? loadedCount < total : mapped.length >= PRODUCT_PAGE_SIZE
         state.loadedAt = Date.now()
         if (!state.hasMore) {
-          this.loadedCategories[key] = true
+          this.$set(this.loadedCategories, this.getPageStateKey(categoryId), true)
         }
       } catch (error) {
         console.error('fetchProductPage failed:', error)
@@ -696,6 +757,7 @@ export default {
         ]
         this.productPageState = {}
         this.loadedCategories = {}
+        this.requestSeq += 1
         await this.loadAllProducts(true)
         this.syncCurrentSubCategory()
         this.loadVerifiedProductsFromStorage('loadProducts')
@@ -707,14 +769,15 @@ export default {
       }
     },
     async loadAllProducts(reset = false) {
-      if (!reset && this.loadedCategories.all && !this.isCategoryStale('all')) {
+      if (!reset && this.getPageState('all').loadedAt && !this.isCategoryStale('all')) {
+        this.syncCategoryProductsFromState('all')
         return
       }
       await this.fetchProductPage('all', { reset: reset || this.isCategoryStale('all') })
     },
     async loadCategoryProducts(categoryId, reset = false) {
-      const key = this.getCategoryKey(categoryId)
-      if (!reset && this.loadedCategories[key] && !this.isCategoryStale(categoryId)) {
+      if (!reset && this.getPageState(categoryId).loadedAt && !this.isCategoryStale(categoryId)) {
+        this.syncCategoryProductsFromState(categoryId)
         return
       }
       await this.fetchProductPage(categoryId, { reset: reset || this.isCategoryStale(categoryId) })
@@ -759,9 +822,7 @@ export default {
       this.currentSubCategoryId = ''
       this.expandCategory(normalizedCategoryId)
       if (categoryId === 'all') {
-        if (this.isCategoryStale('all') || !this.getPageState('all').pageNum) {
-          await this.loadAllProducts(true)
-        }
+        await this.loadAllProducts(false)
         this.syncCurrentSubCategory()
         this.loadVerifiedProductsFromStorage('switchCategory:all')
         return
@@ -770,8 +831,14 @@ export default {
       this.syncCurrentSubCategory()
       this.loadVerifiedProductsFromStorage(`switchCategory:${categoryId}`)
     },
-    switchSubCategory(subCategoryId) {
+    async switchSubCategory(subCategoryId) {
       this.currentSubCategoryId = normalizeCategoryId(subCategoryId)
+      try {
+        await this.fetchProductPage(this.currentCategoryId, { reset: true })
+        this.loadVerifiedProductsFromStorage(`switchSubCategory:${subCategoryId}`)
+      } catch (error) {
+        console.error('switchSubCategory failed:', error)
+      }
     },
     buildAllSubCategoryId(categoryId) {
       return `all:${normalizeCategoryId(categoryId)}`

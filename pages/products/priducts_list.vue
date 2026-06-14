@@ -159,7 +159,9 @@ export default {
       loadedCategories: {},
       productPageState: {},
       categoryList: [],
-      unsubscribeCartUpdated: null
+      unsubscribeCartUpdated: null,
+      searchTimer: null,
+      requestSeq: 0
     }
   },
   computed: {
@@ -167,15 +169,7 @@ export default {
       const category = this.categories.find(cat => cat.id === this.currentCategoryId)
       if (!category) return []
 
-      let products = category.products || []
-      if (this.searchKeyword.trim()) {
-        const keyword = this.searchKeyword.trim().toLowerCase()
-        products = products.filter(product =>
-          (product.name || '').toLowerCase().includes(keyword) ||
-          (product.description && product.description.toLowerCase().includes(keyword))
-        )
-      }
-      return products
+      return category.products || []
     },
     cartCount() {
       return calculateTotalQuantity(this.cartItems)
@@ -204,24 +198,45 @@ export default {
       this.unsubscribeCartUpdated()
       this.unsubscribeCartUpdated = null
     }
+    if (this.searchTimer) {
+      clearTimeout(this.searchTimer)
+      this.searchTimer = null
+    }
   },
   methods: {
     getImageUrl,
+    getSearchKeyword() {
+      return (this.searchKeyword || '').trim()
+    },
     getCategoryKey(categoryId) {
       return String(categoryId || 'all')
     },
+    getProductQuerySignature() {
+      return this.getSearchKeyword()
+    },
+    getPageStateKey(categoryId) {
+      return `${this.getCategoryKey(categoryId)}:${this.getProductQuerySignature()}`
+    },
     getPageState(categoryId) {
-      const key = this.getCategoryKey(categoryId)
+      const key = this.getPageStateKey(categoryId)
       if (!this.productPageState[key]) {
         this.$set(this.productPageState, key, {
           pageNum: 0,
           hasMore: true,
           loading: false,
           loadedAt: 0,
-          total: 0
+          total: 0,
+          records: []
         })
       }
       return this.productPageState[key]
+    },
+    syncCategoryProductsFromState(categoryId) {
+      const categoryKey = this.getCategoryKey(categoryId)
+      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
+      if (category) {
+        category.products = [...(this.getPageState(categoryId).records || [])]
+      }
     },
     isCategoryStale(categoryId) {
       const state = this.getPageState(categoryId)
@@ -230,33 +245,40 @@ export default {
       }
       return Date.now() - state.loadedAt > PRODUCT_LIST_TTL
     },
+    isCategoryFullyLoaded(categoryId) {
+      return this.loadedCategories[this.getPageStateKey(categoryId)] === true
+    },
     resetCategoryProducts(categoryId) {
-      const key = this.getCategoryKey(categoryId)
-      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === key)
+      const categoryKey = this.getCategoryKey(categoryId)
+      const stateKey = this.getPageStateKey(categoryId)
+      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
       if (category) {
         category.products = []
       }
-      this.$set(this.productPageState, key, {
+      this.$set(this.productPageState, stateKey, {
         pageNum: 0,
         hasMore: true,
         loading: false,
         loadedAt: 0,
-        total: 0
+        total: 0,
+        records: []
       })
-      delete this.loadedCategories[key]
+      delete this.loadedCategories[stateKey]
     },
     async fetchProductPage(categoryId, { reset = false } = {}) {
-      const key = this.getCategoryKey(categoryId)
-      const state = this.getPageState(categoryId)
+      const categoryKey = this.getCategoryKey(categoryId)
+      let state = this.getPageState(categoryId)
       if (state.loading || (!reset && !state.hasMore)) {
         return
       }
       if (reset) {
         this.resetCategoryProducts(categoryId)
+        state = this.getPageState(categoryId)
       }
 
+      const requestSeq = ++this.requestSeq
       const nextPage = reset ? 1 : state.pageNum + 1
-      const apiCategoryId = key === 'all' ? null : categoryId
+      const apiCategoryId = categoryKey === 'all' ? null : categoryId
       state.loading = true
 
       try {
@@ -264,28 +286,37 @@ export default {
           apiCategoryId,
           nextPage,
           PRODUCT_PAGE_SIZE,
-          HEALTH_BIZ_TYPE
+          HEALTH_BIZ_TYPE,
+          null,
+          null,
+          this.getSearchKeyword()
         )
+        if (requestSeq !== this.requestSeq) {
+          return
+        }
         const productList = productPage.records || productPage.list || []
         const mapped = productList.map(item => mapProductListItem(item))
         const total = Number(productPage.total || 0)
-        const category = this.categories.find(cat => this.getCategoryKey(cat.id) === key)
+        const currentRecords = reset ? [] : (state.records || [])
+        const existingIds = new Set(currentRecords.map(product => String(product.id)))
+        const nextRecords = reset
+          ? mapped
+          : [
+            ...currentRecords,
+            ...mapped.filter(product => !existingIds.has(String(product.id)))
+          ]
+        const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
         if (category) {
-          const existingIds = new Set((category.products || []).map(product => String(product.id)))
-          category.products = reset
-            ? mapped
-            : [
-              ...(category.products || []),
-              ...mapped.filter(product => !existingIds.has(String(product.id)))
-            ]
+          category.products = nextRecords
         }
+        state.records = nextRecords
         state.pageNum = nextPage
         state.total = total
-        const loadedCount = category?.products?.length || 0
+        const loadedCount = state.records.length
         state.hasMore = total > 0 ? loadedCount < total : mapped.length >= PRODUCT_PAGE_SIZE
         state.loadedAt = Date.now()
         if (!state.hasMore) {
-          this.$set(this.loadedCategories, key, true)
+          this.$set(this.loadedCategories, this.getPageStateKey(categoryId), true)
         }
       } catch (error) {
         console.error('fetchProductPage failed:', error)
@@ -327,6 +358,7 @@ export default {
         ]
         this.productPageState = {}
         this.loadedCategories = {}
+        this.requestSeq += 1
         await this.loadAllProducts(true)
         this.loadVerifiedProductsFromStorage()
       } catch (error) {
@@ -337,14 +369,15 @@ export default {
       }
     },
     async loadAllProducts(reset = false) {
-      if (!reset && this.loadedCategories.all && !this.isCategoryStale('all')) {
+      if (!reset && this.getPageState('all').loadedAt && !this.isCategoryStale('all')) {
+        this.syncCategoryProductsFromState('all')
         return
       }
       await this.fetchProductPage('all', { reset: reset || this.isCategoryStale('all') })
     },
     async loadCategoryProducts(categoryId, reset = false) {
-      const key = this.getCategoryKey(categoryId)
-      if (!reset && this.loadedCategories[key] && !this.isCategoryStale(categoryId)) {
+      if (!reset && this.getPageState(categoryId).loadedAt && !this.isCategoryStale(categoryId)) {
+        this.syncCategoryProductsFromState(categoryId)
         return
       }
       await this.fetchProductPage(categoryId, { reset: reset || this.isCategoryStale(categoryId) })
@@ -360,16 +393,31 @@ export default {
     async switchCategory(categoryId) {
       this.currentCategoryId = categoryId
       if (categoryId === 'all') {
-        if (this.isCategoryStale('all') || !this.getPageState('all').pageNum) {
-          await this.loadAllProducts(true)
-        }
+        await this.loadAllProducts(false)
         this.loadVerifiedProductsFromStorage()
         return
       }
       await this.loadCategoryProducts(categoryId)
       this.loadVerifiedProductsFromStorage()
     },
-    handleSearch() {},
+    handleSearch() {
+      if (this.searchTimer) {
+        clearTimeout(this.searchTimer)
+      }
+      this.searchTimer = setTimeout(async () => {
+        this.searchTimer = null
+        if (this.getPageState(this.currentCategoryId).loading) {
+          this.handleSearch()
+          return
+        }
+        try {
+          await this.fetchProductPage(this.currentCategoryId, { reset: true })
+          this.loadVerifiedProductsFromStorage()
+        } catch (error) {
+          console.error('handleSearch failed:', error)
+        }
+      }, 300)
+    },
     goToDetail(product) {
       uni.navigateTo({
         url: `/pages/products/medicine_detail?id=${product.id}`

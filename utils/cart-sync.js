@@ -30,6 +30,8 @@ const serverItemsToLocalCart = (items = []) => {
       verified: true,
       selected: item.checked === 1 || item.checked === true,
       quantity: item.quantity || 1,
+      available: item.available !== false,
+      stock: item.stock ?? item.stockQuantity ?? item.inventory ?? null,
       bizType: item.bizType ?? null,
       goodsMerchantType: item.goodsMerchantType ?? null,
       needQuestionnaire: item.needQuestionnaire ?? 0,

@@ -120,13 +120,13 @@ import {
 import { buildOrderInfo, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds } from '@/utils/cart.js'
 import { createOrder } from '@/api/order.js'
 import { getAddressList } from '@/api/address.js'
-import { wechatCombinePay, wechatSinglePay } from '@/api/payment.js'
+import { wechatSinglePay } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
 import { ensureWeChatIdentity } from '@/api/auth.js'
 import { queryFreight } from '@/api/express.js'
 import { getCachedProducts, setCachedProducts, isCacheValid } from '@/utils/cache.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
-import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
+import { resolveProductFlow } from '@/utils/product-biz.js'
 import { ORDER_TYPE_THERAPY } from '@/utils/therapy.js'
 
 const isTherapyOrder = ref(false)
@@ -154,6 +154,7 @@ const categories = ref([])
 const calculatingFreight = ref(false)
 const selectedProductIds = ref([])
 const selectedBizType = ref(1)
+const selectedRequiresConsultation = ref(true)
 
 const canSubmit = computed(() => {
   if (isTherapyOrder.value) {
@@ -230,8 +231,9 @@ const loadProducts = async () => {
       const cached = getCachedProducts(currentSelectedIds)
       // 汇总缓存中的所有商品（按 id 建立索引，便于按当前选中项精确取用）
       const cachedProductMap = new Map()
-      ;(cached?.categories || []).forEach(cat => {
-        ;(cat?.products || []).forEach(p => {
+      const cachedCategories = cached?.categories || []
+      cachedCategories.forEach(cat => {
+        (cat?.products || []).forEach(p => {
           if (p && p.id !== undefined && p.id !== null) {
             cachedProductMap.set(String(p.id), p)
           }
@@ -240,10 +242,16 @@ const loadProducts = async () => {
 
       // 仅当缓存覆盖了当前选中的所有商品时才复用缓存
       const hasAllProducts = currentSelectedIds.every(id => cachedProductMap.has(String(id)))
-      if (hasAllProducts) {
+      const selectedProducts = hasAllProducts
+        ? currentSelectedIds.map(id => cachedProductMap.get(String(id)))
+        : []
+      const hasFlowFields = selectedProducts.every(product =>
+        product &&
+        (product.productCategory !== undefined || Number(product.bizType) === 2)
+      )
+      if (hasAllProducts && hasFlowFields) {
         console.log('使用缓存的商品数据')
         // 只取当前选中的商品，避免历史缓存中多余的商品混入本次订单
-        const selectedProducts = currentSelectedIds.map(id => cachedProductMap.get(String(id)))
         const cachedCategory = {
           id: 'selected_items',
           name: '订单商品',
@@ -253,6 +261,11 @@ const loadProducts = async () => {
         const flow = resolveProductFlow(selectedProducts)
         if (flow.valid) {
           selectedBizType.value = flow.bizType
+          selectedRequiresConsultation.value = flow.requiresConsultation
+        } else {
+          uni.showToast({ title: flow.message, icon: 'none' })
+          setTimeout(() => uni.navigateBack(), 1500)
+          return []
         }
         return [cachedCategory]
       }
@@ -280,6 +293,8 @@ const loadProducts = async () => {
             image: productDetail.coverImage || productDetail.image,
             price: productDetail.price,
             bizType: productDetail.bizType,
+            productCategory: productDetail.productCategory,
+            isPrescription: productDetail.isPrescription,
             goodsMerchantType: productDetail.goodsMerchantType,
             unit: productDetail.unit || '份',
             notice: productDetail.usageDesc || productDetail.notice
@@ -302,6 +317,7 @@ const loadProducts = async () => {
       return []
     }
     selectedBizType.value = flow.bizType
+    selectedRequiresConsultation.value = flow.requiresConsultation
     return [cartCategory]
   } catch (error) {
     console.error('加载商品失败:', error)
@@ -317,7 +333,7 @@ const loadOrderInfo = () => {
     const saved = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
     const cartItems = categories.value.length > 0 ? loadCartItems(categories.value) : []
     const currentSelectedIds = cartItems.map(item => String(item.id))
-    const distributor = selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
+    const distributor = !selectedRequiresConsultation.value
       ? '健康产品服务'
       : '辽宁中医药大学附属医院'
     const rebuiltOrder = cartItems.length > 0
@@ -338,7 +354,7 @@ const loadOrderInfo = () => {
         ...(orderInfo.value.deliveryInfo || rebuiltOrder.deliveryInfo),
         distributor,
         logistics: '顺丰快递',
-        purchaseMethod: selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
+        purchaseMethod: !selectedRequiresConsultation.value
           ? '健康产品-在线支付'
           : '药品配送-在线支付',
         shippingPaymentMethod: '到付（货到付款给快递员）'
@@ -550,7 +566,7 @@ const submitOrder = async () => {
       orderData.orderType = ORDER_TYPE_THERAPY
     } else {
       orderData.addressId = selectedAddress.value.id
-      orderData.consultationId = selectedBizType.value === BIZ_TYPE_HEALTH_GOODS
+      orderData.consultationId = !selectedRequiresConsultation.value
         ? null
         : (uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID) || null)
     }
@@ -580,28 +596,14 @@ const submitOrder = async () => {
     try {
       console.log('使用openid发起支付:', openid)
       
-      try {
-        console.log('开始调用合单支付...')
-        const combinePayResult = await wechatCombinePay(orderId, { openid })
-        console.log('合单支付成功:', combinePayResult)
-        uni.redirectTo({
-          url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&combineOutTradeNo=${combinePayResult.combineOutTradeNo || ''}&paymentType=combine`
-        })
-      } catch (combineError) {
-        if (combineError.message === '用户取消支付') {
-          throw combineError
-        }
-
-        console.warn('合单支付失败，回退单笔支付:', combineError)
-        const payResult = await wechatSinglePay(orderId, {
-          openid,
-          totalAmount: orderInfo.value.total
-        })
-        console.log('单笔支付成功:', payResult)
-        uni.redirectTo({
-          url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&outTradeNo=${payResult.outTradeNo || ''}&paymentType=single`
-        })
-      }
+      const payResult = await wechatSinglePay(orderId, {
+        openid,
+        totalAmount: orderInfo.value.total
+      })
+      console.log('单笔支付成功:', payResult)
+      uni.redirectTo({
+        url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&outTradeNo=${payResult.outTradeNo || ''}&paymentType=single`
+      })
     } catch (error) {
       console.error('支付失败:', error)
       

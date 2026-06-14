@@ -105,7 +105,7 @@ import {
 import { loadCartItems, calculateTotalPrice } from '@/utils/cart.js'
 import { createOrder } from '@/api/order.js'
 import { getAddressList } from '@/api/address.js'
-import { wechatPay, wechatCombinePay } from '@/api/payment.js'
+import { wechatSinglePay } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
 import { ensureWeChatIdentity } from '@/api/auth.js'
 
@@ -327,10 +327,10 @@ const submitOrder = async () => {
     
     uni.hideLoading()
     
-    // ✅ 订单创建成功，调起合单支付
+    // ✅ 订单创建成功，调起单笔支付
     const orderId = order.id || order.orderNo
     
-    console.log('订单创建成功，准备调起合单支付:', {
+    console.log('订单创建成功，准备调起单笔支付:', {
       orderId,
       goodsAmount: orderInfo.value.cost.medicineCost,
       shippingFee: orderInfo.value.cost.shippingFee,
@@ -349,18 +349,18 @@ const submitOrder = async () => {
             console.log('openid', openid)
             console.log('使用openid发起支付:', openid)
             
-            // 调用微信合单支付（商品+快递分账），传递openid
-            console.log('开始调用合单支付...')
-            const payResult = await wechatCombinePay(orderId, { openid })
+            // V2 支付模式使用单笔支付，运费为到付，不参与在线支付
+            console.log('开始调用单笔支付...')
+            const payResult = await wechatSinglePay(orderId, { openid })
             
-            console.log('合单支付成功:', payResult)
+            console.log('单笔支付成功:', payResult)
             
             // 支付成功，跳转到支付成功页面
             uni.redirectTo({
-              url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&combineOutTradeNo=${payResult.combineOutTradeNo || ''}`
+              url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&outTradeNo=${payResult.outTradeNo || ''}&paymentType=single`
             })
           } catch (error) {
-            console.error('合单支付失败:', error)
+            console.error('单笔支付失败:', error)
             
             // 判断是否是用户取消
             if (error.message === '用户取消支付') {

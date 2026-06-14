@@ -23,6 +23,14 @@ const toPositiveInt = (value, fallback = 1) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+const toStockValue = (value, fallback = null) => {
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+  const parsed = parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
 const toFlag = (value, fallback = false) => {
   if (value === undefined || value === null || value === '') {
     return fallback
@@ -44,6 +52,55 @@ const uniqueIds = (ids = []) => {
   return [...new Set((Array.isArray(ids) ? ids : [ids]).map(normalizeId).filter(Boolean))]
 }
 
+const hasExplicitAvailable = (value = {}) => {
+  return value.available !== undefined || value.saleable !== undefined || value.onSale !== undefined
+}
+
+const resolveAvailableFlag = (value = {}, fallback = true) => {
+  if (value.available !== undefined) {
+    return toFlag(value.available, fallback)
+  }
+  if (value.saleable !== undefined) {
+    return toFlag(value.saleable, fallback)
+  }
+  if (value.onSale !== undefined) {
+    return toFlag(value.onSale, fallback)
+  }
+  return fallback
+}
+
+const resolveStockValue = (value = {}, fallback = null) => {
+  if (value.stock !== undefined) {
+    return toStockValue(value.stock, fallback)
+  }
+  if (value.stockQuantity !== undefined) {
+    return toStockValue(value.stockQuantity, fallback)
+  }
+  if (value.inventory !== undefined) {
+    return toStockValue(value.inventory, fallback)
+  }
+  return fallback
+}
+
+const isCartEntryAvailable = (entry = {}) => {
+  if (entry.available === false) {
+    return false
+  }
+  if (entry.stock !== null && entry.stock !== undefined && toStockValue(entry.stock, null) <= 0) {
+    return false
+  }
+  return true
+}
+
+const clampQuantityToStock = (quantity, stock) => {
+  const normalizedQuantity = toPositiveInt(quantity, 1)
+  const normalizedStock = toStockValue(stock, null)
+  if (normalizedStock !== null && normalizedStock > 0) {
+    return Math.min(normalizedQuantity, normalizedStock)
+  }
+  return normalizedQuantity
+}
+
 const readLegacyQuantities = () => {
   const quantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
   return typeof quantities === 'object' && quantities !== null ? quantities : {}
@@ -56,14 +113,18 @@ const buildCartEntry = (productId, partial = {}, legacyQuantities = {}) => {
   }
 
   const legacyQuantity = legacyQuantities[normalizedId]
-  const quantity = toPositiveInt(partial.quantity, toPositiveInt(legacyQuantity, 1))
+  const stock = resolveStockValue(partial, null)
+  const available = stock === 0 ? false : resolveAvailableFlag(partial, true)
+  const quantity = clampQuantityToStock(toPositiveInt(partial.quantity, toPositiveInt(legacyQuantity, 1)), stock)
   const needQuestionnaire = toNumber(partial.needQuestionnaire, 0)
   const defaultQuestionnairePassed = needQuestionnaire === 1 ? false : true
 
   return {
     verified: toFlag(partial.verified, true),
-    selected: toFlag(partial.selected, true),
+    selected: available ? toFlag(partial.selected, true) : false,
     quantity,
+    available,
+    stock,
     bizType: partial.bizType !== undefined && partial.bizType !== null && partial.bizType !== ''
       ? toNumber(partial.bizType, null)
       : null,
@@ -119,8 +180,8 @@ const readCartData = () => {
   return normalizeCartData(raw)
 }
 
-const emitCartUpdated = () => {
-  uni.$emit('cartUpdated')
+const emitCartUpdated = (source = 'local') => {
+  uni.$emit('cartUpdated', { source })
 }
 
 const triggerRemoteSync = (action, payload) => {
@@ -145,7 +206,7 @@ const writeCartData = (cartData, options = {}) => {
   uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, legacyQuantities)
 
   if (!options.silent) {
-    emitCartUpdated()
+    emitCartUpdated(options.eventSource || 'local')
   }
 
   if (!options.suppressSync) {
@@ -162,7 +223,7 @@ const writeCartData = (cartData, options = {}) => {
 }
 
 export const replaceCartData = (cartData) => {
-  writeCartData(cartData, { suppressSync: true })
+  writeCartData(cartData, { suppressSync: true, eventSource: 'server' })
 }
 
 const resolveProductId = (productOrId) => {
@@ -196,7 +257,17 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
       ? toNumber(options.goodsMerchantType, productGoodsMerchantType || existing.goodsMerchantType || null)
       : (productGoodsMerchantType !== null ? productGoodsMerchantType : (existing.goodsMerchantType ?? null)),
     needQuestionnaire: resolvedNeedQuestionnaire,
-    questionnairePassed
+    questionnairePassed,
+    available: options.available !== undefined
+      ? toFlag(options.available, true)
+      : (hasProductObject && hasExplicitAvailable(product)
+        ? resolveAvailableFlag(product, true)
+        : resolveAvailableFlag(existing, true)),
+    stock: options.stock !== undefined
+      ? toStockValue(options.stock, null)
+      : (hasProductObject
+        ? resolveStockValue(product, resolveStockValue(existing, null))
+        : resolveStockValue(existing, null))
   }
 }
 
@@ -273,8 +344,12 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
 
     cartData[productId] = {
       verified: options.verified !== undefined ? toFlag(options.verified, true) : true,
-      selected: options.selected !== undefined ? toFlag(options.selected, true) : (existing.selected !== undefined ? toFlag(existing.selected, true) : true),
-      quantity: toPositiveInt(quantity, existing.quantity || 1),
+      selected: meta.available !== false && meta.stock !== 0
+        ? (options.selected !== undefined ? toFlag(options.selected, true) : (existing.selected !== undefined ? toFlag(existing.selected, true) : true))
+        : false,
+      quantity: clampQuantityToStock(quantity, meta.stock),
+      available: meta.stock === 0 ? false : meta.available,
+      stock: meta.stock,
       bizType: meta.bizType,
       goodsMerchantType: meta.goodsMerchantType,
       needQuestionnaire: meta.needQuestionnaire,
@@ -312,7 +387,7 @@ export const setCartItemQuantity = (productId, quantity) => {
     const existing = cartData[normalizedId] || {}
     cartData[normalizedId] = {
       ...buildCartEntry(normalizedId, existing),
-      quantity: toPositiveInt(quantity, 1),
+      quantity: clampQuantityToStock(quantity, existing.stock),
       timestamp: Date.now()
     }
     writeCartData(cartData, { syncProductIds: [normalizedId] })
@@ -363,10 +438,12 @@ export const updateProductSelection = (productId, selected) => {
       return false
     }
 
-    cartData[normalizedId].selected = toFlag(selected, true)
+    cartData[normalizedId].selected = isCartEntryAvailable(cartData[normalizedId])
+      ? toFlag(selected, true)
+      : false
     cartData[normalizedId].timestamp = Date.now()
     writeCartData(cartData, { syncProductIds: [normalizedId] })
-    return true
+    return selected ? cartData[normalizedId].selected : true
   } catch (error) {
     console.error('updateProductSelection failed:', error)
     return false
@@ -380,7 +457,9 @@ export const updateMultipleSelections = (selectionMap = {}) => {
     Object.entries(selectionMap).forEach(([productId, selected]) => {
       const normalizedId = normalizeId(productId)
       if (cartData[normalizedId]) {
-        cartData[normalizedId].selected = toFlag(selected, true)
+        cartData[normalizedId].selected = isCartEntryAvailable(cartData[normalizedId])
+          ? toFlag(selected, true)
+          : false
         cartData[normalizedId].timestamp = Date.now()
         changedIds.push(normalizedId)
       }
@@ -395,7 +474,7 @@ export const updateMultipleSelections = (selectionMap = {}) => {
 
 export const getSelectedProductIds = () => {
   return Object.entries(readCartData())
-    .filter(([, entry]) => entry.verified && entry.selected)
+    .filter(([, entry]) => entry.verified && entry.selected && isCartEntryAvailable(entry))
     .map(([productId]) => productId)
 }
 
@@ -459,15 +538,29 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
       const nextQuestionnairePassed = entry.questionnairePassed !== undefined
         ? entry.questionnairePassed
         : nextNeedQuestionnaire !== 1
+      const nextStock = resolveStockValue(product, entry.stock ?? null)
+      const nextAvailable = nextStock === 0
+        ? false
+        : (hasExplicitAvailable(product) ? resolveAvailableFlag(product, true) : resolveAvailableFlag(entry, true))
+      const nextSelected = nextAvailable ? entry.selected !== false : false
+      const nextQuantity = clampQuantityToStock(entry.quantity, nextStock)
 
       if (
         entry.bizType !== nextBizType ||
         entry.goodsMerchantType !== nextGoodsMerchantType ||
         entry.needQuestionnaire !== nextNeedQuestionnaire ||
-        entry.questionnairePassed !== nextQuestionnairePassed
+        entry.questionnairePassed !== nextQuestionnairePassed ||
+        entry.available !== nextAvailable ||
+        entry.stock !== nextStock ||
+        entry.selected !== nextSelected ||
+        entry.quantity !== nextQuantity
       ) {
         cartData[productId] = {
           ...entry,
+          selected: nextSelected,
+          quantity: nextQuantity,
+          available: nextAvailable,
+          stock: nextStock,
           bizType: nextBizType,
           goodsMerchantType: nextGoodsMerchantType,
           needQuestionnaire: nextNeedQuestionnaire,
@@ -476,11 +569,17 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         needsSave = true
       }
 
+      if (onlySelected && !nextSelected) {
+        return
+      }
+
       cartItems.push({
         ...product,
-        quantity: toPositiveInt(entry.quantity, 1),
-        selected: entry.selected !== false,
+        quantity: nextQuantity,
+        selected: nextSelected,
         verified: entry.verified !== false,
+        available: nextAvailable,
+        stock: nextStock,
         bizType: nextBizType,
         goodsMerchantType: nextGoodsMerchantType,
         needQuestionnaire: nextNeedQuestionnaire,
@@ -490,7 +589,7 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
     })
 
     if (needsSave) {
-      writeCartData(cartData)
+      writeCartData(cartData, { suppressSync: true })
     }
 
     return cartItems.sort((a, b) => toNumber(a.timestamp, 0) - toNumber(b.timestamp, 0))
@@ -516,7 +615,8 @@ export const mapServerCartItemToProduct = (item = {}) => {
     bizType: item.bizType,
     goodsMerchantType: item.goodsMerchantType,
     needQuestionnaire: toNumber(item.needQuestionnaire, 0),
-    available: item.available !== false
+    stock: resolveStockValue(item, null),
+    available: resolveStockValue(item, null) === 0 ? false : item.available !== false
   }
 }
 
@@ -531,6 +631,9 @@ export const buildCategoriesFromServerCart = (serverItems = []) => {
 
 export const calculateTotalPrice = (cartItems = []) => {
   return cartItems.reduce((total, item) => {
+    if (item.selected === false || !isCartEntryAvailable(item)) {
+      return total
+    }
     const unitPrice = toNumber(item.price, 0)
     const quantity = toPositiveInt(item.quantity, 1)
     return total + unitPrice * quantity
@@ -549,6 +652,9 @@ export const buildOrderItems = (cartItems = [], selectedProductIds = null) => {
   }
 
   return items.map(item => {
+    if (!isCartEntryAvailable(item)) {
+      return null
+    }
     const unitPrice = toNumber(item.price, 0)
     const quantity = toPositiveInt(item.quantity, 1)
     return {
@@ -559,7 +665,7 @@ export const buildOrderItems = (cartItems = [], selectedProductIds = null) => {
       price: Number((unitPrice * quantity).toFixed(2)),
       quantity
     }
-  })
+  }).filter(Boolean)
 }
 
 export const buildOrderInfo = (
@@ -672,7 +778,7 @@ export const prepareCheckout = (productIds = [], categories = []) => {
 export const getCartStatistics = () => {
   const entries = Object.values(readCartData())
   const totalCount = entries.length
-  const selectedCount = entries.filter(entry => entry.selected).length
+  const selectedCount = entries.filter(entry => entry.selected && isCartEntryAvailable(entry)).length
   return {
     totalCount,
     selectedCount,

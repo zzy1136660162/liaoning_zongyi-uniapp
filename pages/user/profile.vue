@@ -221,6 +221,7 @@ import { logButtonClick, logPageView } from '@/utils/accessLog.js'
 import { getCartTotalQuantity } from '@/utils/cart.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { getImageUrl } from '@/utils/config.js'
+import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import {
   STORAGE_KEY_TOKEN,
   STORAGE_KEY_USER_REGISTER
@@ -381,23 +382,7 @@ const goToPatientList = () => {
 
 const openHumanCustomerService = () => {
   logButtonClick('人工客服', 'USER_PROFILE')
-
-  uni.openCustomerServiceChat({
-    extInfo: {
-      url: 'https://work.weixin.qq.com/kfid/kfc79feecc56cb032bc'
-    },
-    corpId: 'ww55d1004932944831',
-    success: (res) => {
-      console.log('打开人工客服成功:', res)
-    },
-    fail: (error) => {
-      console.error('打开人工客服失败:', error)
-      uni.showToast({
-        title: '人工客服暂时不可用',
-        icon: 'none'
-      })
-    }
-  })
+  openCustomerServiceChat()
 }
 
 const openAiCustomerService = () => {

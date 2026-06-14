@@ -44,7 +44,7 @@
             <text class="history-text">订单记录</text>
           </view>
         </view>
-        <scroll-view class="product-list" scroll-y>
+        <scroll-view class="product-list" scroll-y lower-threshold="120" @scrolltolower="handleLoadMore">
           <view class="product-items">
             <view v-for="product in filteredProducts" :key="product.id" class="product-item">
               <image
@@ -134,6 +134,8 @@ import TabBar from '@/components/TabBar/TabBar.vue'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
 
 const HEALTH_BIZ_TYPE = 2
+const PRODUCT_PAGE_SIZE = 20
+const PRODUCT_LIST_TTL = 5 * 60 * 1000
 
 export default {
   components: { TabBar },
@@ -152,8 +154,11 @@ export default {
       verifiedProducts: {},
       currentTab: 'home',
       loadedCategories: {},
+      productPageState: {},
       categoryList: [],
-      unsubscribeCartUpdated: null
+      unsubscribeCartUpdated: null,
+      searchTimer: null,
+      requestSeq: 0
     }
   },
   computed: {
@@ -161,15 +166,7 @@ export default {
       const category = this.categories.find(cat => cat.id === this.currentCategoryId)
       if (!category) return []
 
-      let products = category.products || []
-      if (this.searchKeyword.trim()) {
-        const keyword = this.searchKeyword.trim().toLowerCase()
-        products = products.filter(product =>
-          product.name.toLowerCase().includes(keyword) ||
-          (product.description && product.description.toLowerCase().includes(keyword))
-        )
-      }
-      return products
+      return category.products || []
     },
     cartCount() {
       return calculateTotalQuantity(this.cartItems)
@@ -195,9 +192,73 @@ export default {
       this.unsubscribeCartUpdated()
       this.unsubscribeCartUpdated = null
     }
+    if (this.searchTimer) {
+      clearTimeout(this.searchTimer)
+      this.searchTimer = null
+    }
   },
   methods: {
     getImageUrl,
+    getSearchKeyword() {
+      return (this.searchKeyword || '').trim()
+    },
+    getCategoryKey(categoryId) {
+      return String(categoryId || 'all')
+    },
+    getProductQuerySignature() {
+      return this.getSearchKeyword()
+    },
+    getPageStateKey(categoryId) {
+      return `${this.getCategoryKey(categoryId)}:${this.getProductQuerySignature()}`
+    },
+    getPageState(categoryId) {
+      const key = this.getPageStateKey(categoryId)
+      if (!this.productPageState[key]) {
+        this.$set(this.productPageState, key, {
+          pageNum: 0,
+          hasMore: true,
+          loading: false,
+          loadedAt: 0,
+          total: 0,
+          records: []
+        })
+      }
+      return this.productPageState[key]
+    },
+    syncCategoryProductsFromState(categoryId) {
+      const categoryKey = this.getCategoryKey(categoryId)
+      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
+      if (category) {
+        category.products = [...(this.getPageState(categoryId).records || [])]
+      }
+    },
+    isCategoryStale(categoryId) {
+      const state = this.getPageState(categoryId)
+      if (!state.loadedAt) {
+        return true
+      }
+      return Date.now() - state.loadedAt > PRODUCT_LIST_TTL
+    },
+    isCategoryFullyLoaded(categoryId) {
+      return this.loadedCategories[this.getPageStateKey(categoryId)] === true
+    },
+    resetCategoryProducts(categoryId) {
+      const categoryKey = this.getCategoryKey(categoryId)
+      const stateKey = this.getPageStateKey(categoryId)
+      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
+      if (category) {
+        category.products = []
+      }
+      this.$set(this.productPageState, stateKey, {
+        pageNum: 0,
+        hasMore: true,
+        loading: false,
+        loadedAt: 0,
+        total: 0,
+        records: []
+      })
+      delete this.loadedCategories[stateKey]
+    },
     async loadProducts() {
       try {
         uni.showLoading({ title: '加载中...' })
@@ -207,8 +268,10 @@ export default {
           { id: 'all', name: '全部分类', products: [] },
           ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
         ]
-        await this.loadAllProducts()
-        this.$set(this.loadedCategories, 'all', true)
+        this.productPageState = {}
+        this.loadedCategories = {}
+        this.requestSeq += 1
+        await this.loadAllProducts(true)
         this.loadVerifiedProductsFromStorage()
       } catch (error) {
         console.error('loadProducts failed:', error)
@@ -217,25 +280,90 @@ export default {
         uni.hideLoading()
       }
     },
-    async loadAllProducts() {
-      const productPage = await getCategoryProducts(null, 1, 100, HEALTH_BIZ_TYPE)
-      const productList = productPage.records || productPage.list || []
-      const allProducts = productList.map(item => mapProductListItem(item))
-      const allCategory = this.categories.find(cat => cat.id === 'all')
-      if (allCategory) {
-        allCategory.products = allProducts
+    async fetchProductPage(categoryId, { reset = false } = {}) {
+      const categoryKey = this.getCategoryKey(categoryId)
+      let state = this.getPageState(categoryId)
+      if (state.loading || (!reset && !state.hasMore)) {
+        return
+      }
+      if (reset) {
+        this.resetCategoryProducts(categoryId)
+        state = this.getPageState(categoryId)
+      }
+
+      const requestSeq = ++this.requestSeq
+      const nextPage = reset ? 1 : state.pageNum + 1
+      const apiCategoryId = categoryKey === 'all' ? null : categoryId
+      state.loading = true
+      try {
+        const productPage = await getCategoryProducts(
+          apiCategoryId,
+          nextPage,
+          PRODUCT_PAGE_SIZE,
+          HEALTH_BIZ_TYPE,
+          null,
+          null,
+          this.getSearchKeyword()
+        )
+        if (requestSeq !== this.requestSeq) {
+          return
+        }
+        const productList = productPage.records || productPage.list || []
+        const mapped = productList.map(item => mapProductListItem(item))
+        const total = Number(productPage.total || 0)
+        const currentRecords = reset ? [] : (state.records || [])
+        const existingIds = new Set(currentRecords.map(product => String(product.id)))
+        const nextRecords = reset
+          ? mapped
+          : [
+            ...currentRecords,
+            ...mapped.filter(product => !existingIds.has(String(product.id)))
+          ]
+        const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
+        if (category) {
+          category.products = nextRecords
+        }
+        state.records = nextRecords
+        state.pageNum = nextPage
+        state.total = total
+        const loadedCount = state.records.length
+        state.hasMore = total > 0 ? loadedCount < total : mapped.length >= PRODUCT_PAGE_SIZE
+        state.loadedAt = Date.now()
+        if (!state.hasMore) {
+          this.$set(this.loadedCategories, this.getPageStateKey(categoryId), true)
+        }
+      } catch (error) {
+        console.error('fetchProductPage failed:', error)
+        throw error
+      } finally {
+        state.loading = false
       }
     },
-    async loadCategoryProducts(categoryId) {
-      if (this.loadedCategories[categoryId]) return
-      const productPage = await getCategoryProducts(categoryId, 1, 100, HEALTH_BIZ_TYPE)
-      const productList = productPage.records || productPage.list || []
-      const products = productList.map(item => mapProductListItem(item))
-      const category = this.categories.find(cat => cat.id === categoryId)
-      if (category) {
-        category.products = products
-        this.$set(this.loadedCategories, categoryId, true)
+    async handleLoadMore() {
+      const state = this.getPageState(this.currentCategoryId)
+      if (!state.hasMore || state.loading) {
+        return
       }
+      try {
+        await this.fetchProductPage(this.currentCategoryId, { reset: false })
+        this.loadVerifiedProductsFromStorage()
+      } catch (error) {
+        console.error('handleLoadMore failed:', error)
+      }
+    },
+    async loadAllProducts(reset = false) {
+      if (!reset && this.getPageState('all').loadedAt && !this.isCategoryStale('all')) {
+        this.syncCategoryProductsFromState('all')
+        return
+      }
+      await this.fetchProductPage('all', { reset: reset || this.isCategoryStale('all') })
+    },
+    async loadCategoryProducts(categoryId, reset = false) {
+      if (!reset && this.getPageState(categoryId).loadedAt && !this.isCategoryStale(categoryId)) {
+        this.syncCategoryProductsFromState(categoryId)
+        return
+      }
+      await this.fetchProductPage(categoryId, { reset: reset || this.isCategoryStale(categoryId) })
     },
     loadVerifiedProductsFromStorage() {
       try {
@@ -248,17 +376,31 @@ export default {
     async switchCategory(categoryId) {
       this.currentCategoryId = categoryId
       if (categoryId === 'all') {
-        if (!this.loadedCategories.all) {
-          await this.loadAllProducts()
-          this.$set(this.loadedCategories, 'all', true)
-        }
+        await this.loadAllProducts(false)
         this.loadVerifiedProductsFromStorage()
         return
       }
       await this.loadCategoryProducts(categoryId)
       this.loadVerifiedProductsFromStorage()
     },
-    handleSearch() {},
+    handleSearch() {
+      if (this.searchTimer) {
+        clearTimeout(this.searchTimer)
+      }
+      this.searchTimer = setTimeout(async () => {
+        this.searchTimer = null
+        try {
+          if (this.currentCategoryId === 'all') {
+            await this.loadAllProducts(true)
+          } else {
+            await this.loadCategoryProducts(this.currentCategoryId, true)
+          }
+          this.loadVerifiedProductsFromStorage()
+        } catch (error) {
+          console.error('handleSearch failed:', error)
+        }
+      }, 300)
+    },
     goToDetail(product) {
       uni.navigateTo({
         url: `/pages/products/medicine_detail?id=${product.id}`
@@ -883,4 +1025,3 @@ export default {
   
   /* Tab Bar 鏍峰紡宸茬Щ鑷崇粍浠朵腑 */
   </style>
-  

@@ -103,7 +103,7 @@
           </view>
 
           <view
-            v-if="selectedBizType !== BIZ_TYPE_HEALTH_GOODS"
+            v-if="selectedRequiresConsultation"
             class="consultation-mode-row"
           >
             <view class="label">
@@ -251,7 +251,7 @@ import { getProductDetail } from '@/api/product.js'
 import { deriveGenderFromId, deriveAgeFromId } from '@/utils/patient.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
-import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
+import { resolveProductFlow } from '@/utils/product-biz.js'
 import {
   AI_DOCTOR,
   CONSULTATION_MODE_AI,
@@ -265,6 +265,7 @@ const selectedItems = ref([])
 const patients = ref([])
 const selectedPatient = ref(null)
 const selectedBizType = ref(1)
+const selectedRequiresConsultation = ref(true)
 const agreementChecked = ref(false)
 const showAgreement = ref(false)
 const consultationMode = ref(CONSULTATION_MODE_AI)
@@ -370,6 +371,8 @@ const loadProducts = async () => {
             image: productDetail.coverImage || productDetail.image,
             price: Number(productDetail.price || 0),
             bizType: productDetail.bizType,
+            productCategory: productDetail.productCategory,
+            isPrescription: productDetail.isPrescription,
             goodsMerchantType: productDetail.goodsMerchantType,
             unit: productDetail.unit || '件',
             notice: productDetail.usageDesc || productDetail.notice,
@@ -398,6 +401,15 @@ const loadProducts = async () => {
       return
     }
     selectedBizType.value = flow.bizType
+    selectedRequiresConsultation.value = flow.requiresConsultation
+    if (!flow.requiresConsultation) {
+      const directItemIds = cartItems.value.map(item => String(item.id))
+      setCheckoutProductIds(directItemIds)
+      uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+      uni.redirectTo({
+        url: `/pages/order/confirm?selectedItems=${directItemIds.join(',')}`
+      })
+    }
   } catch (error) {
     console.error('loadProducts failed:', error)
     uni.showToast({ title: '加载商品失败', icon: 'none' })
@@ -546,7 +558,7 @@ const navigateToConsultation = (selectedItemIds, mode) => {
 }
 
 const onSubmit = () => {
-  if (selectedBizType.value !== BIZ_TYPE_HEALTH_GOODS && !selectedPatient.value) {
+  if (selectedRequiresConsultation.value && !selectedPatient.value) {
     uni.showToast({ title: '请先选择就诊人', icon: 'none' })
     return
   }
@@ -561,7 +573,7 @@ const onSubmit = () => {
     : cartItems.value.map(item => String(item.id))
   setCheckoutProductIds(selectedItemIds)
 
-  if (selectedBizType.value === BIZ_TYPE_HEALTH_GOODS) {
+  if (!selectedRequiresConsultation.value) {
     uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
     uni.navigateTo({
       url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}`

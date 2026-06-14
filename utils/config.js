@@ -22,9 +22,23 @@ export const API_CONFIG = {
 // const ENV =  process.env.NODE_ENV || 'production'||'development'
 const ENV =  'production' || 'development'
 
+export const CUSTOMER_SERVICE_ENV = {
+    development: {
+        corpId: 'ww3fe8ec237bf70c8b',
+        url: 'https://work.weixin.qq.com/kfid/kfcc92471bfa5f832db',
+        unavailableMessage: '人工客服暂时不可用'
+    },
+    production: {
+        corpId: 'ww3fe8ec237bf70c8b',
+        url: 'https://work.weixin.qq.com/kfid/kfcc92471bfa5f832db',
+        unavailableMessage: '人工客服暂时不可用'
+    }
+}
+
 // 导出当前环境配置
 export const BASE_URL = API_CONFIG[ENV].baseURL
 export const TIMEOUT = API_CONFIG[ENV].timeout
+export const CUSTOMER_SERVICE_CONFIG = CUSTOMER_SERVICE_ENV[ENV]
 
 // Token存储Key
 export const TOKEN_KEY = 'user_token'

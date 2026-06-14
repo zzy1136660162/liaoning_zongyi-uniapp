@@ -18,7 +18,8 @@ export const getProductsByCategory = (
   pageSize = 10,
   bizType = null,
   sortField = null,
-  sortOrder = null
+  sortOrder = null,
+  keyword = null
 ) => {
   const payload = {
     categoryId,
@@ -34,6 +35,10 @@ export const getProductsByCategory = (
   }
   if (sortOrder) {
     payload.sortOrder = sortOrder
+  }
+  const normalizedKeyword = typeof keyword === 'string' ? keyword.trim() : ''
+  if (normalizedKeyword) {
+    payload.keyword = normalizedKeyword
   }
   return post(API_PATHS.CATEGORY.PRODUCTS, payload, {
     needAuth: true,
@@ -103,6 +108,8 @@ export const mapProductListItem = (product = {}) => {
   const commonUsage = pickField(product, 'commonUsage', 'common_usage')
   const specText = pickField(product, 'specText', 'spec_text')
   const unit = pickField(product, 'unit') || ''
+  const goodsMerchantType = pickField(product, 'goodsMerchantType', 'goods_merchant_type')
+  const productCategory = pickField(product, 'productCategory', 'product_category')
 
   return {
     id: pickField(product, 'id'),
@@ -119,8 +126,8 @@ export const mapProductListItem = (product = {}) => {
     categoryId: pickField(product, 'categoryId', 'category_id'),
     categoryCode: pickField(product, 'categoryCode', 'category_code') || '',
     bizType: Number(pickField(product, 'bizType', 'biz_type') || 1),
-    goodsMerchantType: Number(pickField(product, 'goodsMerchantType', 'goods_merchant_type') || 1),
-    productCategory: Number(pickField(product, 'productCategory', 'product_category') || 2),
+    goodsMerchantType: goodsMerchantType === null ? null : Number(goodsMerchantType),
+    productCategory: productCategory === null ? null : Number(productCategory),
     isPrescription: Number(pickField(product, 'isPrescription', 'is_prescription') || 0),
     needQuestionnaire: Number(pickField(product, 'needQuestionnaire', 'need_questionnaire') || 0),
     questionnaireId: pickField(product, 'questionnaireId', 'questionnaire_id'),

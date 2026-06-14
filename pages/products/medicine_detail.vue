@@ -755,9 +755,10 @@ import {
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
-import { logPageView } from '@/api/access-log.js'
+import { logButtonClick, logPageView } from '@/api/access-log.js'
 import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 import { getToken } from '@/utils/request.js'
+import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import {
   getDeliverySummary,
   getExternalUseLabel,
@@ -1143,25 +1144,8 @@ const goConsult = () => {
   })
 }
 const showCustomerService = () => {
-  uni.showModal({
-    title: '客服电话',
-    content: '82961387',
-    confirmText: '拨打',
-    success: ({ confirm }) => {
-      if (!confirm) {
-        return
-      }
-      uni.makePhoneCall({
-        phoneNumber: '82961387',
-        fail: () => {
-          uni.showToast({
-            title: '拨号失败',
-            icon: 'none'
-          })
-        }
-      })
-    }
-  })
+  logButtonClick('商品详情客服', 'MEDICINE_DETAIL', product.value.id || '')
+  openCustomerServiceChat()
 }
 const toggleCollect = () => {
   isCollected.value = !isCollected.value
