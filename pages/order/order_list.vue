@@ -69,14 +69,6 @@
             :key="item.id"
             class="product-item"
           >
-<<<<<<< HEAD
-            <text class="product-name">
-              {{ item.productName }}
-            </text>
-            <text class="product-spec">
-              ×{{ item.quantity }}
-            </text>
-=======
             <view class="product-main">
               <text class="product-name">{{ item.productName }}</text>
               <text v-if="formatOrderItemMeta(item)" class="order-product-meta">{{ formatOrderItemMeta(item) }}</text>
@@ -92,35 +84,12 @@
             @click.stop="goToOrderDetail(order.id)"
           >
             还有 {{ remainingOrderItemCount(order) }} 件商品，查看详情
->>>>>>> fd58edf95adaa97141ab0f4989f211d293e23f65
           </view>
         </view>
         <view v-else class="order-products-empty">暂无商品明细</view>
 
-<<<<<<< HEAD
-        <view
-          v-if="showTherapyQr(order)"
-          class="therapy-qr-card"
-          @click.stop
-        >
-          <view class="therapy-qr-head">
-            <text class="therapy-qr-tag">
-              到店核销
-            </text>
-            <text class="therapy-qr-hint">
-              请向工作人员出示此码
-            </text>
-          </view>
-          <image
-            class="therapy-qr-image"
-            :src="order.verifyQrBase64"
-            mode="aspectFit"
-            show-menu-by-longpress
-          />
-=======
         <view v-if="hasRedeemVouchers(order)" class="order-redeem-summary">
           {{ redeemSummaryText(order) }}
->>>>>>> fd58edf95adaa97141ab0f4989f211d293e23f65
         </view>
         
         <view class="order-footer">

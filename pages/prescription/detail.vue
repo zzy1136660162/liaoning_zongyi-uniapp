@@ -140,7 +140,7 @@ import {
 import { getPrescriptionDetail, getPrescriptionItems, getConsultationDetail } from '@/api/consultation.js'
 import { resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
 import { getProductDetail } from '@/api/product.js'
-import { getOrderByPrescriptionId, getMyOrders } from '@/api/order.js'
+import { getOrderByPrescriptionId, getMyOrders, getOrderDetail } from '@/api/order.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getDoctorDetail, getDoctorByOutpatientNo } from '@/api/hospital.js'
 import { logPageView } from '@/api/access-log.js'
@@ -179,7 +179,8 @@ export default {
       },
       // 保存页面参数，用于订单查询
       pageOptions: {
-        prescriptionNo: null // 保存原始的 prescriptionNo 参数
+        prescriptionNo: null, // 保存原始的 prescriptionNo 参数
+        orderId: null
       }
     }
   },
@@ -216,11 +217,14 @@ export default {
     }
   },
   async onLoad(options) {
-    this.pageOptions.prescriptionNo = options.prescriptionNo || null
+    this.pageOptions.prescriptionNo = this.isValidPrescriptionId(options.prescriptionNo) ? options.prescriptionNo : null
+    this.pageOptions.orderId = this.isUsableId(options.orderId) ? options.orderId : null
     this.loadUserInfo()
 
-    if (options.prescriptionNo) {
-      await this.loadPrescriptionById(options.prescriptionNo)
+    if (this.pageOptions.prescriptionNo) {
+      await this.loadPrescriptionById(this.pageOptions.prescriptionNo)
+    } else if (this.pageOptions.orderId) {
+      await this.loadOrderFromOrderId(this.pageOptions.orderId)
     }
 
     // 接收处方数据参数（与复诊详情页保持一致）
@@ -279,6 +283,18 @@ export default {
   methods: {
     // 图片URL处理函数
     getImageUrl,
+
+    isUsableId(value) {
+      if (value === null || value === undefined) {
+        return false
+      }
+      const text = String(value).trim()
+      return text !== '' && text !== 'null' && text !== 'undefined'
+    },
+
+    isValidPrescriptionId(value) {
+      return this.isUsableId(value) && /^\d+$/.test(String(value).trim())
+    },
 
     async applyDoctorFromPrescription(prescriptionData) {
       if (!prescriptionData) {
@@ -394,8 +410,6 @@ export default {
     // 获取订单状态信息
     async loadOrderStatus() {
       try {
-        console.log('111111111111111111');
-        
         // 首先尝试从存储的订单信息中获取（处理正在创建的订单）
         const currentOrder = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
         if (currentOrder && currentOrder.prescriptions && currentOrder.prescriptions.includes(this.detail.visitNo)) {
@@ -408,7 +422,11 @@ export default {
 
         // 通过处方ID查询订单信息
         // 优先使用原始的 prescriptionNo 参数，其次使用 detail.visitNo
-        const prescriptionId = this.pageOptions.prescriptionNo 
+        const prescriptionId = this.pageOptions.prescriptionNo || (this.isValidPrescriptionId(this.detail.visitNo) ? this.detail.visitNo : null)
+        if (!this.isValidPrescriptionId(prescriptionId)) {
+          console.log('处方详情无有效处方ID，跳过按处方查询订单')
+          return
+        }
         console.log('查询订单使用的处方ID:', prescriptionId)
         const orderInfo = await getOrderByPrescriptionId(prescriptionId)
 
@@ -443,7 +461,10 @@ export default {
 
           if (orders && orders.length > 0) {
             // 查找包含此门诊号的订单
-            const prescriptionId = this.pageOptions.prescriptionNo || this.detail.visitNo
+            const prescriptionId = this.pageOptions.prescriptionNo || (this.isValidPrescriptionId(this.detail.visitNo) ? this.detail.visitNo : null)
+            if (!this.isValidPrescriptionId(prescriptionId)) {
+              return
+            }
             const relatedOrder = orders.find(order =>
               order.items && order.items.some(item =>
                 item.id === prescriptionId ||
@@ -664,6 +685,10 @@ export default {
     // 根据处方ID从 storage 加载处方信息
     // ✅ 从API加载处方详情
     async loadPrescriptionById(id) {
+      if (!this.isValidPrescriptionId(id)) {
+        console.warn('处方ID无效，跳过处方详情加载:', id)
+        return
+      }
       try {
         uni.showLoading({ title: '加载中...' })
 
@@ -883,6 +908,38 @@ export default {
           this.detail.visitNo = id
           console.warn('未在 storage 中找到处方信息，使用默认值')
         }
+      }
+    },
+
+    async loadOrderFromOrderId(orderId) {
+      if (!this.isUsableId(orderId)) {
+        return
+      }
+      try {
+        const orderInfo = await getOrderDetail(orderId, { showLoading: false })
+        if (!orderInfo) {
+          return
+        }
+
+        this.orderStatus.status = orderInfo.orderStatus !== null && orderInfo.orderStatus !== undefined
+          ? orderInfo.orderStatus
+          : (orderInfo.status || 0)
+        this.orderStatus.orderNo = orderInfo.orderNo || orderInfo.id || ''
+        this.orderStatus.logisticsNo = orderInfo.logisticsNo || ''
+        this.orderStatus.logisticsCompany = orderInfo.logisticsCompany || ''
+        this.updateDetailFromOrder(orderInfo)
+
+        const prescriptionId = orderInfo.prescriptionId || orderInfo.prescription_id
+        if (this.isValidPrescriptionId(prescriptionId)) {
+          this.pageOptions.prescriptionNo = String(prescriptionId)
+          await this.loadPrescriptionById(prescriptionId)
+        }
+      } catch (error) {
+        console.error('通过订单ID加载处方详情失败:', error)
+        uni.showToast({
+          title: error.message || '加载订单处方失败',
+          icon: 'none'
+        })
       }
     },
 
