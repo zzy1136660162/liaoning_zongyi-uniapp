@@ -166,11 +166,11 @@ const orders = ref([])
 const ORDER_LIST_PREVIEW_LIMIT = 2
 
 const tabs = ref([
-  { key: 'all', label: '全部' },
+  { key: 'all', label: '全部', count: 0 },
   { key: 'pending', label: '待支付', count: 0 },
   { key: 'shipping', label: '待发货', count: 0 },
   { key: 'received', label: '待收货', count: 0 },
-  { key: 'completed', label: '已完成' }
+  { key: 'completed', label: '已完成', count: 0 }
 ])
 
 const normalizeRedeemVouchers = (item = {}) => {
@@ -369,11 +369,11 @@ const loadOrders = async () => {
 
 // 更新标签页数量
 const updateTabCounts = () => {
-  //tabs.value[0].count = orders.value.length
+  tabs.value[0].count = orders.value.length
   tabs.value[1].count = orders.value.filter(o => o.status === 0).length
   tabs.value[2].count = orders.value.filter(o => o.status === 1).length
   tabs.value[3].count = orders.value.filter(o => o.status === 2).length
-  //tabs.value[4].count = orders.value.filter(o => o.status === 3).length
+  tabs.value[4].count = orders.value.filter(o => o.status === 3).length
 }
 
 // 过滤订单
