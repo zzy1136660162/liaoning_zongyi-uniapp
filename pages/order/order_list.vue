@@ -69,35 +69,16 @@
             :key="item.id"
             class="product-item"
           >
-<<<<<<< HEAD
             <text class="product-name">
               {{ item.productName }}
             </text>
             <text class="product-spec">
               ×{{ item.quantity }}
             </text>
-=======
-            <view class="product-main">
-              <text class="product-name">{{ item.productName }}</text>
-              <text v-if="formatOrderItemMeta(item)" class="order-product-meta">{{ formatOrderItemMeta(item) }}</text>
-            </view>
-            <view class="product-side">
-              <text class="product-quantity">×{{ item.quantity }}</text>
-              <text class="product-subtotal">¥{{ orderItemSubtotal(item).toFixed(2) }}</text>
-            </view>
-          </view>
-          <view
-            v-if="remainingOrderItemCount(order) > 0"
-            class="order-more"
-            @click.stop="goToOrderDetail(order.id)"
-          >
-            还有 {{ remainingOrderItemCount(order) }} 件商品，查看详情
->>>>>>> fd58edf95adaa97141ab0f4989f211d293e23f65
           </view>
         </view>
         <view v-else class="order-products-empty">暂无商品明细</view>
 
-<<<<<<< HEAD
         <view
           v-if="showTherapyQr(order)"
           class="therapy-qr-card"
@@ -117,10 +98,6 @@
             mode="aspectFit"
             show-menu-by-longpress
           />
-=======
-        <view v-if="hasRedeemVouchers(order)" class="order-redeem-summary">
-          {{ redeemSummaryText(order) }}
->>>>>>> fd58edf95adaa97141ab0f4989f211d293e23f65
         </view>
         
         <view class="order-footer">
