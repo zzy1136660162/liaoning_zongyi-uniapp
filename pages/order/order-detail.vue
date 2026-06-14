@@ -90,7 +90,7 @@
                   <image
                     v-if="voucher.verifyQrBase64 && Number(voucher.redeemStatus) !== 1"
                     class="therapy-voucher-qr"
-                    :src="voucher.verifyQrBase64"
+                    :src="normalizeQrImageSrc(voucher.verifyQrBase64)"
                     mode="aspectFit"
                     show-menu-by-longpress
                   />
@@ -341,6 +341,30 @@
 
       formatRedeemStatus(voucher = {}) {
         return Number(voucher.redeemStatus) === 1 ? '已核销' : '待核销'
+      },
+
+      normalizeQrImageSrc(value) {
+        const text = String(value || '').trim()
+        if (!text) {
+          return ''
+        }
+
+        const dataUriMatch = text.match(/^(data:image\/[a-zA-Z0-9.+-]+;base64)[,;]/i)
+        if (dataUriMatch) {
+          const payload = text.slice(dataUriMatch[0].length).trim()
+          const nestedDataUriIndex = payload.search(/data:image\/[a-zA-Z0-9.+-]+;base64[,;]/i)
+          if (nestedDataUriIndex >= 0) {
+            return this.normalizeQrImageSrc(payload.slice(nestedDataUriIndex))
+          }
+          return `${dataUriMatch[1]},${payload}`
+        }
+
+        const nestedDataUriIndex = text.search(/data:image\/[a-zA-Z0-9.+-]+;base64[,;]/i)
+        if (nestedDataUriIndex >= 0) {
+          return this.normalizeQrImageSrc(text.slice(nestedDataUriIndex))
+        }
+
+        return `data:image/png;base64,${text.replace(/^base64[,;]/i, '').trim()}`
       },
 
       isUsableId(value) {
