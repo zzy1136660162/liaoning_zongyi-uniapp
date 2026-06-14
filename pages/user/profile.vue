@@ -69,12 +69,12 @@
           <text class="order-card-text">
             已支付
           </text>
-          <view
+          <!-- <view
             v-if="orderStats.paid > 0"
             class="order-card-badge"
           >
             {{ orderStats.paid }}
-          </view>
+          </view> -->
         </view>
         <view
           class="order-card"
@@ -90,12 +90,12 @@
           <text class="order-card-text">
             已取消
           </text>
-          <view
+          <!-- <view
             v-if="orderStats.cancelled > 0"
             class="order-card-badge"
           >
             {{ orderStats.cancelled }}
-          </view>
+          </view> -->
         </view>
         <view
           class="order-card"

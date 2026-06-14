@@ -4,9 +4,9 @@
   支持选择商品和批量下单
 -->
 <template>
-    <view class="page">
+  <view class="page">
     <!-- 页面头部：医院信息和用户信息 -->
-<!--      <view class="header-info">
+    <!--      <view class="header-info">
         <view class="hospital">{{ hospitalName }}</view>
         <view class="user-info" @click="onSelectUser">
           {{ currentUserName }}
@@ -14,7 +14,7 @@
       </view>-->
       
     <!-- 日期选择区域（目前用于占位，后续可扩展筛选功能） -->
-<!--      <view class="date-section">
+    <!--      <view class="date-section">
         <view class="date-label">日期选择</view>
         <view class="date-range" @click="onSelectDate">
         选择时间范围
@@ -22,87 +22,143 @@
       </view>-->
       
     <!-- 标签筛选区域（保留布局结构，后续可扩展） -->
-      <view class="filter-tabs">
+    <view class="filter-tabs">
       <view class="tab-item active">
         全部处方
-        </view>
       </view>
+    </view>
     <!-- 主要内容区域 -->
-      <view style="padding: 20rpx;">
+    <view style="padding: 20rpx;">
       <!-- 可滚动的产品列表区域 -->
-      <scroll-view class="prescription-list" scroll-y>
+      <scroll-view
+        class="prescription-list"
+        scroll-y
+      >
         <!-- 全选控制栏 -->
         <view class="select-all-bar">
           <view class="select-controls">
             <!-- 全选按钮：仅在有商品时显示 -->
             <view
+              v-if="cartItemsList.length > 0"
               class="select-all"
               @click="toggleCartSelectAll"
-              v-if="cartItemsList.length > 0"
             >
-              <view class="checkbox" :class="{ checked: isCartAllSelected }"></view>
+              <view
+                class="checkbox"
+                :class="{ checked: isCartAllSelected }"
+              />
               <text>全选处方</text>
-          </view>
+            </view>
           </view>
           <!-- 就诊时间显示：仅在有处方信息时显示 -->
-          <view class="consultation-time" v-if="currentPrescription">
+          <view
+            v-if="currentPrescription"
+            class="consultation-time"
+          >
             就诊时间: {{ latestConsultationTime }}
           </view>
         </view>
         
         <!-- 购物车商品列表：每个商品以处方卡片形式展示 -->
-        <template v-for="cartItem in cartItemsList" :key="cartItem.id">
+        <template
+          v-for="cartItem in cartItemsList"
+          :key="cartItem.id"
+        >
           <view class="prescription-item">
             <!-- 商品选择框 -->
-            <view class="prescription-checkbox" @click="toggleCartSelect(cartItem.id)">
-              <view class="checkbox" :class="{ checked: isCartItemSelected(cartItem.id) }"></view>
+            <view
+              class="prescription-checkbox"
+              @click="toggleCartSelect(cartItem.id)"
+            >
+              <view
+                class="checkbox"
+                :class="{ checked: isCartItemSelected(cartItem.id) }"
+              />
             </view>
 
             <!-- 商品信息内容区域 -->
-            <view class="prescription-content" @click="onCartItemClick(cartItem)">
+            <view
+              class="prescription-content"
+              @click="onCartItemClick(cartItem)"
+            >
               <!-- 商品名称 -->
               <view class="prescription-header">
-                <text class="doctor-name">{{ cartItem.name }}</text>
+                <text class="doctor-name">
+                  {{ cartItem.name }}
+                </text>
               </view>
 
               <!-- 商品标签 -->
               <view class="prescription-tags">
-                <view class="tag">中药</view>
-                <view class="tag tag-online">在线复诊</view>
-                <view class="tag tag-convenient">便捷配药</view>
+                <view class="tag">
+                  中药
+                </view>
+                <view class="tag tag-online">
+                  在线复诊
+                </view>
+                <view class="tag tag-convenient">
+                  便捷配制剂
+                </view>
               </view>
 
               <!-- 诊断信息 -->
               <view class="prescription-info">
-                <text class="info-label">诊断:</text>
-                <text class="info-value">{{ cartItem.diagnosis || '虚劳类病' }}</text>
+                <text class="info-label">
+                  诊断:
+                </text>
+                <text class="info-value">
+                  {{ cartItem.diagnosis || '无' }}
+                </text>
               </view>
 
               <!-- 医师信息 -->
               <view class="prescription-info">
-                <text class="info-label">医师:</text>
-                <text class="info-value">{{ currentPrescriptionDoctorName || cartItem.doctorName || '医师' }}</text>
+                <text class="info-label">
+                  医师:
+                </text>
+                <text class="info-value">
+                  {{ currentPrescriptionDoctorName || cartItem.doctorName || '医师' }}
+                </text>
               </view>
 
               <!-- 商品说明 -->
-              <view class="prescription-info" v-if="cartItem.description">
-                <text class="info-label">说明:</text>
-                <text class="info-value">{{ cartItem.description }}</text>
-              </view>
+              <!-- <view
+                v-if="cartItem.description"
+                class="prescription-info"
+              >
+                <text class="info-label">
+                  说明:
+                </text>
+                <text class="info-value">
+                  {{ cartItem.description }}
+                </text>
+              </view> -->
 
               <!-- 商品数量和单价 -->
               <view class="prescription-info prescription-info-inline">
-                <text class="info-label">数量:</text>
-                <text class="info-value">{{ cartItem.quantity }}</text>
-                <text class="info-label info-label-spaced">单价:</text>
-                <text class="info-value">¥{{ cartItem.price.toFixed(2) }}</text>
+                <text class="info-label">
+                  数量:
+                </text>
+                <text class="info-value">
+                  {{ cartItem.quantity }}
+                </text>
+                <text class="info-label info-label-spaced">
+                  单价:
+                </text>
+                <text class="info-value">
+                  ¥{{ cartItem.price.toFixed(2) }}
+                </text>
               </view>
 
               <!-- 商品总价和单位 -->
               <view class="prescription-footer">
                 <view class="prescription-status">
-                  <text class="status-text">¥{{ (cartItem.price * cartItem.quantity).toFixed(2) }}</text>
-                  <text class="status-time">{{ cartItem.unit || '份' }}</text>
+                  <text class="status-text">
+                    ¥{{ (cartItem.price * cartItem.quantity).toFixed(2) }}
+                  </text>
+                  <text class="status-time">
+                    {{ cartItem.unit || '份' }}
+                  </text>
                 </view>
               </view>
             </view>
@@ -112,18 +168,34 @@
     </view>
 
     <!-- 底部操作栏：仅在选中商品时显示 -->
-    <view class="footer" v-if="selectedCartCount > 0">
-        <view class="footer-left">
+    <view
+      v-if="selectedCartCount > 0"
+      class="footer"
+    >
+      <view class="footer-left">
         <!-- 显示选中的处方数量 -->
-        <view>已选择 <text class="selected-count">{{ selectedCartCount }}</text> 张处方</view>
-        <!-- 显示选中的商品总金额 -->
-        <view class="total-amount">合计: ¥<text class="amount-value">{{ selectedCartTotal.toFixed(2) }}</text></view>
+        <view>
+          已选择 <text class="selected-count">
+            {{ selectedCartCount }}
+          </text> 张处方
         </view>
-      <!-- 下单按钮 -->
-        <button class="order-btn" @click="goToOrder">去下单</button>
+        <!-- 显示选中的商品总金额 -->
+        <view class="total-amount">
+          合计: ¥<text class="amount-value">
+            {{ selectedCartTotal.toFixed(2) }}
+          </text>
+        </view>
       </view>
+      <!-- 下单按钮 -->
+      <button
+        class="order-btn"
+        @click="goToOrder"
+      >
+        去下单
+      </button>
     </view>
-  </template>
+  </view>
+</template>
   
   <script setup>
 // ==================== 导入依赖 ====================

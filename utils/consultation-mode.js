@@ -3,7 +3,7 @@ export const CONSULTATION_MODE_MANUAL = 'manual'
 
 export const AI_DOCTOR = {
   id: null,
-  name: '实时药师',
+  name: '在线医生',
   avatar: '/profile/liaoning_zongyi/zaixian_mingyi_logo.png',
   mode: CONSULTATION_MODE_AI
 }

@@ -4,43 +4,78 @@
     <view class="status-banner">
       <view class="status-content">
         <view class="status-info">
-          <text class="status-title">待下单</text>
-          <text class="status-desc">等待下单支付</text>
+          <text class="status-title">
+            待下单
+          </text>
+          <text class="status-desc">
+            等待下单支付
+          </text>
         </view>
       </view>
     </view>
 
     <!-- 复诊信息 -->
-    <view class="info-card" @click="onConsultationClick">
-        <view class="card-header">
-          <image class="card-avatar" :src="doctorAvatar" mode="aspectFill" />
-          <view class="card-title">
-            <text>{{ prescription.doctorName || '线上医生' }} (门诊号: {{ prescription.outpatientNo || '暂无' }})</text>
-            <text class="card-time">{{ formattedConsultationTime }}</text>
-          </view>
-          <text class="card-arrow">›</text>
+    <view
+      class="info-card"
+      @click="onConsultationClick"
+    >
+      <view class="card-header">
+        <image
+          class="card-avatar"
+          :src="doctorAvatar"
+          mode="aspectFill"
+        />
+        <view class="card-title">
+          <text>{{ prescription.doctorName || '线上医生' }} (门诊号: {{ prescription.outpatientNo || '暂无' }})</text>
+          <text class="card-time">
+            {{ formattedConsultationTime }}
+          </text>
         </view>
+        <text class="card-arrow">
+          ›
+        </text>
+      </view>
       
       <view class="card-content">
         <view class="info-row">
-          <text class="info-label">诊断信息:</text>
-          <text class="info-value">{{ prescription.diagnosis }}</text>
+          <text class="info-label">
+            诊断信息:
+          </text>
+          <text class="info-value">
+            {{ prescription.diagnosis }}
+          </text>
         </view>
         <view class="info-row">
-          <text class="info-label">开方药房:</text>
-          <text class="info-value">协定方</text>
+          <text class="info-label">
+            开方药房:
+          </text>
+          <text class="info-value">
+            协定方
+          </text>
         </view>
         <view class="info-row">
-          <text class="info-label">开具信息:</text>
-          <text class="info-value">{{ prescription.doctorName }} 医生</text>
+          <text class="info-label">
+            开具信息:
+          </text>
+          <text class="info-value">
+            {{ prescription.doctorName }} 医生
+          </text>
         </view>
         <view class="info-row">
-          <text class="info-label">医院:</text>
-          <text class="info-value">{{ prescription.hospital }}</text>
+          <text class="info-label">
+            医院:
+          </text>
+          <text class="info-value">
+            {{ prescription.hospital }}
+          </text>
         </view>
         <view class="info-row">
-          <text class="info-label">开具时间:</text>
-          <text class="info-value">{{ formattedConsultationTime }}</text>
+          <text class="info-label">
+            开具时间:
+          </text>
+          <text class="info-value">
+            {{ formattedConsultationTime }}
+          </text>
         </view>
       </view>
     </view>
@@ -48,28 +83,50 @@
     <!-- 处方详情 -->
     <view class="prescription-card">
       <view class="prescription-header">
-        <text class="prescription-title">中药处方</text>
+        <text class="prescription-title">
+          中药处方
+        </text>
       </view>
       
       <view class="prescription-tabs">
-        <view class="tab-item active">普通处方</view>
-        <view class="tab-item">自费</view>
+        <view class="tab-item active">
+          普通处方
+        </view>
+        <view class="tab-item">
+          自费
+        </view>
       </view>
 
-      <view class="prescription-content" v-if="allCartItems.length > 0">
+      <view
+        v-if="allCartItems.length > 0"
+        class="prescription-content"
+      >
         <view class="medicines-list">
           <view 
+            v-for="item in allCartItems"
+            :key="item.id" 
             class="medicine-item"
-            v-for="item in allCartItems" 
-            :key="item.id"
           >
             <view class="medicine-left">
-              <image class="medicine-thumb" :src="item.image" mode="aspectFill" />
-              <view class="medicine-qty" v-if="item.quantity">×{{ item.quantity }}</view>
+              <image
+                class="medicine-thumb"
+                :src="item.image"
+                mode="aspectFill"
+              />
+              <view
+                v-if="item.quantity"
+                class="medicine-qty"
+              >
+                ×{{ item.quantity }}
+              </view>
             </view>
             <view class="medicine-right">
-              <view class="medicine-name">{{ item.name }}</view>
-              <view class="medicine-price">¥{{ ((item.price || 0) * (item.quantity || 1)).toFixed(2) }}</view>
+              <view class="medicine-name">
+                {{ item.name }}
+              </view>
+              <view class="medicine-price">
+                ¥{{ ((item.price || 0) * (item.quantity || 1)).toFixed(2) }}
+              </view>
             </view>
           </view>
         </view>
@@ -78,8 +135,18 @@
 
     <!-- 底部操作栏 -->
     <view class="footer">
-      <button class="footer-btn secondary" @click="onContinuePrescription">续方</button>
-      <button class="footer-btn primary" @click="onGoToOrder">去下单</button>
+      <button
+        class="footer-btn secondary"
+        @click="onContinuePrescription"
+      >
+        续方
+      </button>
+      <button
+        class="footer-btn primary"
+        @click="onGoToOrder"
+      >
+        去下单
+      </button>
     </view>
   </view>
 </template>
