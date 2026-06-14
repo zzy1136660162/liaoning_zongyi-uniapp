@@ -122,7 +122,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getMyOrders, cancelOrder, confirmReceipt } from '@/api/order.js'
+import { getMyOrders, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/order.js'
 import { checkCanApplyRefund, getRefundList } from '@/api/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { isTherapyOrder } from '@/utils/therapy.js'
@@ -194,6 +194,92 @@ const redeemSummaryText = (order = {}) => {
   return Number(order.redeemStatus) === 1 ? '到店核销：已核销' : '到店核销：待核销'
 }
 
+const resolveRawOrderItems = (order = {}) => {
+  return order.items || order.orderItems || order.order_items || []
+}
+
+const mapOrderItem = (item = {}) => ({
+  id: item.id,
+  productName: item.productName || item.product_name || item.name,
+  productImage: item.productImage || item.product_image || item.image,
+  specText: item.specText || item.spec_text || '',
+  unit: item.unit || '',
+  quantity: item.quantity || 1,
+  price: item.price || '0.00',
+  subtotalAmount: item.subtotalAmount ?? item.subtotal_amount,
+  redeemVouchers: normalizeRedeemVouchers(item)
+})
+
+const mapOrderListItem = (order = {}, refundInfo = null) => ({
+  id: order.id,
+  orderNo: order.orderNo || order.order_no || order.id,
+  orderType: order.orderType ?? order.order_type,
+  payStatus: order.payStatus ?? order.pay_status,
+  redeemStatus: order.redeemStatus ?? order.redeem_status,
+  verifyQrBase64: order.verifyQrBase64 || order.verify_qr_base64 || '',
+  // 优先使用 orderStatus，如果没有则使用 status，最后默认为 0
+  status: order.orderStatus !== null && order.orderStatus !== undefined
+    ? order.orderStatus
+    : (order.status !== null && order.status !== undefined ? order.status : 0),
+  // 实付款：优先 payableAmount，其次 paidAmount，再其次 totalAmount + shippingFee
+  payableAmount: (function () {
+    if (order.payableAmount !== null && order.payableAmount !== undefined) {
+      return order.payableAmount
+    }
+    if (order.paidAmount !== null && order.paidAmount !== undefined) {
+      return order.paidAmount
+    }
+    return (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0)
+  })(),
+  shippingFee: Number(order.shippingFee) || 0,
+  createTime: order.createTime || order.create_time || order.createdAt || order.created_at,
+  refundApplicationId: refundInfo ? refundInfo.id : null,
+  items: resolveRawOrderItems(order).map(mapOrderItem)
+})
+
+const hydrateMissingOrderItems = async () => {
+  const missingOrders = orders.value.filter(order =>
+    order.id && (!order.items || order.items.length === 0)
+  )
+  if (missingOrders.length === 0) {
+    return
+  }
+
+  const detailResults = await Promise.all(missingOrders.map(order =>
+    getOrderDetail(order.id, { showLoading: false })
+      .then(detail => ({ orderId: order.id, detail }))
+      .catch(error => {
+        console.warn('补全订单商品明细失败:', order.id, error)
+        return null
+      })
+  ))
+  const detailMap = new Map()
+  detailResults
+    .filter(Boolean)
+    .forEach(result => detailMap.set(result.orderId, result.detail))
+
+  if (detailMap.size === 0) {
+    return
+  }
+
+  orders.value = orders.value.map(order => {
+    const detail = detailMap.get(order.id)
+    const detailItems = resolveRawOrderItems(detail).map(mapOrderItem)
+    if (!detail || detailItems.length === 0) {
+      return order
+    }
+
+    return {
+      ...order,
+      orderType: order.orderType ?? detail.orderType ?? detail.order_type,
+      payStatus: order.payStatus ?? detail.payStatus ?? detail.pay_status,
+      redeemStatus: order.redeemStatus ?? detail.redeemStatus ?? detail.redeem_status,
+      verifyQrBase64: order.verifyQrBase64 || detail.verifyQrBase64 || detail.verify_qr_base64 || '',
+      items: detailItems
+    }
+  })
+}
+
 // ✅ 从API加载订单列表
 const loadOrders = async () => {
   try {
@@ -227,43 +313,9 @@ const loadOrders = async () => {
     if (orderList && orderList.length > 0) {
       orders.value = orderList.map(order => {
         const refundInfo = refundMap.get(order.id)
-        return {
-          id: order.id,
-          orderNo: order.orderNo || order.id,
-          orderType: order.orderType ?? order.order_type,
-          payStatus: order.payStatus ?? order.pay_status,
-          redeemStatus: order.redeemStatus ?? order.redeem_status,
-          verifyQrBase64: order.verifyQrBase64 || order.verify_qr_base64 || '',
-          // 优先使用 orderStatus，如果没有则使用 status，最后默认为 0
-          status: order.orderStatus !== null && order.orderStatus !== undefined
-            ? order.orderStatus
-            : (order.status !== null && order.status !== undefined ? order.status : 0),
-          // 实付款：优先 payableAmount，其次 paidAmount，再其次 totalAmount + shippingFee
-          payableAmount: (function () {
-            if (order.payableAmount !== null && order.payableAmount !== undefined) {
-              return order.payableAmount
-            }
-            if (order.paidAmount !== null && order.paidAmount !== undefined) {
-              return order.paidAmount
-            }
-            return (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0)
-          })(),
-          shippingFee: Number(order.shippingFee) || 0,
-          createTime: order.createTime || order.create_time || order.createdAt || order.created_at,
-          refundApplicationId: refundInfo ? refundInfo.id : null, // 添加退货申请ID
-          items: (order.items || order.orderItems || order.order_items || []).map(item => ({
-            id: item.id,
-            productName: item.productName || item.product_name || item.name,
-            productImage: item.productImage || item.product_image || item.image,
-            specText: item.specText || item.spec_text || '',
-            unit: item.unit || '',
-            quantity: item.quantity || 1,
-            price: item.price || '0.00',
-            subtotalAmount: item.subtotalAmount ?? item.subtotal_amount,
-            redeemVouchers: normalizeRedeemVouchers(item)
-          }))
-        }
+        return mapOrderListItem(order, refundInfo)
       })
+      await hydrateMissingOrderItems()
       
       updateTabCounts()
     } else {
