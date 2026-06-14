@@ -1,93 +1,198 @@
 <template>
-	<view class="cart-container">
-		<!-- 购物车标题栏 -->
-		<view class="cart-header">
-			<view class="header-left">
-				<text class="header-title">🛒 我的购物车</text>
-			</view>
-		</view>
-		<view class="header-decoration">
-			<view class="deco-dot dot1"></view>
-			<view class="deco-dot dot2"></view>
-			<view class="deco-dot dot3"></view>
-		</view>
+  <view class="cart-container">
+    <!-- 购物车标题栏 -->
+    <!-- <view class="cart-header">
+      <view class="header-left">
+        <text class="header-title">
+          🛒 我的购物车
+        </text>
+      </view>
+    </view> -->
+    <!-- <view class="header-decoration">
+      <view class="deco-dot dot1" />
+      <view class="deco-dot dot2" />
+      <view class="deco-dot dot3" />
+    </view> -->
 
-		<!-- Banner区域：保留远端购物车顶部视觉入口 -->
-		<view class="banner-section">
-			<image class="banner-image" :src="getImageUrl('/profile/liaoning_zongyi/banner_bg.png')" mode="widthFix"></image>
-		</view>
+    <!-- Banner区域：保留远端购物车顶部视觉入口 -->
+    <view class="banner-section">
+      <image
+        class="banner-image"
+        :src="getImageUrl('/profile/liaoning_zongyi/banner_bg.png')"
+        mode="widthFix"
+      />
+    </view>
 
-		<!-- 购物车内容区域 -->
-		<view class="cart-content">
-			<!-- 空购物车状态 -->
-			<view class="empty-cart" v-if="cartItems.length === 0">
-				<image class="empty-icon" :src="getImageUrl('/profile/liaoning_zongyi/empty_cart.png')" mode="aspectFit"></image>
-				<text class="empty-text">购物车还是空的</text>
-				<button class="go-shopping-btn" @click="goShopping">去逛逛</button>
-			</view>
+    <!-- 购物车内容区域 -->
+    <view class="cart-content">
+      <!-- 空购物车状态 -->
+      <view
+        v-if="cartItems.length === 0"
+        class="empty-cart"
+      >
+        <image
+          class="empty-icon"
+          :src="getImageUrl('/profile/liaoning_zongyi/empty_cart.png')"
+          mode="aspectFit"
+        />
+        <text class="empty-text">
+          购物车还是空的
+        </text>
+        <button
+          class="go-shopping-btn"
+          @click="goShopping"
+        >
+          去逛逛
+        </button>
+      </view>
 
-			<!-- 购物车商品列表 -->
-			<view class="cart-list" v-else>
-				<view
-					class="cart-item"
-					:class="{ unavailable: item.available === false }"
-					v-for="item in cartItems"
-					:key="item.id"
-				>
-					<!-- 选择框 -->
-					<view class="checkbox-wrapper" :class="{ disabled: !isItemSelectable(item) }" @click="toggleItemSelection(item.id)">
-						<view class="checkbox" :class="{ checked: selectedItems.includes(item.id), disabled: !isItemSelectable(item) }">
-							<uni-icons type="checkmarkempty" size="16" color="#ffffff" v-if="selectedItems.includes(item.id)"></uni-icons>
-						</view>
-					</view>
+      <!-- 购物车商品列表 -->
+      <view
+        v-else
+        class="cart-list"
+      >
+        <view
+          v-for="item in cartItems"
+          :key="item.id"
+          class="cart-item"
+          :class="{ unavailable: item.available === false }"
+        >
+          <!-- 选择框 -->
+          <view
+            class="checkbox-wrapper"
+            :class="{ disabled: !isItemSelectable(item) }"
+            @click="toggleItemSelection(item.id)"
+          >
+            <view
+              class="checkbox"
+              :class="{ checked: selectedItems.includes(item.id), disabled: !isItemSelectable(item) }"
+            >
+              <uni-icons
+                v-if="selectedItems.includes(item.id)"
+                type="checkmarkempty"
+                size="16"
+                color="#ffffff"
+              />
+            </view>
+          </view>
 
-					<!-- 商品信息 -->
-					<view class="item-content">
-						<image class="item-image" :src="getImageUrl(item.image)" mode="aspectFill" @click="goToProductDetail(item)"></image>
-						<view class="item-info">
-							<text class="item-name" @click="goToProductDetail(item)">{{ item.name }}</text>
-							<text class="item-desc">规格：{{ item.specText || '—' }}</text>
-							<text v-if="item.available === false" class="item-unavailable">商品已下架</text>
-							<view class="item-bottom">
-								<text class="item-price">¥{{ formatPrice(item.price) }}</text>
-								<view class="quantity-controls">
-									<button class="quantity-btn" @click="decreaseQuantity(item)">-</button>
-									<text class="quantity-text">{{ item.quantity }}</text>
-									<button class="quantity-btn" :class="{ disabled: isQuantityAtStockLimit(item) }" @click="increaseQuantity(item)">+</button>
-								</view>
-							</view>
-						</view>
-					</view>
+          <!-- 商品信息 -->
+          <view class="item-content">
+            <image
+              class="item-image"
+              :src="getImageUrl(item.image)"
+              mode="aspectFill"
+              @click="goToProductDetail(item)"
+            />
+            <view class="item-info">
+              <text
+                class="item-name"
+                @click="goToProductDetail(item)"
+              >
+                {{ item.name }}
+              </text>
+              <text class="item-desc">
+                规格：{{ item.specText || '—' }}
+              </text>
+              <text
+                v-if="item.available === false"
+                class="item-unavailable"
+              >
+                商品已下架
+              </text>
+              <view class="item-bottom">
+                <text class="item-price">
+                  ¥{{ formatPrice(item.price) }}
+                </text>
+                <view class="quantity-controls">
+                  <button
+                    class="quantity-btn"
+                    @click="decreaseQuantity(item)"
+                  >
+                    -
+                  </button>
+                  <text class="quantity-text">
+                    {{ item.quantity }}
+                  </text>
+                  <button
+                    class="quantity-btn"
+                    :class="{ disabled: isQuantityAtStockLimit(item) }"
+                    @click="increaseQuantity(item)"
+                  >
+                    +
+                  </button>
+                </view>
+              </view>
+            </view>
+          </view>
 
-					<!-- 删除按钮（编辑模式下显示） -->
-					<view class="delete-btn" v-if="isEditMode" @click="removeItem(item.id)">
-						<uni-icons type="trash" size="20" color="#ff6b6b"></uni-icons>
-					</view>
-				</view>
-			</view>
-		</view>
+          <!-- 删除按钮（编辑模式下显示） -->
+          <view
+            v-if="isEditMode"
+            class="delete-btn"
+            @click="removeItem(item.id)"
+          >
+            <uni-icons
+              type="trash"
+              size="20"
+              color="#ff6b6b"
+            />
+          </view>
+        </view>
+      </view>
+    </view>
 
-		<!-- 底部结算栏 -->
-		<view class="checkout-bar" v-if="cartItems.length > 0">
-			<view class="select-all-wrapper" @click="toggleSelectAll">
-				<view class="checkbox" :class="{ checked: isAllSelected }">
-					<uni-icons type="checkmarkempty" size="16" color="#ffffff" v-if="isAllSelected"></uni-icons>
-				</view>
-				<text class="select-all-text">全选</text>
-			</view>
+    <!-- 底部结算栏 -->
+    <view
+      v-if="cartItems.length > 0"
+      class="checkout-bar"
+    >
+      <view
+        class="select-all-wrapper"
+        @click="toggleSelectAll"
+      >
+        <view
+          class="checkbox"
+          :class="{ checked: isAllSelected }"
+        >
+          <uni-icons
+            v-if="isAllSelected"
+            type="checkmarkempty"
+            size="16"
+            color="#ffffff"
+          />
+        </view>
+        <text class="select-all-text">
+          全选
+        </text>
+      </view>
 
-			<view class="checkout-info">
-				<text class="total-text">合计：<text class="total-price">¥{{ selectedTotalPrice.toFixed(2) }}</text></text>
-				<text class="total-count">已选{{ selectedItemCount }}件</text>
-			</view>
+      <view class="checkout-info">
+        <text class="total-text">
+          合计：<text class="total-price">
+            ¥{{ selectedTotalPrice.toFixed(2) }}
+          </text>
+        </text>
+        <text class="total-count">
+          已选{{ selectedItemCount }}件
+        </text>
+      </view>
 
-			<button class="checkout-btn" :disabled="selectedItems.length === 0" @click="goToCheckout">
-				{{ isEditMode ? '删除' : '结算' }}
-			</button>
-		</view>
+      <button
+        class="checkout-btn"
+        :disabled="selectedItems.length === 0"
+        @click="goToCheckout"
+      >
+        {{ isEditMode ? '删除' : '结算' }}
+      </button>
+    </view>
 
-		<TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
-	</view>
+    <TabBar
+      :current="currentTab"
+      :cart-count="cartCount"
+      @change="handleTabChange"
+    />
+  </view>
 </template>
 
 <script>
