@@ -406,8 +406,9 @@ const loadProducts = async () => {
       const directItemIds = cartItems.value.map(item => String(item.id))
       setCheckoutProductIds(directItemIds)
       uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+      const therapyParam = flow.allTraditionalTherapy ? '&therapy=1' : ''
       uni.redirectTo({
-        url: `/pages/order/confirm?selectedItems=${directItemIds.join(',')}`
+        url: `/pages/order/confirm?selectedItems=${directItemIds.join(',')}${therapyParam}`
       })
     }
   } catch (error) {
@@ -575,8 +576,10 @@ const onSubmit = () => {
 
   if (!selectedRequiresConsultation.value) {
     uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+    const checkout = resolveProductFlow(cartItems.value)
+    const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
     uni.navigateTo({
-      url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}`
+      url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}${therapyParam}`
     })
     return
   }

@@ -55,7 +55,7 @@ import { STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_PRODUCT_QUANTITIES } f
 import { getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
 import { getImageUrl } from '@/utils/config.js'
-import { BIZ_TYPE_HEALTH_GOODS, resolveProductFlow } from '@/utils/product-biz.js'
+import { PRODUCT_FLOW_CONSULTATION, resolveProductFlow, resolveProductFlowType } from '@/utils/product-biz.js'
 import { AI_DOCTOR, CONSULTATION_MODE_AI, CONSULTATION_MODE_MANUAL, normalizeConsultationMode } from '@/utils/consultation-mode.js'
 	
 const consultationMode = ref(CONSULTATION_MODE_AI)
@@ -170,12 +170,16 @@ const createConsultationRecord = async () => {
   try {
     const products = await loadProductsForConsultation()
     const flow = resolveProductFlow(products)
-    if (!flow.valid || flow.bizType === BIZ_TYPE_HEALTH_GOODS) {
+    if (!flow.valid || !flow.requiresConsultation) {
+      return null
+    }
+    const consultationProducts = products.filter(product => resolveProductFlowType(product) === PRODUCT_FLOW_CONSULTATION)
+    if (consultationProducts.length === 0) {
       return null
     }
 
     // 人工模式使用上页传入的真实医生ID；AI模式不写入商品默认医生，避免下游展示与「」不一致
-    const firstProduct = products[0]
+    const firstProduct = consultationProducts[0]
 
     // 将购物车内所有已勾选商品作为处方明细传递到后端
     // 优先使用本地存储的商品数量（由上页 apply.vue 存储），回退到商品对象中的数量或 1
@@ -190,7 +194,7 @@ const createConsultationRecord = async () => {
       return 1
     }
 
-    const prescriptionItems = products.map(p => ({
+    const prescriptionItems = consultationProducts.map(p => ({
       productId: p.id,
       drugName: p.productName || p.name || '未命名药品',
       quantity: resolveQuantity(p),
@@ -225,10 +229,11 @@ const createConsultationRecord = async () => {
 const redirectHealthGoodsToConfirm = async () => {
   const products = await loadProductsForConsultation()
   const flow = resolveProductFlow(products)
-  if (flow.valid && flow.bizType === BIZ_TYPE_HEALTH_GOODS) {
+  if (flow.valid && !flow.requiresConsultation) {
     const ids = selectedProductIds.value.length > 0 ? selectedProductIds.value : getCurrentCheckoutProductIds()
+    const therapyParam = flow.allTraditionalTherapy ? '&therapy=1' : ''
     uni.redirectTo({
-      url: `/pages/order/confirm?selectedItems=${ids.join(',')}`
+      url: `/pages/order/confirm?selectedItems=${ids.join(',')}${therapyParam}`
     })
     return true
   }

@@ -131,6 +131,14 @@ const buildCartEntry = (productId, partial = {}, legacyQuantities = {}) => {
     goodsMerchantType: partial.goodsMerchantType !== undefined && partial.goodsMerchantType !== null && partial.goodsMerchantType !== ''
       ? toNumber(partial.goodsMerchantType, null)
       : null,
+    productCategory: partial.productCategory !== undefined && partial.productCategory !== null && partial.productCategory !== ''
+      ? toNumber(partial.productCategory, null)
+      : null,
+    isPrescription: partial.isPrescription !== undefined && partial.isPrescription !== null && partial.isPrescription !== ''
+      ? toNumber(partial.isPrescription, null)
+      : null,
+    categoryId: partial.categoryId ?? partial.category_id ?? null,
+    categoryCode: partial.categoryCode || partial.category_code || '',
     needQuestionnaire,
     questionnairePassed: toFlag(partial.questionnairePassed, defaultQuestionnairePassed),
     timestamp: partial.timestamp ? toNumber(partial.timestamp, Date.now()) : Date.now()
@@ -237,6 +245,18 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
   const hasProductObject = product && typeof product === 'object'
   const productBizType = hasProductObject ? resolveProductBizType(product) : null
   const productGoodsMerchantType = hasProductObject ? resolveGoodsMerchantType(product) : null
+  const productCategory = hasProductObject && product.productCategory !== undefined && product.productCategory !== null && product.productCategory !== ''
+    ? toNumber(product.productCategory, null)
+    : null
+  const isPrescription = hasProductObject && product.isPrescription !== undefined && product.isPrescription !== null && product.isPrescription !== ''
+    ? toNumber(product.isPrescription, null)
+    : null
+  const categoryId = hasProductObject
+    ? (product.categoryId ?? product.category_id ?? existing.categoryId ?? null)
+    : (existing.categoryId ?? null)
+  const categoryCode = hasProductObject
+    ? (product.categoryCode || product.category_code || existing.categoryCode || '')
+    : (existing.categoryCode || '')
   const resolvedNeedQuestionnaire = options.needQuestionnaire !== undefined
     ? toNumber(options.needQuestionnaire, 0)
     : (hasProductObject && product.needQuestionnaire !== undefined
@@ -256,6 +276,14 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
     goodsMerchantType: options.goodsMerchantType !== undefined && options.goodsMerchantType !== null
       ? toNumber(options.goodsMerchantType, productGoodsMerchantType || existing.goodsMerchantType || null)
       : (productGoodsMerchantType !== null ? productGoodsMerchantType : (existing.goodsMerchantType ?? null)),
+    productCategory: options.productCategory !== undefined && options.productCategory !== null
+      ? toNumber(options.productCategory, productCategory || existing.productCategory || null)
+      : (productCategory !== null ? productCategory : (existing.productCategory ?? null)),
+    isPrescription: options.isPrescription !== undefined && options.isPrescription !== null
+      ? toNumber(options.isPrescription, isPrescription || existing.isPrescription || null)
+      : (isPrescription !== null ? isPrescription : (existing.isPrescription ?? null)),
+    categoryId,
+    categoryCode,
     needQuestionnaire: resolvedNeedQuestionnaire,
     questionnairePassed,
     available: options.available !== undefined
@@ -352,6 +380,10 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
       stock: meta.stock,
       bizType: meta.bizType,
       goodsMerchantType: meta.goodsMerchantType,
+      productCategory: meta.productCategory,
+      isPrescription: meta.isPrescription,
+      categoryId: meta.categoryId,
+      categoryCode: meta.categoryCode,
       needQuestionnaire: meta.needQuestionnaire,
       questionnairePassed: meta.questionnairePassed,
       timestamp: Date.now()
@@ -532,6 +564,14 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         return
       }
 
+      const nextProductCategory = product.productCategory !== undefined && product.productCategory !== null && product.productCategory !== ''
+        ? toNumber(product.productCategory, null)
+        : (entry.productCategory ?? null)
+      const nextIsPrescription = product.isPrescription !== undefined && product.isPrescription !== null && product.isPrescription !== ''
+        ? toNumber(product.isPrescription, null)
+        : (entry.isPrescription ?? null)
+      const nextCategoryId = product.categoryId ?? product.category_id ?? entry.categoryId ?? null
+      const nextCategoryCode = product.categoryCode || product.category_code || entry.categoryCode || ''
       const nextBizType = entry.bizType ?? resolveProductBizType(product)
       const nextGoodsMerchantType = entry.goodsMerchantType ?? resolveGoodsMerchantType(product)
       const nextNeedQuestionnaire = entry.needQuestionnaire ?? toNumber(product.needQuestionnaire, 0)
@@ -548,6 +588,10 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
       if (
         entry.bizType !== nextBizType ||
         entry.goodsMerchantType !== nextGoodsMerchantType ||
+        entry.productCategory !== nextProductCategory ||
+        entry.isPrescription !== nextIsPrescription ||
+        entry.categoryId !== nextCategoryId ||
+        entry.categoryCode !== nextCategoryCode ||
         entry.needQuestionnaire !== nextNeedQuestionnaire ||
         entry.questionnairePassed !== nextQuestionnairePassed ||
         entry.available !== nextAvailable ||
@@ -563,6 +607,10 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
           stock: nextStock,
           bizType: nextBizType,
           goodsMerchantType: nextGoodsMerchantType,
+          productCategory: nextProductCategory,
+          isPrescription: nextIsPrescription,
+          categoryId: nextCategoryId,
+          categoryCode: nextCategoryCode,
           needQuestionnaire: nextNeedQuestionnaire,
           questionnairePassed: nextQuestionnairePassed
         }
@@ -582,6 +630,10 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         stock: nextStock,
         bizType: nextBizType,
         goodsMerchantType: nextGoodsMerchantType,
+        productCategory: nextProductCategory,
+        isPrescription: nextIsPrescription,
+        categoryId: nextCategoryId,
+        categoryCode: nextCategoryCode,
         needQuestionnaire: nextNeedQuestionnaire,
         questionnairePassed: nextQuestionnairePassed,
         timestamp: entry.timestamp || Date.now()
@@ -614,6 +666,10 @@ export const mapServerCartItemToProduct = (item = {}) => {
     specText: item.specText || item.subTitle || '',
     bizType: item.bizType,
     goodsMerchantType: item.goodsMerchantType,
+    productCategory: item.productCategory,
+    isPrescription: item.isPrescription,
+    categoryId: item.categoryId ?? item.category_id,
+    categoryCode: item.categoryCode || item.category_code || '',
     needQuestionnaire: toNumber(item.needQuestionnaire, 0),
     stock: resolveStockValue(item, null),
     available: resolveStockValue(item, null) === 0 ? false : item.available !== false
@@ -706,40 +762,42 @@ export const buildOrderInfo = (
 export const resolveCartCompatibility = (productOrMeta, options = {}) => {
   const currentEntries = Object.entries(readCartData())
     .filter(([productId, entry]) => entry.verified && normalizeId(productId) !== normalizeId(options.ignoreProductId))
-    .map(([, entry]) => entry)
+    .map(([productId, entry]) => ({
+      id: productId,
+      ...entry
+    }))
 
   if (!currentEntries.length) {
+    const flow = resolveProductFlow(productOrMeta ? [productOrMeta] : [])
     return {
       valid: true,
-      bizType: productOrMeta ? resolveProductBizType(productOrMeta) : BIZ_TYPE_HOSPITAL_MEDICAL,
-      goodsMerchantType: productOrMeta ? resolveGoodsMerchantType(productOrMeta) : null,
+      bizType: flow.bizType,
+      goodsMerchantType: flow.goodsMerchantType,
+      flowType: flow.flowType,
+      requiresConsultation: flow.requiresConsultation,
       message: ''
     }
   }
 
-  const targetBizType = productOrMeta ? resolveProductBizType(productOrMeta) : currentEntries[0].bizType
-  const targetGoodsMerchantType = productOrMeta ? resolveGoodsMerchantType(productOrMeta) : currentEntries[0].goodsMerchantType
-
-  const mixed = currentEntries.some(entry => {
-    if (entry.bizType == null || entry.goodsMerchantType == null) {
-      return false
-    }
-    return Number(entry.bizType) !== Number(targetBizType) || Number(entry.goodsMerchantType) !== Number(targetGoodsMerchantType)
-  })
-
-  if (mixed) {
+  const targetProduct = productOrMeta || currentEntries[0]
+  const flow = resolveProductFlow([...currentEntries, targetProduct])
+  if (!flow.valid) {
     return {
       valid: false,
       bizType: null,
       goodsMerchantType: null,
-      message: '暂不支持本院产品与健康产品混合下单'
+      flowType: flow.flowType,
+      requiresConsultation: flow.requiresConsultation,
+      message: flow.message
     }
   }
 
   return {
     valid: true,
-    bizType: targetBizType,
-    goodsMerchantType: targetGoodsMerchantType,
+    bizType: flow.bizType,
+    goodsMerchantType: flow.goodsMerchantType,
+    flowType: flow.flowType,
+    requiresConsultation: flow.requiresConsultation,
     message: ''
   }
 }

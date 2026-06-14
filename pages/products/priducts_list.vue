@@ -523,9 +523,17 @@ export default {
           return
         }
 
-        uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+        if (!checkout.requiresConsultation) {
+          uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+          const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
+          uni.navigateTo({
+            url: `/pages/order/confirm?selectedItems=${checkout.productIds.join(',')}${therapyParam}`
+          })
+          return
+        }
+
         uni.navigateTo({
-          url: `/pages/order/confirm?selectedItems=${checkout.productIds.join(',')}`
+          url: `/pages/dispense/apply?selectedItems=${checkout.productIds.join(',')}`
         })
       } catch (error) {
         console.error('handleSubmit failed:', error)

@@ -758,7 +758,6 @@ import {
 } from '@/utils/cart.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { logButtonClick, logPageView } from '@/api/access-log.js'
-import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 import { getToken } from '@/utils/request.js'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import {
@@ -1033,10 +1032,11 @@ const goCheckout = (targetProduct) => {
   }
 
   const selectedItems = checkout.productIds.join(',')
-  if (Number(targetProduct.bizType) === BIZ_TYPE_HEALTH_GOODS) {
+  if (!checkout.requiresConsultation) {
     uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+    const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
     uni.navigateTo({
-      url: `/pages/order/confirm?selectedItems=${selectedItems}`
+      url: `/pages/order/confirm?selectedItems=${selectedItems}${therapyParam}`
     })
     return true
   }

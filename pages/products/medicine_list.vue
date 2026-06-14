@@ -378,7 +378,7 @@
 </template>
 
 <script>
-import { STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
+import { STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
 import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
 import {
   addCartItem,
@@ -1079,6 +1079,15 @@ export default {
           uni.showToast({
             title: checkout.message,
             icon: 'none'
+          })
+          return
+        }
+
+        if (!checkout.requiresConsultation) {
+          uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+          const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
+          uni.navigateTo({
+            url: `/pages/order/confirm?selectedItems=${checkout.productIds.join(',')}${therapyParam}`
           })
           return
         }

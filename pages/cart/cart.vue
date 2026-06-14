@@ -499,8 +499,9 @@ export default {
         const selectedItemsParam = checkout.productIds.join(',')
         if (!checkout.requiresConsultation) {
           uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+          const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
           uni.navigateTo({
-            url: '/pages/order/confirm?selectedItems=' + selectedItemsParam
+            url: '/pages/order/confirm?selectedItems=' + selectedItemsParam + therapyParam
           })
           return
         }

@@ -42,7 +42,7 @@ import {
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
-import { BIZ_TYPE_HEALTH_GOODS, hasBoundQuestionnaire } from '@/utils/product-biz.js'
+import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
 
 export default {
   data() {
@@ -124,10 +124,11 @@ export default {
       }
 
       const selectedItems = checkout.productIds.join(',')
-      if (Number(detail.bizType) === BIZ_TYPE_HEALTH_GOODS) {
+      if (!checkout.requiresConsultation) {
         uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+        const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
         uni.navigateTo({
-          url: `/pages/order/confirm?selectedItems=${selectedItems}`
+          url: `/pages/order/confirm?selectedItems=${selectedItems}${therapyParam}`
         })
         return true
       }

@@ -89,6 +89,25 @@ const main = async () => {
     101: { verified: true, selected: true, quantity: 1, available: true, stock: 8 }
   })
   assert.equal(lastCartUpdated().payload.source, 'server')
+
+  resetState()
+  cart.addCartItem({
+    id: '201',
+    name: 'direct goods',
+    productCategory: 2,
+    bizType: 1,
+    stock: 8,
+    available: true
+  }, 1)
+  const therapyCompatibility = cart.resolveCartCompatibility({
+    id: '202',
+    name: 'traditional therapy',
+    categoryCode: '传统疗法',
+    bizType: 1,
+    stock: 8,
+    available: true
+  })
+  assert.equal(therapyCompatibility.valid, true)
 }
 
 main()
