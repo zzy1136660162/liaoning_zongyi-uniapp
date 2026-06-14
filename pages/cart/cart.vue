@@ -12,11 +12,6 @@
 			<view class="deco-dot dot3"></view>
 		</view>
 
-		<!-- Banner区域：保留远端购物车顶部视觉入口 -->
-		<view class="banner-section">
-			<image class="banner-image" :src="getImageUrl('/profile/liaoning_zongyi/banner_bg.png')" mode="widthFix"></image>
-		</view>
-
 		<!-- 购物车内容区域 -->
 		<view class="cart-content">
 			<!-- 空购物车状态 -->
@@ -35,8 +30,8 @@
 					:key="item.id"
 				>
 					<!-- 选择框 -->
-					<view class="checkbox-wrapper" :class="{ disabled: !isItemSelectable(item) }" @click="toggleItemSelection(item.id)">
-						<view class="checkbox" :class="{ checked: selectedItems.includes(item.id), disabled: !isItemSelectable(item) }">
+					<view class="checkbox-wrapper" @click="toggleItemSelection(item.id)">
+						<view class="checkbox" :class="{ checked: selectedItems.includes(item.id) }">
 							<uni-icons type="checkmarkempty" size="16" color="#ffffff" v-if="selectedItems.includes(item.id)"></uni-icons>
 						</view>
 					</view>
@@ -53,7 +48,7 @@
 								<view class="quantity-controls">
 									<button class="quantity-btn" @click="decreaseQuantity(item)">-</button>
 									<text class="quantity-text">{{ item.quantity }}</text>
-									<button class="quantity-btn" :class="{ disabled: isQuantityAtStockLimit(item) }" @click="increaseQuantity(item)">+</button>
+									<button class="quantity-btn" @click="increaseQuantity(item)">+</button>
 								</view>
 							</view>
 						</view>
@@ -115,7 +110,6 @@ import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { BASE_URL } from '@/utils/config.js'
-import { logPageView } from '@/utils/accessLog.js'
 
 const parseCartLoadError = (error) => {
   const statusCode = error?.statusCode
@@ -155,8 +149,6 @@ export default {
       isEditMode: false,
       currentTab: 'cart',
       loading: false,
-      pendingServerRefresh: false,
-      suppressNextServerCartEvent: false,
       unsubscribeCartUpdated: null
     }
   },
@@ -168,31 +160,21 @@ export default {
       return this.selectedItems.length
     },
     selectedTotalPrice() {
-      const selectedCartItems = this.cartItems.filter(item => this.selectedItems.includes(item.id) && this.isItemSelectable(item))
+      const selectedCartItems = this.cartItems.filter(item => this.selectedItems.includes(item.id))
       return calculateTotalPrice(selectedCartItems)
     },
     isAllSelected() {
-      const selectableItems = this.cartItems.filter(item => this.isItemSelectable(item))
-      return selectableItems.length > 0 && selectableItems.every(item => this.selectedItems.includes(item.id))
+      return this.cartItems.length > 0 && this.selectedItems.length === this.cartItems.length
     }
   },
   onLoad() {
     this.currentTab = 'cart'
-    this.unsubscribeCartUpdated = subscribeCartUpdated((event = {}) => {
-      if (event.source === 'local') {
-        this.loadCartData()
-        return
-      }
-      if (event.source === 'server' && this.suppressNextServerCartEvent) {
-        this.suppressNextServerCartEvent = false
-        return
-      }
-      this.loadCartPageData({ queueIfLoading: true })
+    this.unsubscribeCartUpdated = subscribeCartUpdated(() => {
+      this.loadCartPageData()
     })
   },
   onShow() {
     this.loadCartPageData()
-    logPageView('CART')
   },
   onUnload() {
     if (this.unsubscribeCartUpdated) {
@@ -205,26 +187,8 @@ export default {
     formatPrice(price) {
       return Number(price || 0).toFixed(2)
     },
-    isItemSelectable(item) {
-      if (!item || item.available === false) {
-        return false
-      }
-      if (item.stock !== undefined && item.stock !== null && Number(item.stock) <= 0) {
-        return false
-      }
-      return true
-    },
-    isQuantityAtStockLimit(item) {
-      if (!item || item.stock === undefined || item.stock === null) {
-        return false
-      }
-      return Number(item.quantity || 1) >= Number(item.stock)
-    },
-    async loadCartPageData(options = {}) {
+    async loadCartPageData() {
       if (this.loading) {
-        if (options.queueIfLoading) {
-          this.pendingServerRefresh = true
-        }
         console.log('[cart] loadCartPageData skipped: already loading')
         return
       }
@@ -273,10 +237,6 @@ export default {
         }
       } finally {
         this.loading = false
-        if (this.pendingServerRefresh) {
-          this.pendingServerRefresh = false
-          this.loadCartPageData()
-        }
       }
     },
     async loadCartFromServer() {
@@ -293,22 +253,8 @@ export default {
         count: normalizedItems.length
       })
 
-      this.suppressNextServerCartEvent = true
       applyServerCartToLocal(normalizedItems)
-      if (this.suppressNextServerCartEvent) {
-        this.suppressNextServerCartEvent = false
-      }
       this.categories = buildCategoriesFromServerCart(normalizedItems)
-      const serverMetaById = new Map(normalizedItems.map(item => [String(item.productId ?? item.id), item]))
-      this.categories.forEach(category => {
-        (category.products || []).forEach(product => {
-          const meta = serverMetaById.get(String(product.id))
-          if (meta) {
-            product.productCategory = meta.productCategory
-            product.isPrescription = meta.isPrescription
-          }
-        })
-      })
       this.loadCartData()
     },
     async loadLocalCartFallback() {
@@ -340,8 +286,6 @@ export default {
                 image: productDetail.coverImage || productDetail.image,
                 price: Number(productDetail.price || 0),
                 bizType: productDetail.bizType,
-                productCategory: productDetail.productCategory,
-                isPrescription: productDetail.isPrescription,
                 goodsMerchantType: productDetail.goodsMerchantType,
                 unit: productDetail.unit || '件',
                 notice: productDetail.usageDesc || productDetail.notice,
@@ -365,19 +309,24 @@ export default {
     loadCartData() {
       this.cartItems = loadCartItems(this.categories)
       this.selectedItems = this.cartItems
-        .filter(item => item.selected !== false && this.isItemSelectable(item))
+        .filter(item => item.selected !== false)
         .map(item => item.id)
+
+      if (this.cartItems.length > 0 && this.selectedItems.length === 0) {
+        const selectionMap = {}
+        this.cartItems.forEach(item => {
+          selectionMap[item.id] = true
+        })
+        updateMultipleSelections(selectionMap)
+        this.cartItems = loadCartItems(this.categories)
+        this.selectedItems = this.cartItems.map(item => item.id)
+      }
     },
     toggleEditMode() {
       this.isEditMode = !this.isEditMode
     },
     toggleItemSelection(itemId) {
       const normalizedId = itemId
-      const item = this.cartItems.find(cartItem => cartItem.id === normalizedId)
-      if (!this.isItemSelectable(item)) {
-        uni.showToast({ title: '商品已下架或库存不足', icon: 'none' })
-        return
-      }
       updateProductSelection(normalizedId, !this.selectedItems.includes(normalizedId))
       this.loadCartData()
     },
@@ -385,19 +334,12 @@ export default {
       const nextSelected = !this.isAllSelected
       const selectionMap = {}
       this.cartItems.forEach(item => {
-        selectionMap[item.id] = this.isItemSelectable(item) ? nextSelected : false
+        selectionMap[item.id] = nextSelected
       })
       updateMultipleSelections(selectionMap)
       this.loadCartData()
     },
     increaseQuantity(item) {
-      if (!this.isItemSelectable(item)) {
-        return
-      }
-      if (this.isQuantityAtStockLimit(item)) {
-        uni.showToast({ title: '已达库存上限', icon: 'none' })
-        return
-      }
       setCartItemQuantity(item.id, Number(item.quantity || 1) + 1)
       this.loadCartData()
     },
@@ -497,7 +439,7 @@ export default {
         }
 
         const selectedItemsParam = checkout.productIds.join(',')
-        if (!checkout.requiresConsultation) {
+        if (Number(checkout.bizType) === 2) {
           uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
           uni.navigateTo({
             url: '/pages/order/confirm?selectedItems=' + selectedItemsParam

@@ -20,102 +20,100 @@
       </view>
     </view>
 
-    <view class="order-status-card">
-      <view class="order-header">
-        <text class="order-title">
+    <view class="order-section">
+      <view class="section-header">
+        <view class="section-title">
           我的订单
-        </text>
+        </view>
         <view
           class="view-all"
           @click="goToOrderList"
         >
-          <text>全部订单</text>
-          <text class="arrow">
-            >
-          </text>
+          <text class="view-all-text">全部订单</text>
+          <uni-icons type="right" size="10" color="#999999" />
         </view>
       </view>
-      <view class="order-status-list">
+      <view class="order-grid">
         <view
-          class="status-item"
+          class="order-card"
           @click="goToOrderListByStatus(0)"
         >
-          <view class="status-icon">
+          <view class="order-card-icon">
             <uni-icons
               type="wallet"
-              size="32"
-              color="#333333"
+              size="28"
+              color="#4A90E2"
             />
           </view>
-          <text class="status-text">
+          <text class="order-card-text">
             待支付
           </text>
           <view
             v-if="orderStats.pending > 0"
-            class="status-badge"
+            class="order-card-badge"
           >
             {{ orderStats.pending }}
           </view>
         </view>
         <view
-          class="status-item"
+          class="order-card"
           @click="goToOrderListByStatus(1)"
         >
-          <view class="status-icon">
-            <image
-              class="status-img"
-              :src="successIcon"
-              mode="aspectFit"
+          <view class="order-card-icon">
+            <uni-icons
+              type="checkbox"
+              size="28"
+              color="#4A90E2"
             />
           </view>
-          <text class="status-text">
+          <text class="order-card-text">
             已支付
           </text>
           <view
             v-if="orderStats.paid > 0"
-            class="status-badge"
+            class="order-card-badge"
           >
             {{ orderStats.paid }}
           </view>
         </view>
         <view
-          class="status-item"
+          class="order-card"
           @click="goToOrderListByStatus(4)"
         >
-          <view class="status-icon">
+          <view class="order-card-icon">
             <uni-icons
-              type="closeempty"
-              size="32"
-              color="#333333"
+              type="close"
+              size="28"
+              color="#4A90E2"
             />
           </view>
-          <text class="status-text">
+          <text class="order-card-text">
             已取消
           </text>
           <view
             v-if="orderStats.cancelled > 0"
-            class="status-badge"
+            class="order-card-badge"
           >
             {{ orderStats.cancelled }}
           </view>
         </view>
         <view
-          class="status-item"
+          class="order-card"
           @click="goToOrderListByStatus('refund')"
         >
-          <view class="status-icon">
+          <view class="order-card-icon">
             <uni-icons
               type="loop"
-              size="32"
-              color="#333333"
+              size="28"
+              color="#4A90E2"
             />
           </view>
-          <text class="status-text">
+          <text class="order-card-text">
             退款/售后
           </text>
           <view
             v-if="orderStats.refund > 0"
-            class="status-badge"
+            class="order-card-badge"
           >
             {{ orderStats.refund }}
           </view>
@@ -197,9 +195,6 @@
             退出登录
           </text>
         </view>
-        <text class="settings-arrow">
-          {{ '>' }}
-        </text>
       </view>
     </view>
 
@@ -512,26 +507,18 @@ const getCurrentRoute = () => {
   color: #ffffff;
 }
 
-.order-status-card {
+.order-section {
+  margin: 20rpx;
   background: #ffffff;
-  border-radius: 24rpx 24rpx 0 0;
-  margin-top: -40rpx;
+  border-radius: 16rpx;
   padding: 30rpx;
-  position: relative;
-  z-index: 1;
 }
 
-.order-header {
+.section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30rpx;
-}
-
-.order-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333333;
 }
 
 .view-all {
@@ -539,66 +526,70 @@ const getCurrentRoute = () => {
   align-items: center;
   gap: 8rpx;
   font-size: 28rpx;
-  color: #333333;
-}
-
-.arrow {
-  font-size: 32rpx;
   color: #999999;
 }
 
-.order-status-list {
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
+.view-all-text {
+  color: #999999;
 }
 
-.status-item {
+.order-grid {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+}
+
+.order-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  position: relative;
   flex: 1;
+  padding: 20rpx 0;
+  position: relative;
+  transition: all 0.3s;
 }
 
-.status-icon {
+.order-card:active {
+  transform: scale(0.95);
+  opacity: 0.7;
+}
+
+.order-card-icon {
   width: 80rpx;
   height: 80rpx;
+  background: linear-gradient(135deg, rgba(74, 144, 226, 0.1) 0%, rgba(74, 144, 226, 0.05) 100%);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 12rpx;
 }
 
-.status-img {
-  width: 32rpx;
-  height: 32rpx;
-  transform: scale(1.5);
+.order-card-img {
+  width: 28rpx;
+  height: 28rpx;
 }
 
-.status-text {
+.order-card-text {
   font-size: 24rpx;
   color: #333333;
-  text-align: center;
+  margin-top: 8rpx;
 }
 
-.status-badge {
+.order-card-badge {
   position: absolute;
-  top: -8rpx;
-  right: 8rpx;
-  background: linear-gradient(135deg, #ff6b6b 0%, #ff5252 100%);
-  color: #ffffff;
-  font-size: 20rpx;
+  top: 10rpx;
+  right: 10rpx;
   min-width: 32rpx;
   height: 32rpx;
+  background: #ff6b6b;
   border-radius: 16rpx;
+  color: #ffffff;
+  font-size: 22rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 8rpx;
-  font-weight: 500;
-  box-shadow: 0 2rpx 8rpx rgba(255, 107, 107, 0.5);
-  border: 2rpx solid #ffffff;
 }
 
 .service-section {
@@ -612,6 +603,9 @@ const getCurrentRoute = () => {
   font-size: 32rpx;
   font-weight: 600;
   color: #333333;
+}
+
+.service-section .section-title {
   margin-bottom: 30rpx;
 }
 

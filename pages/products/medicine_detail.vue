@@ -725,13 +725,15 @@
       <view class="bottom-right">
         <view
           class="btn-add-cart"
-          @click="addCart"
+          :class="{ disabled: product.stock === 0 }"
+          @click="product.stock !== 0 && addCart()"
         >
           加入购物车
         </view>
         <view
           class="btn-buy"
-          @click="buyNow"
+          :class="{ disabled: product.stock === 0 }"
+          @click="product.stock !== 0 && buyNow()"
         >
           立即购买
         </view>
@@ -2224,6 +2226,13 @@ onShow(() => {
   background: #ffa940;
   color: #fff;
   margin-right: 16rpx;
+}
+
+.btn-add-cart.disabled,
+.btn-buy.disabled {
+  background: #ccc !important;
+  color: #999;
+  cursor: not-allowed;
 }
 
 .btn-buy {

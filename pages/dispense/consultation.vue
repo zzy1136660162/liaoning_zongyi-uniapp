@@ -73,7 +73,7 @@ const messages = ref([
     show: false
   },
   {
-    text: '请稍等，正在审核您提交的用药信息。',
+    text: '请稍等，正在审核您提交的购买制剂信息。',
     show: false
   },
   {
@@ -174,7 +174,7 @@ const createConsultationRecord = async () => {
       return null
     }
 
-    // 人工模式使用上页传入的真实医生ID；AI模式不写入商品默认医生，避免下游展示与「AI药师」不一致
+    // 人工模式使用上页传入的真实医生ID；AI模式不写入商品默认医生，避免下游展示与「」不一致
     const firstProduct = products[0]
 
     // 将购物车内所有已勾选商品作为处方明细传递到后端
@@ -199,8 +199,8 @@ const createConsultationRecord = async () => {
     
     const consultationData = {
       consultType: 1, // 在线咨询
-      symptomDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? '人工接诊复诊开药' : 'AI接诊复诊开药',
-      historyDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? `人工接诊医生：${doctorName.value}` : 'AI药师接诊',
+      symptomDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? '人工接诊复诊开药' : '实时接诊复诊开药',
+      historyDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? `人工接诊医生：${doctorName.value}` : '实时医生接诊',
       doctorId: doctorId.value,
       diagnosis: firstProduct?.prescriptionDiagnosis || '复诊开药',
       usageNote: firstProduct?.usageDesc || '',

@@ -207,7 +207,7 @@
                   ↓
                 </text>
               </view>
-              <view
+              <!-- <view
                 class="sort-btn"
                 :class="{ active: sortType === 'stock' }"
                 @click="toggleSort('stock')"
@@ -221,7 +221,7 @@
                 >
                   ↓
                 </text>
-              </view>
+              </view> -->
             </view>
           </view>
           <!-- <view class="history-order" @click="goToHistory">
@@ -268,7 +268,7 @@
                     传统疗法
                   </text>
                   <text
-                    v-if="product.categoryId !== 34"
+                    v-if="product.isSelfDeveloped === 1"
                     class="self-tag"
                   >
                     自研
@@ -304,8 +304,16 @@
                 <view class="product-footer">
                   <!-- <text class="product-unit">{{ product.specText || product.unit || '' }}</text> -->
                   <view class="product-price-row">
+                    <!-- 售罄状态 -->
                     <view
-                      v-if="getProductQuantity(product.id) > 0"
+                      v-if="product.stock === 0"
+                      class="sold-out-tag"
+                    >
+                      售罄
+                    </view>
+                    <!-- 有库存且已添加数量 -->
+                    <view
+                      v-else-if="getProductQuantity(product.id) > 0"
                       class="quantity-selector"
                     >
                       <uni-number-box
@@ -316,6 +324,7 @@
                         @change="(val) => onNumberBoxChange(product, val)"
                       />
                     </view>
+                    <!-- 有库存且未添加 -->
                     <template v-else>
                       <text class="product-price">
                         ￥{{ Number(product.price || 0).toFixed(2) }}
@@ -1505,6 +1514,14 @@ scroll-view ::-webkit-scrollbar {
   font-size: 30rpx;
   font-weight: bold;
   color: #ff6b6b;
+}
+
+.sold-out-tag {
+  font-size: 24rpx;
+  color: #999;
+  background: #f5f5f5;
+  padding: 8rpx 24rpx;
+  border-radius: 8rpx;
 }
 
 .add-btn {
