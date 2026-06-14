@@ -3,10 +3,13 @@ export const CATEGORY_CODE_TRADITIONAL_THERAPY = '传统疗法'
 
 /** 传统疗法订单类型 */
 export const ORDER_TYPE_THERAPY = 4
+export const CATEGORY_ID_TRADITIONAL_THERAPY = 34
 
 export const isTraditionalTherapyProduct = (product) => {
   const code = product?.categoryCode || product?.category_code
-  return code === CATEGORY_CODE_TRADITIONAL_THERAPY
+  const categoryId = product?.categoryId ?? product?.category_id
+  return code === CATEGORY_CODE_TRADITIONAL_THERAPY ||
+    Number(categoryId) === CATEGORY_ID_TRADITIONAL_THERAPY
 }
 
 export const isTherapyOrder = (order) => {
