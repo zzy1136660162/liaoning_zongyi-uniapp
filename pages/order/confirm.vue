@@ -11,7 +11,7 @@
       </view>
 
       <!-- 收货地址 -->
-      <view v-if="!isTherapyOrder" class="section address-section" @click="selectAddress">
+      <view v-if="requiresShipping" class="section address-section" @click="selectAddress">
         <view v-if="selectedAddress" class="address-content">
           <view class="address-header">
             <text class="name">{{ selectedAddress.name }}</text>
@@ -28,7 +28,7 @@
       </view>
       
       <!-- 配送信息 -->
-      <view v-if="!isTherapyOrder" class="section">
+      <view v-if="requiresShipping" class="section">
         <view class="section-title">配送信息</view>
         <view class="info-row">
           <text class="label">配送方</text>
@@ -78,7 +78,7 @@
           </view>
           <text class="value">¥0.00</text>
         </view> -->
-        <view v-if="!isTherapyOrder" class="cost-row">
+        <view v-if="requiresShipping" class="cost-row">
           <view class="label-with-note">
             <text class="label">运费（到付）</text>
             <text class="freight-note">运费计算供参考，以实际支付为准</text>
@@ -156,8 +156,10 @@ const selectedProductIds = ref([])
 const selectedBizType = ref(1)
 const selectedRequiresConsultation = ref(true)
 
+const requiresShipping = computed(() => !isTherapyOrder.value)
+
 const canSubmit = computed(() => {
-  if (isTherapyOrder.value) {
+  if (!requiresShipping.value) {
     return orderInfo.value.items && orderInfo.value.items.length > 0
   }
   return !!selectedAddress.value
@@ -179,7 +181,7 @@ onMounted(async () => {
 
   await loadProducts()
   loadOrderInfo()
-  if (!isTherapyOrder.value) {
+  if (requiresShipping.value) {
     loadAddresses()
   } else {
     orderInfo.value.cost.shippingFee = 0
@@ -197,13 +199,24 @@ onShow(async () => {
     selectedAddress.value = tempAddress
     uni.removeStorageSync('temp_selected_address')
     // 地址变化后重新计算快递费
-    await calculateShippingFee()
+    if (requiresShipping.value) {
+      await calculateShippingFee()
+    } else {
+      orderInfo.value.cost.shippingFee = 0
+      calculateTotal()
+    }
   } else {
     // 重新加载地址列表（可能地址被编辑或删除）
-    loadAddresses()
+    if (requiresShipping.value) {
+      loadAddresses()
+    }
     // 如果有选中的地址，重新计算快递费
-    if (selectedAddress.value) {
+    if (requiresShipping.value && selectedAddress.value) {
       await calculateShippingFee()
+    } else if (!requiresShipping.value) {
+      selectedAddress.value = null
+      orderInfo.value.cost.shippingFee = 0
+      calculateTotal()
     }
   }
   
@@ -247,7 +260,14 @@ const loadProducts = async () => {
         : []
       const hasFlowFields = selectedProducts.every(product =>
         product &&
-        (product.productCategory !== undefined || Number(product.bizType) === 2)
+        (
+          product.productCategory !== undefined ||
+          product.categoryCode ||
+          product.category_code ||
+          product.categoryId !== undefined ||
+          product.category_id !== undefined ||
+          Number(product.bizType) === 2
+        )
       )
       if (hasAllProducts && hasFlowFields) {
         console.log('使用缓存的商品数据')
@@ -262,6 +282,7 @@ const loadProducts = async () => {
         if (flow.valid) {
           selectedBizType.value = flow.bizType
           selectedRequiresConsultation.value = flow.requiresConsultation
+          isTherapyOrder.value = flow.allTraditionalTherapy
         } else {
           uni.showToast({ title: flow.message, icon: 'none' })
           setTimeout(() => uni.navigateBack(), 1500)
@@ -295,6 +316,8 @@ const loadProducts = async () => {
             bizType: productDetail.bizType,
             productCategory: productDetail.productCategory,
             isPrescription: productDetail.isPrescription,
+            categoryId: productDetail.categoryId || productDetail.category_id,
+            categoryCode: productDetail.categoryCode || productDetail.category_code || '',
             goodsMerchantType: productDetail.goodsMerchantType,
             unit: productDetail.unit || '份',
             notice: productDetail.usageDesc || productDetail.notice
@@ -318,6 +341,7 @@ const loadProducts = async () => {
     }
     selectedBizType.value = flow.bizType
     selectedRequiresConsultation.value = flow.requiresConsultation
+    isTherapyOrder.value = flow.allTraditionalTherapy
     return [cartCategory]
   } catch (error) {
     console.error('加载商品失败:', error)
@@ -369,6 +393,9 @@ const loadOrderInfo = () => {
 
     if (orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null) {
       orderInfo.value.cost.shippingFee = 18
+    }
+    if (!requiresShipping.value) {
+      orderInfo.value.cost.shippingFee = 0
     }
     calculateTotal()
     uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
@@ -434,6 +461,12 @@ const loadAddresses = async () => {
 
 // 计算快递费
 const calculateShippingFee = async () => {
+  if (!requiresShipping.value) {
+    orderInfo.value.cost.shippingFee = 0
+    calculateTotal()
+    uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
+    return
+  }
   if (!selectedAddress.value) {
     return
   }
@@ -524,7 +557,7 @@ const submitOrder = async () => {
   console.log('2222---------submitOrder' );
   console.log('111111---------submitOrder', orderInfo.value);
   
-  if (!isTherapyOrder.value) {
+  if (requiresShipping.value) {
     if ((!orderInfo.value.cost || orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null)
         && selectedAddress.value) {
       await calculateShippingFee()
@@ -533,6 +566,8 @@ const submitOrder = async () => {
       uni.showToast({ title: '请选择收货地址', icon: 'none' })
       return
     }
+  } else {
+    orderInfo.value.cost.shippingFee = 0
   }
   
   if (!orderInfo.value.items || orderInfo.value.items.length === 0) {

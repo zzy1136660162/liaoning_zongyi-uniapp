@@ -19,6 +19,10 @@
 
       <view class="info-card">
         <view class="info-row">
+          <text class="info-label">订单状态</text>
+          <text class="info-value">{{ paymentInfo.orderStatusLabel }}</text>
+        </view>
+        <view class="info-row">
           <text class="info-label">支付方式</text>
           <text class="info-value">{{ paymentInfo.paymentMethod }}</text>
         </view>
@@ -27,14 +31,33 @@
           <text class="info-value order-no">{{ paymentInfo.orderNo }}</text>
         </view>
         <view class="info-row">
+          <text class="info-label">下单时间</text>
+          <text class="info-value">{{ paymentInfo.createdTime }}</text>
+        </view>
+        <view class="info-row">
           <text class="info-label">支付时间</text>
           <text class="info-value">{{ paymentInfo.paymentTime }}</text>
         </view>
       </view>
 
+      <view class="info-card">
+        <view class="info-row">
+          <text class="info-label">商品金额</text>
+          <text class="info-value">¥{{ paymentInfo.goodsAmount.toFixed(2) }}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">商品数量</text>
+          <text class="info-value">{{ paymentInfo.itemCount }} 件</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">运费说明</text>
+          <text class="info-value">{{ paymentInfo.shippingFeeText }}</text>
+        </view>
+      </view>
+
       <view class="tip-section">
-        <text class="tip-text">订单已提交，我们将尽快为您处理</text>
-        <text class="tip-text">运费到付，由快递员收取，以实际支付为准</text>
+        <text class="tip-text">{{ paymentInfo.primaryTip }}</text>
+        <text class="tip-text" v-if="paymentInfo.secondaryTip">{{ paymentInfo.secondaryTip }}</text>
       </view>
     </view>
 
@@ -50,14 +73,22 @@ import { onLoad } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { getOrderDetail } from '@/api/order.js'
 import { syncPaymentByOrder } from '@/api/payment.js'
-import { removeFromCart } from '@/utils/cart.js'
+import { getCurrentCheckoutProductIds, removeFromCart } from '@/utils/cart.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
+import { ORDER_TYPE_THERAPY } from '@/utils/therapy.js'
 
 const paymentInfo = ref({
   amount: 0,
+  goodsAmount: 0,
+  itemCount: 0,
   paymentMethod: '在线支付',
+  orderStatusLabel: '支付成功',
   orderNo: '',
-  paymentTime: ''
+  createdTime: '',
+  paymentTime: '',
+  shippingFeeText: '运费到付，由快递员收取，以实际支付为准',
+  primaryTip: '订单已提交，我们将尽快为您处理',
+  secondaryTip: '运费到付，由快递员收取，以实际支付为准'
 })
 
 const loading = ref(true)
@@ -65,7 +96,6 @@ const syncing = ref(false)
 const cartCleared = ref(false)
 
 let currentOrderId = ''
-let currentOutTradeNo = ''
 
 const PAY_STATUS_PAID = 1
 const POLL_INTERVAL_MS = 1500
@@ -78,15 +108,105 @@ const formatTime = (timeStr) => {
   return dayjs(timeStr).format('YYYY-MM-DD HH:mm:ss')
 }
 
+const toAmount = (value, fallback = 0) => {
+  const amount = parseFloat(value)
+  return Number.isFinite(amount) ? amount : fallback
+}
+
+const sumItemCount = (items = []) => {
+  if (!Array.isArray(items)) return 0
+  return items.reduce((total, item) => {
+    const quantity = Number(item.quantity || item.count || item.num || 1)
+    return total + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
+  }, 0)
+}
+
+const resolveOrderItemProductId = (item = {}) => {
+  const product = item.product || item.productInfo || item.goods || {}
+  return item.productId ??
+    item.product_id ??
+    item.goodsId ??
+    item.goods_id ??
+    product.id ??
+    product.productId ??
+    product.product_id ??
+    null
+}
+
+const uniqueStringIds = (ids = []) => {
+  const seen = new Set()
+  return ids
+    .filter(id => id !== null && id !== undefined && id !== '')
+    .map(id => String(id))
+    .filter(id => {
+      if (seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+}
+
+const resolveOrderStatusLabel = (orderData = {}) => {
+  if (isOrderPaid(orderData)) {
+    return '支付成功'
+  }
+  return '待支付确认'
+}
+
+const resolveShippingFeeText = (orderData = {}) => {
+  const orderType = orderData.orderType ?? orderData.order_type
+  if (Number(orderType) === ORDER_TYPE_THERAPY) {
+    return '传统疗法无需快递费'
+  }
+
+  const shippingFee = toAmount(orderData.shippingFee ?? orderData.shipping_fee, 0)
+  if (shippingFee > 0) {
+    return `约¥${shippingFee.toFixed(2)}（到付）`
+  }
+  return orderData.shippingPaymentMethod || orderData.shipping_payment_method || '运费到付，由快递员收取，以实际支付为准'
+}
+
+const applyTips = (orderData = {}) => {
+  const orderType = orderData.orderType ?? orderData.order_type
+  if (Number(orderType) === ORDER_TYPE_THERAPY) {
+    paymentInfo.value.primaryTip = '支付成功后可在订单详情查看核销二维码'
+    paymentInfo.value.secondaryTip = '传统疗法到店核销，无需物流配送'
+    return
+  }
+  paymentInfo.value.primaryTip = '订单已提交，我们将尽快为您处理'
+  paymentInfo.value.secondaryTip = paymentInfo.value.shippingFeeText
+}
+
 const isOrderPaid = (orderData) => {
   const payStatus = orderData?.payStatus ?? orderData?.pay_status
   const orderStatus = orderData?.orderStatus ?? orderData?.order_status ?? orderData?.status
   return Number(payStatus) === PAY_STATUS_PAID || Number(orderStatus) >= 1
 }
 
+const clearPaidCartItems = (orderData = {}) => {
+  if (cartCleared.value || !isOrderPaid(orderData)) {
+    return
+  }
+
+  const itemProductIds = Array.isArray(orderData.items)
+    ? uniqueStringIds(orderData.items.map(resolveOrderItemProductId))
+    : []
+  const checkoutProductIds = uniqueStringIds(getCurrentCheckoutProductIds())
+  const productIds = itemProductIds.length > 0 ? itemProductIds : checkoutProductIds
+
+  if (productIds.length > 0 && removeFromCart(productIds)) {
+    uni.$emit('cartUpdated')
+    cartCleared.value = true
+  }
+}
+
 const applyOrderData = (orderData) => {
-  paymentInfo.value.amount = parseFloat(orderData.paidAmount || orderData.payableAmount || orderData.totalAmount || orderData.amount || 0)
-  paymentInfo.value.orderNo = orderData.orderNo || ''
+  paymentInfo.value.amount = toAmount(orderData.paidAmount || orderData.payableAmount || orderData.totalAmount || orderData.amount, 0)
+  paymentInfo.value.goodsAmount = toAmount(orderData.totalAmount || orderData.amount || paymentInfo.value.amount, 0)
+  paymentInfo.value.itemCount = sumItemCount(orderData.items)
+  paymentInfo.value.orderStatusLabel = resolveOrderStatusLabel(orderData)
+  paymentInfo.value.orderNo = orderData.orderNo || orderData.order_no || currentOrderId || ''
+  paymentInfo.value.createdTime = formatTime(orderData.createdAt || orderData.createTime || orderData.created_at)
+  paymentInfo.value.shippingFeeText = resolveShippingFeeText(orderData)
 
   const payTime = orderData.payTime || orderData.createTime || orderData.createdAt
   paymentInfo.value.paymentTime = formatTime(payTime)
@@ -95,18 +215,9 @@ const applyOrderData = (orderData) => {
     paymentInfo.value.paymentMethod = orderData.paymentType === 'single' ? '在线支付' : orderData.paymentType
   }
 
-  if (!cartCleared.value && orderData.items && Array.isArray(orderData.items) && orderData.items.length > 0) {
-    const productIds = orderData.items
-      .map(item => item.productId)
-      .filter(Boolean)
-      .map(id => String(id))
+  clearPaidCartItems(orderData)
 
-    if (productIds.length > 0) {
-      removeFromCart(productIds)
-      uni.$emit('cartUpdated')
-      cartCleared.value = true
-    }
-  }
+  applyTips(orderData)
 }
 
 const fetchOrderDetail = async (orderId) => {
@@ -183,23 +294,33 @@ onLoad(async (options) => {
   const orderId = options.orderId || options.id
   const outTradeNo = options.combineOutTradeNo || options.outTradeNo || ''
   currentOrderId = orderId || ''
-  currentOutTradeNo = outTradeNo
 
   logPageView('支付成功页面', '用户进入支付成功页面', orderId)
+
+  if (options.paymentMethod) {
+    paymentInfo.value.paymentMethod = decodeURIComponent(options.paymentMethod)
+  } else if (options.paymentType === 'single') {
+    paymentInfo.value.paymentMethod = '在线支付'
+  }
 
   if (orderId) {
     await loadOrderInfo(orderId, outTradeNo)
   } else {
     if (options.amount) {
-      paymentInfo.value.amount = parseFloat(options.amount)
+      paymentInfo.value.amount = toAmount(options.amount, 0)
+      paymentInfo.value.goodsAmount = paymentInfo.value.amount
     }
 
     paymentInfo.value.orderNo = options.outTradeNo || '临时订单号'
+    paymentInfo.value.orderStatusLabel = '支付成功'
+    paymentInfo.value.createdTime = formatTime(new Date())
     paymentInfo.value.paymentTime = formatTime(new Date())
-
-    if (options.paymentMethod) {
-      paymentInfo.value.paymentMethod = decodeURIComponent(options.paymentMethod)
-    }
+    paymentInfo.value.itemCount = Number(options.itemCount || 0)
+    paymentInfo.value.shippingFeeText = options.shippingFeeText
+      ? decodeURIComponent(options.shippingFeeText)
+      : '运费到付，由快递员收取，以实际支付为准'
+    paymentInfo.value.primaryTip = '订单已提交，我们将尽快为您处理'
+    paymentInfo.value.secondaryTip = paymentInfo.value.shippingFeeText
 
     loading.value = false
   }
@@ -332,9 +453,9 @@ const goHome = () => {
   font-weight: 600;
   max-width: 420rpx;
   text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  white-space: normal;
+  word-break: break-all;
 }
 
 .order-no {

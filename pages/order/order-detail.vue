@@ -32,7 +32,12 @@
             <text class="doctor-name">{{ order.doctorName || order.doctor || '线上医生' }}</text>
             <text class="doctor-title">{{ order.doctorTitle }}</text>
           </view>
-          <text class="doctor-department">{{ order.department ? order.department + ' ' + (order.hospital || '') : (order.hospital || '') }}</text>
+          <text
+            v-if="order.department"
+            class="doctor-department"
+          >
+            {{ order.department }}
+          </text>
         </view>
       </view>
   
@@ -53,13 +58,51 @@
               v-for="item in allCartItems" 
               :key="item.id"
             >
-              <view class="medicine-left">
-                <image class="medicine-thumb" :src="item.image" mode="aspectFill" />
-                <view class="medicine-qty" v-if="Number(item.quantity) > 0">×{{ Number(item.quantity) }}</view>
+              <view class="medicine-content">
+                <view class="medicine-left">
+                  <image class="medicine-thumb" :src="item.image" mode="aspectFill" />
+                  <view class="medicine-qty" v-if="Number(item.quantity) > 0">×{{ Number(item.quantity) }}</view>
+                </view>
+                <view class="medicine-right">
+                  <view class="medicine-name">{{ item.name }}</view>
+                  <view class="medicine-price">¥{{ ((item.price || 0) * (Number(item.quantity) || 1)).toFixed(2) }}</view>
+                </view>
               </view>
-              <view class="medicine-right">
-                <view class="medicine-name">{{ item.name }}</view>
-                <view class="medicine-price">¥{{ ((item.price || 0) * (Number(item.quantity) || 1)).toFixed(2) }}</view>
+
+              <view
+                v-if="item.redeemVouchers && item.redeemVouchers.length > 0"
+                class="therapy-vouchers"
+              >
+                <view
+                  v-for="(voucher, voucherIndex) in item.redeemVouchers"
+                  :key="voucher.id || voucher.verifyToken || voucherIndex"
+                  class="therapy-voucher-card"
+                >
+                  <view class="therapy-voucher-head">
+                    <text class="therapy-voucher-title">核销券 {{ voucher.sequenceNo || voucherIndex + 1 }}</text>
+                    <text
+                      class="therapy-voucher-status"
+                      :class="{ redeemed: Number(voucher.redeemStatus) === 1 }"
+                    >
+                      {{ formatRedeemStatus(voucher) }}
+                    </text>
+                  </view>
+                  <image
+                    v-if="voucher.verifyQrBase64 && Number(voucher.redeemStatus) !== 1"
+                    class="therapy-voucher-qr"
+                    :src="voucher.verifyQrBase64"
+                    mode="aspectFit"
+                    show-menu-by-longpress
+                  />
+                  <view
+                    v-else-if="Number(voucher.redeemStatus) === 1"
+                    class="therapy-voucher-redeemed"
+                  >
+                    <text>核销时间：{{ formatDateTime(voucher.redeemTime) || '—' }}</text>
+                    <text>核销人：{{ voucher.redeemerName || voucher.redeemedBy || '—' }}</text>
+                  </view>
+                  <view v-else class="therapy-voucher-empty">暂无核销码</view>
+                </view>
               </view>
             </view>
           </view>
@@ -98,6 +141,7 @@
           amount: '0.00',
           statusText: '加载中...',
           time: '',
+          orderNo: '',
           // 页面展示用的"处方单号"（沿用原来的订单号/处方号文案）
           prescriptionNo: '',
           // 真正用于跳转处方详情接口的处方ID（数字）
@@ -133,8 +177,9 @@
           console.log('接收到的订单数据:', orderData)
 
           // 映射常用字段（只映射必要用于展示/后续查询的字段）
-          this.order.prescriptionId = orderData.prescriptionId || orderData.prescriptionNo || this.order.prescriptionId
-          this.order.prescriptionNo = orderData.prescriptionNo || this.order.prescriptionNo
+          this.order.orderNo = orderData.orderNo || orderData.order_no || this.order.orderNo
+          this.order.prescriptionId = orderData.prescriptionId || orderData.prescription_id || orderData.prescriptionNo || orderData.prescription_no || this.order.prescriptionId
+          this.order.prescriptionNo = orderData.prescriptionNo || orderData.prescription_no || this.order.prescriptionNo
           this.order.diagnosis = orderData.diagnosis || this.order.diagnosis
           this.order.doctor = orderData.doctor || orderData.doctorName || this.order.doctor
           this.order.doctorName = orderData.doctorName || this.order.doctorName
@@ -163,13 +208,18 @@
       }
     },
     computed: {
+      displayPrescriptionNo() {
+        const value = this.order.prescriptionId ?? this.order.prescriptionNo
+        if (value === null || value === undefined || value === '') {
+          return '暂无'
+        }
+        return String(value)
+      },
       infoList() {
         const list = [
           // 优先展示 lnzy_prescription 表的 id（prescriptionId），回退到 prescriptionNo 文案
-          { label: '处方单号', labelKey: 'prescriptionId', value: this.order.prescriptionId || this.order.prescriptionNo },
-          { label: '临床诊断', labelKey: 'diagnosis', value: this.order.diagnosis },
+          { label: '处方单号', labelKey: 'prescriptionId', value: this.displayPrescriptionNo },
           { label: '开方医生', labelKey: 'doctor', value: this.order.doctor },
-          { label: '开方医院', labelKey: 'hospital', value: this.order.hospital },
           { label: '运费', labelKey: 'shippingPaymentMethod', value: this.order.shippingPaymentMethod || '到付，以实际为准' }
         ]
         if (this.order.routeStatusDesc) {
@@ -253,6 +303,43 @@
         }
       },
 
+      buildRedeemVouchers(item = {}, orderDetail = {}, itemIndex = 0) {
+        const rawVouchers = item.redeemVouchers || item.redeem_vouchers || []
+        if (Array.isArray(rawVouchers) && rawVouchers.length > 0) {
+          return rawVouchers.map((voucher, index) => ({
+            id: voucher.id,
+            sequenceNo: voucher.sequenceNo || voucher.sequence_no || index + 1,
+            redeemStatus: voucher.redeemStatus ?? voucher.redeem_status ?? 0,
+            redeemTime: voucher.redeemTime || voucher.redeem_time || '',
+            redeemedBy: voucher.redeemedBy || voucher.redeemed_by || '',
+            redeemerName: voucher.redeemerName || voucher.redeemer_name || '',
+            verifyToken: voucher.verifyToken || voucher.verify_token || '',
+            verifyQrBase64: voucher.verifyQrBase64 || voucher.verify_qr_base64 || ''
+          }))
+        }
+
+        const fallbackQr = orderDetail.verifyQrBase64 || orderDetail.verify_qr_base64 || ''
+        const fallbackToken = orderDetail.verifyToken || orderDetail.verify_token || ''
+        if (itemIndex === 0 && fallbackQr) {
+          return [{
+            id: 'order-level-voucher',
+            sequenceNo: 1,
+            redeemStatus: orderDetail.redeemStatus ?? orderDetail.redeem_status ?? 0,
+            redeemTime: orderDetail.redeemTime || orderDetail.redeem_time || '',
+            redeemedBy: orderDetail.redeemedBy || orderDetail.redeemed_by || '',
+            redeemerName: orderDetail.redeemerName || orderDetail.redeemer_name || '',
+            verifyToken: fallbackToken,
+            verifyQrBase64: fallbackQr
+          }]
+        }
+
+        return []
+      },
+
+      formatRedeemStatus(voucher = {}) {
+        return Number(voucher.redeemStatus) === 1 ? '已核销' : '待核销'
+      },
+
       // 从API加载订单详情
       async loadOrderDetail(orderId) {
         try {
@@ -284,17 +371,21 @@
             this.order.statusText = this.getStatusText(orderDetail.orderStatus)
             this.order.orderStatus = orderDetail.orderStatus
             this.order.time = this.formatDateTime(orderDetail.createdAt || orderDetail.createTime)
+            this.order.orderNo = orderDetail.orderNo || orderDetail.order_no || this.order.orderNo
             // 物流/运费（到付）信息
             this.order.shippingPaymentMethod = orderDetail.shippingPaymentMethod || '到付，以实际为准'
             this.order.routeStatusDesc = orderDetail.routeStatusDesc || ''
             this.order.logisticsNo = orderDetail.logisticsNo || ''
 
             // 设置处方信息
-            if (orderDetail.prescriptionId) {
-              this.order.prescriptionId = orderDetail.prescriptionId
+            const prescriptionId = orderDetail.prescriptionId || orderDetail.prescription_id
+            const prescriptionNo = orderDetail.prescriptionNo || orderDetail.prescription_no
+            if (prescriptionId) {
+              this.order.prescriptionId = prescriptionId
+              this.order.prescriptionNo = prescriptionNo || String(prescriptionId)
             }
-            if (orderDetail.prescriptionNo) {
-              this.order.prescriptionNo = orderDetail.prescriptionNo
+            if (prescriptionNo) {
+              this.order.prescriptionNo = prescriptionNo
             }
 
             // 如果订单中包含 doctorId（直接来自订单或处方），优先从医生表获取头像/职称等信息
@@ -318,9 +409,9 @@
             // 设置商品列表
             if (orderDetail.items && orderDetail.items.length > 0) {
               
-              this.allCartItems = orderDetail.items.map(item => ({
-                id: item.productId,
-                name: item.productName,
+              this.allCartItems = orderDetail.items.map((item, index) => ({
+                id: item.productId || item.product_id || item.goodsId || item.goods_id || item.id,
+                name: item.productName || item.product_name || item.name,
                 price: parseFloat(item.price || 0),
                 // 兼容不同后端字段命名并确保为数值
                 quantity: (function () {
@@ -328,7 +419,8 @@
                   const n = Number(String(q).replace(/[^\d.-]/g, ''))
                   return !isNaN(n) && n > 0 ? n : 1
                 })(),
-                image: getImageUrl(item.productImage || item.coverImage || item.image || '')
+                image: getImageUrl(item.productImage || item.product_image || item.coverImage || item.cover_image || item.image || ''),
+                redeemVouchers: this.buildRedeemVouchers(item, orderDetail, index)
               }))
               console.log('从订单设置 allCartItems:', this.allCartItems)
             }
@@ -552,7 +644,7 @@
               this.order.time = this.formatDateTime(detail.createdAt)
             }
             // 设置处方单号（用于显示）
-            if (detail.consultationNo) {
+            if (detail.consultationNo && !this.order.prescriptionNo) {
               this.order.prescriptionNo = detail.consultationNo
             }
           // 根据 consultation 详情，查询 lnzy_prescription 表以获取对应处方记录的 id
@@ -563,6 +655,7 @@
             if (prescriptionRecord && prescriptionRecord.id) {
               // 将 lnzy_prescription 表的 id 作为页面使用的处方ID（用于跳转到处方详情）
               this.order.prescriptionId = prescriptionRecord.id
+              this.order.prescriptionNo = String(prescriptionRecord.id)
               console.log('设置 order.prescriptionId 为 lnzy_prescription.id:', this.order.prescriptionId)
 
               // 进一步获取 lnzy_prescription 表的详细记录，优先使用处方表的 diagnosis 作为临床诊断
@@ -850,7 +943,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
-  max-width: 60%;
 }
 
 .doctor-title {
@@ -968,11 +1060,17 @@
   
   .medicine-item {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     position: relative;
     padding: 16rpx;
     background: #f9f9f9;
     border-radius: 8rpx;
+  }
+
+  .medicine-content {
+    display: flex;
+    align-items: center;
   }
   
   .medicine-left {
@@ -1021,5 +1119,67 @@
     font-size: 26rpx;
     font-weight: 600;
   }
+
+  .therapy-vouchers {
+    margin-top: 18rpx;
+    display: flex;
+    flex-direction: column;
+    gap: 16rpx;
+  }
+
+  .therapy-voucher-card {
+    padding: 18rpx;
+    background: #ffffff;
+    border: 1rpx solid #e5edff;
+    border-radius: 8rpx;
+  }
+
+  .therapy-voucher-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14rpx;
+  }
+
+  .therapy-voucher-title {
+    font-size: 26rpx;
+    font-weight: 600;
+    color: #1f2937;
+  }
+
+  .therapy-voucher-status {
+    padding: 4rpx 14rpx;
+    border-radius: 999rpx;
+    background: #eaf2ff;
+    color: #2f7cf6;
+    font-size: 22rpx;
+  }
+
+  .therapy-voucher-status.redeemed {
+    background: #f1f5f9;
+    color: #64748b;
+  }
+
+  .therapy-voucher-qr {
+    width: 280rpx;
+    height: 280rpx;
+    margin: 0 auto;
+    display: block;
+    background: #f8fafc;
+    border-radius: 8rpx;
+  }
+
+  .therapy-voucher-redeemed {
+    display: flex;
+    flex-direction: column;
+    gap: 8rpx;
+    color: #64748b;
+    font-size: 24rpx;
+    line-height: 1.5;
+  }
+
+  .therapy-voucher-empty {
+    color: #94a3b8;
+    font-size: 24rpx;
+  }
   </style>
-  

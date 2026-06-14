@@ -67,6 +67,17 @@ const main = async () => {
   assert.equal(therapyOnlyFlow.hasTraditionalTherapy, true)
   assert.equal(therapyOnlyFlow.allTraditionalTherapy, true)
 
+  const therapyByCategoryIdFlow = resolveProductFlow([{
+    id: 105,
+    name: 'traditional therapy by category id',
+    categoryId: 34,
+    bizType: 1
+  }])
+  assert.equal(therapyByCategoryIdFlow.valid, true)
+  assert.equal(therapyByCategoryIdFlow.flowType, 'direct')
+  assert.equal(therapyByCategoryIdFlow.requiresConsultation, false)
+  assert.equal(therapyByCategoryIdFlow.allTraditionalTherapy, true)
+
   const healthProduct = {
     id: 103,
     name: 'health goods',

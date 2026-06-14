@@ -13,10 +13,10 @@
         <view class="card-title">处方单详情</view>
 
         <!-- 门诊号 -->
-        <view class="field-row">
+<!--        <view class="field-row">
           <text class="field-label">门诊号：</text>
           <text class="field-value">{{ detail.visitNo }}</text>
-        </view>
+        </view>-->
 
         <view class="dash-line"></view>
 
@@ -35,7 +35,7 @@
             <text class="info-label">年龄：</text>
             <text class="info-value">{{ detail.age }}岁</text>
           </view>
-          <view class="info-col">
+<!--          <view class="info-col">
             <text class="info-label">临床诊断：</text>
             <text class="info-value">{{ detail.diagnosis }}</text>
           </view>
@@ -43,14 +43,14 @@
           <view class="info-col">
             <text class="info-label">科室：</text>
             <text class="info-value">{{ detail.department }}</text>
-          </view>
+          </view>-->
           <view class="info-col">
             <text class="info-label">开方医师：</text>
             <text class="info-value">{{ detail.doctorName || '—' }}</text>
           </view>
           <view class="info-col">
             <text class="info-label">开方日期：</text>
-            <text class="info-value">{{ formatDate(detail.date) }}</text>
+            <text class="info-value">{{ formatNullableDate(detail.date) }}</text>
           </view>
         </view>
 
@@ -241,7 +241,11 @@ export default {
         this.detail.age = prescriptionData.patientAge || prescriptionData.age || this.detail.age
         this.detail.diagnosis = prescriptionData.diagnosis || this.detail.diagnosis
         this.detail.department = prescriptionData.department || this.detail.department
-        const rawDate = prescriptionData.date || prescriptionData.consultationTime || this.detail.date
+        const doctorName = this.resolvePrescriptionDoctorName(prescriptionData)
+        if (doctorName) {
+          this.detail.doctorName = doctorName
+        }
+        const rawDate = this.resolvePrescriptionDate(prescriptionData) || this.detail.date
         this.detail.date = this.formatDate(rawDate) || this.detail.date
 
             // 如果传入数据中包含医生ID，尝试用医生表的 outpatient_no 覆盖 visitNo
@@ -279,6 +283,10 @@ export default {
     async applyDoctorFromPrescription(prescriptionData) {
       if (!prescriptionData) {
         return
+      }
+      const resolvedDoctorName = this.resolvePrescriptionDoctorName(prescriptionData)
+      if (resolvedDoctorName && !this.detail.doctorName) {
+        this.detail.doctorName = resolvedDoctorName
       }
       const doctorId = prescriptionData.doctorId || prescriptionData.doctor_id || null
       if (doctorId) {
@@ -331,14 +339,16 @@ export default {
 
     // 从订单信息更新处方详情
     updateDetailFromOrder(orderInfo) {
-      if (orderInfo.doctorName && !this.detail.doctorName) {
-        this.detail.doctorName = orderInfo.doctorName
+      const doctorName = this.resolvePrescriptionDoctorName(orderInfo)
+      if (doctorName && !this.detail.doctorName) {
+        this.detail.doctorName = doctorName
       }
       if (orderInfo.prescriptionDiagnosis) {
         this.detail.diagnosis = orderInfo.prescriptionDiagnosis
       }
-      if (orderInfo.prescriptionTime) {
-        this.detail.date = this.formatDate(orderInfo.prescriptionTime)
+      const prescriptionDate = this.resolvePrescriptionDate(orderInfo)
+      if (prescriptionDate) {
+        this.detail.date = this.formatDate(prescriptionDate)
       }
 
       // 更新处方ID（如果还没有设置）
@@ -574,6 +584,31 @@ export default {
       }
     },
 
+    formatNullableDate(dateStr) {
+      return this.formatDate(dateStr) || '—'
+    },
+
+    resolvePrescriptionDoctorName(source = {}) {
+      return source.doctorName ||
+        source.doctor_name ||
+        source.doctor ||
+        source.openDoctorName ||
+        source.open_doctor_name ||
+        ''
+    },
+
+    resolvePrescriptionDate(source = {}) {
+      return source.prescriptionTime ||
+        source.prescription_time ||
+        source.consultationTime ||
+        source.consultation_time ||
+        source.createdAt ||
+        source.createTime ||
+        source.created_at ||
+        source.date ||
+        ''
+    },
+
     // 从 storage 加载用户信息
     loadUserInfo() {
       try {
@@ -657,7 +692,8 @@ export default {
           this.detail.productPrice = prescriptionData.totalAmount || 0
           this.detail.diagnosis = prescriptionData.diagnosis || ''
           this.detail.department = prescriptionData.department || '便捷配药门诊'
-          this.detail.date = prescriptionData.consultationTime || prescriptionData.createdAt || ''
+          this.detail.doctorName = this.resolvePrescriptionDoctorName(prescriptionData) || this.detail.doctorName
+          this.detail.date = this.formatDate(this.resolvePrescriptionDate(prescriptionData)) || this.detail.date
 
           this.detail.doctorId = prescriptionData.doctorId || null
           await this.applyDoctorFromPrescription(prescriptionData)
@@ -836,7 +872,11 @@ export default {
           this.detail.productPrice = prescription.productPrice || this.detail.productPrice
           this.detail.diagnosis = prescription.diagnosis || this.detail.diagnosis
           this.detail.department = prescription.department || this.detail.department
-          const rawDate = prescription.consultationTime || prescription.date || this.detail.date
+          const doctorName = this.resolvePrescriptionDoctorName(prescription)
+          if (doctorName) {
+            this.detail.doctorName = doctorName
+          }
+          const rawDate = this.resolvePrescriptionDate(prescription) || this.detail.date
           this.detail.date = this.formatDate(rawDate) || this.detail.date
         } else {
           // 如果 storage 中没有找到，使用 prescriptionNo 作为 visitNo
