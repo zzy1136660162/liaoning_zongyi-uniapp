@@ -63,41 +63,22 @@
           </text>
         </view>
 
-        <view class="order-products" v-if="order.items && order.items.length > 0">
+        <view class="order-products">
+          <!-- 显示每个商品的名称和数量（不显示图片，简洁列表） -->
           <view 
-            v-for="item in visibleOrderItems(order)"
+            v-for="item in order.items" 
             :key="item.id"
-            class="product-item"
+            class="product-item simple"
           >
-<<<<<<< HEAD
             <text class="product-name">
               {{ item.productName }}
             </text>
             <text class="product-spec">
               ×{{ item.quantity }}
             </text>
-=======
-            <view class="product-main">
-              <text class="product-name">{{ item.productName }}</text>
-              <text v-if="formatOrderItemMeta(item)" class="order-product-meta">{{ formatOrderItemMeta(item) }}</text>
-            </view>
-            <view class="product-side">
-              <text class="product-quantity">×{{ item.quantity }}</text>
-              <text class="product-subtotal">¥{{ orderItemSubtotal(item).toFixed(2) }}</text>
-            </view>
-          </view>
-          <view
-            v-if="remainingOrderItemCount(order) > 0"
-            class="order-more"
-            @click.stop="goToOrderDetail(order.id)"
-          >
-            还有 {{ remainingOrderItemCount(order) }} 件商品，查看详情
->>>>>>> fd58edf95adaa97141ab0f4989f211d293e23f65
           </view>
         </view>
-        <view v-else class="order-products-empty">暂无商品明细</view>
 
-<<<<<<< HEAD
         <view
           v-if="showTherapyQr(order)"
           class="therapy-qr-card"
@@ -117,10 +98,6 @@
             mode="aspectFit"
             show-menu-by-longpress
           />
-=======
-        <view v-if="hasRedeemVouchers(order)" class="order-redeem-summary">
-          {{ redeemSummaryText(order) }}
->>>>>>> fd58edf95adaa97141ab0f4989f211d293e23f65
         </view>
         
         <view class="order-footer">
@@ -186,70 +163,14 @@ import { isTherapyOrder } from '@/utils/therapy.js'
 
 const activeTab = ref('all')
 const orders = ref([])
-const ORDER_LIST_PREVIEW_LIMIT = 2
 
 const tabs = ref([
-  { key: 'all', label: '全部' },
+  { key: 'all', label: '全部', count: 0 },
   { key: 'pending', label: '待支付', count: 0 },
   { key: 'shipping', label: '待发货', count: 0 },
   { key: 'received', label: '待收货', count: 0 },
-  { key: 'completed', label: '已完成' }
+  { key: 'completed', label: '退款/售后', count: 0 }
 ])
-
-const normalizeRedeemVouchers = (item = {}) => {
-  const vouchers = item.redeemVouchers || item.redeem_vouchers || []
-  if (!Array.isArray(vouchers)) return []
-  return vouchers.map((voucher, index) => ({
-    id: voucher.id,
-    sequenceNo: voucher.sequenceNo || voucher.sequence_no || index + 1,
-    redeemStatus: voucher.redeemStatus ?? voucher.redeem_status ?? 0,
-    verifyQrBase64: voucher.verifyQrBase64 || voucher.verify_qr_base64 || ''
-  }))
-}
-
-const orderItemSubtotal = (item = {}) => {
-  const subtotal = Number(item.subtotalAmount)
-  if (Number.isFinite(subtotal) && subtotal > 0) {
-    return subtotal
-  }
-  const price = Number(item.price) || 0
-  const quantity = Number(item.quantity) || 1
-  return price * quantity
-}
-
-const formatOrderItemMeta = (item = {}) => {
-  const parts = [
-    item.specText,
-    item.unit
-  ].filter(Boolean)
-  return parts.join(' / ')
-}
-
-const visibleOrderItems = (order = {}) => {
-  return (order.items || []).slice(0, ORDER_LIST_PREVIEW_LIMIT)
-}
-
-const remainingOrderItemCount = (order = {}) => {
-  return Math.max((order.items || []).length - ORDER_LIST_PREVIEW_LIMIT, 0)
-}
-
-const flattenRedeemVouchers = (order = {}) => {
-  return (order.items || []).flatMap(item => item.redeemVouchers || [])
-}
-
-const hasRedeemVouchers = (order = {}) => {
-  return flattenRedeemVouchers(order).length > 0 ||
-    (isTherapyOrder(order) && (order.redeemStatus !== null && order.redeemStatus !== undefined))
-}
-
-const redeemSummaryText = (order = {}) => {
-  const vouchers = flattenRedeemVouchers(order)
-  if (vouchers.length > 0) {
-    const redeemedCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 1).length
-    return `到店核销：${redeemedCount}/${vouchers.length} 已核销`
-  }
-  return Number(order.redeemStatus) === 1 ? '到店核销：已核销' : '到店核销：待核销'
-}
 
 // ✅ 从API加载订单列表
 const loadOrders = async () => {
@@ -306,18 +227,14 @@ const loadOrders = async () => {
             return (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0)
           })(),
           shippingFee: Number(order.shippingFee) || 0,
-          createTime: order.createTime || order.create_time || order.createdAt || order.created_at,
+          createTime: order.createTime || order.createdAt,
           refundApplicationId: refundInfo ? refundInfo.id : null, // 添加退货申请ID
-          items: (order.items || order.orderItems || order.order_items || []).map(item => ({
+          items: (order.items || order.items || []).map(item => ({
             id: item.id,
-            productName: item.productName || item.product_name || item.name,
-            productImage: item.productImage || item.product_image || item.image,
-            specText: item.specText || item.spec_text || '',
-            unit: item.unit || '',
+            productName: item.productName || item.name,
+            productImage: item.productImage || item.image,
             quantity: item.quantity || 1,
-            price: item.price || '0.00',
-            subtotalAmount: item.subtotalAmount ?? item.subtotal_amount,
-            redeemVouchers: normalizeRedeemVouchers(item)
+            price: item.price || '0.00'
           }))
         }
       })
@@ -368,9 +285,16 @@ const switchTab = (key) => {
   activeTab.value = key
 }
 
+const showTherapyQr = (order) => {
+  if (!isTherapyOrder(order)) return false
+  const paid = Number(order.payStatus) === 1 || order.status >= 1
+  const pendingRedeem = Number(order.redeemStatus) !== 1
+  return paid && pendingRedeem && !!order.verifyQrBase64
+}
+
 // 获取状态文本
 const getStatusText = (status, order = null) => {
-  if (order && (isTherapyOrder(order) || hasRedeemVouchers(order))) {
+  if (order && isTherapyOrder(order)) {
     if (status === 0) return '待支付'
     if (Number(order.redeemStatus) === 1 || status === 3) return '已核销'
     if (status >= 1) return '待核销'
@@ -746,15 +670,14 @@ $info: #3b82f6;
 /* 商品列表：紧凑、分隔更细 */
 .order-products {
   margin-bottom: 14rpx;
-  padding: 4rpx 0;
 }
 
 .product-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 18rpx;
-  padding: 14rpx 0;
+  gap: 12rpx;
+  padding: 10rpx 0;
   border-bottom: 1rpx dashed rgba(231, 238, 248, 0.9);
 }
 
@@ -766,69 +689,18 @@ $info: #3b82f6;
 .product-name {
   font-size: 26rpx;
   color: rgba(15, 23, 42, 0.88);
-  line-height: 1.45;
-  font-weight: 600;
-}
-
-.product-main {
   flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6rpx;
+  margin-right: 12rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.order-product-meta {
+.product-spec {
   font-size: 24rpx;
   color: rgba(100, 116, 139, 0.9);
-  line-height: 1.35;
-}
-
-.product-side {
-  min-width: 140rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6rpx;
-}
-
-.product-quantity {
-  font-size: 24rpx;
-  color: rgba(100, 116, 139, 0.92);
-}
-
-.product-subtotal {
-  font-size: 26rpx;
-  color: rgba(15, 23, 42, 0.92);
-  font-weight: 700;
-}
-
-.order-more {
-  margin-top: 8rpx;
-  padding: 12rpx 0 2rpx;
-  font-size: 24rpx;
-  color: $primary;
+  min-width: 90rpx;
   text-align: right;
-  font-weight: 700;
-}
-
-.order-products-empty {
-  margin: 12rpx 0 16rpx;
-  padding: 18rpx;
-  border-radius: 12rpx;
-  background: #f8fafc;
-  color: $muted;
-  font-size: 24rpx;
-}
-
-.order-redeem-summary {
-  margin: 10rpx 0 8rpx;
-  padding: 10rpx 14rpx;
-  border-radius: 10rpx;
-  background: #eff6ff;
-  color: $primary;
-  font-size: 24rpx;
-  font-weight: 700;
 }
 
 /* Footer：金额更突出，按钮更规范 */
@@ -839,6 +711,47 @@ $info: #3b82f6;
   padding-top: 14rpx;
   margin-top: 12rpx;
   border-top: 1rpx solid rgba(231, 238, 248, 0.9);
+}
+
+.therapy-qr-card {
+  margin: 14rpx 0 6rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  background: linear-gradient(180deg, #f8fbff 0%, #f1f5f9 100%);
+  border: 1rpx dashed rgba(37, 99, 235, 0.22);
+  text-align: center;
+}
+
+.therapy-qr-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+  margin-bottom: 12rpx;
+}
+
+.therapy-qr-tag {
+  display: inline-block;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: rgba(37, 99, 235, 0.12);
+  color: $primary;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.therapy-qr-hint {
+  font-size: 24rpx;
+  color: $muted;
+}
+
+.therapy-qr-image {
+  width: 280rpx;
+  height: 280rpx;
+  margin: 0 auto;
+  border-radius: 12rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.08);
 }
 
 .order-amount {
