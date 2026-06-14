@@ -10,35 +10,57 @@
         @click="switchTab(tab.key)"
       >
         {{ tab.label }}
-        <view v-if="tab.count > 0" class="tab-badge">{{ tab.count }}</view>
+        <view
+          v-if="tab.count > 0"
+          class="tab-badge"
+        >
+          {{ tab.count }}
+        </view>
       </view>
     </view>
 
     <!-- 订单列表 -->
-    <scroll-view class="order-list" scroll-y>
-      <view v-if="filteredOrders.length === 0" class="empty">
-        <text class="empty-text">暂无订单</text>
+    <scroll-view
+      class="order-list"
+      scroll-y
+    >
+      <view
+        v-if="filteredOrders.length === 0"
+        class="empty"
+      >
+        <text class="empty-text">
+          暂无订单
+        </text>
       </view>
       
       <view 
-      v-for="order in filteredOrders"
-  :key="order.id"
-  class="order-item"
-  hover-class="order-item--hover"
-  hover-stay-time="80"
-  @click="goToOrderDetail(order.id)"
+        v-for="order in filteredOrders"
+        :key="order.id"
+        class="order-item"
+        hover-class="order-item--hover"
+        hover-stay-time="80"
+        @click="goToOrderDetail(order.id)"
       >
         <view class="order-header">
-          <text class="order-no">订单号: {{ order.orderNo }}</text>
-          <text class="order-status" :class="'s-' + order.status">
+          <text class="order-no">
+            订单号: {{ order.orderNo }}
+          </text>
+          <text
+            class="order-status"
+            :class="'s-' + order.status"
+          >
             {{ getStatusText(order.status, order) }}
           </text>
         </view>
         
         <!-- 订单日期 -->
         <view class="order-date">
-          <text class="date-label">下单时间: </text>
-          <text class="date-value">{{ formatDate(order.createTime) }}</text>
+          <text class="date-label">
+            下单时间:
+          </text>
+          <text class="date-value">
+            {{ formatDate(order.createTime) }}
+          </text>
         </view>
 
         <view class="order-products" v-if="order.items && order.items.length > 0">
@@ -47,6 +69,14 @@
             :key="item.id"
             class="product-item"
           >
+<<<<<<< HEAD
+            <text class="product-name">
+              {{ item.productName }}
+            </text>
+            <text class="product-spec">
+              ×{{ item.quantity }}
+            </text>
+=======
             <view class="product-main">
               <text class="product-name">{{ item.productName }}</text>
               <text v-if="formatOrderItemMeta(item)" class="order-product-meta">{{ formatOrderItemMeta(item) }}</text>
@@ -62,18 +92,45 @@
             @click.stop="goToOrderDetail(order.id)"
           >
             还有 {{ remainingOrderItemCount(order) }} 件商品，查看详情
+>>>>>>> fd58edf95adaa97141ab0f4989f211d293e23f65
           </view>
         </view>
         <view v-else class="order-products-empty">暂无商品明细</view>
 
+<<<<<<< HEAD
+        <view
+          v-if="showTherapyQr(order)"
+          class="therapy-qr-card"
+          @click.stop
+        >
+          <view class="therapy-qr-head">
+            <text class="therapy-qr-tag">
+              到店核销
+            </text>
+            <text class="therapy-qr-hint">
+              请向工作人员出示此码
+            </text>
+          </view>
+          <image
+            class="therapy-qr-image"
+            :src="order.verifyQrBase64"
+            mode="aspectFit"
+            show-menu-by-longpress
+          />
+=======
         <view v-if="hasRedeemVouchers(order)" class="order-redeem-summary">
           {{ redeemSummaryText(order) }}
+>>>>>>> fd58edf95adaa97141ab0f4989f211d293e23f65
         </view>
         
         <view class="order-footer">
           <view class="order-amount">
-            <text class="amount-label">实付款:</text>
-            <text class="amount-value">¥{{ (Number(order.payableAmount || 0) + Number(order.shippingFee || 0)).toFixed(2) }}</text>
+            <text class="amount-label">
+              实付款:
+            </text>
+            <text class="amount-value">
+              ¥{{ (Number(order.payableAmount || 0) + Number(order.shippingFee || 0)).toFixed(2) }}
+            </text>
           </view>
           <view class="order-actions">
             <button 
@@ -132,11 +189,11 @@ const orders = ref([])
 const ORDER_LIST_PREVIEW_LIMIT = 2
 
 const tabs = ref([
-  { key: 'all', label: '全部', count: 0 },
+  { key: 'all', label: '全部' },
   { key: 'pending', label: '待支付', count: 0 },
   { key: 'shipping', label: '待发货', count: 0 },
   { key: 'received', label: '待收货', count: 0 },
-  { key: 'completed', label: '已完成', count: 0 }
+  { key: 'completed', label: '已完成' }
 ])
 
 const normalizeRedeemVouchers = (item = {}) => {
@@ -335,11 +392,11 @@ const loadOrders = async () => {
 
 // 更新标签页数量
 const updateTabCounts = () => {
-  tabs.value[0].count = orders.value.length
+  //tabs.value[0].count = orders.value.length
   tabs.value[1].count = orders.value.filter(o => o.status === 0).length
   tabs.value[2].count = orders.value.filter(o => o.status === 1).length
   tabs.value[3].count = orders.value.filter(o => o.status === 2).length
-  tabs.value[4].count = orders.value.filter(o => o.status === 3).length
+  //tabs.value[4].count = orders.value.filter(o => o.status === 3).length
 }
 
 // 过滤订单
