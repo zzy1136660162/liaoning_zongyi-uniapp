@@ -17,8 +17,8 @@
           </view>
   
         <view class="order-header-right">
-          <text class="status-text">{{ order.statusText }}</text>
-          <text class="time-text">{{ formatDateTime(order.time) }}</text>
+          <text v-if="order.statusText" class="status-text">{{ order.statusText }}</text>
+          <text v-if="order.time" class="time-text">{{ formatDateTime(order.time) }}</text>
         </view>
         </view>
   
@@ -138,8 +138,9 @@
     data() {
       return {
         order: {
+          id: null,
           amount: '0.00',
-          statusText: '加载中...',
+          statusText: '',
           time: '',
           orderNo: '',
           // 页面展示用的"处方单号"（沿用原来的订单号/处方号文案）
@@ -168,6 +169,7 @@
 
       const orderId = options.orderId || options.id
       if (orderId) {
+        this.order.id = orderId
         // 优先从API获取订单详情
         await this.loadOrderDetail(orderId)
       } else if (options && options.order) {
@@ -177,6 +179,7 @@
           console.log('接收到的订单数据:', orderData)
 
           // 映射常用字段（只映射必要用于展示/后续查询的字段）
+          this.order.id = orderData.id || orderData.orderId || orderData.order_id || this.order.id
           this.order.orderNo = orderData.orderNo || orderData.order_no || this.order.orderNo
           this.order.prescriptionId = orderData.prescriptionId || orderData.prescription_id || orderData.prescriptionNo || orderData.prescription_no || this.order.prescriptionId
           this.order.prescriptionNo = orderData.prescriptionNo || orderData.prescription_no || this.order.prescriptionNo
@@ -340,12 +343,37 @@
         return Number(voucher.redeemStatus) === 1 ? '已核销' : '待核销'
       },
 
+      isUsableId(value) {
+        if (value === null || value === undefined) {
+          return false
+        }
+        const text = String(value).trim()
+        return text !== '' && text !== 'null' && text !== 'undefined'
+      },
+
+      isNumericId(value) {
+        return this.isUsableId(value) && /^\d+$/.test(String(value).trim())
+      },
+
+      resolvePrescriptionNavigationParams() {
+        if (this.isNumericId(this.order.prescriptionId)) {
+          return `prescriptionNo=${encodeURIComponent(this.order.prescriptionId)}`
+        }
+        if (this.isNumericId(this.order.prescriptionNo)) {
+          return `prescriptionNo=${encodeURIComponent(this.order.prescriptionNo)}`
+        }
+        if (this.isUsableId(this.order.id)) {
+          return `orderId=${encodeURIComponent(this.order.id)}`
+        }
+        return ''
+      },
+
       // 从API加载订单详情
       async loadOrderDetail(orderId) {
         try {
           uni.showLoading({ title: '加载中...' })
 
-          const orderDetail = await getOrderDetail(orderId)
+          const orderDetail = await getOrderDetail(orderId, { showLoading: false })
           console.log('订单详情:', orderDetail)
           // 调试日志：打印 items 的原始结构与每个字段，便于定位 quantity 问题
           try {
@@ -367,6 +395,7 @@
 
           if (orderDetail) {
             // 设置订单基本信息
+            this.order.id = orderDetail.id || orderId || this.order.id
             this.order.amount = orderDetail.payableAmount || orderDetail.totalAmount || orderDetail.amount || '0.00'
             this.order.statusText = this.getStatusText(orderDetail.orderStatus)
             this.order.orderStatus = orderDetail.orderStatus
@@ -764,19 +793,18 @@
       },
       
       handleView() {
-        // 如果没有处方ID，就只提示一下
-        // if (!this.order.prescriptionId) {
-        //   uni.showToast({
-        //     title: '暂无关联处方',
-        //     icon: 'none'
-        //   })
-        //   return
-        // }
+        const query = this.resolvePrescriptionNavigationParams()
+        if (!query) {
+          uni.showToast({
+            title: '暂无关联处方或订单',
+            icon: 'none'
+          })
+          return
+        }
 
-        // 跳转到处方详情页，参数名仍叫 prescriptionNo，但传的是处方ID（数字）
-        console.log('跳转到处方详情，prescriptionId:', this.order.prescriptionId)
+        console.log('跳转到处方详情，query:', query)
         uni.navigateTo({
-          url: `/pages/prescription/detail?prescriptionNo=${this.order.prescriptionId}`
+          url: `/pages/prescription/detail?${query}`
         })
       },
       
