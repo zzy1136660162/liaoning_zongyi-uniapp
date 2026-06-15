@@ -201,12 +201,12 @@ export default {
         case 0:
           return '等待下单支付'
         case 1:
-          return '药品准备中'
+          return '订单准备中'
         case 2:
           if (this.orderStatus.logisticsNo) {
             return `${this.orderStatus.logisticsCompany || '快递'}单号：${this.orderStatus.logisticsNo}`
           }
-          return '药品配送中'
+          return '订单配送中'
         case 3:
           return '订单已完成'
         case 4:
