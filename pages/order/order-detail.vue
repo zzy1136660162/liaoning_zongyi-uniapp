@@ -300,6 +300,8 @@
         return String(value)
       },
       infoList() {
+        // 判断是否是传统疗法订单
+        const isTherapyOrder = this.allCartItems && this.allCartItems.some(item => item.redeemVouchers && item.redeemVouchers.length > 0)
         const list = [
           // 优先展示 lnzy_prescription 表的 id（prescriptionId），回退到 prescriptionNo 文案
           { label: '处方单号', labelKey: 'prescriptionId', value: this.displayPrescriptionNo },
@@ -307,7 +309,7 @@
           { label: '开方医生', labelKey: 'doctor', value: this.order.doctor },
           { label: '订单金额', labelKey: 'payableAmount', value: this.order.payableAmount ? Number(this.order.payableAmount).toFixed(2) : '' },
           { label: '支付时间', labelKey: 'payTime', value: this.order.payTime },
-          { label: '运费', labelKey: 'shippingPaymentMethod', value: this.order.shippingPaymentMethod || '到付，以实际为准' }
+          { label: '运费', labelKey: 'shippingPaymentMethod', value: isTherapyOrder ? '无' : (this.order.shippingPaymentMethod || '到付，以实际为准') }
         ]
         if (this.order.routeStatusDesc) {
           list.push({ label: '物流状态', labelKey: 'routeStatusDesc', value: this.order.routeStatusDesc })
