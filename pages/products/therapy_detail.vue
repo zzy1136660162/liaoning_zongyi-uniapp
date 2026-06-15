@@ -620,9 +620,7 @@
           class="action-icon-btn"
           @click="toggleCollect"
         >
-          <text class="action-icon">
-            {{ isCollected ? '★' : '☆' }}
-          </text>
+          <uni-icons :type="isCollected ? 'star-filled' : 'star'" size="20" :color="isCollected ? '#ff6b35' : '#666'"></uni-icons>
           <text class="action-text">
             {{ isCollected ? '已收藏' : '收藏' }}
           </text>
@@ -631,9 +629,7 @@
           class="action-icon-btn"
           @click="goCart"
         >
-          <text class="action-icon">
-            🛒
-          </text>
+          <uni-icons type="cart" size="20" color="#666"></uni-icons>
           <text class="action-text">
             购物车
           </text>
@@ -648,9 +644,7 @@
           class="action-icon-btn"
           @click="showCustomerService"
         >
-          <text class="action-icon">
-            ☎️
-          </text>
+          <uni-icons type="headphones" size="20" color="#666"></uni-icons>
           <text class="action-text">
             客服
           </text>
