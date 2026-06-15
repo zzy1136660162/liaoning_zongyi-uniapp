@@ -1,36 +1,57 @@
 <template>
-    <view class="page">
-      <!-- 顶部导航用原生小程序导航栏即可，这里不重复写 -->
+  <view class="page">
+    <!-- 顶部导航用原生小程序导航栏即可，这里不重复写 -->
   
-      <!-- 订单卡片 -->
-      <view class="order-card">
-        <!-- 上半部分：标题 + 金额 + 状态 -->
-        <view class="order-header">
-          <view class="order-header-left">
-            <view class="title-row">
-              <view class="icon-circle">
-                <text class="icon-plus">＋</text>
-              </view>
-              <text class="title-text">药品处方</text>
-            </view>
-            <text class="amount-text">¥{{ totalAmount.toFixed(2) }}</text>
+    <!-- 订单卡片 -->
+    <view class="order-card">
+      <!-- 上半部分：标题 + 金额 + 状态 -->
+      <view class="order-header">
+        <view class="order-header-left">
+          <view class="title-row">
+            <text class="title-text">
+              订单状态
+            </text>
           </view>
+          <!-- <text class="amount-text">
+            ¥{{ totalAmount.toFixed(2) }}
+          </text> -->
+        </view>
   
         <view class="order-header-right">
-          <text v-if="order.statusText" class="status-text">{{ order.statusText }}</text>
-          <text v-if="order.time" class="time-text">{{ formatDateTime(order.time) }}</text>
+          <view class="status-row">
+            <text
+              v-if="order.statusText"
+              class="status-text"
+            >
+              {{ order.statusText }}
+            </text>
+          </view>
+          <!-- <text
+            v-if="order.time"
+            class="time-text"
+          >
+            {{ formatDateTime(order.time) }}
+          </text> -->
         </view>
-        </view>
+      </view>
   
-        <view class="divider"></view>
+      <view class="divider" />
 
       <!-- 医生信息（参考 consultation_detail.vue 的展示） -->
       <view class="doctor-row">
-        <image class="doctor-avatar" :src="doctorAvatar" mode="aspectFill" />
+        <image
+          class="doctor-avatar"
+          :src="doctorAvatar"
+          mode="aspectFill"
+        />
         <view class="doctor-info">
           <view class="doctor-name-row">
-            <text class="doctor-name">{{ order.doctorName || order.doctor || '线上医生' }}</text>
-            <text class="doctor-title">{{ order.doctorTitle }}</text>
+            <text class="doctor-name">
+              {{ order.doctorName || order.doctor || '线上医生' }}
+            </text>
+            <text class="doctor-title">
+              {{ order.doctorTitle }}
+            </text>
           </view>
           <text
             v-if="order.department"
@@ -41,87 +62,147 @@
         </view>
       </view>
   
-        <!-- 信息区域 -->
-        <view class="info-row" v-for="item in infoList" :key="item.label">
-          <text class="info-label">{{ item.label }}</text>
-          <text class="info-value">{{ item.value }}</text>
-        </view>
+      <!-- 信息区域 -->
+      <view
+        v-for="item in infoList"
+        :key="item.label"
+        class="info-row"
+      >
+        <text class="info-label">
+          {{ item.label }}
+        </text>
+        <text class="info-value">
+          {{ item.value }}
+        </text>
+      </view>
 
-        <!-- 所有选择的药品列表 -->
-        <view class="medicines-section" v-if="allCartItems.length > 0">
-          <view class="medicines-header">
-            <text class="medicines-title">已选择的药品 ({{ allCartItems.length }}种)</text>
-          </view>
-          <view class="medicines-list">
-            <view 
-              class="medicine-item"
-              v-for="item in allCartItems" 
-              :key="item.id"
-            >
-              <view class="medicine-content">
-                <view class="medicine-left">
-                  <image class="medicine-thumb" :src="item.image" mode="aspectFill" />
-                  <view class="medicine-qty" v-if="Number(item.quantity) > 0">×{{ Number(item.quantity) }}</view>
-                </view>
-                <view class="medicine-right">
-                  <view class="medicine-name">{{ item.name }}</view>
-                  <view class="medicine-price">¥{{ ((item.price || 0) * (Number(item.quantity) || 1)).toFixed(2) }}</view>
+      <!-- 操作按钮 -->
+      <view class="action-buttons">
+        <button
+          class="action-btn delete-btn"
+          @click="deleteOrder"
+        >
+          删除订单
+        </button>
+        <button
+          class="action-btn review-btn"
+          @click="reviewOrder"
+        >
+          评价
+        </button>
+        <button
+          class="action-btn rebuy-btn"
+          @click="rebuyOrder"
+        >
+          再次复诊
+        </button>
+      </view>
+
+      <!-- 所有选择的药品列表 -->
+      <view
+        v-if="allCartItems.length > 0"
+        class="medicines-section"
+      >
+        <view class="medicines-header">
+          <text class="medicines-title">
+            已选择的商品 ({{ allCartItems.length }}种)
+          </text>
+        </view>
+        <view class="medicines-list">
+          <view 
+            v-for="item in allCartItems"
+            :key="item.id" 
+            class="medicine-item"
+          >
+            <view class="medicine-content">
+              <view class="medicine-left">
+                <image
+                  class="medicine-thumb"
+                  :src="item.image"
+                  mode="aspectFill"
+                />
+                <view
+                  v-if="Number(item.quantity) > 0"
+                  class="medicine-qty"
+                >
+                  ×{{ Number(item.quantity) }}
                 </view>
               </view>
+              <view class="medicine-right">
+                <view class="medicine-name">
+                  {{ item.name }}
+                </view>
+                <view class="medicine-price">
+                  ¥{{ ((item.price || 0) * (Number(item.quantity) || 1)).toFixed(2) }}
+                </view>
+              </view>
+            </view>
 
+            <view
+              v-if="item.redeemVouchers && item.redeemVouchers.length > 0"
+              class="therapy-vouchers"
+            >
               <view
-                v-if="item.redeemVouchers && item.redeemVouchers.length > 0"
-                class="therapy-vouchers"
+                v-for="(voucher, voucherIndex) in item.redeemVouchers"
+                :key="voucher.id || voucher.verifyToken || voucherIndex"
+                class="therapy-voucher-card"
               >
-                <view
-                  v-for="(voucher, voucherIndex) in item.redeemVouchers"
-                  :key="voucher.id || voucher.verifyToken || voucherIndex"
-                  class="therapy-voucher-card"
-                >
-                  <view class="therapy-voucher-head">
-                    <text class="therapy-voucher-title">核销券 {{ voucher.sequenceNo || voucherIndex + 1 }}</text>
-                    <text
-                      class="therapy-voucher-status"
-                      :class="{ redeemed: Number(voucher.redeemStatus) === 1 }"
-                    >
-                      {{ formatRedeemStatus(voucher) }}
-                    </text>
-                  </view>
-                  <image
-                    v-if="voucher.verifyQrBase64 && Number(voucher.redeemStatus) !== 1"
-                    class="therapy-voucher-qr"
-                    :src="normalizeQrImageSrc(voucher.verifyQrBase64)"
-                    mode="aspectFit"
-                    show-menu-by-longpress
-                  />
-                  <view
-                    v-else-if="Number(voucher.redeemStatus) === 1"
-                    class="therapy-voucher-redeemed"
+                <view class="therapy-voucher-head">
+                  <text class="therapy-voucher-title">
+                    核销券 {{ voucher.sequenceNo || voucherIndex + 1 }}
+                  </text>
+                  <text
+                    class="therapy-voucher-status"
+                    :class="{ redeemed: Number(voucher.redeemStatus) === 1 }"
                   >
-                    <text>核销时间：{{ formatDateTime(voucher.redeemTime) || '—' }}</text>
-                    <text>核销人：{{ voucher.redeemerName || voucher.redeemedBy || '—' }}</text>
-                  </view>
-                  <view v-else class="therapy-voucher-empty">暂无核销码</view>
+                    {{ formatRedeemStatus(voucher) }}
+                  </text>
+                </view>
+                <image
+                  v-if="voucher.verifyQrBase64 && Number(voucher.redeemStatus) !== 1"
+                  class="therapy-voucher-qr"
+                  :src="normalizeQrImageSrc(voucher.verifyQrBase64)"
+                  mode="aspectFit"
+                  show-menu-by-longpress
+                />
+                <view
+                  v-else-if="Number(voucher.redeemStatus) === 1"
+                  class="therapy-voucher-redeemed"
+                >
+                  <text>核销时间：{{ formatDateTime(voucher.redeemTime) || '—' }}</text>
+                  <text>核销人：{{ voucher.redeemerName || voucher.redeemedBy || '—' }}</text>
+                </view>
+                <view
+                  v-else
+                  class="therapy-voucher-empty"
+                >
+                  暂无核销码
                 </view>
               </view>
             </view>
           </view>
         </view>
+      </view>
 
-        <!-- 底部按钮 -->
-        <view class="btn-row">
-          <button class="primary-btn" @tap="handleView">点击查看</button>
-          <button
-            v-if="canApplyRefund"
-            class="secondary-btn refund-btn"
-            @tap="applyRefund"
-          >
-            申请退货
-          </button>
-        </view>
+      <!-- 底部按钮 -->
+      <view class="btn-row">
+        <button
+          class="primary-btn"
+          @tap="handleView"
+        >
+          点击查看
+        </button>
+        <button
+          v-if="canApplyRefund"
+          class="secondary-btn refund-btn"
+          @tap="applyRefund"
+        >
+          申请退货
+        </button>
       </view>
     </view>
-  </template>
+  </view>
+</template>
   
   <script>
   import { getProductDetail } from '@/api/product.js'
@@ -214,7 +295,7 @@
       displayPrescriptionNo() {
         const value = this.order.prescriptionId ?? this.order.prescriptionNo
         if (value === null || value === undefined || value === '') {
-          return '暂无'
+          return '无'
         }
         return String(value)
       },
@@ -222,7 +303,10 @@
         const list = [
           // 优先展示 lnzy_prescription 表的 id（prescriptionId），回退到 prescriptionNo 文案
           { label: '处方单号', labelKey: 'prescriptionId', value: this.displayPrescriptionNo },
+          { label: '订单号', labelKey: 'orderNo', value: this.order.orderNo },
           { label: '开方医生', labelKey: 'doctor', value: this.order.doctor },
+          { label: '订单金额', labelKey: 'payableAmount', value: this.order.payableAmount ? Number(this.order.payableAmount).toFixed(2) : '' },
+          { label: '支付时间', labelKey: 'payTime', value: this.order.payTime },
           { label: '运费', labelKey: 'shippingPaymentMethod', value: this.order.shippingPaymentMethod || '到付，以实际为准' }
         ]
         if (this.order.routeStatusDesc) {
@@ -303,6 +387,56 @@
         } catch (e) {
           console.error('格式化日期时间失败:', e)
           return dateTimeStr
+        }
+      },
+
+      // 删除订单
+      deleteOrder() {
+        uni.showModal({
+          title: '提示',
+          content: '确定要删除该订单吗？',
+          success: (res) => {
+            if (res.confirm) {
+              uni.showToast({
+                title: '功能开发中',
+                icon: 'none'
+              })
+            }
+          }
+        })
+      },
+
+      // 评价订单
+      reviewOrder() {
+        uni.showToast({
+          title: '功能开发中',
+          icon: 'none'
+        })
+      },
+
+      // 再买一单
+      rebuyOrder() {
+        if (this.allCartItems && this.allCartItems.length > 0) {
+          const firstItem = this.allCartItems[0]
+          const productId = firstItem.id
+          if (productId) {
+            // 判断是否是传统疗法：有 redeemVouchers 的走传统疗法详情页
+            const hasRedeemVouchers = firstItem.redeemVouchers && firstItem.redeemVouchers.length > 0
+            const targetPage = hasRedeemVouchers ? 'therapy_detail' : 'medicine_detail'
+            uni.navigateTo({
+              url: `/pages/products/${targetPage}?id=${productId}`
+            })
+          } else {
+            uni.showToast({
+              title: '商品信息有误',
+              icon: 'none'
+            })
+          }
+        } else {
+          uni.showToast({
+            title: '暂无商品信息',
+            icon: 'none'
+          })
         }
       },
 
@@ -421,8 +555,12 @@
             // 设置订单基本信息
             this.order.id = orderDetail.id || orderId || this.order.id
             this.order.amount = orderDetail.payableAmount || orderDetail.totalAmount || orderDetail.amount || '0.00'
-            this.order.statusText = this.getStatusText(orderDetail.orderStatus)
+            this.order.payableAmount = orderDetail.payableAmount || this.order.amount
+            this.order.payTime = orderDetail.payTime || orderDetail.pay_time || ''
             this.order.orderStatus = orderDetail.orderStatus
+            // 检查是否是制剂订单（有待核销券），待发货改为待核销
+            const hasRedeemVouchers = (orderDetail.items && orderDetail.items.some(item => (item.redeemVouchers && item.redeemVouchers.length > 0) || (item.redeem_vouchers && item.redeem_vouchers.length > 0)))
+            this.order.statusText = this.getStatusText(orderDetail.orderStatus, hasRedeemVouchers)
             this.order.time = this.formatDateTime(orderDetail.createdAt || orderDetail.createTime)
             this.order.orderNo = orderDetail.orderNo || orderDetail.order_no || this.order.orderNo
             // 物流/运费（到付）信息
@@ -805,7 +943,11 @@
         }
       },
 
-      getStatusText(status) {
+      getStatusText(status, hasRedeemVouchers = false) {
+        // 如果是制剂订单且是待发货状态，显示待核销
+        if (hasRedeemVouchers && status === 1) {
+          return '待核销'
+        }
         const statusMap = {
           0: '待支付',
           1: '待发货',
@@ -943,10 +1085,16 @@
     align-items: flex-end;
   }
   
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8rpx;
+  }
+  
   .status-text {
     font-size: 28rpx;
     color: #2f7cf6;
-    margin-bottom: 12rpx;
+    font-weight: bold;
   }
   
   .time-text {
@@ -1018,7 +1166,7 @@
   
   /* 信息行 */
   .info-row {
-    padding: 22rpx 32rpx;
+    padding: 8rpx 32rpx;
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -1034,6 +1182,29 @@
     font-size: 28rpx;
     color: #333333;
     flex: 1;
+  }
+  
+  /* 操作按钮 */
+  .action-buttons {
+    display: flex;
+    gap: 20rpx;
+    padding: 24rpx 32rpx;
+  }
+  
+  .action-btn {
+    flex: 1;
+    height: 72rpx;
+    line-height: 72rpx;
+    font-size: 26rpx;
+    color: #666666;
+    background: #f5f5f5;
+    border-radius: 8rpx;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .action-btn::after {
+    border: none;
   }
   
   /* 按钮区域 */
