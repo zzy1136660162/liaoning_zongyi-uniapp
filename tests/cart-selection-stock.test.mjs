@@ -44,6 +44,13 @@ const categories = [{
       price: 99,
       stock: 0,
       available: false
+    },
+    {
+      id: '103',
+      name: 'later in stock',
+      price: 18,
+      stock: 8,
+      available: true
     }
   ]
 }]
@@ -80,6 +87,29 @@ const main = async () => {
   cart.setCartItemQuantity('101', 99)
   items = cart.loadCartItems(categories)
   assert.equal(items.find(item => item.id === '101').quantity, 8)
+
+  resetState()
+  const originalDateNow = Date.now
+  Date.now = () => 3000
+  try {
+    cart.replaceCartData({
+      101: { verified: true, selected: true, quantity: 1, available: true, stock: 8, timestamp: 1000 },
+      103: { verified: true, selected: true, quantity: 1, available: true, stock: 8, timestamp: 2000 }
+    })
+    assert.deepEqual(cart.loadCartItems(categories).map(item => item.id), ['101', '103'])
+
+    cart.setCartItemQuantity('101', 2)
+    assert.deepEqual(cart.loadCartItems(categories).map(item => item.id), ['101', '103'])
+
+    cart.replaceCartData({
+      101: { verified: true, selected: true, quantity: 1, available: true, stock: 8, timestamp: 1000 },
+      103: { verified: true, selected: true, quantity: 1, available: true, stock: 8, timestamp: 2000 }
+    })
+    cart.updateProductSelection('101', false)
+    assert.deepEqual(cart.loadCartItems(categories).map(item => item.id), ['101', '103'])
+  } finally {
+    Date.now = originalDateNow
+  }
 
   resetState()
   cart.addCartItem({ id: '101', stock: 8, available: true }, 1)

@@ -386,7 +386,7 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
       categoryCode: meta.categoryCode,
       needQuestionnaire: meta.needQuestionnaire,
       questionnairePassed: meta.questionnairePassed,
-      timestamp: Date.now()
+      timestamp: existing.timestamp || Date.now()
     }
 
     writeCartData(cartData, { syncProductIds: [productId] })
@@ -419,8 +419,7 @@ export const setCartItemQuantity = (productId, quantity) => {
     const existing = cartData[normalizedId] || {}
     cartData[normalizedId] = {
       ...buildCartEntry(normalizedId, existing),
-      quantity: clampQuantityToStock(quantity, existing.stock),
-      timestamp: Date.now()
+      quantity: clampQuantityToStock(quantity, existing.stock)
     }
     writeCartData(cartData, { syncProductIds: [normalizedId] })
     return true
@@ -473,7 +472,6 @@ export const updateProductSelection = (productId, selected) => {
     cartData[normalizedId].selected = isCartEntryAvailable(cartData[normalizedId])
       ? toFlag(selected, true)
       : false
-    cartData[normalizedId].timestamp = Date.now()
     writeCartData(cartData, { syncProductIds: [normalizedId] })
     return selected ? cartData[normalizedId].selected : true
   } catch (error) {
@@ -492,7 +490,6 @@ export const updateMultipleSelections = (selectionMap = {}) => {
         cartData[normalizedId].selected = isCartEntryAvailable(cartData[normalizedId])
           ? toFlag(selected, true)
           : false
-        cartData[normalizedId].timestamp = Date.now()
         changedIds.push(normalizedId)
       }
     })
