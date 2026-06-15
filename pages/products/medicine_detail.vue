@@ -2162,6 +2162,8 @@ onShow(() => {
 
 .bottom-left {
   display: flex;
+  justify-content: space-between;
+  flex: 1;
 }
 
 .action-icon-btn {

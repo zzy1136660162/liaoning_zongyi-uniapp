@@ -17,22 +17,32 @@
           src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png"
           mode="aspectFit"
         />
-        <!-- <view class="logo-badge">
-          官方旗舰店
-        </view> -->
+        <view class="logo-badge">
+          互联网医院
+        </view>
       </view>
       <view class="hospital-info">
         <view class="hospital-name-row">
-          <view class="hospital-badge">
-            医院自营
-          </view>
           <text class="hospital-name">
-            辽宁中医药大学附属医院
+            辽宁中医药大学附属医院互联网医院
           </text>
           <!-- <text class="verify-icon">✓</text> -->
         </view>
         <view class="hospital-desc">
           权威认证 · 品质保障 · 放心购买
+        </view>
+        <view
+          class="internet-hospital-toggle"
+          @click="showInternetHospital = !showInternetHospital"
+        >
+          <text class="toggle-text flow-text-animate">
+            互联网医院操作流程
+          </text>
+          <uni-icons
+            :type="showInternetHospital ? 'up' : 'down'"
+            size="12"
+            color="#ff6b35"
+          />
         </view>
         <!-- <view class="hospital-tags">
           <text class="journey-title">
@@ -80,22 +90,64 @@
           </view>
         </view> -->
       </view>
-      <text class="arrow-icon">
-        ›
-      </text>
     </view>
-    <view class="flow-steps">
-      <text class="flow-text">流程</text>
-      <text class="flow-item">1.选择制剂</text>
-      <text class="flow-arrow">›</text>
-      <text class="flow-item">2.完善问诊信息</text>
-      <text class="flow-arrow">›</text>
-      <text class="flow-item">3.咨询医生开方</text>
-      <text class="flow-arrow">›</text>
-      <text class="flow-item">4.购买制剂</text>
+    <view
+      v-show="showInternetHospital"
+      class="flow-wrapper"
+    >
+      <view class="flow-steps">
+        <view class="flow-card">
+          <view class="flow-header">
+            <uni-icons
+              type="info"
+              size="14"
+              color="#4A90E2"
+            />
+            <text class="flow-title">
+              互联网医院操作流程
+            </text>
+          </view>
+          <view class="flow-content">
+            <view class="flow-step">
+              <view class="step-num">
+                1
+              </view>
+              <text class="step-text">
+                选择制剂
+              </text>
+            </view>
+            <view class="flow-line" />
+            <view class="flow-step">
+              <view class="step-num">
+                2
+              </view>
+              <text class="step-text">
+                完善信息
+              </text>
+            </view>
+            <view class="flow-line" />
+            <view class="flow-step">
+              <view class="step-num">
+                3
+              </view>
+              <text class="step-text">
+                医生开方
+              </text>
+            </view>
+            <view class="flow-line" />
+            <view class="flow-step">
+              <view class="step-num">
+                4
+              </view>
+              <text class="step-text">
+                购买制剂
+              </text>
+            </view>
+          </view>
+        </view>
+      </view>
     </view>
     <view class="intro-divider" />
-
     <view class="search-section">
       <view class="search-bar">
         <uni-icons
@@ -412,7 +464,7 @@ export default {
   components: { TabBar },
   data() {
     return {
-      flowSteps: ['选择药品', '完善问诊信息', '资讯医生开药', '购买药品'],
+      showInternetHospital: false,
       searchKeyword: '',
       currentCategoryId: 'all',
       currentSubCategoryId: '',
@@ -1765,28 +1817,95 @@ scroll-view ::-webkit-scrollbar {
   margin-bottom: 12rpx;
   letter-spacing: 1rpx;
 }
-
+.internet-hospital-toggle {
+  /* display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20rpx; */
+  background: #fff;
+}
+.toggle-text {
+  font-size: 22rpx;
+  color: #333;
+  font-weight: 500;
+}
+.flow-text-animate {
+  background: linear-gradient(90deg, #ff6b35, #ff9f6b, #ff6b35, #ff9f6b);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: flowGradient 3s linear infinite;
+}
+@keyframes flowGradient {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.flow-wrapper {
+  width: 100%;
+  background: #fff;
+  position: relative;
+  z-index: 10;
+}
 .flow-steps {
+  width: 100%;
+  padding: 16rpx 30rpx;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 10;
+}
+.flow-card {
+  background: linear-gradient(135deg, #f0f7ff, #e8f4ff);
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(74, 144, 226, 0.1);
+}
+.flow-header {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  padding: 16rpx 20rpx;
-  background: linear-gradient(135deg, #f0f7ff, #e8f4ff);
+  margin-bottom: 16rpx;
 }
-.flow-text {
-  font-size: 24rpx;
+.flow-title {
+  font-size: 26rpx;
   font-weight: 600;
-  color: #4a90e2;
-  margin-right: 12rpx;
+  color: #4A90E2;
+  margin-left: 8rpx;
 }
-.flow-item {
+.flow-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.flow-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+.step-num {
+  width: 40rpx;
+  height: 40rpx;
+  background: linear-gradient(135deg, #4A90E2, #67b2ff);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8rpx;
+}
+.step-text {
   font-size: 22rpx;
   color: #333;
 }
-.flow-arrow {
-  font-size: 24rpx;
-  color: #4a90e2;
+.flow-line {
+  flex: 1;
+  height: 2rpx;
+  background: linear-gradient(90deg, #4A90E2, #67b2ff);
+  opacity: 0.4;
   margin: 0 8rpx;
+  margin-bottom: 24rpx;
 }
 
 .hospital-tags {
