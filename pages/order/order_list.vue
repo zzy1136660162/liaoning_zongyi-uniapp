@@ -154,10 +154,10 @@ const AFTER_SALE_ORDER_STATUSES = [5, 6, 7]
 
 const tabs = ref([
   { key: 'all', label: '全部' },
-  { key: 'pending', label: '待支付', count: 0 },
-  { key: 'shipping', label: '待发货', count: 0 },
-  { key: 'received', label: '待收货', count: 0 },
-  { key: 'completed', label: '已完成' }
+  { key: 'pending', label: '待支付' },
+  { key: 'shipping', label: '待发货' },
+  { key: 'received', label: '待收货' },
+  { key: 'afterSale', label: '退款/售后' }
 ])
 
 const normalizeRedeemVouchers = (item = {}) => {
@@ -355,13 +355,12 @@ const loadOrders = async () => {
   }
 }
 
-// 更新标签页数量
-const updateTabCounts = () => {
-  //tabs.value[0].count = orders.value.length
-  tabs.value[1].count = orders.value.filter(o => o.status === 0).length
-  tabs.value[2].count = orders.value.filter(o => o.status === 1).length
-  tabs.value[3].count = orders.value.filter(o => o.status === 2).length
-  //tabs.value[4].count = orders.value.filter(o => o.status === 3).length
+const isAfterSaleOrder = (order = {}) => {
+  const status = Number(order.status)
+  const refundStatus = Number(order.refundStatus)
+  return AFTER_SALE_ORDER_STATUSES.includes(status) ||
+    !!order.refundApplicationId ||
+    (Number.isFinite(refundStatus) && refundStatus > 0)
 }
 
 // 过滤订单
