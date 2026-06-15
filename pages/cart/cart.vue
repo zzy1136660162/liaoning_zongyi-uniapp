@@ -215,12 +215,18 @@ import {
   updateMultipleSelections
 } from '@/utils/cart.js'
 import { applyServerCartToLocal } from '@/utils/cart-sync.js'
-import { subscribeCartUpdated } from '@/utils/cart-events.js'
+import {
+  shouldReloadCartFromServer,
+  shouldSkipRecentCartRefresh,
+  subscribeCartUpdated
+} from '@/utils/cart-events.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { BASE_URL } from '@/utils/config.js'
 import { logPageView } from '@/utils/accessLog.js'
+
+const CART_SERVER_REFRESH_MIN_INTERVAL_MS = 1500
 
 const parseCartLoadError = (error) => {
   const statusCode = error?.statusCode
@@ -262,6 +268,7 @@ export default {
       loading: false,
       pendingServerRefresh: false,
       suppressNextServerCartEvent: false,
+      lastServerCartLoadAt: 0,
       unsubscribeCartUpdated: null
     }
   },
@@ -292,7 +299,11 @@ export default {
         this.suppressNextServerCartEvent = false
         return
       }
-      this.loadCartPageData({ queueIfLoading: true })
+      if (shouldReloadCartFromServer(event)) {
+        this.loadCartPageData({ queueIfLoading: true, force: true })
+        return
+      }
+      this.loadCartData()
     })
   },
   onShow() {
@@ -334,13 +345,24 @@ export default {
         return
       }
 
-      this.loading = true
       const hasToken = Boolean(getToken())
+      if (
+        hasToken &&
+        !options.force &&
+        shouldSkipRecentCartRefresh(Date.now(), this.lastServerCartLoadAt, CART_SERVER_REFRESH_MIN_INTERVAL_MS)
+      ) {
+        console.log('[cart] loadCartPageData skipped: recent server refresh')
+        this.loadCartData()
+        return
+      }
+
+      this.loading = true
       console.log('[cart] loadCartPageData start', { hasToken, baseUrl: BASE_URL })
 
       try {
         if (hasToken) {
           await this.loadCartFromServer()
+          this.lastServerCartLoadAt = Date.now()
           console.log('[cart] loadCartPageData done (server)', {
             itemCount: this.cartItems.length,
             cartCount: this.cartCount
@@ -380,7 +402,7 @@ export default {
         this.loading = false
         if (this.pendingServerRefresh) {
           this.pendingServerRefresh = false
-          this.loadCartPageData()
+          this.loadCartPageData({ force: true })
         }
       }
     },
@@ -512,7 +534,7 @@ export default {
       const nextQuantity = Number(item.quantity || 1) - 1
       if (nextQuantity <= 0) {
         removeFromCart(item.id)
-        this.loadCartPageData()
+        this.loadCartData()
         return
       }
       setCartItemQuantity(item.id, nextQuantity)
@@ -531,7 +553,7 @@ export default {
             uni.showToast({ title: '删除失败', icon: 'none' })
             return
           }
-          this.loadCartPageData()
+          this.loadCartData()
           uni.showToast({ title: '删除成功', icon: 'success' })
         }
       })
@@ -565,7 +587,7 @@ export default {
               return
             }
             this.isEditMode = false
-            this.loadCartPageData()
+            this.loadCartData()
             uni.showToast({ title: '删除成功', icon: 'success' })
           }
         })

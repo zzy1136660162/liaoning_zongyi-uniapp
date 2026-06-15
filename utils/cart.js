@@ -638,7 +638,7 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
     })
 
     if (needsSave) {
-      writeCartData(cartData, { suppressSync: true })
+      writeCartData(cartData, { suppressSync: true, silent: true })
     }
 
     return cartItems.sort((a, b) => toNumber(a.timestamp, 0) - toNumber(b.timestamp, 0))

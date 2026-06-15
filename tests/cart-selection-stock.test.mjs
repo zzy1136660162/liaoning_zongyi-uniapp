@@ -63,8 +63,10 @@ const main = async () => {
     101: { verified: true, selected: true, quantity: 2, available: true, stock: 8 },
     102: { verified: true, selected: true, quantity: 1, available: false, stock: 0 }
   })
+  const eventsAfterServerReplace = emitted.length
 
   let items = cart.loadCartItems(categories)
+  assert.equal(emitted.length, eventsAfterServerReplace)
   assert.equal(items.find(item => item.id === '101').selected, true)
   assert.equal(items.find(item => item.id === '101').stock, 8)
   assert.equal(items.find(item => item.id === '102').selected, false)
@@ -138,6 +140,38 @@ const main = async () => {
     available: true
   })
   assert.equal(therapyCompatibility.valid, true)
+
+  resetState()
+  const serverCartCategories = cart.buildCategoriesFromServerCart([
+    {
+      productId: '301',
+      productName: 'normal direct goods',
+      productCategory: 2,
+      bizType: 1,
+      quantity: 1,
+      stock: 8,
+      available: true
+    },
+    {
+      productId: '302',
+      productName: 'traditional therapy from server cart',
+      categoryId: 34,
+      bizType: 1,
+      quantity: 1,
+      stock: 8,
+      available: true
+    }
+  ])
+  cart.replaceCartData({
+    301: { verified: true, selected: true, quantity: 1, available: true, stock: 8 },
+    302: { verified: true, selected: true, quantity: 1, available: true, stock: 8 }
+  })
+  const serverCartCheckout = cart.prepareCheckout(['301', '302'], serverCartCategories)
+  assert.equal(serverCartCheckout.valid, true)
+  assert.equal(serverCartCheckout.flowType, 'direct')
+  assert.equal(serverCartCheckout.requiresConsultation, false)
+  assert.equal(serverCartCheckout.hasTraditionalTherapy, true)
+  assert.equal(serverCartCheckout.allTraditionalTherapy, false)
 }
 
 main()
