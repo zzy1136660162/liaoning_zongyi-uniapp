@@ -132,7 +132,7 @@
           </view>
           <view class="cost-row">
             <text class="label">
-              药品费用
+              制剂费用
             </text>
             <text class="value">
               ¥{{ orderInfo.cost.medicineCost.toFixed(2) }}
