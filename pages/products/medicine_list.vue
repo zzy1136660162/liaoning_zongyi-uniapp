@@ -29,14 +29,14 @@
           <!-- <text class="verify-icon">✓</text> -->
         </view>
         <view class="hospital-desc">
-          权威认证 · 品质保障 · 放心购买
+          便捷配方 · 权威认证 · 品质保障 · 放心购买
         </view>
         <view
           class="internet-hospital-toggle"
           @click="showInternetHospital = !showInternetHospital"
         >
           <text class="toggle-text flow-text-animate">
-            互联网医院操作流程
+            便捷配方操作流程
           </text>
           <uni-icons
             :type="showInternetHospital ? 'up' : 'down'"
@@ -104,7 +104,7 @@
               color="#4A90E2"
             />
             <text class="flow-title">
-              互联网医院操作流程
+              便捷配方操作流程
             </text>
           </view>
           <view class="flow-content">
@@ -216,7 +216,7 @@
               @click="switchToHorizontalLayout"
             >
               <text class="prescription-text">
-                制剂
+                制剂方
               </text>
             </view>
             <view class="sort-section">

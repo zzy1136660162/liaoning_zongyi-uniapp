@@ -1,101 +1,189 @@
 <template>
   <view class="page">
     <view style="padding: 20rpx;">
-    <!-- 页面内容 -->
-    <scroll-view class="body" scroll-y>
-      <!-- 传统疗法：到店核销提示 -->
-      <view v-if="isTherapyOrder" class="section therapy-tip-section">
-        <view class="therapy-tip-badge">传统疗法</view>
-        <view class="therapy-tip-title">到店核销，无需物流</view>
-        <view class="therapy-tip-desc">支付成功后将在订单列表生成核销二维码，到店出示即可使用。</view>
-      </view>
-
-      <!-- 收货地址 -->
-      <view v-if="requiresShipping" class="section address-section" @click="selectAddress">
-        <view v-if="selectedAddress" class="address-content">
-          <view class="address-header">
-            <text class="name">{{ selectedAddress.name }}</text>
-            <text class="phone">{{ selectedAddress.phone }}</text>
-          </view>
-          <view class="address-detail">
-            {{ selectedAddress.province }}{{ selectedAddress.city }}{{ selectedAddress.district }}{{ selectedAddress.addressDetail || (selectedAddress.street || '') + (selectedAddress.detail || '') }}
-          </view>
-        </view>
-        <view v-else class="address-empty">
-          <text>请选择收货地址</text>
-        </view>
-        <view class="address-arrow"><uni-icons type="right" size="24" color="#999"></uni-icons></view>
-      </view>
-      
-      <!-- 配送信息 -->
-      <view v-if="requiresShipping" class="section">
-        <view class="section-title">配送信息</view>
-        <view class="info-row">
-          <text class="label">配送方</text>
-          <text class="value">{{ orderInfo.deliveryInfo.distributor }}</text>
-        </view>
-        <view class="info-row">
-          <text class="label">物流公司</text>
-          <text class="value">{{ orderInfo.deliveryInfo.logistics }}</text>
-        </view>
-        <view class="info-row">
-          <text class="label">购药方式</text>
-          <text class="value">{{ orderInfo.deliveryInfo.purchaseMethod }}</text>
-        </view>
-        <view class="info-row">
-          <text class="label">快递费支付方式</text>
-          <text class="value">{{ orderInfo.deliveryInfo.shippingPaymentMethod }}</text>
-        </view>
-      </view>
-      
-      <!-- 订单商品 -->
-      <view class="section">
-        <view class="section-title">订单商品</view>
-        <view 
-          v-for="item in orderInfo.items" 
-          :key="item.id"
-          class="order-item"
+      <!-- 页面内容 -->
+      <scroll-view
+        class="body"
+        scroll-y
+      >
+        <!-- 传统疗法：到店核销提示 -->
+        <view
+          v-if="isTherapyOrder"
+          class="section therapy-tip-section"
         >
-          <view class="item-info">
-            <text class="item-name">{{ item.name }}</text>
-            <text class="item-type">{{ item.type }} ×{{ item.quantity || 1 }}</text>
+          <view class="therapy-tip-badge">
+            传统疗法
           </view>
-          <text class="item-price">¥{{ item.price.toFixed(2) }}</text>
+          <view class="therapy-tip-title">
+            到店核销，无需物流
+          </view>
+          <view class="therapy-tip-desc">
+            支付成功后将在订单列表生成核销二维码，到店出示即可使用。
+          </view>
         </view>
-      </view>
+
+        <!-- 收货地址 -->
+        <view
+          v-if="requiresShipping"
+          class="section address-section"
+          @click="selectAddress"
+        >
+          <view
+            v-if="selectedAddress"
+            class="address-content"
+          >
+            <view class="address-header">
+              <text class="name">
+                {{ selectedAddress.name }}
+              </text>
+              <text class="phone">
+                {{ selectedAddress.phone }}
+              </text>
+            </view>
+            <view class="address-detail">
+              {{ selectedAddress.province }}{{ selectedAddress.city }}{{ selectedAddress.district }}{{ selectedAddress.addressDetail || (selectedAddress.street || '') + (selectedAddress.detail || '') }}
+            </view>
+          </view>
+          <view
+            v-else
+            class="address-empty"
+          >
+            <text>请选择收货地址</text>
+          </view>
+          <view class="address-arrow">
+            <uni-icons
+              type="right"
+              size="24"
+              color="#999"
+            />
+          </view>
+        </view>
       
-      <!-- 费用明细 -->
-      <view class="section">
-        <view class="section-title">费用明细</view>
-        <view class="cost-row">
-          <text class="label">药品费用</text>
-          <text class="value">¥{{ orderInfo.cost.medicineCost.toFixed(2) }}</text>
+        <!-- 配送信息 -->
+        <view
+          v-if="requiresShipping"
+          class="section"
+        >
+          <view class="section-title">
+            配送信息
+          </view>
+          <view class="info-row">
+            <text class="label">
+              配送方
+            </text>
+            <text class="value">
+              {{ orderInfo.deliveryInfo.distributor }}
+            </text>
+          </view>
+          <view class="info-row">
+            <text class="label">
+              物流公司
+            </text>
+            <text class="value">
+              {{ orderInfo.deliveryInfo.logistics }}
+            </text>
+          </view>
+          <view class="info-row">
+            <text class="label">
+              购药方式
+            </text>
+            <text class="value">
+              {{ orderInfo.deliveryInfo.purchaseMethod }}
+            </text>
+          </view>
+          <view class="info-row">
+            <text class="label">
+              快递费支付方式
+            </text>
+            <text class="value">
+              {{ orderInfo.deliveryInfo.shippingPaymentMethod }}
+            </text>
+          </view>
         </view>
-        <!-- <view class="cost-row">
+      
+        <!-- 订单商品 -->
+        <view class="section">
+          <view class="section-title">
+            订单商品
+          </view>
+          <view 
+            v-for="item in orderInfo.items" 
+            :key="item.id"
+            class="order-item"
+          >
+            <view class="item-info">
+              <text class="item-name">
+                {{ item.name }}
+              </text>
+              <text class="item-type">
+                {{ item.type }} ×{{ item.quantity || 1 }}
+              </text>
+            </view>
+            <text class="item-price">
+              ¥{{ item.price.toFixed(2) }}
+            </text>
+          </view>
+        </view>
+      
+        <!-- 费用明细 -->
+        <view class="section">
+          <view class="section-title">
+            费用明细
+          </view>
+          <view class="cost-row">
+            <text class="label">
+              药品费用
+            </text>
+            <text class="value">
+              ¥{{ orderInfo.cost.medicineCost.toFixed(2) }}
+            </text>
+          </view>
+          <!-- <view class="cost-row">
           <view class="label-with-checkbox">
             <text class="label">代煎</text>
             <view class="checkbox" :class="{ checked: orderInfo.cost.isDecocted }" @click="toggleDecocted"></view>
           </view>
           <text class="value">¥0.00</text>
         </view> -->
-        <view v-if="requiresShipping" class="cost-row">
-          <view class="label-with-note">
-            <text class="label">运费（到付）</text>
-            <text class="freight-note">运费计算供参考，以实际支付为准</text>
-          </view>
-          <view class="value-container">
-            <text v-if="calculatingFreight" class="value calculating">计算中...</text>
-            <text v-else class="value freight-ref">约¥{{ orderInfo.cost.shippingFee.toFixed(2) }}</text>
+          <view
+            v-if="requiresShipping"
+            class="cost-row"
+          >
+            <view class="label-with-note">
+              <text class="label">
+                运费（到付）
+              </text>
+              <text class="freight-note">
+                运费计算供参考，以实际支付为准
+              </text>
+            </view>
+            <view class="value-container">
+              <text
+                v-if="calculatingFreight"
+                class="value calculating"
+              >
+                计算中...
+              </text>
+              <text
+                v-else
+                class="value freight-ref"
+              >
+                约¥{{ orderInfo.cost.shippingFee.toFixed(2) }}
+              </text>
+            </view>
           </view>
         </view>
-      </view>
-    </scroll-view>
-  </view>
+      </scroll-view>
+    </view>
     <!-- 底部操作栏 -->
     <view class="footer">
       <view class="footer-left">
-        <text class="total-label">合计:</text>
-        <text class="total-price">¥{{ orderInfo.total.toFixed(2) }}</text>
+        <text class="total-label">
+          合计:
+        </text>
+        <text class="total-price">
+          ¥{{ orderInfo.total.toFixed(2) }}
+        </text>
       </view>
       <button
         class="submit-btn"

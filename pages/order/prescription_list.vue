@@ -96,6 +96,12 @@
                 <view class="tag tag-online">
                   {{ cartItem.categoryCode ? cartItem.categoryCode : '在线复诊' }}
                 </view>
+                <view
+                  v-if="!cartItem.categoryCode"
+                  class="tag tag-convenient"
+                >
+                  便捷配制剂
+                </view>
                 <!-- <view class="tag tag-convenient">
                   便捷配制剂
                 </view> -->
@@ -395,7 +401,7 @@ const syncSelectedCartState = () => {
         const apiPrescription = {
           id: consultation.id || String(1),
           visitNo: consultation.consultationNo || consultation.id,
-          doctorName: resolveConsultationDoctorName(consultation) || '医生',
+          doctorName: resolveConsultationDoctorName(consultation),
           department: consultation.department || '便捷配药门诊',
           consultationTime: consultation.consultationTime || consultation.createdAt,
           diagnosis: consultation.diagnosis || '待诊断',
@@ -475,7 +481,7 @@ const syncSelectedCartState = () => {
                 quantity: getCartProductQuantity(productId, 1),
                 unit: productDetail.unit || '份',
                 notice: productDetail.usageDesc || productDetail.notice,
-                doctorName: productDetail.pharmacistName || '医师'
+                doctorName: currentPrescriptionDoctorName.value || productDetail.pharmacistName || '医师'
               })
             }
           } else {

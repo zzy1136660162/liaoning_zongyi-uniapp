@@ -2,40 +2,56 @@
   <view class="page">
     <!-- 顶部蓝色状态条 -->
     <view class="top-header">
-      <view class="status-main">{{ statusMainText }}</view>
-      <view class="status-sub">{{ statusSubText }}</view>
+      <view class="status-main">
+        {{ statusMainText }}
+      </view>
+      <view class="status-sub">
+        {{ statusSubText }}
+      </view>
     </view>
 
     <!-- 白色内容卡片（覆盖在蓝色块上） -->
     <view class="card-wrapper">
       <view class="card">
         <!-- 标题 -->
-        <view class="card-title">处方单详情</view>
+        <view class="card-title">
+          处方单详情
+        </view>
 
         <!-- 门诊号 -->
-<!--        <view class="field-row">
+        <!--        <view class="field-row">
           <text class="field-label">门诊号：</text>
           <text class="field-value">{{ detail.visitNo }}</text>
         </view>-->
 
-        <view class="dash-line"></view>
-
         <!-- 基本信息两列布局 -->
         <view class="info-grid">
           <view class="info-col">
-            <text class="info-label">姓名：</text>
-            <text class="info-value">{{ detail.name }}</text>
+            <text class="info-label">
+              姓名：
+            </text>
+            <text class="info-value">
+              {{ detail.name }}
+            </text>
           </view>
           <view class="info-col">
-            <text class="info-label">性别：</text>
-            <text class="info-value">{{ detail.gender }}</text>
+            <text class="info-label">
+              性别：
+            </text>
+            <text class="info-value">
+              {{ detail.gender }}
+            </text>
           </view>
 
           <view class="info-col">
-            <text class="info-label">年龄：</text>
-            <text class="info-value">{{ detail.age }}岁</text>
+            <text class="info-label">
+              年龄：
+            </text>
+            <text class="info-value">
+              {{ detail.age }}岁
+            </text>
           </view>
-<!--          <view class="info-col">
+          <!--          <view class="info-col">
             <text class="info-label">临床诊断：</text>
             <text class="info-value">{{ detail.diagnosis }}</text>
           </view>
@@ -45,76 +61,123 @@
             <text class="info-value">{{ detail.department }}</text>
           </view>-->
           <view class="info-col">
-            <text class="info-label">开方医师：</text>
-            <text class="info-value">{{ detail.doctorName || '—' }}</text>
+            <text class="info-label">
+              开方医师：
+            </text>
+            <text class="info-value">
+              {{ detail.doctorName || '—' }}
+            </text>
           </view>
           <view class="info-col">
-            <text class="info-label">开方日期：</text>
-            <text class="info-value">{{ formatNullableDate(detail.date) }}</text>
+            <text class="info-label">
+              开方日期：
+            </text>
+            <text class="info-value">
+              {{ formatNullableDate(detail.date) }}
+            </text>
           </view>
         </view>
 
-        <view class="dash-line big-space"></view>
+        <view class="dash-line big-space" />
 
         <!-- Rp 区域 -->
         <view class="rp-block">
-          <text class="rp-title">Rp</text>
+          <view class="card-title">
+            明细
+          </view>
           <view class="rp-content">
             <!-- 显示处方药品列表 -->
-            <view v-if="detail.prescriptionItems && detail.prescriptionItems.length > 0" class="rp-items">
+            <view
+              v-if="detail.prescriptionItems && detail.prescriptionItems.length > 0"
+              class="rp-items"
+            >
               <view
-                  v-for="item in detail.prescriptionItems"
-                  :key="item.id"
-                  class="rp-item"
+                v-for="item in detail.prescriptionItems"
+                :key="item.id"
+                class="rp-item"
               >
                 <view class="rp-item-main">
-                  <text class="rp-drug-name">{{ item.drugName }}</text>
-                  <text class="rp-dosage">{{ item.dosage }}</text>
-                  <text v-if="item.frequency" class="rp-frequency">{{ item.frequency }}</text>
-                  <text v-if="item.days" class="rp-days">{{ item.days }}天</text>
+                  <text class="rp-drug-name">
+                    {{ item.drugName }}
+                  </text>
+                  <text class="rp-dosage">
+                    {{ item.dosage }}
+                  </text>
+                  <text
+                    v-if="item.frequency"
+                    class="rp-frequency"
+                  >
+                    {{ item.frequency }}
+                  </text>
+                  <text
+                    v-if="item.days"
+                    class="rp-days"
+                  >
+                    {{ item.days }}天
+                  </text>
                 </view>
                 <!-- 使用/用量说明（来自 lnzy_product.usage_desc） -->
-                <view v-if="item.usageDesc" class="rp-usage-desc">
-                  <text class="usage-label">用法用量说明：</text>
-                  <text class="usage-text">{{ item.usageDesc }}</text>
+                <view
+                  v-if="item.usageDesc"
+                  class="rp-usage-desc"
+                >
+                  <text class="usage-label">
+                    用法用量说明：
+                  </text>
+                  <text class="usage-text">
+                    {{ item.usageDesc }}
+                  </text>
                 </view>
               </view>
             </view>
             <!-- 如果没有药品列表，显示处方名称 -->
-            <view v-else class="rp-name-fallback">
-              <text class="rp-name">{{ detail.formulaName }}</text>
+            <view
+              v-else
+              class="rp-name-fallback"
+            >
+              <text class="rp-name">
+                {{ detail.formulaName }}
+              </text>
             </view>
           </view>
-
+          <view class="dash-line big-space" />
 
 
           <!-- 签名区域：显示与处方相关的医生、药师签名（若有多个，会各自列出）-->
           <view class="sign-row">
-            <view class="sign-list" v-if="Object.keys(detail.associatedDoctors || {}).length > 0">
-              <view class="sign-list-title">医生签名</view>
-              <view class="sign-columns">
+            <view
+              v-if="Object.keys(detail.associatedDoctors || {}).length > 0"
+              class="sign-list"
+            >
+              <view class="card-title">
+                医生签名
               </view>
+              <view class="sign-columns" />
             </view>
           </view>
 
-          <view class="dash-line big-space"></view>
+          
 
           <!-- 签名区域 -->
           <view class="sign-row">
             <view class="sign-item">
-              <text class="sign-label">医师签名：</text>
+              <text class="sign-label">
+                医师签名：
+              </text>
               <image
-                  class="sign-image"
-                  :src="detail.doctorSignatureUrl || getImageUrl('/profile/liaoning_zongyi/zhongyi_qianming.png')"
-                  mode="heightFix"
+                class="sign-image"
+                :src="detail.doctorSignatureUrl || getImageUrl('/profile/liaoning_zongyi/zhongyi_qianming.png')"
+                mode="heightFix"
               />
             </view>
             <view class="sign-item">
-              <text class="sign-label">药师签名：</text>
+              <text class="sign-label">
+                药师签名：
+              </text>
               <image
-                  class="sign-image"
-                  :src="detail.pharmacistSignatureUrl || getImageUrl('/profile/liaoning_zongyi/zhongyi_qianming.png')"
-                  mode="heightFix"
+                class="sign-image"
+                :src="detail.pharmacistSignatureUrl || getImageUrl('/profile/liaoning_zongyi/zhongyi_qianming.png')"
+                mode="heightFix"
               />
             </view>
           </view>
@@ -123,8 +186,16 @@
 
       <!-- 底部按钮 -->
     </view>
-    <view class="bottom-bar" v-if="orderStatus.status === 0">
-      <button class="bottom-btn" @tap="goBuy">去购药</button>
+    <view
+      v-if="orderStatus.status === 0"
+      class="bottom-bar"
+    >
+      <button
+        class="bottom-btn"
+        @tap="goBuy"
+      >
+        去购药
+      </button>
     </view>
   </view>
 </template>
@@ -1110,7 +1181,6 @@ export default {
 
 /* 标题 */
 .card-title {
-  text-align: center;
   font-size: 32rpx;
   font-weight: 600;
   color: #333333;
