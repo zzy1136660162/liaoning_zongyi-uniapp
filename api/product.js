@@ -120,6 +120,7 @@ export const mapProductListItem = (product = {}) => {
     price: Number(pickField(product, 'price') || 0),
     originalPrice: Number(pickField(product, 'originalPrice', 'original_price') || 0),
     unit,
+    doctorName: pickField(product, 'pharmacistName', 'pharmacist_name') || '',
     specText: specText || '',
     notice: usageDesc || commonUsage || '',
     salesVolume: Number(pickField(product, 'salesVolume', 'sales_volume') || 0),

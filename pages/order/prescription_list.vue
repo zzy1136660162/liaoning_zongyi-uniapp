@@ -90,15 +90,15 @@
 
               <!-- 商品标签 -->
               <view class="prescription-tags">
-                <view class="tag">
+                <!-- <view class="tag">
                   中药
-                </view>
+                </view> -->
                 <view class="tag tag-online">
-                  在线复诊
+                  {{ cartItem.categoryCode ? cartItem.categoryCode : '在线复诊' }}
                 </view>
-                <view class="tag tag-convenient">
+                <!-- <view class="tag tag-convenient">
                   便捷配制剂
-                </view>
+                </view> -->
               </view>
 
               <!-- 诊断信息 -->
@@ -117,7 +117,7 @@
                   医师:
                 </text>
                 <text class="info-value">
-                  {{ currentPrescriptionDoctorName || cartItem.doctorName || '医师' }}
+                  {{ cartItem.doctorName || '医师' }}
                 </text>
               </view>
 
@@ -154,11 +154,11 @@
               <view class="prescription-footer">
                 <view class="prescription-status">
                   <text class="status-text">
-                    ¥{{ (cartItem.price * cartItem.quantity).toFixed(2) }}
+                    总价：¥{{ (cartItem.price * cartItem.quantity).toFixed(2) }}
                   </text>
-                  <text class="status-time">
+                  <!-- <text class="status-time">
                     {{ cartItem.unit || '份' }}
-                  </text>
+                  </text> -->
                 </view>
               </view>
             </view>
@@ -346,6 +346,12 @@ const syncSelectedCartState = () => {
     loadSelectedProducts()
 
     logPageView('处方列表', '用户进入处方列表页面')
+
+    // 打印 cartItemsList 所有值
+    console.log('===== cartItemsList =====')
+    cartItemsList.value.forEach((item, index) => {
+      console.log(`item[${index}]:`, JSON.parse(JSON.stringify(item)))
+    })
   })
   
   const loadUserInfo = () => {
@@ -475,7 +481,7 @@ const syncSelectedCartState = () => {
                 quantity: getCartProductQuantity(productId, 1),
                 unit: productDetail.unit || '份',
                 notice: productDetail.usageDesc || productDetail.notice,
-                doctorName: currentPrescriptionDoctorName.value || productDetail.doctorName || '医师'
+                doctorName: productDetail.pharmacistName || '医师'
               })
             }
           } else {
@@ -937,8 +943,9 @@ const syncSelectedCartState = () => {
   }
   
   .status-text {
-    font-size: 28rpx;
-    color: #333;
+    font-size: 30rpx;
+    color: #ff4d4f;
+    font-weight: bold;
   }
   
   .status-time {

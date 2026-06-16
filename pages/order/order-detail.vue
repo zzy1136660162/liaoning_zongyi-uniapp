@@ -77,7 +77,10 @@
       </view>
 
       <!-- 操作按钮 -->
-      <view class="action-buttons">
+      <view
+        v-if="order.statusText === '已完成'"
+        class="action-buttons"
+      >
         <button
           class="action-btn delete-btn"
           @click="deleteOrder"
@@ -1260,7 +1263,7 @@
   
   /* 药品列表区域 */
   .medicines-section {
-    margin: 0 32rpx;
+    margin: 20rpx 32rpx;
     padding: 24rpx 0;
     border-top: 1px solid #f1f1f1;
   }
