@@ -346,12 +346,6 @@ const syncSelectedCartState = () => {
     loadSelectedProducts()
 
     logPageView('处方列表', '用户进入处方列表页面')
-
-    // 打印 cartItemsList 所有值
-    console.log('===== cartItemsList =====')
-    cartItemsList.value.forEach((item, index) => {
-      console.log(`item[${index}]:`, JSON.parse(JSON.stringify(item)))
-    })
   })
   
   const loadUserInfo = () => {
