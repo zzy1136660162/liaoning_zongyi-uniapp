@@ -88,7 +88,7 @@ export const resolveProductTypeLabel = (product = {}) => {
   if (isTraditionalTherapyProduct(product)) {
     return '传统疗法'
   }
-  return isHealthGoods(product) ? '健康产品' : '中药'
+  return isHealthGoods(product) ? '健康产品' : '制剂'
 }
 
 export const resolveBizTypeLabel = (bizType) => {

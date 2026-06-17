@@ -221,7 +221,7 @@ const loadOrderInfo = () => {
         orderInfo.value.items = cartItems.map(item => ({
           id: item.id,
           name: item.name,
-          type: '中药',
+          type: '制剂',
           price: parseFloat(((item.price || 0) * (item.quantity || 1)).toFixed(2)),
           quantity: item.quantity || 1
         }))

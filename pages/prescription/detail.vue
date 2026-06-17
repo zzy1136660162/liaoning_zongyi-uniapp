@@ -974,7 +974,7 @@ export default {
       const orderItems = [{
         id: this.detail.visitNo,
         name: this.detail.formulaName || '中药处方',
-        type: '中药',
+        type: '制剂',
         price: totalPrice,
         quantity: quantity
       }]
