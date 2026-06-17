@@ -216,6 +216,7 @@
   import { checkCanApplyRefund } from '@/api/refund.js'
   import { getImageUrl } from '@/utils/config.js'
   import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+  import { isTherapyOrder } from '@/utils/therapy.js'
   
   export default {
     name: 'OrderDetail',
@@ -240,6 +241,10 @@
           department: '',
           doctorId: null,
           orderStatus: null, // 订单状态：3为已完成
+          orderType: null,
+          payStatus: null,
+          refundStatus: null,
+          refundApplicationId: null,
           routeStatusDesc: '', // 顺丰最新路由描述
           logisticsNo: '', // 运单号
           shippingPaymentMethod: '' // 运费支付方式（到付）
@@ -343,9 +348,16 @@
         return calculated > 0 ? calculated : 0
       },
 
-      // 是否可以申请退货：订单状态为已完成（3）
+      // 是否可以申请退货：普通商品仍需已完成；传统疗法已支付即可由后端继续校验
       canApplyRefund() {
-        return this.order.orderStatus === 3
+        const hasRefundApplication = !!this.order.refundApplicationId || Number(this.order.refundStatus) > 0
+        if (hasRefundApplication) {
+          return false
+        }
+        if (isTherapyOrder(this.order)) {
+          return Number(this.order.payStatus) === 1 && Number(this.order.orderStatus) !== 4
+        }
+        return Number(this.order.orderStatus) === 3
       }
     },
     methods: {
@@ -560,9 +572,13 @@
             // 设置订单基本信息
             this.order.id = orderDetail.id || orderId || this.order.id
             this.order.amount = orderDetail.payableAmount || orderDetail.totalAmount || orderDetail.amount || '0.00'
-            this.order.payableAmount = orderDetail.payableAmount || this.order.amount
-            this.order.payTime = orderDetail.payTime || orderDetail.pay_time || ''
-            this.order.orderStatus = orderDetail.orderStatus
+          this.order.payableAmount = orderDetail.payableAmount || this.order.amount
+          this.order.payTime = orderDetail.payTime || orderDetail.pay_time || ''
+          this.order.orderStatus = orderDetail.orderStatus
+          this.order.orderType = orderDetail.orderType ?? orderDetail.order_type ?? this.order.orderType
+          this.order.payStatus = orderDetail.payStatus ?? orderDetail.pay_status ?? this.order.payStatus
+          this.order.refundStatus = orderDetail.refundStatus ?? orderDetail.refund_status ?? this.order.refundStatus
+          this.order.refundApplicationId = orderDetail.refundApplicationId ?? orderDetail.refund_application_id ?? this.order.refundApplicationId
             // 检查是否是制剂订单（有待核销券），待发货改为待核销
             const hasRedeemVouchers = (orderDetail.items && orderDetail.items.some(item => (item.redeemVouchers && item.redeemVouchers.length > 0) || (item.redeem_vouchers && item.redeem_vouchers.length > 0)))
             this.order.statusText = this.getStatusText(orderDetail.orderStatus, hasRedeemVouchers)
@@ -990,10 +1006,11 @@
       // 申请退货
       async applyRefund() {
         try {
-          logButtonClick('申请退货', 'ORDER_DETAIL', this.order.prescriptionId?.toString())
+          const orderId = this.order.id
+          logButtonClick('申请退货', 'ORDER_DETAIL', orderId?.toString())
 
           // 检查是否可以申请退货
-          const checkResult = await checkCanApplyRefund(this.order.prescriptionId)
+          const checkResult = await checkCanApplyRefund(orderId)
           if (!checkResult) {
             uni.showToast({
               title: '该订单不符合退货条件',
@@ -1004,7 +1021,7 @@
 
           // 跳转到退货申请页面
           uni.navigateTo({
-            url: `/pages/order/refund_apply?orderId=${this.order.prescriptionId}`
+            url: `/pages/order/refund_apply?orderId=${orderId}`
           })
 
         } catch (error) {

@@ -5,7 +5,7 @@
       <view class="nav-left" @tap="goBack">
         <uni-icons type="back" size="20" color="#333"></uni-icons>
       </view>
-      <view class="nav-title">申请退货</view>
+      <view class="nav-title">申请退款</view>
       <view class="nav-right"></view>
     </view> -->
 
@@ -18,7 +18,7 @@
 
       <!-- 商品列表 -->
       <view class="products-section">
-        <view class="section-title">退货商品</view>
+        <view class="section-title">退款商品</view>
         <view class="product-list">
           <view class="product-item" v-for="(item, index) in selectedProducts" :key="item.id">
             <view class="product-left">
@@ -39,9 +39,9 @@
         </view>
       </view>
 
-      <!-- 退货原因 -->
+      <!-- 退款原因 -->
       <view class="reason-section">
-        <view class="section-title">退货原因</view>
+        <view class="section-title">退款原因</view>
         <view class="reason-options">
           <view
             class="reason-item"
@@ -56,7 +56,7 @@
         <textarea
           class="reason-input"
           v-model="form.refundDescription"
-          placeholder="请详细描述退货原因（可选）"
+          placeholder="请详细描述退款原因（可选）"
           maxlength="200"
         />
       </view>
@@ -79,10 +79,10 @@
         <text class="upload-tip">最多可上传6张图片，支持jpg、png格式</text>
       </view>
 
-      <!-- 退货金额预览 -->
+      <!-- 退款金额预览 -->
       <view class="amount-section">
         <view class="amount-row">
-          <text class="amount-label">退货金额</text>
+          <text class="amount-label">退款金额</text>
           <text class="amount-value">¥{{ refundAmount.toFixed(2) }}</text>
         </view>
       </view>
@@ -110,9 +110,9 @@ export default {
       orderId: null,
       orderInfo: {},
       allProducts: [], // 订单所有商品
-      selectedProducts: [], // 选中的退货商品
+      selectedProducts: [], // 选中的退款商品
       form: {
-        refundType: 2, // 1全单退货 2部分退货
+        refundType: 2, // 1全单退款 2部分退款
         refundReason: '',
         refundDescription: '',
         refundImages: []
@@ -156,7 +156,7 @@ export default {
       }, 1500)
     }
 
-    logPageView('退货申请', 'REFUND_APPLY')
+    logPageView('退款申请', 'REFUND_APPLY')
   },
 
   methods: {
@@ -177,12 +177,12 @@ export default {
       try {
         uni.showLoading({ title: '加载中...' })
 
-        // 检查是否可以申请退货
+        // 检查是否可以申请退款
         const checkResult = await checkCanApplyRefund(this.orderId)
         if (!checkResult) {
           uni.showModal({
             title: '提示',
-            content: '该订单不符合退货条件',
+            content: '该订单不符合退款条件',
             showCancel: false,
             success: () => {
               this.safeNavigateBack()
@@ -203,7 +203,7 @@ export default {
 
         // 处理商品数据
         this.allProducts = (order.items || []).map(item => ({
-          id: item.id, // 订单项ID，用于提交退货申请
+          id: item.id, // 订单项ID，用于提交退款申请
           productId: item.productId, // 商品ID
           name: item.productName, // 商品名称
           price: parseFloat(item.price || 0), // 商品价格
@@ -278,14 +278,14 @@ export default {
     async submitRefund() {
       if (!this.canSubmit) {
         uni.showToast({
-          title: '请完善退货信息',
+          title: '请完善退款信息',
           icon: 'none'
         })
         return
       }
 
       try {
-        logButtonClick('提交退货申请', 'REFUND_APPLY', this.orderId?.toString())
+        logButtonClick('提交退款申请', 'REFUND_APPLY', this.orderId?.toString())
 
         uni.showLoading({ title: '提交中...' })
 
@@ -316,7 +316,7 @@ export default {
         }, 1500)
 
       } catch (error) {
-        console.error('提交退货申请失败:', error)
+        console.error('提交退款申请失败:', error)
         uni.hideLoading()
         uni.showToast({
           title: error.message || '提交失败',
@@ -490,7 +490,7 @@ export default {
   }
 }
 
-// 退货原因
+// 退款原因
 .reason-section {
   padding: 32rpx;
   border-top: 1rpx solid #f0f0f0;
@@ -588,7 +588,7 @@ export default {
   }
 }
 
-// 退货金额
+// 退款金额
 .amount-section {
   padding: 32rpx;
   border-top: 1rpx solid #f0f0f0;

@@ -117,9 +117,9 @@
             >
               确认收货
             </button>
-            <!-- 申请退货按钮：仅在已完成且无退货申请时显示 -->
+            <!-- 申请退货按钮：普通商品已完成可申请；传统疗法已支付即可申请 -->
             <button
-              v-if="order.status === 3 && !order.refundApplicationId"
+              v-if="canOrderApplyRefund(order)"
               class="action-btn refund-btn"
               @click.stop="applyRefund(order.id)"
             >
@@ -361,6 +361,20 @@ const isAfterSaleOrder = (order = {}) => {
   return AFTER_SALE_ORDER_STATUSES.includes(status) ||
     !!order.refundApplicationId ||
     (Number.isFinite(refundStatus) && refundStatus > 0)
+}
+
+const canOrderApplyRefund = (order = {}) => {
+  if (!order.id || order.refundApplicationId) {
+    return false
+  }
+  const refundStatus = Number(order.refundStatus)
+  if (Number.isFinite(refundStatus) && refundStatus > 0) {
+    return false
+  }
+  if (isTherapyOrder(order) || hasRedeemVouchers(order)) {
+    return Number(order.payStatus) === 1 && Number(order.status) !== 4
+  }
+  return Number(order.status) === 3
 }
 
 // 过滤订单
