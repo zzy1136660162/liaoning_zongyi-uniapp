@@ -362,7 +362,7 @@
       </view>
       <view
         class="consult-btn"
-        @click.stop="goConsult"
+        @click="showCustomerService"
       >
         咨询
       </view>
