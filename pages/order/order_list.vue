@@ -123,7 +123,7 @@
               class="action-btn refund-btn"
               @click.stop="applyRefund(order.id)"
             >
-              申请退货
+              {{ refundActionText(order) }}
             </button>
             <!-- 查看申请按钮：在已完成且有退货申请时，或退货中状态时显示 -->
             <button
@@ -375,6 +375,10 @@ const canOrderApplyRefund = (order = {}) => {
     return Number(order.payStatus) === 1 && Number(order.status) !== 4
   }
   return Number(order.status) === 3
+}
+
+const refundActionText = (order = {}) => {
+  return isTherapyOrder(order) || hasRedeemVouchers(order) ? '申请退款' : '申请退货'
 }
 
 // 过滤订单

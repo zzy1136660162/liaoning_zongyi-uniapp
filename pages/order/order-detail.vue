@@ -200,7 +200,7 @@
           class="secondary-btn refund-btn"
           @tap="applyRefund"
         >
-          申请退货
+          {{ refundActionText }}
         </button>
       </view>
     </view>
@@ -358,6 +358,10 @@
           return Number(this.order.payStatus) === 1 && Number(this.order.orderStatus) !== 4
         }
         return Number(this.order.orderStatus) === 3
+      },
+      refundActionText() {
+        const hasRedeemVoucher = this.allCartItems && this.allCartItems.some(item => item.redeemVouchers && item.redeemVouchers.length > 0)
+        return isTherapyOrder(this.order) || hasRedeemVoucher ? '申请退款' : '申请退货'
       }
     },
     methods: {
