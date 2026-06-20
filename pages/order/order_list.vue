@@ -64,8 +64,15 @@
             class="product-item"
           >
             <view class="product-main">
-              <text class="product-name">{{ item.productName }}</text>
-              <text v-if="formatOrderItemMeta(item)" class="order-product-meta">{{ formatOrderItemMeta(item) }}</text>
+              <image
+                class="product-image"
+                :src="'https://shop.lntcm.com/assets_files' + item.productImage"
+                mode="aspectFill"
+              />
+              <view class="product-text">
+                <text class="product-name">{{ item.productName }}</text>
+                <text v-if="formatOrderItemMeta(item)" class="order-product-meta">{{ formatOrderItemMeta(item) }}</text>
+              </view>
             </view>
             <view class="product-side">
               <text class="product-quantity">×{{ item.quantity }}</text>
@@ -103,13 +110,13 @@
             >
               取消订单
             </button>
-            <button 
+            <!-- <button 
               v-if="order.status === 0" 
               class="action-btn pay-btn" 
               @click.stop="goToOrderDetail(order.id)"
             >
               查看订单
-            </button>
+            </button> -->
             <button
               v-if="order.status === 2"
               class="action-btn confirm-btn"
@@ -118,21 +125,21 @@
               确认收货
             </button>
             <!-- 申请退货按钮：普通商品已完成可申请；传统疗法已支付即可申请 -->
-            <button
+            <!-- <button
               v-if="canOrderApplyRefund(order)"
               class="action-btn refund-btn"
               @click.stop="applyRefund(order.id)"
             >
               {{ refundActionText(order) }}
-            </button>
+            </button> -->
             <!-- 查看申请按钮：在已完成且有退货申请时，或退货中状态时显示 -->
-            <button
+            <!-- <button
               v-if="(order.status === 3 && order.refundApplicationId) || (order.status === 5 && order.refundApplicationId)"
               class="action-btn view-refund-btn"
               @click.stop="viewRefundApplication(order.refundApplicationId)"
             >
               查看申请
-            </button>
+            </button> -->
           </view>
         </view>
       </view>
@@ -796,6 +803,22 @@ $info: #3b82f6;
 }
 
 .product-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 16rpx;
+}
+
+.product-image {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 8rpx;
+  flex-shrink: 0;
+}
+
+.product-text {
   flex: 1;
   min-width: 0;
   display: flex;
