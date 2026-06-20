@@ -754,6 +754,7 @@ import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { logButtonClick, logPageView } from '@/api/access-log.js'
 import { getToken } from '@/utils/request.js'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
+import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 import {
   getDeliverySummary,
   getExternalUseLabel,
@@ -1154,8 +1155,10 @@ const goCart = () => {
 
 const goToDetail = (item) => {
   if (!item?.id || String(item.id) === String(product.value.id)) return
+  const page = isTraditionalTherapyProduct(item) ? 'therapy_detail' : 'medicine_detail'
+  console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=MEDICINE_DETAIL targetPage=%s productId=%s', page, item.id)
   uni.navigateTo({
-    url: `/pages/products/medicine_detail?id=${item.id}&product=${encodeURIComponent(JSON.stringify(item))}`
+    url: `/pages/products/${page}?id=${item.id}&product=${encodeURIComponent(JSON.stringify(item))}`
   })
 }
 

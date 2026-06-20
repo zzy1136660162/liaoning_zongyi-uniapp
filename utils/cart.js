@@ -542,6 +542,67 @@ export const getCurrentCheckoutProductIds = () => {
   return checkoutIds.length > 0 ? checkoutIds : getSelectedProductIds()
 }
 
+const resolveProductDisplayName = (product = {}, entry = {}, productId = '') => {
+  return product.name || product.productName || product.title || entry.name || entry.productName || productId || '商品'
+}
+
+export const validateCheckoutStock = (productIds = [], categories = []) => {
+  const ids = uniqueIds(productIds.length > 0 ? productIds : getCurrentCheckoutProductIds())
+  if (!ids.length) {
+    return { valid: true, message: '', productId: null }
+  }
+
+  const cartData = readCartData()
+  for (const productId of ids) {
+    const entry = cartData[productId]
+    const product = findProductById(categories, productId)
+    const productName = resolveProductDisplayName(product || {}, entry || {}, productId)
+
+    if (!entry || !product) {
+      console.warn('category=CHECKOUT_STOCK_GUARD action=validate result=denied reason=product_missing productId=%s productName=%s', productId, productName)
+      return {
+        valid: false,
+        productId,
+        message: `商品「${productName}」信息已失效，请刷新购物车后重试`,
+        reason: 'product_missing'
+      }
+    }
+
+    const quantity = toPositiveInt(entry.quantity, 1)
+    const latestStock = resolveStockValue(product, entry.stock ?? null)
+    const latestAvailable = latestStock === 0
+      ? false
+      : (hasExplicitAvailable(product) ? resolveAvailableFlag(product, true) : resolveAvailableFlag(entry, true))
+
+    if (!latestAvailable) {
+      console.warn('category=CHECKOUT_STOCK_GUARD action=validate result=denied reason=unavailable productId=%s productName=%s quantity=%s latestStock=%s', productId, productName, quantity, latestStock)
+      return {
+        valid: false,
+        productId,
+        quantity,
+        latestStock,
+        message: `商品「${productName}」已售罄或下架，请调整购物车后重试`,
+        reason: 'unavailable'
+      }
+    }
+
+    if (latestStock !== null && quantity > latestStock) {
+      console.warn('category=CHECKOUT_STOCK_GUARD action=validate result=denied reason=stock_shortage productId=%s productName=%s quantity=%s latestStock=%s', productId, productName, quantity, latestStock)
+      return {
+        valid: false,
+        productId,
+        quantity,
+        latestStock,
+        message: `商品「${productName}」库存不足，当前库存${latestStock}件，请调整数量后重试`,
+        reason: 'stock_shortage'
+      }
+    }
+  }
+
+  console.info('category=CHECKOUT_STOCK_GUARD action=validate result=allowed productCount=%s', ids.length)
+  return { valid: true, message: '', productId: null }
+}
+
 export const loadCartItems = (categories = [], onlySelected = false) => {
   try {
     const cartData = readCartData()
@@ -823,6 +884,21 @@ export const resolveCheckoutFlow = (productIds = [], categories = []) => {
 }
 
 export const prepareCheckout = (productIds = [], categories = []) => {
+  const stockCheck = validateCheckoutStock(productIds, categories)
+  if (!stockCheck.valid) {
+    return {
+      valid: false,
+      bizType: null,
+      goodsMerchantType: null,
+      flowType: null,
+      requiresConsultation: true,
+      message: stockCheck.message,
+      stockCheck,
+      items: [],
+      productIds: uniqueIds(productIds.length > 0 ? productIds : getCurrentCheckoutProductIds())
+    }
+  }
+
   const resolved = resolveCheckoutFlow(productIds, categories)
   if (resolved.productIds.length > 0) {
     setCheckoutProductIds(resolved.productIds)

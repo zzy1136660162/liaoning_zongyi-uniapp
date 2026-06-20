@@ -225,6 +225,7 @@ import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { BASE_URL } from '@/utils/config.js'
 import { logPageView } from '@/utils/accessLog.js'
+import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 
 const CART_SERVER_REFRESH_MIN_INTERVAL_MS = 1500
 
@@ -559,8 +560,10 @@ export default {
       })
     },
     goToProductDetail(item) {
+      const page = isTraditionalTherapyProduct(item) ? 'therapy_detail' : 'medicine_detail'
+      console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=CART targetPage=%s productId=%s', page, item.id)
       uni.navigateTo({
-        url: '/pages/products/medicine_detail?id=' + item.id
+        url: `/pages/products/${page}?id=${item.id}`
       })
     },
     goShopping() {

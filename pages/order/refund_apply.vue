@@ -100,8 +100,10 @@
 <script>
 import { getOrderDetail } from '@/api/order.js'
 import { applyRefund, checkCanApplyRefund } from '@/api/refund.js'
+import { uploadFile } from '@/api/common.js'
 import { getImageUrl } from '@/utils/config.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+import { hasMixedTherapyAndNormalRefundItems, resolveRefundType } from '@/utils/refund.js'
 
 export default {
   name: 'RefundApply',
@@ -210,7 +212,8 @@ export default {
           quantity: item.quantity || 1, // 数量
           image: getImageUrl(item.productImage || item.coverImage || item.image || ''), // 商品图片
           specText: item.specText,
-          unit: item.unit
+          unit: item.unit,
+          redeemVouchers: item.redeemVouchers || item.redeem_vouchers || []
         }))
         // 默认全选所有商品
         this.selectedProducts = this.allProducts.map(item => ({
@@ -260,14 +263,26 @@ export default {
           sourceType: ['album', 'camera']
         })
 
-        // 这里应该上传图片到服务器，暂时模拟
+        uni.showLoading({ title: '上传凭证中...' })
         for (const tempFilePath of result.tempFilePaths) {
-          // 模拟上传成功
-          this.form.refundImages.push(tempFilePath)
+          console.info('category=REFUND_EVIDENCE_UPLOAD action=upload_start result=pending orderId=%s filePath=%s', this.orderId, tempFilePath)
+          const uploaded = await uploadFile(tempFilePath)
+          this.form.refundImages.push(uploaded.url)
+          console.info('category=REFUND_EVIDENCE_UPLOAD action=upload_complete result=success orderId=%s fileUrl=%s', this.orderId, uploaded.url)
         }
+        uni.hideLoading()
 
       } catch (error) {
-        console.log('选择图片取消')
+        uni.hideLoading()
+        if (error?.errMsg && error.errMsg.includes('cancel')) {
+          console.info('category=REFUND_EVIDENCE_UPLOAD action=choose_image result=cancelled orderId=%s', this.orderId)
+          return
+        }
+        console.warn('category=REFUND_EVIDENCE_UPLOAD action=upload_complete result=failed orderId=%s message=%s', this.orderId, error?.message || error?.errMsg || error)
+        uni.showToast({
+          title: error.message || '凭证上传失败，请重试',
+          icon: 'none'
+        })
       }
     },
 
@@ -287,11 +302,19 @@ export default {
       try {
         logButtonClick('提交退款申请', 'REFUND_APPLY', this.orderId?.toString())
 
+        if (hasMixedTherapyAndNormalRefundItems(this.selectedProducts)) {
+          uni.showToast({
+            title: '传统疗法退款和普通商品退货请分开申请',
+            icon: 'none'
+          })
+          return
+        }
+
         uni.showLoading({ title: '提交中...' })
 
         const submitData = {
           orderId: this.orderId,
-          refundType: this.form.refundType,
+          refundType: resolveRefundType(this.allProducts, this.selectedProducts),
           refundReason: this.form.refundReason,
           refundDescription: this.form.refundDescription,
           refundImages: this.form.refundImages,

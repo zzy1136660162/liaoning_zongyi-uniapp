@@ -193,5 +193,9 @@ export const API_PATHS = {
         DELETE_ITEM: (productId) => `/api/cart/items/${productId}`,
         DELETE_ITEMS: '/api/cart/items',
         SYNC: '/api/cart/sync',
+    },
+
+    COMMON: {
+        UPLOAD: '/common/upload',
     }
 }

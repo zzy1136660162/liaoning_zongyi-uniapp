@@ -1,7 +1,7 @@
 <template>
   <view class="page">
     <!-- 顶部导航用原生小程序导航栏即可，这里不重复写 -->
-  
+
     <!-- 订单卡片 -->
     <view class="order-card">
       <!-- 上半部分：标题 + 金额 + 状态 -->
@@ -16,7 +16,7 @@
             ¥{{ totalAmount.toFixed(2) }}
           </text> -->
         </view>
-  
+
         <view class="order-header-right">
           <view class="status-row">
             <text
@@ -34,7 +34,7 @@
           </text> -->
         </view>
       </view>
-  
+
       <view class="divider" />
 
       <!-- 医生信息（参考 consultation_detail.vue 的展示） -->
@@ -61,7 +61,7 @@
           </text>
         </view>
       </view>
-  
+
       <!-- 信息区域 -->
       <view
         v-for="item in infoList"
@@ -112,9 +112,9 @@
           </text>
         </view>
         <view class="medicines-list">
-          <view 
+          <view
             v-for="item in allCartItems"
-            :key="item.id" 
+            :key="item.id"
             class="medicine-item"
           >
             <view class="medicine-content">
@@ -206,7 +206,7 @@
     </view>
   </view>
 </template>
-  
+
   <script>
   import { getProductDetail } from '@/api/product.js'
   import { getDoctorDetail } from '@/api/hospital.js'
@@ -217,7 +217,8 @@
   import { getImageUrl } from '@/utils/config.js'
   import { logPageView, logButtonClick } from '@/utils/accessLog.js'
   import { isTherapyOrder } from '@/utils/therapy.js'
-  
+  import { buildItemRedeemVouchers } from '@/utils/order-redeem-vouchers.js'
+
   export default {
     name: 'OrderDetail',
     data() {
@@ -312,7 +313,7 @@
         const isTherapyOrder = this.allCartItems && this.allCartItems.some(item => item.redeemVouchers && item.redeemVouchers.length > 0)
         const list = [
           // 优先展示 lnzy_prescription 表的 id（prescriptionId），回退到 prescriptionNo 文案
-          { label: '处方单号', labelKey: 'prescriptionId', value: this.displayPrescriptionNo },
+          // { label: '处方单号', labelKey: 'prescriptionId', value: this.displayPrescriptionNo },
           { label: '订单号', labelKey: 'orderNo', value: this.order.orderNo },
           { label: '开方医生', labelKey: 'doctor', value: this.order.doctor },
           { label: '订单金额', labelKey: 'payableAmount', value: this.order.payableAmount ? Number(this.order.payableAmount).toFixed(2) : '' },
@@ -354,7 +355,10 @@
         if (hasRefundApplication) {
           return false
         }
-        if (isTherapyOrder(this.order)) {
+        const hasRedeemVoucher = this.allCartItems && this.allCartItems.some(item =>
+          item.redeemVouchers && item.redeemVouchers.length > 0
+        )
+        if (isTherapyOrder(this.order) || hasRedeemVoucher) {
           return Number(this.order.payStatus) === 1 && Number(this.order.orderStatus) !== 4
         }
         return Number(this.order.orderStatus) === 3
@@ -370,15 +374,15 @@
         if (!dateTimeStr) {
           return ''
         }
-        
+
         try {
           // 如果已经是 YYYY-MM-DD HH:mm:ss 格式，直接返回
           if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateTimeStr)) {
             return dateTimeStr
           }
-          
+
           let date
-          
+
           // 如果是时间戳（数字）
           if (typeof dateTimeStr === 'number') {
             date = new Date(dateTimeStr)
@@ -390,12 +394,12 @@
           } else {
             return dateTimeStr
           }
-          
+
           // 验证日期是否有效
           if (isNaN(date.getTime())) {
             return dateTimeStr
           }
-          
+
           // 格式化为 YYYY-MM-DD HH:mm:ss
           const year = date.getFullYear()
           const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -403,7 +407,7 @@
           const hours = String(date.getHours()).padStart(2, '0')
           const minutes = String(date.getMinutes()).padStart(2, '0')
           const seconds = String(date.getSeconds()).padStart(2, '0')
-          
+
           return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
         } catch (e) {
           console.error('格式化日期时间失败:', e)
@@ -461,37 +465,8 @@
         }
       },
 
-      buildRedeemVouchers(item = {}, orderDetail = {}, itemIndex = 0) {
-        const rawVouchers = item.redeemVouchers || item.redeem_vouchers || []
-        if (Array.isArray(rawVouchers) && rawVouchers.length > 0) {
-          return rawVouchers.map((voucher, index) => ({
-            id: voucher.id,
-            sequenceNo: voucher.sequenceNo || voucher.sequence_no || index + 1,
-            redeemStatus: voucher.redeemStatus ?? voucher.redeem_status ?? 0,
-            redeemTime: voucher.redeemTime || voucher.redeem_time || '',
-            redeemedBy: voucher.redeemedBy || voucher.redeemed_by || '',
-            redeemerName: voucher.redeemerName || voucher.redeemer_name || '',
-            verifyToken: voucher.verifyToken || voucher.verify_token || '',
-            verifyQrBase64: voucher.verifyQrBase64 || voucher.verify_qr_base64 || ''
-          }))
-        }
-
-        const fallbackQr = orderDetail.verifyQrBase64 || orderDetail.verify_qr_base64 || ''
-        const fallbackToken = orderDetail.verifyToken || orderDetail.verify_token || ''
-        if (itemIndex === 0 && fallbackQr) {
-          return [{
-            id: 'order-level-voucher',
-            sequenceNo: 1,
-            redeemStatus: orderDetail.redeemStatus ?? orderDetail.redeem_status ?? 0,
-            redeemTime: orderDetail.redeemTime || orderDetail.redeem_time || '',
-            redeemedBy: orderDetail.redeemedBy || orderDetail.redeemed_by || '',
-            redeemerName: orderDetail.redeemerName || orderDetail.redeemer_name || '',
-            verifyToken: fallbackToken,
-            verifyQrBase64: fallbackQr
-          }]
-        }
-
-        return []
+      buildRedeemVouchers(item = {}) {
+        return buildItemRedeemVouchers(item)
       },
 
       formatRedeemStatus(voucher = {}) {
@@ -624,7 +599,7 @@
 
             // 设置商品列表
             if (orderDetail.items && orderDetail.items.length > 0) {
-              
+
               this.allCartItems = orderDetail.items.map((item, index) => ({
                 id: item.productId || item.product_id || item.goodsId || item.goods_id || item.id,
                 name: item.productName || item.product_name || item.name,
@@ -636,7 +611,7 @@
                   return !isNaN(n) && n > 0 ? n : 1
                 })(),
                 image: getImageUrl(item.productImage || item.product_image || item.coverImage || item.cover_image || item.image || ''),
-                redeemVouchers: this.buildRedeemVouchers(item, orderDetail, index)
+                redeemVouchers: this.buildRedeemVouchers(item)
               }))
               console.log('从订单设置 allCartItems:', this.allCartItems)
             }
@@ -680,7 +655,7 @@
           const prescriptionId = this.$options?.data?.order?.prescriptionId || null
           if (prescriptionId) {
             console.log(prescriptionId,'prescriptionId');
-            
+
             await this.fillPrescriptionInfo(prescriptionId)
           }
         })
@@ -726,7 +701,7 @@
         try {
           const diagnoses = []
           const productIds = this.allCartItems.map(item => item.id).filter(Boolean)
-          
+
           console.log('enrichDiagnosisFromAllProducts productIds:', productIds)
           // 遍历所有商品，获取每个商品的 prescription_diagnosis（兼容 snake_case/camelCase）
           for (const productId of productIds) {
@@ -930,7 +905,7 @@
           console.warn('查询处方/咨询相关信息失败', e)
         }
       },
-      
+
       async applyDoctorFromPrescription(prescriptionId) {
         if (!prescriptionId) {
           return
@@ -982,7 +957,7 @@
         }
         return statusMap[status] || '未知状态'
       },
-      
+
       handleView() {
         const query = this.resolvePrescriptionNavigationParams()
         if (!query) {
@@ -998,7 +973,7 @@
           url: `/pages/prescription/detail?${query}`
         })
       },
-      
+
       // 加载购物车数据
       loadCartItems() {
         this.allCartItems = []
@@ -1039,7 +1014,7 @@
     }
   }
   </script>
-  
+
   <style scoped lang="scss">
   .page {
     min-height: 100vh;
@@ -1047,7 +1022,7 @@
     padding: 24rpx 24rpx 40rpx;
     box-sizing: border-box;
   }
-  
+
   /* 白色订单卡片 */
   .order-card {
     background-color: #ffffff;
@@ -1055,7 +1030,7 @@
     box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
     overflow: hidden;
   }
-  
+
   /* 顶部区域 */
   .order-header {
     padding: 32rpx 32rpx 24rpx;
@@ -1063,17 +1038,17 @@
     justify-content: space-between;
     align-items: flex-start;
   }
-  
+
   .order-header-left {
     display: flex;
     flex-direction: column;
   }
-  
+
   .title-row {
     display: flex;
     align-items: center;
   }
-  
+
   .icon-circle {
     line-height: 1;
     width: 48rpx;
@@ -1085,49 +1060,49 @@
     display: flex;
     margin-right: 12rpx;
   }
-  
+
   .icon-plus {
     margin: 0;
     font-size: 32rpx;
     color: #2f7cf6;
   }
-  
+
   .title-text {
     font-size: 30rpx;
     color: #333333;
   }
-  
+
   .amount-text {
     margin-top: 28rpx;
     font-size: 52rpx;
     font-weight: 600;
     color: #111111;
   }
-  
+
   /* 右侧状态区域 */
   .order-header-right {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
   }
-  
+
   .status-row {
     display: flex;
     align-items: center;
     gap: 8rpx;
   }
-  
+
   .status-text {
     font-size: 28rpx;
     color: #2f7cf6;
     font-weight: bold;
   }
-  
+
   .time-text {
     font-size: 24rpx;
     color: #999999;
   }
-  
+
   /* 分割线 */
   .divider {
     height: 1px;
@@ -1189,7 +1164,7 @@
   text-overflow: ellipsis;
   overflow: hidden;
   }
-  
+
   /* 信息行 */
   .info-row {
     padding: 8rpx 32rpx;
@@ -1197,26 +1172,26 @@
     flex-direction: row;
     align-items: center;
   }
-  
+
   .info-label {
     font-size: 26rpx;
     color: #999999;
     width: 160rpx;
   }
-  
+
   .info-value {
     font-size: 28rpx;
     color: #333333;
     flex: 1;
   }
-  
+
   /* 操作按钮 */
   .action-buttons {
     display: flex;
     gap: 20rpx;
     padding: 24rpx 32rpx;
   }
-  
+
   .action-btn {
     flex: 1;
     height: 72rpx;
@@ -1228,11 +1203,11 @@
     margin: 0;
     padding: 0;
   }
-  
+
   .action-btn::after {
     border: none;
   }
-  
+
   /* 按钮区域 */
   .btn-row {
     padding: 32rpx 32rpx 40rpx;
@@ -1240,7 +1215,7 @@
     justify-content: flex-end;
     gap: 16rpx;
   }
-  
+
   .primary-btn {
     width: 420rpx;
     height: 88rpx;
@@ -1253,7 +1228,7 @@
     padding: 0;
     border: none;
   }
-  
+
   /* 去掉默认边框/背景（小程序端） */
   .primary-btn::after {
     border: none;
@@ -1281,32 +1256,32 @@
     color: #ffffff;
     border-color: #ff6b35;
   }
-  
+
   /* 药品列表区域 */
   .medicines-section {
     margin: 20rpx 32rpx;
     padding: 24rpx 0;
     border-top: 1px solid #f1f1f1;
   }
-  
+
   .medicines-header {
     margin-bottom: 20rpx;
     padding-bottom: 16rpx;
     border-bottom: 1rpx solid #f0f0f0;
   }
-  
+
   .medicines-title {
     font-size: 30rpx;
     font-weight: 600;
     color: #333333;
   }
-  
+
   .medicines-list {
     display: flex;
     flex-direction: column;
     gap: 20rpx;
   }
-  
+
   .medicine-item {
     display: flex;
     flex-direction: column;
@@ -1321,7 +1296,7 @@
     display: flex;
     align-items: center;
   }
-  
+
   .medicine-left {
     position: relative;
     width: 120rpx;
@@ -1329,14 +1304,14 @@
     margin-right: 20rpx;
     flex-shrink: 0;
   }
-  
+
   .medicine-thumb {
     width: 100%;
     height: 100%;
     border-radius: 8rpx;
     background: #eee;
   }
-  
+
   .medicine-qty {
     position: absolute;
     right: -8rpx;
@@ -1349,20 +1324,20 @@
     border: 1rpx solid #ddd;
     font-weight: 600;
   }
-  
+
   .medicine-right {
     flex: 1;
     display: flex;
     flex-direction: column;
     gap: 8rpx;
   }
-  
+
   .medicine-name {
     font-size: 28rpx;
     font-weight: 500;
     color: #333333;
   }
-  
+
   .medicine-price {
     color: #e64340;
     font-size: 26rpx;

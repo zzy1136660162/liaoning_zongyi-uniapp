@@ -1,6 +1,6 @@
-<template>
+﻿<template>
   <view class="page">
-    <!-- 顶部蓝色状态条 -->
+    <!-- 椤堕儴钃濊壊鐘舵€佹潯 -->
     <view class="top-header">
       <view class="status-main">
         {{ statusMainText }}
@@ -10,25 +10,25 @@
       </view>
     </view>
 
-    <!-- 白色内容卡片（覆盖在蓝色块上） -->
+    <!-- 鐧借壊鍐呭鍗＄墖锛堣鐩栧湪钃濊壊鍧椾笂锛?-->
     <view class="card-wrapper">
       <view class="card">
-        <!-- 标题 -->
+        <!-- 鏍囬 -->
         <view class="card-title">
-          处方单详情
+          澶勬柟鍗曡鎯?
         </view>
 
-        <!-- 门诊号 -->
+        <!-- 闂ㄨ瘖鍙?-->
         <!--        <view class="field-row">
-          <text class="field-label">门诊号：</text>
+          <text class="field-label">闂ㄨ瘖鍙凤細</text>
           <text class="field-value">{{ detail.visitNo }}</text>
         </view>-->
 
-        <!-- 基本信息两列布局 -->
+        <!-- 鍩烘湰淇℃伅涓ゅ垪甯冨眬 -->
         <view class="info-grid">
           <view class="info-col">
             <text class="info-label">
-              姓名：
+              濮撳悕锛?
             </text>
             <text class="info-value">
               {{ detail.name }}
@@ -36,7 +36,7 @@
           </view>
           <view class="info-col">
             <text class="info-label">
-              性别：
+              鎬у埆锛?
             </text>
             <text class="info-value">
               {{ detail.gender }}
@@ -45,32 +45,32 @@
 
           <view class="info-col">
             <text class="info-label">
-              年龄：
+              骞撮緞锛?
             </text>
             <text class="info-value">
-              {{ detail.age }}岁
+              {{ detail.age }}宀?
             </text>
           </view>
           <!--          <view class="info-col">
-            <text class="info-label">临床诊断：</text>
+            <text class="info-label">涓村簥璇婃柇锛?/text>
             <text class="info-value">{{ detail.diagnosis }}</text>
           </view>
 
           <view class="info-col">
-            <text class="info-label">科室：</text>
+            <text class="info-label">绉戝锛?/text>
             <text class="info-value">{{ detail.department }}</text>
           </view>-->
           <view class="info-col">
             <text class="info-label">
-              开方医师：
+              寮€鏂瑰尰甯堬細
             </text>
             <text class="info-value">
-              {{ detail.doctorName || '—' }}
+              {{ detail.doctorName || '鈥? }}
             </text>
           </view>
           <view class="info-col">
             <text class="info-label">
-              开方日期：
+              寮€鏂规棩鏈燂細
             </text>
             <text class="info-value">
               {{ formatNullableDate(detail.date) }}
@@ -80,13 +80,13 @@
 
         <view class="dash-line big-space" />
 
-        <!-- Rp 区域 -->
+        <!-- Rp 鍖哄煙 -->
         <view class="rp-block">
           <view class="card-title">
-            明细
+            鏄庣粏
           </view>
           <view class="rp-content">
-            <!-- 显示处方药品列表 -->
+            <!-- 鏄剧ず澶勬柟鑽搧鍒楄〃 -->
             <view
               v-if="detail.prescriptionItems && detail.prescriptionItems.length > 0"
               class="rp-items"
@@ -113,16 +113,16 @@
                     v-if="item.days"
                     class="rp-days"
                   >
-                    {{ item.days }}天
+                    {{ item.days }}澶?
                   </text>
                 </view>
-                <!-- 使用/用量说明（来自 lnzy_product.usage_desc） -->
+                <!-- 浣跨敤/鐢ㄩ噺璇存槑锛堟潵鑷?lnzy_product.usage_desc锛?-->
                 <view
                   v-if="item.usageDesc"
                   class="rp-usage-desc"
                 >
                   <text class="usage-label">
-                    用法用量说明：
+                    鐢ㄦ硶鐢ㄩ噺璇存槑锛?
                   </text>
                   <text class="usage-text">
                     {{ item.usageDesc }}
@@ -130,7 +130,7 @@
                 </view>
               </view>
             </view>
-            <!-- 如果没有药品列表，显示处方名称 -->
+            <!-- 濡傛灉娌℃湁鑽搧鍒楄〃锛屾樉绀哄鏂瑰悕绉?-->
             <view
               v-else
               class="rp-name-fallback"
@@ -143,26 +143,26 @@
           <view class="dash-line big-space" />
 
 
-          <!-- 签名区域：显示与处方相关的医生、药师签名（若有多个，会各自列出）-->
+          <!-- 绛惧悕鍖哄煙锛氭樉绀轰笌澶勬柟鐩稿叧鐨勫尰鐢熴€佽嵂甯堢鍚嶏紙鑻ユ湁澶氫釜锛屼細鍚勮嚜鍒楀嚭锛?->
           <view class="sign-row">
             <view
               v-if="Object.keys(detail.associatedDoctors || {}).length > 0"
               class="sign-list"
             >
               <view class="card-title">
-                医生签名
+                鍖荤敓绛惧悕
               </view>
               <view class="sign-columns" />
             </view>
           </view>
 
-          
 
-          <!-- 签名区域 -->
+
+          <!-- 绛惧悕鍖哄煙 -->
           <view class="sign-row">
             <view class="sign-item">
               <text class="sign-label">
-                医师签名：
+                鍖诲笀绛惧悕锛?
               </text>
               <image
                 class="sign-image"
@@ -172,7 +172,7 @@
             </view>
             <view class="sign-item">
               <text class="sign-label">
-                药师签名：
+                鑽笀绛惧悕锛?
               </text>
               <image
                 class="sign-image"
@@ -184,7 +184,7 @@
         </view>
       </view>
 
-      <!-- 底部按钮 -->
+      <!-- 搴曢儴鎸夐挳 -->
     </view>
     <view
       v-if="orderStatus.status === 0"
@@ -194,7 +194,7 @@
         class="bottom-btn"
         @tap="goBuy"
       >
-        去购药
+        鍘昏喘鑽?
       </button>
     </view>
   </view>
@@ -226,7 +226,7 @@ export default {
         gender: '',
         age: 0,
         diagnosis: '',
-        department: '便捷配药门诊',
+        department: '渚挎嵎閰嶈嵂闂ㄨ瘖',
         date: '',
         formulaName: '',
         packCount: 1,
@@ -234,56 +234,56 @@ export default {
         doctorName: '',
         pharmacistName: '',
         productPrice: 0,
-        prescriptionItems: [], // 处方药品列表
-        // 签名与关联医生/药师信息（按 id 映射）
+        prescriptionItems: [], // 澶勬柟鑽搧鍒楄〃
+        // 绛惧悕涓庡叧鑱斿尰鐢?鑽笀淇℃伅锛堟寜 id 鏄犲皠锛?
         associatedDoctors: {}, // { [doctorId]: { name, signatureUrl, title, hospital } }
         associatedPharmacists: {}, // { [pharmacistId]: { name, signatureUrl, title, hospital } }
         doctorId: null,
-        doctorSignatureUrl: '' // 医师签名图片
+        doctorSignatureUrl: '' // 鍖诲笀绛惧悕鍥剧墖
       },
-      // 订单状态相关信息
+      // 璁㈠崟鐘舵€佺浉鍏充俊鎭?
       orderStatus: {
-        status: 0, // 订单状态：0待支付，1待发货，2待收货，3已完成，4已取消
-        orderNo: '', // 订单号
-        logisticsNo: '', // 快递单号
-        logisticsCompany: '' // 快递公司
+        status: 0, // 璁㈠崟鐘舵€侊細0寰呮敮浠橈紝1寰呭彂璐э紝2寰呮敹璐э紝3宸插畬鎴愶紝4宸插彇娑?
+        orderNo: '', // 璁㈠崟鍙?
+        logisticsNo: '', // 蹇€掑崟鍙?
+        logisticsCompany: '' // 蹇€掑叕鍙?
       },
-      // 保存页面参数，用于订单查询
+      // 淇濆瓨椤甸潰鍙傛暟锛岀敤浜庤鍗曟煡璇?
       pageOptions: {
-        prescriptionNo: null, // 保存原始的 prescriptionNo 参数
+        prescriptionNo: null, // 淇濆瓨鍘熷鐨?prescriptionNo 鍙傛暟
         orderId: null
       }
     }
   },
   computed: {
-    // 根据订单状态计算显示的文本
+    // 鏍规嵁璁㈠崟鐘舵€佽绠楁樉绀虹殑鏂囨湰
     statusMainText() {
       const statusMap = {
-        0: '待支付',
-        1: '已支付',
-        2: '配送中',
-        3: '已完成',
-        4: '已取消'
+        0: '寰呮敮浠?,
+        1: '宸叉敮浠?,
+        2: '閰嶉€佷腑',
+        3: '宸插畬鎴?,
+        4: '宸插彇娑?
       }
-      return statusMap[this.orderStatus.status] || '待下单'
+      return statusMap[this.orderStatus.status] || '寰呬笅鍗?
     },
     statusSubText() {
       switch (this.orderStatus.status) {
         case 0:
-          return '等待下单支付'
+          return '绛夊緟涓嬪崟鏀粯'
         case 1:
-          return '订单准备中'
+          return '璁㈠崟鍑嗗涓?
         case 2:
           if (this.orderStatus.logisticsNo) {
-            return `${this.orderStatus.logisticsCompany || '快递'}单号：${this.orderStatus.logisticsNo}`
+            return `${this.orderStatus.logisticsCompany || '蹇€?}鍗曞彿锛?{this.orderStatus.logisticsNo}`
           }
-          return '订单配送中'
+          return '璁㈠崟閰嶉€佷腑'
         case 3:
-          return '订单已完成'
+          return '璁㈠崟宸插畬鎴?
         case 4:
-          return '订单已取消'
+          return '璁㈠崟宸插彇娑?
         default:
-          return '等待下单支付'
+          return '绛夊緟涓嬪崟鏀粯'
       }
     }
   },
@@ -298,20 +298,20 @@ export default {
       await this.loadOrderFromOrderId(this.pageOptions.orderId)
     }
 
-    // 接收处方数据参数（与复诊详情页保持一致）
+    // 鎺ユ敹澶勬柟鏁版嵁鍙傛暟锛堜笌澶嶈瘖璇︽儏椤典繚鎸佷竴鑷达級
     if (options.prescription) {
       try {
         const prescriptionData = JSON.parse(decodeURIComponent(options.prescription))
-        console.log('接收到的处方数据:', prescriptionData)
+        console.log('鎺ユ敹鍒扮殑澶勬柟鏁版嵁:', prescriptionData)
 
-        // 更新处方信息
+        // 鏇存柊澶勬柟淇℃伅
         this.detail.visitNo = prescriptionData.id || prescriptionData.visitNo || this.detail.visitNo
         this.detail.formulaName = prescriptionData.details || prescriptionData.medicineName || prescriptionData.formulaName || prescriptionData.name || this.detail.formulaName
         this.detail.packCount = prescriptionData.doses || prescriptionData.quantity || prescriptionData.packCount || this.detail.packCount
         this.detail.productPrice = prescriptionData.productPrice || this.detail.productPrice
         this.detail.name = prescriptionData.patientName || prescriptionData.name || this.detail.name
-        // 注意：性别和年龄优先从身份证号识别，只有在没有身份证号时才使用参数中的值
-        // 这里先设置参数中的值，但后面会从身份证号重新识别（如果有身份证号）
+        // 娉ㄦ剰锛氭€у埆鍜屽勾榫勪紭鍏堜粠韬唤璇佸彿璇嗗埆锛屽彧鏈夊湪娌℃湁韬唤璇佸彿鏃舵墠浣跨敤鍙傛暟涓殑鍊?
+        // 杩欓噷鍏堣缃弬鏁颁腑鐨勫€硷紝浣嗗悗闈細浠庤韩浠借瘉鍙烽噸鏂拌瘑鍒紙濡傛灉鏈夎韩浠借瘉鍙凤級
         this.detail.gender = prescriptionData.patientGender || prescriptionData.gender || this.detail.gender
         this.detail.age = prescriptionData.patientAge || prescriptionData.age || this.detail.age
         this.detail.diagnosis = prescriptionData.diagnosis || this.detail.diagnosis
@@ -323,7 +323,7 @@ export default {
         const rawDate = this.resolvePrescriptionDate(prescriptionData) || this.detail.date
         this.detail.date = this.formatDate(rawDate) || this.detail.date
 
-            // 如果传入数据中包含医生ID，尝试用医生表的 outpatient_no 覆盖 visitNo
+            // 濡傛灉浼犲叆鏁版嵁涓寘鍚尰鐢烮D锛屽皾璇曠敤鍖荤敓琛ㄧ殑 outpatient_no 瑕嗙洊 visitNo
             await (async () => {
               try {
                 const doctorId = prescriptionData.doctorId || prescriptionData.doctor_id || prescriptionData.doctor || null
@@ -331,28 +331,28 @@ export default {
                   const doc = await getDoctorDetail(doctorId)
                   if (doc) {
                     this.detail.visitNo = doc.outpatientNo || doc.outpatient_no || this.detail.visitNo
-                    console.log('从医生表获取门诊号并设置 visitNo:', this.detail.visitNo)
+                    console.log('浠庡尰鐢熻〃鑾峰彇闂ㄨ瘖鍙峰苟璁剧疆 visitNo:', this.detail.visitNo)
                   }
                 }
               } catch (e) {
-                console.warn('通过 doctorId 获取医生门诊号失败', e)
+                console.warn('閫氳繃 doctorId 鑾峰彇鍖荤敓闂ㄨ瘖鍙峰け璐?, e)
               }
             })()
       } catch (e) {
-        console.error('解析处方数据失败:', e)
+        console.error('瑙ｆ瀽澶勬柟鏁版嵁澶辫触:', e)
       }
     }
 
-    // 确保性别和年龄优先从身份证号识别（如果有身份证号）
-    // 这样可以覆盖 URL 参数中的性别和年龄，确保身份证号的信息优先级最高
+    // 纭繚鎬у埆鍜屽勾榫勪紭鍏堜粠韬唤璇佸彿璇嗗埆锛堝鏋滄湁韬唤璇佸彿锛?
+    // 杩欐牱鍙互瑕嗙洊 URL 鍙傛暟涓殑鎬у埆鍜屽勾榫勶紝纭繚韬唤璇佸彿鐨勪俊鎭紭鍏堢骇鏈€楂?
     this.ensureGenderAndAgeFromIdCard()
 
     await this.loadOrderStatus()
 
-    logPageView('处方详情', '用户进入处方详情页面')
+    logPageView('澶勬柟璇︽儏', '鐢ㄦ埛杩涘叆澶勬柟璇︽儏椤甸潰')
   },
   methods: {
-    // 图片URL处理函数
+    // 鍥剧墖URL澶勭悊鍑芥暟
     getImageUrl,
 
     isUsableId(value) {
@@ -390,7 +390,7 @@ export default {
             return
           }
         } catch (e) {
-          console.warn('从处方 doctorId 获取医师失败', e)
+          console.warn('浠庡鏂?doctorId 鑾峰彇鍖诲笀澶辫触', e)
         }
       }
 
@@ -419,12 +419,12 @@ export default {
             }
           }
         } catch (e) {
-          console.warn('从咨询记录补全医师信息失败', e)
+          console.warn('浠庡挩璇㈣褰曡ˉ鍏ㄥ尰甯堜俊鎭け璐?, e)
         }
       }
     },
 
-    // 从订单信息更新处方详情
+    // 浠庤鍗曚俊鎭洿鏂板鏂硅鎯?
     updateDetailFromOrder(orderInfo) {
       const doctorName = this.resolvePrescriptionDoctorName(orderInfo)
       if (doctorName && !this.detail.doctorName) {
@@ -438,12 +438,12 @@ export default {
         this.detail.date = this.formatDate(prescriptionDate)
       }
 
-      // 更新处方ID（如果还没有设置）
+      // 鏇存柊澶勬柟ID锛堝鏋滆繕娌℃湁璁剧疆锛?
       if (!this.detail.visitNo && orderInfo.prescriptionId) {
         this.detail.visitNo = orderInfo.prescriptionId.toString()
       }
 
-      // 从订单商品列表构建处方药品列表
+      // 浠庤鍗曞晢鍝佸垪琛ㄦ瀯寤哄鏂硅嵂鍝佸垪琛?
       if (orderInfo.items && orderInfo.items.length > 0) {
         this.detail.prescriptionItems = orderInfo.items.map(item => ({
           id: item.id,
@@ -465,53 +465,53 @@ export default {
           }
         }))
 
-        // 使用第一个商品的信息作为主要商品信息
+        // 浣跨敤绗竴涓晢鍝佺殑淇℃伅浣滀负涓昏鍟嗗搧淇℃伅
         const firstItem = orderInfo.items[0]
         this.detail.formulaName = firstItem.productName || this.detail.formulaName
         this.detail.productPrice = firstItem.price || this.detail.productPrice
         this.detail.packCount = firstItem.quantity || this.detail.packCount
       }
 
-      // 设置医生ID（如果有的话）
+      // 璁剧疆鍖荤敓ID锛堝鏋滄湁鐨勮瘽锛?
       if (orderInfo.doctorId) {
         this.detail.doctorId = orderInfo.doctorId
       }
     },
 
-    // 获取订单状态信息
+    // 鑾峰彇璁㈠崟鐘舵€佷俊鎭?
     async loadOrderStatus() {
       try {
-        // 首先尝试从存储的订单信息中获取（处理正在创建的订单）
+        // 棣栧厛灏濊瘯浠庡瓨鍌ㄧ殑璁㈠崟淇℃伅涓幏鍙栵紙澶勭悊姝ｅ湪鍒涘缓鐨勮鍗曪級
         const currentOrder = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
         if (currentOrder && currentOrder.prescriptions && currentOrder.prescriptions.includes(this.detail.visitNo)) {
-          // 如果当前订单包含此门诊号，说明这是一个正在处理的订单
-          this.orderStatus.status = 0 // 待支付
+          // 濡傛灉褰撳墠璁㈠崟鍖呭惈姝ら棬璇婂彿锛岃鏄庤繖鏄竴涓鍦ㄥ鐞嗙殑璁㈠崟
+          this.orderStatus.status = 0 // 寰呮敮浠?
           this.orderStatus.orderNo = currentOrder.orderNo || ''
-          console.log('从本地存储获取订单状态（待支付）:', this.orderStatus)
+          console.log('浠庢湰鍦板瓨鍌ㄨ幏鍙栬鍗曠姸鎬侊紙寰呮敮浠橈級:', this.orderStatus)
           return
         }
 
-        // 通过处方ID查询订单信息
-        // 优先使用原始的 prescriptionNo 参数，其次使用 detail.visitNo
+        // 閫氳繃澶勬柟ID鏌ヨ璁㈠崟淇℃伅
+        // 浼樺厛浣跨敤鍘熷鐨?prescriptionNo 鍙傛暟锛屽叾娆′娇鐢?detail.visitNo
         const prescriptionId = this.pageOptions.prescriptionNo || (this.isValidPrescriptionId(this.detail.visitNo) ? this.detail.visitNo : null)
         if (!this.isValidPrescriptionId(prescriptionId)) {
-          console.log('处方详情无有效处方ID，跳过按处方查询订单')
+          console.log('澶勬柟璇︽儏鏃犳湁鏁堝鏂笽D锛岃烦杩囨寜澶勬柟鏌ヨ璁㈠崟')
           return
         }
-        console.log('查询订单使用的处方ID:', prescriptionId)
+        console.log('鏌ヨ璁㈠崟浣跨敤鐨勫鏂笽D:', prescriptionId)
         const orderInfo = await getOrderByPrescriptionId(prescriptionId)
 
         if (orderInfo && orderInfo.id) {
-          // 更新订单状态信息
+          // 鏇存柊璁㈠崟鐘舵€佷俊鎭?
           this.orderStatus.status = orderInfo.orderStatus !== null && orderInfo.orderStatus !== undefined
             ? orderInfo.orderStatus
             : (orderInfo.status || 0)
           this.orderStatus.orderNo = orderInfo.orderNo || orderInfo.id || ''
 
-          // 如果是配送中状态，尝试获取物流信息
+          // 濡傛灉鏄厤閫佷腑鐘舵€侊紝灏濊瘯鑾峰彇鐗╂祦淇℃伅
           if (this.orderStatus.status === 2 && orderInfo.logisticsNo) {
             this.orderStatus.logisticsNo = orderInfo.logisticsNo
-            this.orderStatus.logisticsCompany = orderInfo.logisticsCompany || '顺丰快递'
+            this.orderStatus.logisticsCompany = orderInfo.logisticsCompany || '椤轰赴蹇€?
           }
 
           this.updateDetailFromOrder(orderInfo)
@@ -519,19 +519,19 @@ export default {
             await this.applyDoctorFromPrescription({ doctorId: orderInfo.doctorId })
           }
 
-          console.log('通过处方ID查询到订单状态:', this.orderStatus)
-          console.log('从订单更新处方详情:', this.detail)
+          console.log('閫氳繃澶勬柟ID鏌ヨ鍒拌鍗曠姸鎬?', this.orderStatus)
+          console.log('浠庤鍗曟洿鏂板鏂硅鎯?', this.detail)
         } else {
-          console.log('未找到对应的订单信息，保持默认状态')
+          console.log('鏈壘鍒板搴旂殑璁㈠崟淇℃伅锛屼繚鎸侀粯璁ょ姸鎬?)
         }
       } catch (error) {
-        console.error('获取订单状态失败:', error)
-        // 如果API查询失败，尝试备用方案：从订单列表中查找
+        console.error('鑾峰彇璁㈠崟鐘舵€佸け璐?', error)
+        // 濡傛灉API鏌ヨ澶辫触锛屽皾璇曞鐢ㄦ柟妗堬細浠庤鍗曞垪琛ㄤ腑鏌ユ壘
         try {
           const orders = await getMyOrders()
 
           if (orders && orders.length > 0) {
-            // 查找包含此门诊号的订单
+            // 鏌ユ壘鍖呭惈姝ら棬璇婂彿鐨勮鍗?
             const prescriptionId = this.pageOptions.prescriptionNo || (this.isValidPrescriptionId(this.detail.visitNo) ? this.detail.visitNo : null)
             if (!this.isValidPrescriptionId(prescriptionId)) {
               return
@@ -549,43 +549,43 @@ export default {
                 : (relatedOrder.status || 0)
               this.orderStatus.orderNo = relatedOrder.orderNo || relatedOrder.id || ''
 
-              // 如果是配送中状态，尝试获取物流信息
+              // 濡傛灉鏄厤閫佷腑鐘舵€侊紝灏濊瘯鑾峰彇鐗╂祦淇℃伅
               if (this.orderStatus.status === 2 && relatedOrder.logisticsNo) {
                 this.orderStatus.logisticsNo = relatedOrder.logisticsNo
-                this.orderStatus.logisticsCompany = relatedOrder.logisticsCompany || '顺丰快递'
+                this.orderStatus.logisticsCompany = relatedOrder.logisticsCompany || '椤轰赴蹇€?
               }
 
-              // 从订单信息更新处方详情
+              // 浠庤鍗曚俊鎭洿鏂板鏂硅鎯?
               this.updateDetailFromOrder(relatedOrder)
 
-              console.log('备用方案：从订单列表中找到订单状态:', this.orderStatus)
-              console.log('从订单更新处方详情:', this.detail)
+              console.log('澶囩敤鏂规锛氫粠璁㈠崟鍒楄〃涓壘鍒拌鍗曠姸鎬?', this.orderStatus)
+              console.log('浠庤鍗曟洿鏂板鏂硅鎯?', this.detail)
             }
           }
         } catch (backupError) {
-          console.error('备用方案也失败:', backupError)
-          // 出错时保持默认状态
+          console.error('澶囩敤鏂规涔熷け璐?', backupError)
+          // 鍑洪敊鏃朵繚鎸侀粯璁ょ姸鎬?
         }
       }
     },
 
-    // 从身份证号计算年龄
+    // 浠庤韩浠借瘉鍙疯绠楀勾榫?
     calculateAgeFromIdCard(idCard) {
       if (!idCard || idCard.length < 15) {
         return 0
       }
 
       let birthDateStr = ''
-      // 18位身份证：第7-14位为出生日期 YYYYMMDD
+      // 18浣嶈韩浠借瘉锛氱7-14浣嶄负鍑虹敓鏃ユ湡 YYYYMMDD
       if (idCard.length === 18) {
         birthDateStr = idCard.substring(6, 14)
       }
-      // 15位身份证：第7-12位为出生日期 YYMMDD，年份前两位需要判断
+      // 15浣嶈韩浠借瘉锛氱7-12浣嶄负鍑虹敓鏃ユ湡 YYMMDD锛屽勾浠藉墠涓や綅闇€瑕佸垽鏂?
       else if (idCard.length === 15) {
         const year = idCard.substring(6, 8)
         const month = idCard.substring(8, 10)
         const day = idCard.substring(10, 12)
-        // 简单判断：如果年份大于当前年份后两位，则认为是19xx年，否则是20xx年
+        // 绠€鍗曞垽鏂細濡傛灉骞翠唤澶т簬褰撳墠骞翠唤鍚庝袱浣嶏紝鍒欒涓烘槸19xx骞达紝鍚﹀垯鏄?0xx骞?
         const currentYear = new Date().getFullYear() % 100
         const birthYear = parseInt(year) > currentYear ? `19${year}` : `20${year}`
         birthDateStr = `${birthYear}${month}${day}`
@@ -593,7 +593,7 @@ export default {
         return 0
       }
 
-      // 解析出生日期
+      // 瑙ｆ瀽鍑虹敓鏃ユ湡
       const birthYear = parseInt(birthDateStr.substring(0, 4))
       const birthMonth = parseInt(birthDateStr.substring(4, 6))
       const birthDay = parseInt(birthDateStr.substring(6, 8))
@@ -605,7 +605,7 @@ export default {
       const monthDiff = today.getMonth() - (birthMonth - 1)
       const dayDiff = today.getDate() - birthDay
 
-      // 如果还没过生日，年龄减1
+      // 濡傛灉杩樻病杩囩敓鏃ワ紝骞撮緞鍑?
       if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
         age--
       }
@@ -613,35 +613,35 @@ export default {
       return age > 0 ? age : 0
     },
 
-    // 从身份证号判断性别
+    // 浠庤韩浠借瘉鍙峰垽鏂€у埆
     getGenderFromIdCard(idCard) {
       if (!idCard || idCard.length < 15) {
-        return '未知'
+        return '鏈煡'
       }
 
       let genderCode = ''
-      // 18位身份证：倒数第二位为性别码，奇数为男，偶数为女
+      // 18浣嶈韩浠借瘉锛氬€掓暟绗簩浣嶄负鎬у埆鐮侊紝濂囨暟涓虹敺锛屽伓鏁颁负濂?
       if (idCard.length === 18) {
         genderCode = idCard.substring(16, 17)
       }
-      // 15位身份证：最后一位为性别码，奇数为男，偶数为女
+      // 15浣嶈韩浠借瘉锛氭渶鍚庝竴浣嶄负鎬у埆鐮侊紝濂囨暟涓虹敺锛屽伓鏁颁负濂?
       else if (idCard.length === 15) {
         genderCode = idCard.substring(14, 15)
       } else {
-        return '未知'
+        return '鏈煡'
       }
 
-      return parseInt(genderCode) % 2 === 1 ? '男' : '女'
+      return parseInt(genderCode) % 2 === 1 ? '鐢? : '濂?
     },
 
-    // 格式化日期，只显示年月日
+    // 鏍煎紡鍖栨棩鏈燂紝鍙樉绀哄勾鏈堟棩
     formatDate(dateStr) {
       if (!dateStr) {
         return ''
       }
 
       try {
-        // 如果是时间戳（数字）
+        // 濡傛灉鏄椂闂存埑锛堟暟瀛楋級
         if (typeof dateStr === 'number') {
           const date = new Date(dateStr)
           const year = date.getFullYear()
@@ -650,16 +650,16 @@ export default {
           return `${year}-${month}-${day}`
         }
 
-        // 如果是字符串
+        // 濡傛灉鏄瓧绗︿覆
         if (typeof dateStr === 'string') {
-          // 处理 ISO 格式：2024-01-01T10:30:00 或 2024-01-01 10:30:00
+          // 澶勭悊 ISO 鏍煎紡锛?024-01-01T10:30:00 鎴?2024-01-01 10:30:00
           const datePart = dateStr.split('T')[0].split(' ')[0]
-          // 验证格式是否为 YYYY-MM-DD
+          // 楠岃瘉鏍煎紡鏄惁涓?YYYY-MM-DD
           if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
             return datePart
           }
 
-          // 尝试解析为日期对象
+          // 灏濊瘯瑙ｆ瀽涓烘棩鏈熷璞?
           const date = new Date(dateStr)
           if (!isNaN(date.getTime())) {
             const year = date.getFullYear()
@@ -671,13 +671,13 @@ export default {
 
         return dateStr
       } catch (e) {
-        console.error('格式化日期失败:', e)
+        console.error('鏍煎紡鍖栨棩鏈熷け璐?', e)
         return dateStr
       }
     },
 
     formatNullableDate(dateStr) {
-      return this.formatDate(dateStr) || '—'
+      return this.formatDate(dateStr) || '鈥?
     },
 
     resolvePrescriptionDoctorName(source = {}) {
@@ -701,19 +701,19 @@ export default {
         ''
     },
 
-    // 从 storage 加载用户信息
+    // 浠?storage 鍔犺浇鐢ㄦ埛淇℃伅
     loadUserInfo() {
       try {
         const userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
         if (userInfo) {
           this.detail.name = userInfo.realName || this.detail.name
 
-          // 从身份证号计算年龄和性别
+          // 浠庤韩浠借瘉鍙疯绠楀勾榫勫拰鎬у埆
           if (userInfo.idNumber) {
             this.detail.age = this.calculateAgeFromIdCard(userInfo.idNumber)
             this.detail.gender = this.getGenderFromIdCard(userInfo.idNumber)
 
-            console.log('从 storage 加载用户信息:', {
+            console.log('浠?storage 鍔犺浇鐢ㄦ埛淇℃伅:', {
               name: userInfo.realName,
               idNumber: userInfo.idNumber,
               age: this.detail.age,
@@ -722,54 +722,54 @@ export default {
           }
         }
       } catch (e) {
-        console.error('加载用户信息失败:', e)
+        console.error('鍔犺浇鐢ㄦ埛淇℃伅澶辫触:', e)
       }
     },
 
-    // 确保性别和年龄从身份证号识别（优先级最高）
+    // 纭繚鎬у埆鍜屽勾榫勪粠韬唤璇佸彿璇嗗埆锛堜紭鍏堢骇鏈€楂橈級
     ensureGenderAndAgeFromIdCard() {
       try {
         const userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
         if (userInfo && userInfo.idNumber) {
-          // 优先使用身份证号识别的性别和年龄
+          // 浼樺厛浣跨敤韬唤璇佸彿璇嗗埆鐨勬€у埆鍜屽勾榫?
           const ageFromIdCard = this.calculateAgeFromIdCard(userInfo.idNumber)
           const genderFromIdCard = this.getGenderFromIdCard(userInfo.idNumber)
 
           if (ageFromIdCard > 0) {
             this.detail.age = ageFromIdCard
           }
-          if (genderFromIdCard !== '未知') {
+          if (genderFromIdCard !== '鏈煡') {
             this.detail.gender = genderFromIdCard
           }
 
-          console.log('从身份证号重新识别性别和年龄:', {
+          console.log('浠庤韩浠借瘉鍙烽噸鏂拌瘑鍒€у埆鍜屽勾榫?', {
             idNumber: userInfo.idNumber,
             age: this.detail.age,
             gender: this.detail.gender
           })
         }
       } catch (e) {
-        console.error('从身份证号识别性别和年龄失败:', e)
+        console.error('浠庤韩浠借瘉鍙疯瘑鍒€у埆鍜屽勾榫勫け璐?', e)
       }
     },
 
-    // 根据处方ID从 storage 加载处方信息
-    // ✅ 从API加载处方详情
+    // 鏍规嵁澶勬柟ID浠?storage 鍔犺浇澶勬柟淇℃伅
+    // 鉁?浠嶢PI鍔犺浇澶勬柟璇︽儏
     async loadPrescriptionById(id) {
       if (!this.isValidPrescriptionId(id)) {
-        console.warn('处方ID无效，跳过处方详情加载:', id)
+        console.warn('澶勬柟ID鏃犳晥锛岃烦杩囧鏂硅鎯呭姞杞?', id)
         return
       }
       try {
-        uni.showLoading({ title: '加载中...' })
+        uni.showLoading({ title: '鍔犺浇涓?..' })
 
-        // 调用后端API获取处方详情
+        // 璋冪敤鍚庣API鑾峰彇澶勬柟璇︽儏
         const prescriptionData = await getPrescriptionDetail(id)
 
-        console.log('处方详情:', prescriptionData)
+        console.log('澶勬柟璇︽儏:', prescriptionData)
 
         if (prescriptionData) {
-          // 优先尝试从处方记录关联的 doctor_id 获取医生门诊号（lnzy_doctor.outpatient_no）
+          // 浼樺厛灏濊瘯浠庡鏂硅褰曞叧鑱旂殑 doctor_id 鑾峰彇鍖荤敓闂ㄨ瘖鍙凤紙lnzy_doctor.outpatient_no锛?
           let visitNoFromDoctor = null
           try {
             const doctorId = prescriptionData.doctorId || prescriptionData.doctor_id || prescriptionData.doctor || null
@@ -780,25 +780,25 @@ export default {
               }
             }
           } catch (e) {
-            console.warn('获取医生门诊号失败', e)
+            console.warn('鑾峰彇鍖荤敓闂ㄨ瘖鍙峰け璐?, e)
           }
           this.detail.visitNo = visitNoFromDoctor || prescriptionData.consultationNo || prescriptionData.id || id
           this.detail.formulaName = prescriptionData.formulaName || prescriptionData.medicineName || ''
           this.detail.packCount = prescriptionData.doses || prescriptionData.quantity || 1
           this.detail.productPrice = prescriptionData.totalAmount || 0
           this.detail.diagnosis = prescriptionData.diagnosis || ''
-          this.detail.department = prescriptionData.department || '便捷配药门诊'
+          this.detail.department = prescriptionData.department || '渚挎嵎閰嶈嵂闂ㄨ瘖'
           this.detail.doctorName = this.resolvePrescriptionDoctorName(prescriptionData) || this.detail.doctorName
           this.detail.date = this.formatDate(this.resolvePrescriptionDate(prescriptionData)) || this.detail.date
 
           this.detail.doctorId = prescriptionData.doctorId || null
           await this.applyDoctorFromPrescription(prescriptionData)
 
-          // 获取处方药品列表
+          // 鑾峰彇澶勬柟鑽搧鍒楄〃
           try {
             const prescriptionItems = await getPrescriptionItems(id)
             this.detail.prescriptionItems = prescriptionItems || []
-            console.log('处方药品列表:', prescriptionItems)
+            console.log('澶勬柟鑽搧鍒楄〃:', prescriptionItems)
             if (this.detail.prescriptionItems.length > 0) {
               const firstItem = this.detail.prescriptionItems[0]
               if (firstItem.price) {
@@ -809,28 +809,28 @@ export default {
               }
             }
 
-            // 针对每个处方项，查询商品详情以获得 usage_desc、doctor_id、pharmacist_id 等信息
+            // 閽堝姣忎釜澶勬柟椤癸紝鏌ヨ鍟嗗搧璇︽儏浠ヨ幏寰?usage_desc銆乨octor_id銆乸harmacist_id 绛変俊鎭?
             const doctorIds = new Set()
             const pharmacistIds = new Set()
             for (const item of this.detail.prescriptionItems) {
               try {
-                // 处方明细中保存的是 prescription_item.id 与 product_id
+                // 澶勬柟鏄庣粏涓繚瀛樼殑鏄?prescription_item.id 涓?product_id
                 const productId = item.productId || item.product_id || item.product || null
-                console.log('处理处方项，prescription_item.id=', item.id, 'productId=', productId)
+                console.log('澶勭悊澶勬柟椤癸紝prescription_item.id=', item.id, 'productId=', productId)
                 if (!productId) {
-                  // 没有关联商城商品，跳过但保留处方明细文本信息
-                  console.log('处方项没有关联商城商品，跳过 product fetch for item.id=', item.id)
+                  // 娌℃湁鍏宠仈鍟嗗煄鍟嗗搧锛岃烦杩囦絾淇濈暀澶勬柟鏄庣粏鏂囨湰淇℃伅
+                  console.log('澶勬柟椤规病鏈夊叧鑱斿晢鍩庡晢鍝侊紝璺宠繃 product fetch for item.id=', item.id)
                   continue
                 }
                 const product = await getProductDetail(productId)
-                console.log('商品详情返回', productId, product)
+                console.log('鍟嗗搧璇︽儏杩斿洖', productId, product)
                 if (product) {
-                  // 兼容不同字段命名
+                  // 鍏煎涓嶅悓瀛楁鍛藉悕
                   item.usageDesc = product.usageDesc || product.usage_desc || product.usage || ''
                   const pDoctorId = product.doctorId || product.doctor_id || product.doctor || null
                   const pPharmacistId = product.pharmacistId || product.pharmacist_id || product.pharmacist || null
                   item.productDetail = product
-                  console.log('从商品中读取 doctorId, pharmacistId:', pDoctorId, pPharmacistId)
+                  console.log('浠庡晢鍝佷腑璇诲彇 doctorId, pharmacistId:', pDoctorId, pPharmacistId)
                   if (pDoctorId) doctorIds.add(pDoctorId)
                   if (pPharmacistId) pharmacistIds.add(pPharmacistId)
                 }
@@ -839,15 +839,15 @@ export default {
               }
             }
 
-            // 使用 doctorId/pharmacistId 列表去拉取对应医生/药师详情（去重）
+            // 浣跨敤 doctorId/pharmacistId 鍒楄〃鍘绘媺鍙栧搴斿尰鐢?鑽笀璇︽儏锛堝幓閲嶏級
             for (const docId of Array.from(doctorIds)) {
               try {
-                console.log('获取关联医生详情 docId=', docId)
+                console.log('鑾峰彇鍏宠仈鍖荤敓璇︽儏 docId=', docId)
                 const doc = await getDoctorDetail(docId)
-                console.log('关联医生详情返回', doc)
+                console.log('鍏宠仈鍖荤敓璇︽儏杩斿洖', doc)
                 if (doc) {
                   const sig = getImageUrl(doc.signatureUrl || doc.signature_url || doc.signature || doc.signUrl || '')
-                  console.log('解析到医生签名sig=', sig, '医生avatar/头像兼容字段:', doc.avatarUrl || doc.avatar || doc.avatar_url)
+                  console.log('瑙ｆ瀽鍒板尰鐢熺鍚峴ig=', sig, '鍖荤敓avatar/澶村儚鍏煎瀛楁:', doc.avatarUrl || doc.avatar || doc.avatar_url)
                   this.detail.associatedDoctors[docId] = {
                     name: doc.name || '',
                     title: doc.title || '',
@@ -856,12 +856,12 @@ export default {
                   }
                 }
               } catch (e) {
-                console.warn('获取关联医生详情失败:', docId, e)
+                console.warn('鑾峰彇鍏宠仈鍖荤敓璇︽儏澶辫触:', docId, e)
               }
             }
             for (const phId of Array.from(pharmacistIds)) {
               try {
-                // 假设药师也在医生表或同一接口可查询
+                // 鍋囪鑽笀涔熷湪鍖荤敓琛ㄦ垨鍚屼竴鎺ュ彛鍙煡璇?
                 const ph = await getDoctorDetail(phId)
                 if (ph) {
                   this.detail.associatedPharmacists[phId] = {
@@ -872,17 +872,17 @@ export default {
                   }
                 }
               } catch (e) {
-                console.warn('获取关联药师详情失败:', phId, e)
+                console.warn('鑾峰彇鍏宠仈鑽笀璇︽儏澶辫触:', phId, e)
               }
             }
 
 
           } catch (itemError) {
-            console.warn('获取处方药品列表失败:', itemError)
+            console.warn('鑾峰彇澶勬柟鑽搧鍒楄〃澶辫触:', itemError)
             this.detail.prescriptionItems = []
           }
 
-          // 使用第一个处方项关联的商品的 doctor_id / pharmacist_id 获取医生/药师信息并显示 avatarUrl（首项优先）
+          // 浣跨敤绗竴涓鏂归」鍏宠仈鐨勫晢鍝佺殑 doctor_id / pharmacist_id 鑾峰彇鍖荤敓/鑽笀淇℃伅骞舵樉绀?avatarUrl锛堥椤逛紭鍏堬級
           try {
             const firstItem = (this.detail.prescriptionItems || []).find(it => it && (it.productDetail || it.productId || it.product_id))
             if (firstItem) {
@@ -901,15 +901,15 @@ export default {
                     this.detail.doctorName = doc.name || this.detail.doctorName
                   }
                 } catch (docErr) {
-                  console.warn('获取首项商品关联医生信息失败:', docErr)
+                  console.warn('鑾峰彇棣栭」鍟嗗搧鍏宠仈鍖荤敓淇℃伅澶辫触:', docErr)
                 }
               }
 
               if (firstPharmacistId) {
                 try {
-                  console.log('使用首项product的pharmacistId去获取药师详情:', firstPharmacistId)
+                  console.log('浣跨敤棣栭」product鐨刾harmacistId鍘昏幏鍙栬嵂甯堣鎯?', firstPharmacistId)
                   const ph = await getDoctorDetail(firstPharmacistId)
-                  console.log('首项关联药师详情返回', ph)
+                  console.log('棣栭」鍏宠仈鑽笀璇︽儏杩斿洖', ph)
                   if (ph) {
                     const signatureUrl = ph.signatureUrl
                     this.detail.pharmacistSignatureUrl = getImageUrl(signatureUrl)
@@ -917,15 +917,15 @@ export default {
                     this.detail.pharmacistName = this.detail.pharmacistName || ph.name || this.detail.pharmacistName
                   }
                 } catch (phErr) {
-                  console.warn('获取首项商品关联药师信息失败:', phErr)
+                  console.warn('鑾峰彇棣栭」鍟嗗搧鍏宠仈鑽笀淇℃伅澶辫触:', phErr)
                 }
               }
             }
           } catch (e) {
-            console.warn('处理首项商品关联医师/药师信息失败', e)
+            console.warn('澶勭悊棣栭」鍟嗗搧鍏宠仈鍖诲笀/鑽笀淇℃伅澶辫触', e)
           }
 
-          // 缓存到本地
+          // 缂撳瓨鍒版湰鍦?
           const prescriptions = uni.getStorageSync(STORAGE_KEY_PRESCRIPTION_ORDERS) || []
           const index = prescriptions.findIndex(p => p.id === id)
           if (index > -1) {
@@ -936,16 +936,16 @@ export default {
 
         uni.hideLoading()
       } catch (error) {
-        console.error('加载处方详情失败:', error)
+        console.error('鍔犺浇澶勬柟璇︽儏澶辫触:', error)
         uni.hideLoading()
 
-        // 显示用户友好的错误提示
-        let errorMessage = '加载处方详情失败'
+        // 鏄剧ず鐢ㄦ埛鍙嬪ソ鐨勯敊璇彁绀?
+        let errorMessage = '鍔犺浇澶勬柟璇︽儏澶辫触'
         if (error && error.message) {
-          if (error.message.includes('无权限')) {
-            errorMessage = '您没有权限查看此处方'
-          } else if (error.message.includes('不存在')) {
-            errorMessage = '处方信息不存在'
+          if (error.message.includes('鏃犳潈闄?)) {
+            errorMessage = '鎮ㄦ病鏈夋潈闄愭煡鐪嬫澶勬柟'
+          } else if (error.message.includes('涓嶅瓨鍦?)) {
+            errorMessage = '澶勬柟淇℃伅涓嶅瓨鍦?
           } else {
             errorMessage = error.message
           }
@@ -957,7 +957,7 @@ export default {
           duration: 3000
         })
 
-        // API失败时从本地加载
+        // API澶辫触鏃朵粠鏈湴鍔犺浇
         const prescriptions = uni.getStorageSync(STORAGE_KEY_PRESCRIPTION_ORDERS) || []
         const prescription = prescriptions.find(p => p.id === id || p.visitNo === id)
 
@@ -975,9 +975,9 @@ export default {
           const rawDate = this.resolvePrescriptionDate(prescription) || this.detail.date
           this.detail.date = this.formatDate(rawDate) || this.detail.date
         } else {
-          // 如果 storage 中没有找到，使用 prescriptionNo 作为 visitNo
+          // 濡傛灉 storage 涓病鏈夋壘鍒帮紝浣跨敤 prescriptionNo 浣滀负 visitNo
           this.detail.visitNo = id
-          console.warn('未在 storage 中找到处方信息，使用默认值')
+          console.warn('鏈湪 storage 涓壘鍒板鏂逛俊鎭紝浣跨敤榛樿鍊?)
         }
       }
     },
@@ -1006,36 +1006,36 @@ export default {
           await this.loadPrescriptionById(prescriptionId)
         }
       } catch (error) {
-        console.error('通过订单ID加载处方详情失败:', error)
+        console.error('閫氳繃璁㈠崟ID鍔犺浇澶勬柟璇︽儏澶辫触:', error)
         uni.showToast({
-          title: error.message || '加载订单处方失败',
+          title: error.message || '鍔犺浇璁㈠崟澶勬柟澶辫触',
           icon: 'none'
         })
       }
     },
 
     goBuy() {
-      // 验证订单状态，只有待支付状态才能购药
+      // 楠岃瘉璁㈠崟鐘舵€侊紝鍙湁寰呮敮浠樼姸鎬佹墠鑳借喘鑽?
       if (this.orderStatus.status !== 0) {
-        const statusText = this.statusMainText || '非待支付状态'
+        const statusText = this.statusMainText || '闈炲緟鏀粯鐘舵€?
         uni.showToast({
-          title: `订单状态为${statusText}，无法购药`,
+          title: `璁㈠崟鐘舵€佷负${statusText}锛屾棤娉曡喘鑽痐,
           icon: 'none'
         })
         return
       }
 
-      // 验证必要数据
+      // 楠岃瘉蹇呰鏁版嵁
       if (!this.detail.visitNo) {
         uni.showToast({
-          title: '处方信息不完整',
+          title: '澶勬柟淇℃伅涓嶅畬鏁?,
           icon: 'none'
         })
         return
       }
 
-      // 构建订单信息
-      // 使用统一的单价和数量计算总价（与商品详情页和复诊详情页保持一致）
+      // 鏋勫缓璁㈠崟淇℃伅
+      // 浣跨敤缁熶竴鐨勫崟浠峰拰鏁伴噺璁＄畻鎬讳环锛堜笌鍟嗗搧璇︽儏椤靛拰澶嶈瘖璇︽儏椤典繚鎸佷竴鑷达級
       const unitPrice = this.detail.productPrice
         || (this.detail.prescriptionItems[0] && this.detail.prescriptionItems[0].price)
         || 0
@@ -1044,8 +1044,8 @@ export default {
 
       const orderItems = [{
         id: this.detail.visitNo,
-        name: this.detail.formulaName || '中药处方',
-        type: '制剂',
+        name: this.detail.formulaName || '涓嵂澶勬柟',
+        type: '鍒跺墏',
         price: totalPrice,
         quantity: quantity
       }]
@@ -1056,28 +1056,28 @@ export default {
         prescriptions: [this.detail.visitNo],
         items: orderItems,
         deliveryInfo: {
-          distributor: '辽宁中医药大学附属医院',
-          logistics: '顺丰快递',
-          purchaseMethod: '药品配送-在线支付',
-          shippingPaymentMethod: '在线支付'
+          distributor: '杈藉畞涓尰鑽ぇ瀛﹂檮灞炲尰闄?,
+          logistics: '椤轰赴蹇€?,
+          purchaseMethod: '鑽搧閰嶉€?鍦ㄧ嚎鏀粯',
+          shippingPaymentMethod: '鍦ㄧ嚎鏀粯'
         },
         cost: {
           medicineCost: medicineCost,
           isDecocted: false,
-          shippingFee: 0 // 确认页面会自动设置为18元
+          shippingFee: 0 // 纭椤甸潰浼氳嚜鍔ㄨ缃负18鍏?
         },
-        total: medicineCost // 确认页面会重新计算包含快递费的总价
+        total: medicineCost // 纭椤甸潰浼氶噸鏂拌绠楀寘鍚揩閫掕垂鐨勬€讳环
       }
 
-      // 保存订单信息
+      // 淇濆瓨璁㈠崟淇℃伅
       try {
-        // 同步到购物车/已验证产品，确保 confirm 页面能正确加载商品明细
+        // 鍚屾鍒拌喘鐗╄溅/宸查獙璇佷骇鍝侊紝纭繚 confirm 椤甸潰鑳芥纭姞杞藉晢鍝佹槑缁?
         try {
           const verified = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
           const quantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
           const selected = uni.getStorageSync(STORAGE_KEY_SELECTED_PRODUCTS) || []
 
-          // 如果处方里包含处方明细且有关联商城商品ID，则优先把这些商品加入到已验证列表
+          // 濡傛灉澶勬柟閲屽寘鍚鏂规槑缁嗕笖鏈夊叧鑱斿晢鍩庡晢鍝両D锛屽垯浼樺厛鎶婅繖浜涘晢鍝佸姞鍏ュ埌宸查獙璇佸垪琛?
           const associatedProductIds = []
           if (this.detail.prescriptionItems && this.detail.prescriptionItems.length > 0) {
             for (const pi of this.detail.prescriptionItems) {
@@ -1085,15 +1085,15 @@ export default {
               if (pid) {
                 const key = String(pid)
                 verified[key] = true
-                // 处方明细里没有明确数量时，使用处方页的 packCount 或明细的 days 作为兜底
+                // 澶勬柟鏄庣粏閲屾病鏈夋槑纭暟閲忔椂锛屼娇鐢ㄥ鏂归〉鐨?packCount 鎴栨槑缁嗙殑 days 浣滀负鍏滃簳
                 quantities[key] = quantities[key] || pi.quantity || pi.days || this.detail.packCount || 1
                 if (!selected.includes(key)) selected.push(key)
                 associatedProductIds.push(key)
               }
             }
           } else {
-            // 如果没有处方商品关联到商城商品，把处方本身作为一个虚拟商品放入已选列表（id 使用 visitNo，confirm 会使用 current_order 的 items）
-            // 这里仍然标记 visitNo 在已选项中，避免 confirm 页出现空商品列表（某些流程会用到 selected_products）
+            // 濡傛灉娌℃湁澶勬柟鍟嗗搧鍏宠仈鍒板晢鍩庡晢鍝侊紝鎶婂鏂规湰韬綔涓轰竴涓櫄鎷熷晢鍝佹斁鍏ュ凡閫夊垪琛紙id 浣跨敤 visitNo锛宑onfirm 浼氫娇鐢?current_order 鐨?items锛?
+            // 杩欓噷浠嶇劧鏍囪 visitNo 鍦ㄥ凡閫夐」涓紝閬垮厤 confirm 椤靛嚭鐜扮┖鍟嗗搧鍒楄〃锛堟煇浜涙祦绋嬩細鐢ㄥ埌 selected_products锛?
             const vkey = String(this.detail.visitNo || '')
             if (vkey) {
               verified[vkey] = true
@@ -1105,31 +1105,31 @@ export default {
           uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, verified)
           uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, quantities)
           uni.setStorageSync(STORAGE_KEY_SELECTED_PRODUCTS, selected)
-          console.log('同步购物车已验证商品:', associatedProductIds.length ? associatedProductIds : (this.detail.visitNo || 'visitNo'), verified, quantities)
+          console.log('鍚屾璐墿杞﹀凡楠岃瘉鍟嗗搧:', associatedProductIds.length ? associatedProductIds : (this.detail.visitNo || 'visitNo'), verified, quantities)
         } catch (syncErr) {
-          console.warn('同步购物车信息失败:', syncErr)
+          console.warn('鍚屾璐墿杞︿俊鎭け璐?', syncErr)
         }
 
         uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo)
 
-        // 跳转到订单确认页面
+        // 璺宠浆鍒拌鍗曠‘璁ら〉闈?
         uni.navigateTo({
           url: '/pages/order/confirm',
           success: () => {
-            console.log('跳转到订单确认页面成功')
+            console.log('璺宠浆鍒拌鍗曠‘璁ら〉闈㈡垚鍔?)
           },
           fail: (err) => {
-            console.error('跳转失败:', err)
+            console.error('璺宠浆澶辫触:', err)
             uni.showToast({
-              title: '跳转失败，请重试',
+              title: '璺宠浆澶辫触锛岃閲嶈瘯',
               icon: 'none'
             })
           }
         })
       } catch (e) {
-        console.error('保存订单信息失败:', e)
+        console.error('淇濆瓨璁㈠崟淇℃伅澶辫触:', e)
         uni.showToast({
-          title: '保存订单信息失败',
+          title: '淇濆瓨璁㈠崟淇℃伅澶辫触',
           icon: 'none'
         })
       }
@@ -1142,11 +1142,11 @@ export default {
 .page {
   min-height: 100vh;
   background-color: #f7f7f7;
-  padding-bottom: 140rpx; // 预留底部按钮空间
+  padding-bottom: 140rpx; // 棰勭暀搴曢儴鎸夐挳绌洪棿
   box-sizing: border-box;
 }
 
-/* 顶部蓝色渐变块 */
+/* 椤堕儴钃濊壊娓愬彉鍧?*/
 .top-header {
   height: 220rpx;
   padding: 40rpx 40rpx 0;
@@ -1166,7 +1166,7 @@ export default {
   opacity: 0.9;
 }
 
-/* 白卡片整体往上“顶”一点，形成悬浮感 */
+/* 鐧藉崱鐗囨暣浣撳線涓娾€滈《鈥濅竴鐐癸紝褰㈡垚鎮诞鎰?*/
 .card-wrapper {
   margin-top: -60rpx;
   padding: 0 24rpx;
@@ -1179,7 +1179,7 @@ export default {
   box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.06);
 }
 
-/* 标题 */
+/* 鏍囬 */
 .card-title {
   font-size: 32rpx;
   font-weight: 600;
@@ -1187,7 +1187,7 @@ export default {
   margin-bottom: 30rpx;
 }
 
-/* 行样式 */
+/* 琛屾牱寮?*/
 .field-row {
   display: flex;
   flex-direction: row;
@@ -1206,7 +1206,7 @@ export default {
   color: #333333;
 }
 
-/* 虚线分割 */
+/* 铏氱嚎鍒嗗壊 */
 .dash-line {
   border-bottom: 1px dashed #e0e0e0;
   margin: 18rpx 0;
@@ -1216,7 +1216,7 @@ export default {
   margin-top: 40rpx;
 }
 
-/* 两列信息 */
+/* 涓ゅ垪淇℃伅 */
 .info-grid {
   display: flex;
   flex-wrap: wrap;
@@ -1240,7 +1240,7 @@ export default {
   color: #333333;
 }
 
-/* Rp 区域 */
+/* Rp 鍖哄煙 */
 .rp-block {
   margin-top: 20rpx;
 }
@@ -1391,7 +1391,7 @@ export default {
   line-height: 1.6;
 }
 
-/* 签名区域 */
+/* 绛惧悕鍖哄煙 */
 .sign-row {
   margin-top: 40rpx;
   display: flex;
@@ -1422,7 +1422,7 @@ export default {
   margin-left: 12rpx;
 }
 
-/* 底部按钮条 */
+/* 搴曢儴鎸夐挳鏉?*/
 .bottom-bar {
   position: fixed;
   left: 0;

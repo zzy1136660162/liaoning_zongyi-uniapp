@@ -676,6 +676,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
 import { getImageUrl } from '@/utils/config.js'
+import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import {
   addCartItem,
   getCartProductInfo,
@@ -686,6 +687,7 @@ import {
 } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
 import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
+import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 import { getToken } from '@/utils/request.js'
 import {
   getDeliverySummary,
@@ -905,7 +907,7 @@ const formatRichText = (htmlContent) => {
 }
 
 const buildDetailRedirect = () => {
-  return product.value.id ? `/pages/products/medicine_detail?id=${product.value.id}` : '/pages/products/medicine_detail'
+  return product.value.id ? `/pages/products/therapy_detail?id=${product.value.id}` : '/pages/products/therapy_detail'
 }
 
 const ensureLogin = () => {
@@ -1065,24 +1067,9 @@ const goConsult = () => {
   })
 }
 const showCustomerService = () => {
-  uni.showModal({
-    title: '客服电话',
-    content: '82961387',
-    confirmText: '拨打',
-    success: ({ confirm }) => {
-      if (!confirm) {
-        return
-      }
-      uni.makePhoneCall({
-        phoneNumber: '82961387',
-        fail: () => {
-          uni.showToast({
-            title: '拨号失败',
-            icon: 'none'
-          })
-        }
-      })
-    }
+  console.info('category=CUSTOMER_SERVICE action=open result=pending page=THERAPY_DETAIL productId=%s', product.value.id || '')
+  openCustomerServiceChat().then((result) => {
+    console.info('category=CUSTOMER_SERVICE action=open result=%s page=THERAPY_DETAIL productId=%s', result ? 'success' : 'failed', product.value.id || '')
   })
 }
 const toggleCollect = () => {
@@ -1096,8 +1083,10 @@ const goCart = () => {
 
 const goToDetail = (item) => {
   if (!item?.id || String(item.id) === String(product.value.id)) return
+  const page = isTraditionalTherapyProduct(item) ? 'therapy_detail' : 'medicine_detail'
+  console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=THERAPY_DETAIL targetPage=%s productId=%s', page, item.id)
   uni.navigateTo({
-    url: `/pages/products/medicine_detail?id=${item.id}&product=${encodeURIComponent(JSON.stringify(item))}`
+    url: `/pages/products/${page}?id=${item.id}&product=${encodeURIComponent(JSON.stringify(item))}`
   })
 }
 

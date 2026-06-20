@@ -172,6 +172,25 @@ const main = async () => {
   assert.equal(serverCartCheckout.requiresConsultation, false)
   assert.equal(serverCartCheckout.hasTraditionalTherapy, true)
   assert.equal(serverCartCheckout.allTraditionalTherapy, false)
+
+  resetState()
+  cart.replaceCartData({
+    101: { verified: true, selected: true, quantity: 5, available: true, stock: 8 }
+  })
+  const staleStockCheckout = cart.prepareCheckout(['101'], [{
+    id: 'cart_items',
+    products: [{
+      id: '101',
+      name: 'in stock',
+      price: 12.5,
+      stock: 2,
+      available: true,
+      productCategory: 2,
+      bizType: 1
+    }]
+  }])
+  assert.equal(staleStockCheckout.valid, false)
+  assert.match(staleStockCheckout.message, /库存不足/)
 }
 
 main()

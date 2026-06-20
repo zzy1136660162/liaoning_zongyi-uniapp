@@ -607,6 +607,10 @@ export default {
       return (this.searchKeyword || '').trim()
     },
     handleSearch() {
+      if (this.getSearchKeyword() && this.currentCategoryId !== 'all') {
+        this.currentCategoryId = 'all'
+        this.currentSubCategoryId = 'all'
+      }
       if (this.searchTimer) {
         clearTimeout(this.searchTimer)
       }

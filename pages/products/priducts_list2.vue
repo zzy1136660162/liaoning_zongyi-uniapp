@@ -132,6 +132,7 @@ import { getToken } from '@/utils/request.js'
 import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
+import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 
 const HEALTH_BIZ_TYPE = 2
 const PRODUCT_PAGE_SIZE = 20
@@ -402,8 +403,10 @@ export default {
       }, 300)
     },
     goToDetail(product) {
+      const page = isTraditionalTherapyProduct(product) ? 'therapy_detail' : 'medicine_detail'
+      console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=PRODUCT_LIST2 targetPage=%s productId=%s', page, product.id)
       uni.navigateTo({
-        url: `/pages/products/medicine_detail?id=${product.id}`
+        url: `/pages/products/${page}?id=${product.id}`
       })
     },
     goToNotice(product) {

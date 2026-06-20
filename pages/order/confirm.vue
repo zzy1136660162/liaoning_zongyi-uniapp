@@ -106,8 +106,8 @@
           <view class="section-title">
             订单商品
           </view>
-          <view 
-            v-for="item in orderInfo.items" 
+          <view
+            v-for="item in orderInfo.items"
             :key="item.id"
             class="order-item"
           >
@@ -124,7 +124,7 @@
             </text>
           </view>
         </view>
-      
+
         <!-- 费用明细 -->
         <view class="section">
           <view class="section-title">
@@ -205,7 +205,7 @@ import {
   STORAGE_KEY_DEFAULT_ADDRESS_ID,
   STORAGE_KEY_CURRENT_CONSULTATION_ID
 } from '@/utils/storage.js'
-import { buildOrderInfo, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds } from '@/utils/cart.js'
+import { buildOrderInfo, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds, validateCheckoutStock } from '@/utils/cart.js'
 import { createOrder } from '@/api/order.js'
 import { getAddressList } from '@/api/address.js'
 import { wechatSinglePay } from '@/api/payment.js'
@@ -674,6 +674,20 @@ const submitOrder = async () => {
     uni.showToast({ title: '订单商品不能为空', icon: 'none' })
     return
   }
+
+  await loadProducts()
+  const stockCheck = validateCheckoutStock(selectedProductIds.value, categories.value)
+  if (!stockCheck.valid) {
+    console.warn('category=CHECKOUT_STOCK_GUARD action=submit_order result=blocked reason=%s productId=%s quantity=%s latestStock=%s',
+      stockCheck.reason,
+      stockCheck.productId,
+      stockCheck.quantity,
+      stockCheck.latestStock
+    )
+    uni.showToast({ title: stockCheck.message || '商品库存不足，请调整购物车后重试', icon: 'none' })
+    return
+  }
+  loadOrderInfo()
   
   try {
     uni.showLoading({ title: '获取支付信息...' })
