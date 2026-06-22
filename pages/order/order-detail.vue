@@ -161,6 +161,13 @@
                     {{ formatRedeemStatus(voucher) }}
                   </text>
                 </view>
+                <view
+                  v-if="voucher.verifyCode"
+                  class="therapy-voucher-code"
+                >
+                  <text class="therapy-voucher-code-label">核销码</text>
+                  <text class="therapy-voucher-code-value">{{ voucher.verifyCode }}</text>
+                </view>
                 <image
                   v-if="voucher.verifyQrBase64 && Number(voucher.redeemStatus) !== 1"
                   class="therapy-voucher-qr"
@@ -361,7 +368,7 @@
         if (isTherapyOrder(this.order) || hasRedeemVoucher) {
           return Number(this.order.payStatus) === 1 && Number(this.order.orderStatus) !== 4
         }
-        return Number(this.order.orderStatus) === 3
+        return Number(this.order.orderStatus) === 1
       },
       refundActionText() {
         const hasRedeemVoucher = this.allCartItems && this.allCartItems.some(item => item.redeemVouchers && item.redeemVouchers.length > 0)
@@ -1382,6 +1389,30 @@
   .therapy-voucher-status.redeemed {
     background: #f1f5f9;
     color: #64748b;
+  }
+
+  .therapy-voucher-code {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12rpx;
+    margin: 0 0 14rpx;
+    padding: 12rpx 16rpx;
+    background: #f8fafc;
+    border: 1rpx solid #e2e8f0;
+    border-radius: 8rpx;
+  }
+
+  .therapy-voucher-code-label {
+    color: #64748b;
+    font-size: 24rpx;
+  }
+
+  .therapy-voucher-code-value {
+    color: #111827;
+    font-size: 30rpx;
+    font-weight: 700;
+    letter-spacing: 0;
   }
 
   .therapy-voucher-qr {

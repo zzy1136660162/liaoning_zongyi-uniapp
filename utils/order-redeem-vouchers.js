@@ -11,6 +11,7 @@ export const buildItemRedeemVouchers = (item = {}) => {
     redeemTime: voucher.redeemTime || voucher.redeem_time || '',
     redeemedBy: voucher.redeemedBy || voucher.redeemed_by || '',
     redeemerName: voucher.redeemerName || voucher.redeemer_name || '',
+    verifyCode: voucher.verifyCode || voucher.verify_code || '',
     verifyToken: voucher.verifyToken || voucher.verify_token || '',
     verifyQrBase64: voucher.verifyQrBase64 || voucher.verify_qr_base64 || ''
   }))

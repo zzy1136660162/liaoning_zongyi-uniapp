@@ -142,6 +142,7 @@
 </template>
 
 <script>
+import dayjs from 'dayjs'
 import { getRefundDetail, submitReturnLogistics } from '@/api/refund.js'
 import { getImageUrl } from '@/utils/config.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
@@ -291,14 +292,8 @@ export default {
 
     formatDateTime(dateTime) {
       if (!dateTime) return ''
-      const date = new Date(dateTime)
-      return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+      const date = dayjs(dateTime)
+      return date.isValid() ? date.format('YYYY-MM-DD HH:mm:ss') : dateTime
     }
   },
 

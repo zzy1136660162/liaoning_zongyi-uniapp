@@ -20,6 +20,7 @@ const therapyItemVouchers = buildItemRedeemVouchers({
     id: 21,
     sequence_no: 1,
     redeem_status: 0,
+    verify_code: 'HXCODE01',
     verify_token: 'ITEM_TOKEN',
     verify_qr_base64: 'data:image/png;base64,ITEM_QR'
   }]
@@ -28,5 +29,19 @@ const therapyItemVouchers = buildItemRedeemVouchers({
 assert.equal(therapyItemVouchers.length, 1)
 assert.equal(therapyItemVouchers[0].id, 21)
 assert.equal(therapyItemVouchers[0].sequenceNo, 1)
+assert.equal(therapyItemVouchers[0].verifyCode, 'HXCODE01')
 assert.equal(therapyItemVouchers[0].verifyToken, 'ITEM_TOKEN')
 assert.equal(therapyItemVouchers[0].verifyQrBase64, 'data:image/png;base64,ITEM_QR')
+
+const camelCaseVouchers = buildItemRedeemVouchers({
+  redeemVouchers: [{
+    id: 22,
+    sequenceNo: 2,
+    redeemStatus: 0,
+    verifyCode: 'HXCODE02',
+    verifyToken: 'ITEM_TOKEN_2',
+    verifyQrBase64: 'data:image/png;base64,ITEM_QR_2'
+  }]
+})
+
+assert.equal(camelCaseVouchers[0].verifyCode, 'HXCODE02')

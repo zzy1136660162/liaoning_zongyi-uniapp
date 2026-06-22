@@ -161,6 +161,7 @@ const AFTER_SALE_ORDER_STATUSES = [5, 6, 7]
 
 const tabs = ref([
   { key: 'all', label: '全部' },
+  { key: 'completed', label: '已完成' },
   { key: 'pending', label: '待支付' },
   { key: 'shipping', label: '待发货' },
   { key: 'received', label: '待收货' },
@@ -381,7 +382,7 @@ const canOrderApplyRefund = (order = {}) => {
   if (isTherapyOrder(order) || hasRedeemVouchers(order)) {
     return Number(order.payStatus) === 1 && Number(order.status) !== 4
   }
-  return Number(order.status) === 3
+  return Number(order.status) === 1
 }
 
 const refundActionText = (order = {}) => {
@@ -401,7 +402,8 @@ const filteredOrders = computed(() => {
   const statusMap = {
     pending: 0,
     shipping: 1,
-    received: 2
+    received: 2,
+    completed: 3
   }
 
   const status = statusMap[activeTab.value]
