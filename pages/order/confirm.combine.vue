@@ -61,7 +61,7 @@
       <view class="section">
         <view class="section-title">费用明细</view>
         <view class="cost-row">
-          <text class="label">药品费用</text>
+          <text class="label">商品合计</text>
           <text class="value">¥{{ orderInfo.cost.medicineCost.toFixed(2) }}</text>
         </view>
         <view class="cost-row">
@@ -211,7 +211,7 @@ const loadOrderInfo = () => {
     if (saved) {
       orderInfo.value = saved
       
-      // 从购物车数据重新计算药品费用
+      // 从购物车数据重新计算商品合计
       if (categories.value.length > 0) {
         const cartItems = loadCartItems(categories.value)
         const medicineCost = calculateTotalPrice(cartItems)

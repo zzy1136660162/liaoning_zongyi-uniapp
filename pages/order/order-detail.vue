@@ -162,14 +162,14 @@
                   </text>
                 </view>
                 <view
-                  v-if="voucher.verifyCode"
+                  v-if="canShowVoucherCode(voucher)"
                   class="therapy-voucher-code"
                 >
                   <text class="therapy-voucher-code-label">核销码</text>
                   <text class="therapy-voucher-code-value">{{ voucher.verifyCode }}</text>
                 </view>
                 <image
-                  v-if="voucher.verifyQrBase64 && Number(voucher.redeemStatus) !== 1"
+                  v-if="canShowVoucherQr(voucher)"
                   class="therapy-voucher-qr"
                   :src="normalizeQrImageSrc(voucher.verifyQrBase64)"
                   mode="aspectFit"
@@ -181,6 +181,12 @@
                 >
                   <text>核销时间：{{ formatDateTime(voucher.redeemTime) || '—' }}</text>
                   <text>核销人：{{ voucher.redeemerName || voucher.redeemedBy || '—' }}</text>
+                </view>
+                <view
+                  v-else-if="Number(voucher.redeemStatus) === 2"
+                  class="therapy-voucher-empty"
+                >
+                  核销券已退款/已失效
                 </view>
                 <view
                   v-else
@@ -225,6 +231,7 @@
   import { logPageView, logButtonClick } from '@/utils/accessLog.js'
   import { isTherapyOrder } from '@/utils/therapy.js'
   import { buildItemRedeemVouchers } from '@/utils/order-redeem-vouchers.js'
+  import { canShowRedeemCode, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
 
   export default {
     name: 'OrderDetail',
@@ -251,13 +258,17 @@
           orderStatus: null, // 订单状态：3为已完成
           orderType: null,
           payStatus: null,
+          redeemStatus: null,
           refundStatus: null,
           refundApplicationId: null,
           routeStatusDesc: '', // 顺丰最新路由描述
           logisticsNo: '', // 运单号
           shippingPaymentMethod: '' // 运费支付方式（到付）
         },
-        allCartItems: [] // 订单商品列表
+        allCartItems: [], // 订单商品列表
+        productDetailCache: {},
+        doctorDetailCache: {},
+        prescriptionInfoLoaded: false
       }
     },
     async onLoad(options) {
@@ -324,7 +335,7 @@
           { label: '订单号', labelKey: 'orderNo', value: this.order.orderNo },
           { label: '开方医生', labelKey: 'doctor', value: this.order.doctor },
           { label: '订单金额', labelKey: 'payableAmount', value: this.order.payableAmount ? Number(this.order.payableAmount).toFixed(2) : '' },
-          { label: '支付时间', labelKey: 'payTime', value: this.order.payTime },
+          { label: '支付时间', labelKey: 'payTime', value: this.formatDateTime(this.order.payTime) || '未支付' },
           { label: '运费', labelKey: 'shippingPaymentMethod', value: isTherapyOrder ? '无' : (this.order.shippingPaymentMethod || '到付，以实际为准') }
         ]
         if (this.order.routeStatusDesc) {
@@ -358,21 +369,13 @@
 
       // 是否可以申请退货：普通商品仍需已完成；传统疗法已支付即可由后端继续校验
       canApplyRefund() {
-        const hasRefundApplication = !!this.order.refundApplicationId || Number(this.order.refundStatus) > 0
-        if (hasRefundApplication) {
-          return false
-        }
-        const hasRedeemVoucher = this.allCartItems && this.allCartItems.some(item =>
-          item.redeemVouchers && item.redeemVouchers.length > 0
-        )
-        if (isTherapyOrder(this.order) || hasRedeemVoucher) {
-          return Number(this.order.payStatus) === 1 && Number(this.order.orderStatus) !== 4
-        }
-        return Number(this.order.orderStatus) === 1
+        return this.allCartItems && this.allCartItems.some(item => Number(item.refundableQuantity || 0) > 0)
       },
       refundActionText() {
         const hasRedeemVoucher = this.allCartItems && this.allCartItems.some(item => item.redeemVouchers && item.redeemVouchers.length > 0)
-        return isTherapyOrder(this.order) || hasRedeemVoucher ? '申请退款' : '申请退货'
+        const hasRefundApplication = !!this.order.refundApplicationId || Number(this.order.refundStatus) > 0
+        const baseText = isTherapyOrder(this.order) || hasRedeemVoucher ? '申请退款' : '申请退货'
+        return hasRefundApplication ? `继续${baseText}` : baseText
       }
     },
     methods: {
@@ -383,21 +386,34 @@
         }
 
         try {
+          const rawText = String(dateTimeStr).trim()
+          if (!rawText || rawText === 'null' || rawText === 'undefined') {
+            return ''
+          }
           // 如果已经是 YYYY-MM-DD HH:mm:ss 格式，直接返回
-          if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateTimeStr)) {
-            return dateTimeStr
+          if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(rawText)) {
+            return rawText
           }
 
           let date
 
           // 如果是时间戳（数字）
           if (typeof dateTimeStr === 'number') {
-            date = new Date(dateTimeStr)
+            date = new Date(dateTimeStr < 10000000000 ? dateTimeStr * 1000 : dateTimeStr)
           }
           // 如果是字符串
           else if (typeof dateTimeStr === 'string') {
-            // 尝试解析为日期对象
-            date = new Date(dateTimeStr)
+            if (/^\d+$/.test(rawText)) {
+              const timestamp = Number(rawText)
+              date = new Date(timestamp < 10000000000 ? timestamp * 1000 : timestamp)
+            } else {
+              const normalized = rawText
+                .replace('T', ' ')
+                .replace(/\.\d+$/, '')
+                .replace(/([+-]\d{2}:?\d{2}|Z)$/i, '')
+                .replace(/-/g, '/')
+              date = new Date(normalized)
+            }
           } else {
             return dateTimeStr
           }
@@ -477,7 +493,15 @@
       },
 
       formatRedeemStatus(voucher = {}) {
-        return Number(voucher.redeemStatus) === 1 ? '已核销' : '待核销'
+        return voucher.redeemStatusText || voucher.redeem_status_text || getRedeemStatusText(voucher)
+      },
+
+      canShowVoucherCode(voucher = {}) {
+        return canShowRedeemCode(this.order, voucher) && !!voucher.verifyCode
+      },
+
+      canShowVoucherQr(voucher = {}) {
+        return canShowRedeemCode(this.order, voucher) && !!voucher.verifyQrBase64
       },
 
       normalizeQrImageSrc(value) {
@@ -529,6 +553,56 @@
         return ''
       },
 
+      async getCachedProductDetail(productId) {
+        if (!productId) {
+          return null
+        }
+        const key = String(productId)
+        if (!this.productDetailCache[key]) {
+          this.productDetailCache[key] = await getProductDetail(productId)
+        }
+        return this.productDetailCache[key]
+      },
+
+      async getCachedDoctorDetail(doctorId) {
+        if (!doctorId) {
+          return null
+        }
+        const key = String(doctorId)
+        if (!this.doctorDetailCache[key]) {
+          this.doctorDetailCache[key] = await getDoctorDetail(doctorId)
+        }
+        return this.doctorDetailCache[key]
+      },
+
+      applyDoctorInfo(doctor, doctorId = null) {
+        if (!doctor) {
+          return
+        }
+        this.order.doctorId = doctorId || this.order.doctorId
+        this.order.doctorName = doctor.name || this.order.doctorName
+        this.order.doctor = doctor.name || this.order.doctor
+        this.order.doctorTitle = doctor.title || this.order.doctorTitle
+        this.order.doctorAvatar = doctor.avatarUrl || this.order.doctorAvatar
+        this.order.hospital = doctor.hospitalName || this.order.hospital
+        this.order.department = doctor.department || this.order.department
+      },
+
+      needsProductEnrichment() {
+        if (!this.allCartItems || this.allCartItems.length === 0) {
+          return false
+        }
+        return !this.order.diagnosis ||
+          !this.order.doctorName ||
+          this.allCartItems.some(item => item.id && !item.image)
+      },
+
+      needsPrescriptionEnrichment() {
+        return !!this.order.prescriptionId &&
+          !this.prescriptionInfoLoaded &&
+          (!this.order.doctorName || !this.order.doctorTitle || !this.order.diagnosis || !this.order.prescriptionNo)
+      },
+
       // 从API加载订单详情
       async loadOrderDetail(orderId) {
         try {
@@ -559,15 +633,25 @@
             this.order.id = orderDetail.id || orderId || this.order.id
             this.order.amount = orderDetail.payableAmount || orderDetail.totalAmount || orderDetail.amount || '0.00'
           this.order.payableAmount = orderDetail.payableAmount || this.order.amount
-          this.order.payTime = orderDetail.payTime || orderDetail.pay_time || ''
+          this.order.payTime = this.formatDateTime(orderDetail.payTime || orderDetail.pay_time || '')
           this.order.orderStatus = orderDetail.orderStatus
           this.order.orderType = orderDetail.orderType ?? orderDetail.order_type ?? this.order.orderType
           this.order.payStatus = orderDetail.payStatus ?? orderDetail.pay_status ?? this.order.payStatus
           this.order.refundStatus = orderDetail.refundStatus ?? orderDetail.refund_status ?? this.order.refundStatus
+          this.order.redeemStatus = orderDetail.redeemStatus ?? orderDetail.redeem_status ?? this.order.redeemStatus
           this.order.refundApplicationId = orderDetail.refundApplicationId ?? orderDetail.refund_application_id ?? this.order.refundApplicationId
             // 检查是否是制剂订单（有待核销券），待发货改为待核销
             const hasRedeemVouchers = (orderDetail.items && orderDetail.items.some(item => (item.redeemVouchers && item.redeemVouchers.length > 0) || (item.redeem_vouchers && item.redeem_vouchers.length > 0)))
-            this.order.statusText = this.getStatusText(orderDetail.orderStatus, hasRedeemVouchers)
+            this.order.statusText = getOrderStatusText({
+              displayStatusText: orderDetail.displayStatusText || orderDetail.display_status_text,
+              orderStatus: this.order.orderStatus,
+              orderType: this.order.orderType,
+              payStatus: this.order.payStatus,
+              refundStatus: this.order.refundStatus,
+              redeemStatus: this.order.redeemStatus,
+              hasRedeemVouchers,
+              items: orderDetail.items || []
+            })
             this.order.time = this.formatDateTime(orderDetail.createdAt || orderDetail.createTime)
             this.order.orderNo = orderDetail.orderNo || orderDetail.order_no || this.order.orderNo
             // 物流/运费（到付）信息
@@ -590,15 +674,7 @@
             if (orderDetail.doctorId) {
               this.order.doctorId = orderDetail.doctorId
               try {
-                const doctorFromOrder = await getDoctorDetail(orderDetail.doctorId)
-                if (doctorFromOrder) {
-                  this.order.doctorTitle = doctorFromOrder.title || this.order.doctorTitle
-                  this.order.doctorAvatar = doctorFromOrder.avatarUrl || this.order.doctorAvatar
-                  this.order.hospital = doctorFromOrder.hospitalName || this.order.hospital
-                  this.order.department = doctorFromOrder.department || this.order.department
-                  this.order.doctorName = doctorFromOrder.name || this.order.doctorName
-                  this.order.doctor = this.order.doctorName
-                }
+                this.applyDoctorInfo(await this.getCachedDoctorDetail(orderDetail.doctorId), orderDetail.doctorId)
               } catch (e) {
                 console.warn('从订单 doctorId 获取医生信息失败', e)
               }
@@ -607,8 +683,9 @@
             // 设置商品列表
             if (orderDetail.items && orderDetail.items.length > 0) {
 
-              this.allCartItems = orderDetail.items.map((item, index) => ({
+              this.allCartItems = orderDetail.items.map(item => ({
                 id: item.productId || item.product_id || item.goodsId || item.goods_id || item.id,
+                orderItemId: item.id || item.orderItemId || item.order_item_id,
                 name: item.productName || item.product_name || item.name,
                 price: parseFloat(item.price || 0),
                 // 兼容不同后端字段命名并确保为数值
@@ -617,21 +694,27 @@
                   const n = Number(String(q).replace(/[^\d.-]/g, ''))
                   return !isNaN(n) && n > 0 ? n : 1
                 })(),
+                refundedQuantity: Number(item.refundedQuantity || item.refunded_quantity || 0),
+                refundableQuantity: Number(item.refundableQuantity || item.refundable_quantity || 0),
+                refundable: Boolean(item.refundable),
+                refundBlockedReason: item.refundBlockedReason || item.refund_blocked_reason || '',
                 image: getImageUrl(item.productImage || item.product_image || item.coverImage || item.cover_image || item.image || ''),
                 redeemVouchers: this.buildRedeemVouchers(item)
               }))
               console.log('从订单设置 allCartItems:', this.allCartItems)
             }
 
-            await this.enrichDiagnosisFromAllProducts()
-            if (this.order.prescriptionId) {
+            if (this.needsProductEnrichment()) {
+              await this.enrichDiagnosisFromAllProducts()
+            }
+            if (this.needsPrescriptionEnrichment()) {
               await this.applyDoctorFromPrescription(this.order.prescriptionId)
             }
             const productId = (this.allCartItems[0] && this.allCartItems[0].id) || null
-            if (productId) {
+            if (productId && this.needsProductEnrichment()) {
               await this.enrichByProduct(productId)
             }
-            if (this.order.prescriptionId) {
+            if (this.needsPrescriptionEnrichment()) {
               await this.fillPrescriptionInfo(this.order.prescriptionId)
             }
           }
@@ -713,7 +796,7 @@
           // 遍历所有商品，获取每个商品的 prescription_diagnosis（兼容 snake_case/camelCase）
           for (const productId of productIds) {
             try {
-              const product = await getProductDetail(productId)
+              const product = await this.getCachedProductDetail(productId)
               if (product) {
                 const pd = product.prescription_diagnosis || product.prescriptionDiagnosis || product.prescription_diagnosis
                 if (pd) {
@@ -743,8 +826,7 @@
       // 基于首件商品补全医生/诊断信息
       async enrichByProduct(productId) {
         try {
-          uni.showLoading({ title: '加载中...' })
-          const product = await getProductDetail(productId)
+          const product = await this.getCachedProductDetail(productId)
           if (product) {
             // 诊断信息已通过 enrichDiagnosisFromAllProducts 处理，这里不再覆盖
             if (!this.order.doctorName) {
@@ -768,24 +850,15 @@
 
           if (this.order.doctorId) {
             try {
-              const doctor = await getDoctorDetail(this.order.doctorId)
-              if (doctor) {
-                this.order.doctorName = doctor.name || this.order.doctorName
-                this.order.doctor = doctor.name || this.order.doctor
-                // 使用医生表的头像/职称等信息补全（参考 consultation_detail.vue）
-                this.order.doctorTitle = doctor.title || this.order.doctorTitle
-                this.order.doctorAvatar = doctor.avatarUrl || this.order.doctorAvatar
-                this.order.hospital = doctor.hospitalName || this.order.hospital
-                console.log('enrichByProduct fetched doctor:', doctor)
-              }
+              const doctor = await this.getCachedDoctorDetail(this.order.doctorId)
+              this.applyDoctorInfo(doctor, this.order.doctorId)
+              console.log('enrichByProduct fetched doctor:', doctor)
             } catch (e) {
               console.warn('获取医生信息失败', e)
             }
           }
         } catch (e) {
           console.error('补全商品/医生信息失败:', e)
-        } finally {
-          uni.hideLoading()
         }
       },
 
@@ -831,6 +904,7 @@
           // 如果仍然没有 consultationDetail，则直接返回（无进一步信息可补）
           if (!consultationDetail) {
             console.warn('fillPrescriptionInfo: no consultation detail available for id:', prescriptionId)
+            this.prescriptionInfoLoaded = true
             return
           }
 
@@ -895,19 +969,12 @@
             if (detail.doctorId) {
               this.order.doctorId = detail.doctorId
               try {
-                const doctor = await getDoctorDetail(detail.doctorId)
-                if (doctor) {
-                  this.order.doctorTitle = doctor.title || this.order.doctorTitle
-                  this.order.doctorAvatar = doctor.avatarUrl || this.order.doctorAvatar
-                  this.order.hospital = doctor.hospitalName || this.order.hospital
-                  this.order.department = doctor.department || this.order.department
-                  this.order.doctorName = doctor.name || this.order.doctorName
-                  this.order.doctor = this.order.doctorName
-                }
+                this.applyDoctorInfo(await this.getCachedDoctorDetail(detail.doctorId), detail.doctorId)
               } catch (e) {
                 console.warn('获取医生信息失败', e)
             }
           }
+          this.prescriptionInfoLoaded = true
         } catch (e) {
           console.warn('查询处方/咨询相关信息失败', e)
         }
@@ -924,15 +991,9 @@
           }
           const doctorId = prescription.doctorId || prescription.doctor_id
           if (doctorId) {
-            const doctor = await getDoctorDetail(doctorId)
+            const doctor = await this.getCachedDoctorDetail(doctorId)
             if (doctor) {
-              this.order.doctorId = doctorId
-              this.order.doctorName = doctor.name || this.order.doctorName
-              this.order.doctor = doctor.name || this.order.doctor
-              this.order.doctorTitle = doctor.title || this.order.doctorTitle
-              this.order.doctorAvatar = doctor.avatarUrl || this.order.doctorAvatar
-              this.order.hospital = doctor.hospitalName || this.order.hospital
-              this.order.department = doctor.department || this.order.department
+              this.applyDoctorInfo(doctor, doctorId)
               return
             }
           }
@@ -951,18 +1012,14 @@
       },
 
       getStatusText(status, hasRedeemVouchers = false) {
-        // 如果是制剂订单且是待发货状态，显示待核销
-        if (hasRedeemVouchers && status === 1) {
-          return '待核销'
-        }
-        const statusMap = {
-          0: '待支付',
-          1: '待发货',
-          2: '待收货',
-          3: '已完成',
-          4: '已取消'
-        }
-        return statusMap[status] || '未知状态'
+        return getOrderStatusText({
+          orderStatus: status,
+          orderType: this.order.orderType,
+          payStatus: this.order.payStatus,
+          refundStatus: this.order.refundStatus,
+          redeemStatus: this.order.redeemStatus,
+          hasRedeemVouchers
+        })
       },
 
       handleView() {

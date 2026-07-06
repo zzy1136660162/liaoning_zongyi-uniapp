@@ -20,19 +20,25 @@
       <view class="products-section">
         <view class="section-title">退款商品</view>
         <view class="product-list">
-          <view class="product-item" v-for="(item, index) in selectedProducts" :key="item.id">
+          <view class="product-item" v-for="(item, index) in allProducts" :key="item.id">
             <view class="product-left">
               <image class="product-image" :src="item.image" mode="aspectFill" />
               <view class="product-info">
                 <text class="product-name">{{ item.name }}</text>
                 <text class="product-price">¥{{ item.price }}</text>
+                <text class="product-refund-tip" v-if="Number(item.refundableQuantity || 0) <= 0">
+                  {{ item.refundBlockedReason || '已无可退数量' }}
+                </text>
+                <text class="product-refund-tip" v-else>
+                  可退 {{ item.refundableQuantity }} 件，已占用 {{ item.refundedQuantity || 0 }} 件
+                </text>
               </view>
             </view>
             <view class="product-right">
               <view class="quantity-control">
-                <button class="qty-btn" @tap="decreaseQuantity(index)">-</button>
-                <text class="qty-text">{{ item.quantity }}</text>
-                <button class="qty-btn" @tap="increaseQuantity(index)">+</button>
+                <button class="qty-btn" :disabled="Number(item.selectedQuantity || 0) <= 0" @tap="decreaseQuantity(index)">-</button>
+                <text class="qty-text">{{ item.selectedQuantity }}</text>
+                <button class="qty-btn" :disabled="Number(item.selectedQuantity || 0) >= Number(item.refundableQuantity || 0)" @tap="increaseQuantity(index)">+</button>
               </view>
             </view>
           </view>
@@ -132,13 +138,13 @@ export default {
 
   computed: {
     refundAmount() {
-      return this.selectedProducts.reduce((total, item) => {
-        return total + (item.price * item.quantity)
+      return this.allProducts.reduce((total, item) => {
+        return total + (item.price * Number(item.selectedQuantity || 0))
       }, 0)
     },
 
     canSubmit() {
-      return this.selectedProducts.length > 0 &&
+      return this.allProducts.some(item => Number(item.selectedQuantity || 0) > 0) &&
              this.form.refundReason &&
              this.refundAmount > 0
     }
@@ -209,17 +215,21 @@ export default {
           productId: item.productId, // 商品ID
           name: item.productName, // 商品名称
           price: parseFloat(item.price || 0), // 商品价格
-          quantity: item.quantity || 1, // 数量
+          quantity: item.quantity || 1, // 购买数量
+          purchasedQuantity: item.quantity || 1,
+          refundedQuantity: Number(item.refundedQuantity || item.refunded_quantity || 0),
+          refundableQuantity: Number(item.refundableQuantity || item.refundable_quantity || 0),
+          selectedQuantity: Number(item.refundableQuantity || item.refundable_quantity || 0),
+          refundable: Boolean(item.refundable),
+          refundBlockedReason: item.refundBlockedReason || item.refund_blocked_reason || '',
           image: getImageUrl(item.productImage || item.coverImage || item.image || ''), // 商品图片
           specText: item.specText,
           unit: item.unit,
           redeemVouchers: item.redeemVouchers || item.redeem_vouchers || []
         }))
-        // 默认全选所有商品
-        this.selectedProducts = this.allProducts.map(item => ({
-          ...item,
-          quantity: item.quantity // 默认选择全部数量
-        }))
+        this.selectedProducts = this.allProducts
+          .filter(item => Number(item.selectedQuantity || 0) > 0)
+          .map(item => ({ ...item, quantity: item.selectedQuantity }))
 
       } catch (error) {
         console.error('加载订单详情失败:', error)
@@ -237,21 +247,18 @@ export default {
     },
 
     increaseQuantity(index) {
-      const product = this.selectedProducts[index]
-      const maxQuantity = this.allProducts.find(p => p.id === product.id)?.quantity || 0
+      const product = this.allProducts[index]
+      const maxQuantity = Number(product.refundableQuantity || 0)
 
-      if (product.quantity < maxQuantity) {
-        product.quantity++
+      if (Number(product.selectedQuantity || 0) < maxQuantity) {
+        product.selectedQuantity = Number(product.selectedQuantity || 0) + 1
       }
     },
 
     decreaseQuantity(index) {
-      const product = this.selectedProducts[index]
-      if (product.quantity > 1) {
-        product.quantity--
-      } else {
-        // 数量为1时，移除该商品
-        this.selectedProducts.splice(index, 1)
+      const product = this.allProducts[index]
+      if (Number(product.selectedQuantity || 0) > 0) {
+        product.selectedQuantity = Number(product.selectedQuantity || 0) - 1
       }
     },
 
@@ -302,7 +309,11 @@ export default {
       try {
         logButtonClick('提交退款申请', 'REFUND_APPLY', this.orderId?.toString())
 
-        if (hasMixedTherapyAndNormalRefundItems(this.selectedProducts)) {
+        const selectedProducts = this.allProducts
+          .filter(item => Number(item.selectedQuantity || 0) > 0)
+          .map(item => ({ ...item, quantity: Number(item.selectedQuantity || 0) }))
+
+        if (hasMixedTherapyAndNormalRefundItems(selectedProducts)) {
           uni.showToast({
             title: '传统疗法退款和普通商品退货请分开申请',
             icon: 'none'
@@ -314,11 +325,11 @@ export default {
 
         const submitData = {
           orderId: this.orderId,
-          refundType: resolveRefundType(this.allProducts, this.selectedProducts),
+          refundType: resolveRefundType(this.allProducts, selectedProducts),
           refundReason: this.form.refundReason,
           refundDescription: this.form.refundDescription,
           refundImages: this.form.refundImages,
-          items: this.selectedProducts.map(item => ({
+          items: selectedProducts.map(item => ({
             orderItemId: item.id,
             quantity: item.quantity,
             refundReason: this.form.refundReason
@@ -371,7 +382,8 @@ export default {
 .page {
   min-height: 100vh;
   background: #f5f5f5;
-  padding-bottom: 120rpx;
+  padding-bottom: calc(180rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
 }
 
 // 导航栏
@@ -480,6 +492,14 @@ export default {
             font-size: 26rpx;
             color: #ff6b35;
           }
+
+          .product-refund-tip {
+            display: block;
+            margin-top: 6rpx;
+            font-size: 22rpx;
+            color: #999;
+            line-height: 1.4;
+          }
         }
       }
 
@@ -499,6 +519,11 @@ export default {
             align-items: center;
             justify-content: center;
             border-radius: 4rpx;
+
+            &[disabled] {
+              color: #bbb;
+              background: #f5f5f5;
+            }
           }
 
           .qty-text {
@@ -645,6 +670,7 @@ export default {
   padding: 24rpx 32rpx;
   border-top: 1rpx solid #e5e5e5;
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  z-index: 20;
 
   .submit-btn {
     width: 100%;

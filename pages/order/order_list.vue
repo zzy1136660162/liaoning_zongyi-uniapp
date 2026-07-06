@@ -110,7 +110,7 @@
             >
               取消订单
             </button>
-            <!-- <button 
+            <!-- <button
               v-if="order.status === 0" 
               class="action-btn pay-btn" 
               @click.stop="goToOrderDetail(order.id)"
@@ -153,9 +153,11 @@ import { getMyOrders, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/
 import { checkCanApplyRefund, getRefundList } from '@/api/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { isTherapyOrder } from '@/utils/therapy.js'
+import { getOrderStatusText } from '@/utils/order-status.js'
 
 const activeTab = ref('all')
 const orders = ref([])
+const navigatingOrderId = ref(null)
 const ORDER_LIST_PREVIEW_LIMIT = 2
 const AFTER_SALE_ORDER_STATUSES = [5, 6, 7]
 
@@ -175,6 +177,7 @@ const normalizeRedeemVouchers = (item = {}) => {
     id: voucher.id,
     sequenceNo: voucher.sequenceNo || voucher.sequence_no || index + 1,
     redeemStatus: voucher.redeemStatus ?? voucher.redeem_status ?? 0,
+    redeemStatusText: voucher.redeemStatusText || voucher.redeem_status_text || '',
     verifyQrBase64: voucher.verifyQrBase64 || voucher.verify_qr_base64 || ''
   }))
 }
@@ -245,6 +248,7 @@ const mapOrderListItem = (order = {}, refundInfo = null) => ({
   orderType: order.orderType ?? order.order_type,
   payStatus: order.payStatus ?? order.pay_status,
   redeemStatus: order.redeemStatus ?? order.redeem_status,
+  displayStatusText: order.displayStatusText || order.display_status_text || '',
   verifyQrBase64: order.verifyQrBase64 || order.verify_qr_base64 || '',
   // 优先使用 orderStatus，如果没有则使用 status，最后默认为 0
   status: order.orderStatus !== null && order.orderStatus !== undefined
@@ -304,6 +308,7 @@ const hydrateMissingOrderItems = async () => {
       orderType: order.orderType ?? detail.orderType ?? detail.order_type,
       payStatus: order.payStatus ?? detail.payStatus ?? detail.pay_status,
       redeemStatus: order.redeemStatus ?? detail.redeemStatus ?? detail.redeem_status,
+      displayStatusText: order.displayStatusText || detail.displayStatusText || detail.display_status_text || '',
       verifyQrBase64: order.verifyQrBase64 || detail.verifyQrBase64 || detail.verify_qr_base64 || '',
       items: detailItems
     }
@@ -421,22 +426,11 @@ const switchTab = (key) => {
 
 // 获取状态文本
 const getStatusText = (status, order = null) => {
-  if (order && (isTherapyOrder(order) || hasRedeemVouchers(order))) {
-    if (status === 0) return '待支付'
-    if (Number(order.redeemStatus) === 1 || status === 3) return '已核销'
-    if (status >= 1) return '待核销'
-  }
-  const statusMap = {
-    0: '待支付',
-    1: '待发货',
-    2: '待收货',
-    3: '已完成',
-    4: '已取消',
-    5: '退货中',
-    6: '部分退货',
-    7: '已退货'
-  }
-  return statusMap[status] || '未知'
+  return getOrderStatusText({
+    ...(order || {}),
+    orderStatus: status,
+    hasRedeemVouchers: order ? hasRedeemVouchers(order) : false
+  })
 }
 
 // 获取状态颜色
@@ -534,10 +528,21 @@ const handleConfirmReceipt = async (orderId) => {
 
 // 跳转到订单详情
 const goToOrderDetail = (orderId) => {
+  if (!orderId || navigatingOrderId.value === orderId) {
+    return
+  }
+  navigatingOrderId.value = orderId
   logButtonClick('查看订单详情', 'ORDER_LIST', orderId.toString())
   console.log('goToOrderDetail called with orderId=', orderId)
   uni.navigateTo({
-    url: `/pages/order/order-detail?orderId=${encodeURIComponent(orderId)}`
+    url: `/pages/order/order-detail?orderId=${encodeURIComponent(orderId)}`,
+    complete: () => {
+      setTimeout(() => {
+        if (navigatingOrderId.value === orderId) {
+          navigatingOrderId.value = null
+        }
+      }, 800)
+    }
   })
 }
 

@@ -8,6 +8,7 @@ export const buildItemRedeemVouchers = (item = {}) => {
     id: voucher.id,
     sequenceNo: voucher.sequenceNo || voucher.sequence_no || index + 1,
     redeemStatus: voucher.redeemStatus ?? voucher.redeem_status ?? 0,
+    redeemStatusText: voucher.redeemStatusText || voucher.redeem_status_text || '',
     redeemTime: voucher.redeemTime || voucher.redeem_time || '',
     redeemedBy: voucher.redeemedBy || voucher.redeemed_by || '',
     redeemerName: voucher.redeemerName || voucher.redeemer_name || '',
