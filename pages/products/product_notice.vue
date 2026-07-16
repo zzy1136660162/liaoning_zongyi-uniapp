@@ -37,6 +37,7 @@ import { getQuestionnaireByProductId } from '@/api/questionnaire.js'
 import { getImageUrl } from '@/utils/config.js'
 import {
   addCartItem,
+  buildCartItemKey,
   getCartProductQuantity,
   prepareCheckout,
   resolveCartCompatibility
@@ -48,6 +49,7 @@ export default {
   data() {
     return {
       productId: '',
+      skuId: '',
       productName: '',
       noticeText: '',
       suitableCrowd: '',
@@ -59,6 +61,7 @@ export default {
   },
   onLoad(options) {
     this.productId = options.id || ''
+    this.skuId = options.skuId || ''
     this.productName = options.name ? decodeURIComponent(options.name) : ''
     this.requestedQuantity = Math.max(1, Number(options.quantity) || 1)
     this.action = options.action || 'cart'
@@ -71,8 +74,36 @@ export default {
   },
   methods: {
     getImageUrl,
+    resolveSelectedProduct(detail = this.productDetail) {
+      if (!detail || !this.skuId) {
+        return detail
+      }
+      const skus = Array.isArray(detail.skus) ? detail.skus : []
+      const sku = skus.find(item => String(item.id) === String(this.skuId))
+      if (!sku) {
+        return detail
+      }
+      return {
+        ...detail,
+        productId: detail.id,
+        skuId: sku.id,
+        skuCode: sku.skuCode || '',
+        skuName: sku.skuName || '',
+        skuSpecText: sku.specText || sku.skuName || '',
+        specText: sku.specText || sku.skuName || detail.specText,
+        price: Number(sku.price || 0),
+        originalPrice: Number(sku.originalPrice || 0),
+        stock: Number(sku.stock ?? detail.stock ?? 0),
+        unit: sku.unit || detail.unit,
+        image: sku.image || detail.image,
+        coverImage: sku.image || detail.coverImage || detail.image
+      }
+    },
+    getCartKey(detail = this.productDetail) {
+      return buildCartItemKey(detail?.productId || detail?.id || this.productId, detail?.skuId || this.skuId || null)
+    },
     getSelectedQuantity() {
-      return Math.max(1, Number(this.requestedQuantity) || getCartProductQuantity(this.productId, 1) || 1)
+      return Math.max(1, Number(this.requestedQuantity) || getCartProductQuantity(this.productId, 1, this.skuId) || 1)
     },
     async loadProductDetail(productId) {
       try {
@@ -97,8 +128,9 @@ export default {
       if (!target) {
         return false
       }
-      const flow = resolveCartCompatibility(target, {
-        ignoreProductId: this.productId
+      const saleProduct = this.resolveSelectedProduct(target)
+      const flow = resolveCartCompatibility(saleProduct, {
+        ignoreCartKey: this.getCartKey(saleProduct)
       })
       if (!flow.valid) {
         uni.showToast({
@@ -111,9 +143,16 @@ export default {
       return true
     },
     goCheckout(detail) {
-      const checkout = prepareCheckout([String(detail.id)], [{
+      const saleProduct = this.resolveSelectedProduct(detail)
+      const cartKey = this.getCartKey(saleProduct)
+      const checkout = prepareCheckout([cartKey], [{
         id: 'notice_checkout',
-        products: [detail]
+        products: [{
+          ...saleProduct,
+          id: cartKey,
+          cartKey,
+          productId: saleProduct.productId || saleProduct.id
+        }]
       }])
       if (!checkout.valid) {
         uni.showToast({
@@ -173,13 +212,15 @@ export default {
         }
 
         if (shouldGoQuestionnaire) {
+          const skuParam = this.skuId ? `&skuId=${encodeURIComponent(this.skuId)}` : ''
           uni.navigateTo({
-            url: `/pages/products/product_questionnaire?id=${this.productId}&quantity=${selectedQuantity}&action=${this.action}`
+            url: `/pages/products/product_questionnaire?id=${this.productId}&quantity=${selectedQuantity}&action=${this.action}${skuParam}`
           })
           return
         }
 
-        const success = addCartItem(detail, selectedQuantity, {
+        const saleProduct = this.resolveSelectedProduct(detail)
+        const success = addCartItem(saleProduct, selectedQuantity, {
           questionnairePassed: !hasBoundQuestionnaire(detail)
         })
         if (!success) {
@@ -191,7 +232,7 @@ export default {
         }
 
         if (this.action === 'buy') {
-          this.goCheckout(detail)
+          this.goCheckout(saleProduct)
           return
         }
 

@@ -52,7 +52,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { createConsultation } from '@/api/consultation.js'
 import { getProductDetail } from '@/api/product.js'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
-import { getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/cart.js'
+import { getCartEntries, getCurrentCheckoutProductIds, setCheckoutProductIds, splitCartItemKey } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
 import { getImageUrl } from '@/utils/config.js'
 import { PRODUCT_FLOW_CONSULTATION, resolveProductFlow, resolveProductFlowType } from '@/utils/product-biz.js'
@@ -145,17 +145,38 @@ const viewPrescription = () => {
 
 // 从购物车获取当前勾选的所有商品，用于创建处方明细
 const loadProductsForConsultation = async () => {
-  const productIds = selectedProductIds.value.length > 0
+  const itemKeys = selectedProductIds.value.length > 0
     ? selectedProductIds.value
     : getCurrentCheckoutProductIds()
-  if (productIds.length === 0) return []
+  if (itemKeys.length === 0) return []
 
   const products = []
+  const cartEntries = getCartEntries()
   try {
-    for (const productId of productIds) {
+    for (const itemKey of itemKeys) {
+      const entry = cartEntries[itemKey] || {}
+      const split = splitCartItemKey(itemKey)
+      const productId = entry.productId || split.productId || itemKey
+      const skuId = entry.skuId || split.skuId || null
       const detail = await getProductDetail(productId)
       if (detail) {
-        products.push(detail)
+        const skus = Array.isArray(detail.skus) ? detail.skus : []
+        const sku = skuId
+          ? skus.find(item => String(item.id) === String(skuId))
+          : null
+        products.push({
+          ...detail,
+          id: productId,
+          productId,
+          cartKey: itemKey,
+          skuId,
+          skuCode: sku?.skuCode || entry.skuCode || '',
+          skuName: sku?.skuName || entry.skuName || '',
+          skuSpecText: sku?.specText || sku?.skuName || entry.skuSpecText || '',
+          specText: sku?.specText || sku?.skuName || detail.specText,
+          price: sku ? Number(sku.price || 0) : detail.price,
+          quantity: entry.quantity || 1
+        })
       }
     }
     return products
@@ -186,7 +207,7 @@ const createConsultationRecord = async () => {
     const productQuantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
     // 注意: 小程序打包/编译器旧版可能不支持 nullish coalescing (??)，因此使用兼容写法
     const resolveQuantity = (item) => {
-      const stored = productQuantities[String(item.id)]
+      const stored = productQuantities[String(item.cartKey || item.id)]
       if (stored !== undefined && stored !== null) return stored
       if (item.quantity !== undefined && item.quantity !== null) return item.quantity
       if (item.count !== undefined && item.count !== null) return item.count
@@ -195,7 +216,7 @@ const createConsultationRecord = async () => {
     }
 
     const prescriptionItems = consultationProducts.map(p => ({
-      productId: p.id,
+      productId: p.productId || p.id,
       drugName: p.productName || p.name || '未命名药品',
       quantity: resolveQuantity(p),
       remark: p.usageDesc || p.notice || ''

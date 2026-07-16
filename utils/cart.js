@@ -45,11 +45,76 @@ const normalizeId = (value) => {
   if (value === undefined || value === null || value === '') {
     return ''
   }
-  return String(value)
+  return String(value).trim()
 }
 
 const uniqueIds = (ids = []) => {
   return [...new Set((Array.isArray(ids) ? ids : [ids]).map(normalizeId).filter(Boolean))]
+}
+
+export const splitCartItemKey = (cartKey) => {
+  const key = normalizeId(cartKey)
+  if (!key) {
+    return { productId: '', skuId: '' }
+  }
+  const separatorIndex = key.indexOf(':')
+  if (separatorIndex < 0) {
+    return { productId: key, skuId: '' }
+  }
+  return {
+    productId: key.slice(0, separatorIndex),
+    skuId: key.slice(separatorIndex + 1)
+  }
+}
+
+export const buildCartItemKey = (productId, skuId = null) => {
+  const normalizedProductId = normalizeId(productId)
+  const normalizedSkuId = normalizeId(skuId)
+  if (!normalizedProductId) {
+    return ''
+  }
+  return normalizedSkuId ? `${normalizedProductId}:${normalizedSkuId}` : normalizedProductId
+}
+
+const resolveProductId = (productOrId) => {
+  if (productOrId && typeof productOrId === 'object') {
+    const directProductId = normalizeId(productOrId.productId ?? productOrId.product_id)
+    if (directProductId) {
+      return directProductId
+    }
+    return splitCartItemKey(productOrId.id ?? productOrId.cartKey).productId
+  }
+  return splitCartItemKey(productOrId).productId
+}
+
+const resolveSkuId = (productOrId, options = {}) => {
+  const optionSkuId = normalizeId(options.skuId ?? options.sku_id)
+  if (optionSkuId) {
+    return optionSkuId
+  }
+  if (productOrId && typeof productOrId === 'object') {
+    const productSkuId = normalizeId(
+      productOrId.skuId ??
+      productOrId.sku_id ??
+      productOrId.selectedSkuId ??
+      productOrId.selectedSku?.id
+    )
+    if (productSkuId) {
+      return productSkuId
+    }
+    return splitCartItemKey(productOrId.cartKey ?? productOrId.id).skuId
+  }
+  return splitCartItemKey(productOrId).skuId
+}
+
+const resolveCartItemKey = (productOrId, options = {}) => {
+  if (typeof productOrId === 'string' || typeof productOrId === 'number') {
+    const key = normalizeId(productOrId)
+    if (key.includes(':') && options.skuId === undefined) {
+      return key
+    }
+  }
+  return buildCartItemKey(resolveProductId(productOrId), resolveSkuId(productOrId, options))
 }
 
 const hasExplicitAvailable = (value = {}) => {
@@ -106,13 +171,33 @@ const readLegacyQuantities = () => {
   return typeof quantities === 'object' && quantities !== null ? quantities : {}
 }
 
-const buildCartEntry = (productId, partial = {}, legacyQuantities = {}) => {
-  const normalizedId = normalizeId(productId)
-  if (!normalizedId) {
+const pickText = (...values) => {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== '') {
+      return value
+    }
+  }
+  return ''
+}
+
+const pickValue = (...values) => {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== '') {
+      return value
+    }
+  }
+  return null
+}
+
+const buildCartEntry = (cartKeyOrProductId, partial = {}, legacyQuantities = {}) => {
+  const productId = resolveProductId({ id: cartKeyOrProductId, ...partial })
+  const skuId = resolveSkuId({ id: cartKeyOrProductId, ...partial })
+  const cartKey = buildCartItemKey(productId, skuId)
+  if (!cartKey) {
     return null
   }
 
-  const legacyQuantity = legacyQuantities[normalizedId]
+  const legacyQuantity = legacyQuantities[cartKey] ?? legacyQuantities[productId]
   const stock = resolveStockValue(partial, null)
   const available = stock === 0 ? false : resolveAvailableFlag(partial, true)
   const quantity = clampQuantityToStock(toPositiveInt(partial.quantity, toPositiveInt(legacyQuantity, 1)), stock)
@@ -120,6 +205,17 @@ const buildCartEntry = (productId, partial = {}, legacyQuantities = {}) => {
   const defaultQuestionnairePassed = needQuestionnaire === 1 ? false : true
 
   return {
+    productId,
+    skuId: skuId || null,
+    skuCode: pickText(partial.skuCode, partial.sku_code),
+    skuName: pickText(partial.skuName, partial.sku_name),
+    skuSpecText: pickText(partial.skuSpecText, partial.sku_spec_text, partial.specText, partial.spec_text),
+    productName: pickText(partial.productName, partial.product_name, partial.name),
+    name: pickText(partial.name, partial.productName, partial.product_name),
+    coverImage: pickText(partial.coverImage, partial.cover_image, partial.image),
+    image: pickText(partial.image, partial.coverImage, partial.cover_image),
+    price: partial.price !== undefined && partial.price !== null && partial.price !== '' ? Number(partial.price) : null,
+    unit: pickText(partial.unit),
     verified: toFlag(partial.verified, true),
     selected: available ? toFlag(partial.selected, true) : false,
     quantity,
@@ -140,6 +236,8 @@ const buildCartEntry = (productId, partial = {}, legacyQuantities = {}) => {
     categoryId: partial.categoryId ?? partial.category_id ?? null,
     categoryCode: partial.categoryCode || partial.category_code || '',
     needQuestionnaire,
+    questionnaireId: needQuestionnaire === 1 ? pickValue(partial.questionnaireId, partial.questionnaire_id) : null,
+    answerId: needQuestionnaire === 1 ? pickValue(partial.answerId, partial.answer_id) : null,
     questionnairePassed: toFlag(partial.questionnairePassed, defaultQuestionnairePassed),
     timestamp: partial.timestamp ? toNumber(partial.timestamp, Date.now()) : Date.now()
   }
@@ -150,32 +248,33 @@ const normalizeCartData = (rawData, options = {}) => {
   const legacyQuantities = readLegacyQuantities()
   const normalized = {}
   const source = rawData && typeof rawData === 'object' ? rawData : {}
+  const sourceKeys = Object.keys(source)
   const ids = includeLegacyIds
-    ? uniqueIds([...Object.keys(source), ...Object.keys(legacyQuantities)])
-    : uniqueIds(Object.keys(source))
+    ? uniqueIds([...sourceKeys, ...Object.keys(legacyQuantities)])
+    : uniqueIds(sourceKeys)
 
-  ids.forEach((productId) => {
-    const value = source[productId]
+  ids.forEach((rawKey) => {
+    const value = source[rawKey]
     if (typeof value === 'boolean') {
-      const entry = buildCartEntry(productId, { verified: value }, legacyQuantities)
+      const entry = buildCartEntry(rawKey, { verified: value }, legacyQuantities)
       if (entry && entry.verified) {
-        normalized[productId] = entry
+        normalized[buildCartItemKey(entry.productId, entry.skuId)] = entry
       }
       return
     }
 
     if (value && typeof value === 'object') {
-      const entry = buildCartEntry(productId, value, legacyQuantities)
+      const entry = buildCartEntry(rawKey, value, legacyQuantities)
       if (entry && entry.verified) {
-        normalized[productId] = entry
+        normalized[buildCartItemKey(entry.productId, entry.skuId)] = entry
       }
       return
     }
 
-    if (legacyQuantities[productId] !== undefined) {
-      const entry = buildCartEntry(productId, { verified: true }, legacyQuantities)
+    if (legacyQuantities[rawKey] !== undefined) {
+      const entry = buildCartEntry(rawKey, { verified: true }, legacyQuantities)
       if (entry) {
-        normalized[productId] = entry
+        normalized[buildCartItemKey(entry.productId, entry.skuId)] = entry
       }
     }
   })
@@ -204,9 +303,9 @@ const writeCartData = (cartData, options = {}) => {
   const normalized = normalizeCartData(cartData, { includeLegacyIds: false })
   const legacyQuantities = {}
 
-  Object.entries(normalized).forEach(([productId, entry]) => {
+  Object.entries(normalized).forEach(([cartKey, entry]) => {
     if (entry.verified) {
-      legacyQuantities[productId] = toPositiveInt(entry.quantity, 1)
+      legacyQuantities[cartKey] = toPositiveInt(entry.quantity, 1)
     }
   })
 
@@ -232,13 +331,6 @@ const writeCartData = (cartData, options = {}) => {
 
 export const replaceCartData = (cartData) => {
   writeCartData(cartData, { suppressSync: true, eventSource: 'server' })
-}
-
-const resolveProductId = (productOrId) => {
-  if (productOrId && typeof productOrId === 'object') {
-    return normalizeId(productOrId.id || productOrId.productId)
-  }
-  return normalizeId(productOrId)
 }
 
 const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) => {
@@ -268,6 +360,12 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
     : (existing.questionnairePassed !== undefined
       ? toFlag(existing.questionnairePassed, resolvedNeedQuestionnaire !== 1)
       : resolvedNeedQuestionnaire !== 1)
+  const questionnaireId = resolvedNeedQuestionnaire === 1
+    ? pickValue(options.questionnaireId, product.questionnaireId, product.questionnaire_id, existing.questionnaireId)
+    : null
+  const answerId = resolvedNeedQuestionnaire === 1
+    ? pickValue(options.answerId, product.answerId, product.answer_id, existing.answerId)
+    : null
 
   return {
     bizType: options.bizType !== undefined && options.bizType !== null
@@ -285,6 +383,8 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
     categoryId,
     categoryCode,
     needQuestionnaire: resolvedNeedQuestionnaire,
+    questionnaireId,
+    answerId,
     questionnairePassed,
     available: options.available !== undefined
       ? toFlag(options.available, true)
@@ -299,15 +399,58 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
   }
 }
 
+const getCheckoutProductIds = () => {
+  try {
+    const ids = uni.getStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS) || []
+    return uniqueIds(ids)
+  } catch (error) {
+    console.error('getCheckoutProductIds failed:', error)
+    return []
+  }
+}
+
+const clearCheckoutProductIds = () => {
+  try {
+    uni.removeStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS)
+    return true
+  } catch (error) {
+    console.error('clearCheckoutProductIds failed:', error)
+    return false
+  }
+}
+
+const setCheckoutProductIdsInternal = (productIds = []) => {
+  try {
+    uni.setStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS, uniqueIds(productIds))
+    return true
+  } catch (error) {
+    console.error('setCheckoutProductIds failed:', error)
+    return false
+  }
+}
+
 const updateCheckoutIdsAfterRemoval = (removedIds = []) => {
   const current = getCheckoutProductIds()
   if (!current.length) {
     return
   }
-  const removedSet = new Set(uniqueIds(removedIds))
-  const next = current.filter(id => !removedSet.has(id))
+  const removedKeys = uniqueIds(removedIds)
+  const removedSet = new Set(removedKeys)
+  const removedProductOnlyIds = new Set(
+    removedKeys
+      .map(id => splitCartItemKey(id))
+      .filter(item => item.productId && !item.skuId)
+      .map(item => item.productId)
+  )
+  const next = current.filter((id) => {
+    if (removedSet.has(id)) {
+      return false
+    }
+    const { productId } = splitCartItemKey(id)
+    return !removedProductOnlyIds.has(productId)
+  })
   if (next.length > 0) {
-    setCheckoutProductIds(next)
+    setCheckoutProductIdsInternal(next)
   } else {
     clearCheckoutProductIds()
   }
@@ -327,32 +470,61 @@ const flattenCategoryProducts = (categories = []) => {
   return items
 }
 
-const findProductById = (categories = [], productId) => {
-  const normalizedId = normalizeId(productId)
-  if (!normalizedId) {
+const findProductById = (categories = [], cartKeyOrProductId) => {
+  const cartKey = normalizeId(cartKeyOrProductId)
+  if (!cartKey) {
     return null
   }
 
+  const { productId, skuId } = splitCartItemKey(cartKey)
   const products = flattenCategoryProducts(categories)
-  return products.find(item => normalizeId(item.id) === normalizedId) || null
+  const exact = products.find(item => normalizeId(item.id ?? item.cartKey) === cartKey)
+  if (exact) {
+    return exact
+  }
+  if (skuId) {
+    const skuMatch = products.find(item => {
+      return normalizeId(item.productId ?? item.product_id) === productId &&
+        normalizeId(item.skuId ?? item.sku_id) === skuId
+    })
+    if (skuMatch) {
+      return skuMatch
+    }
+  }
+  return products.find(item => {
+    const itemProductId = normalizeId(item.productId ?? item.product_id ?? item.id)
+    const itemSkuId = normalizeId(item.skuId ?? item.sku_id)
+    return itemProductId === productId && (!skuId || !itemSkuId)
+  }) || null
 }
 
 export const getCartEntries = () => {
   return readCartData()
 }
 
-export const getCartProductInfo = (productId) => {
-  const normalizedId = normalizeId(productId)
-  if (!normalizedId) {
+export const getCartProductInfo = (productId, skuId = null) => {
+  const key = buildCartItemKey(productId, skuId)
+  if (!key) {
     return null
   }
   const cartData = readCartData()
-  return cartData[normalizedId] || null
+  return cartData[key] || null
 }
 
-export const getCartProductQuantity = (productId, fallback = 1) => {
-  const entry = getCartProductInfo(productId)
-  return entry ? toPositiveInt(entry.quantity, fallback) : fallback
+export const getCartProductQuantity = (productId, fallback = 1, skuId = null) => {
+  const cartData = readCartData()
+  const key = buildCartItemKey(productId, skuId)
+  if (key && cartData[key]) {
+    return toPositiveInt(cartData[key].quantity, fallback)
+  }
+  if (skuId) {
+    return fallback
+  }
+  const normalizedProductId = normalizeId(productId)
+  const total = Object.values(cartData)
+    .filter(entry => normalizeId(entry.productId) === normalizedProductId)
+    .reduce((sum, entry) => sum + toPositiveInt(entry.quantity, 1), 0)
+  return total > 0 ? total : fallback
 }
 
 export const getCartTotalQuantity = () => {
@@ -361,16 +533,33 @@ export const getCartTotalQuantity = () => {
 
 export const addCartItem = (productOrId, quantity = 1, options = {}) => {
   try {
-    const productId = resolveProductId(productOrId)
-    if (!productId) {
+    const cartKey = resolveCartItemKey(productOrId, options)
+    if (!cartKey) {
       return false
     }
 
+    const productId = resolveProductId(productOrId)
+    const skuId = resolveSkuId(productOrId, options)
     const cartData = readCartData()
-    const existing = cartData[productId] || {}
+    const existing = cartData[cartKey] || {}
     const meta = resolveCartMetaFromProduct(productOrId, existing, options)
+    const product = productOrId && typeof productOrId === 'object' ? productOrId : {}
 
-    cartData[productId] = {
+    cartData[cartKey] = {
+      ...existing,
+      productId,
+      skuId: skuId || null,
+      skuCode: pickText(options.skuCode, product.skuCode, product.sku_code, existing.skuCode),
+      skuName: pickText(options.skuName, product.skuName, product.sku_name, existing.skuName),
+      skuSpecText: pickText(options.skuSpecText, product.skuSpecText, product.sku_spec_text, product.specText, existing.skuSpecText),
+      productName: pickText(product.productName, product.product_name, product.name, existing.productName),
+      name: pickText(product.name, product.productName, product.product_name, existing.name),
+      coverImage: pickText(product.coverImage, product.cover_image, product.image, existing.coverImage),
+      image: pickText(product.image, product.coverImage, product.cover_image, existing.image),
+      price: product.price !== undefined && product.price !== null && product.price !== ''
+        ? Number(product.price)
+        : (existing.price ?? null),
+      unit: pickText(product.unit, existing.unit),
       verified: options.verified !== undefined ? toFlag(options.verified, true) : true,
       selected: meta.available !== false && meta.stock !== 0
         ? (options.selected !== undefined ? toFlag(options.selected, true) : (existing.selected !== undefined ? toFlag(existing.selected, true) : true))
@@ -385,11 +574,13 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
       categoryId: meta.categoryId,
       categoryCode: meta.categoryCode,
       needQuestionnaire: meta.needQuestionnaire,
+      questionnaireId: meta.questionnaireId,
+      answerId: meta.answerId,
       questionnairePassed: meta.questionnairePassed,
       timestamp: existing.timestamp || Date.now()
     }
 
-    writeCartData(cartData, { syncProductIds: [productId] })
+    writeCartData(cartData, { syncProductIds: [cartKey] })
     return true
   } catch (error) {
     console.error('addCartItem failed:', error)
@@ -406,22 +597,26 @@ export const saveToCart = (productId, quantity = 1, selected = true) => {
 
 export const setCartItemQuantity = (productId, quantity) => {
   try {
-    const normalizedId = normalizeId(productId)
-    if (!normalizedId) {
+    const cartKey = resolveCartItemKey(productId)
+    if (!cartKey) {
       return false
     }
 
     if (toNumber(quantity, 0) <= 0) {
-      return removeFromCart(normalizedId)
+      return removeFromCart(cartKey)
     }
 
     const cartData = readCartData()
-    const existing = cartData[normalizedId] || {}
-    cartData[normalizedId] = {
-      ...buildCartEntry(normalizedId, existing),
+    const existing = cartData[cartKey] || {}
+    const entry = buildCartEntry(cartKey, existing)
+    if (!entry) {
+      return false
+    }
+    cartData[cartKey] = {
+      ...entry,
       quantity: clampQuantityToStock(quantity, existing.stock)
     }
-    writeCartData(cartData, { syncProductIds: [normalizedId] })
+    writeCartData(cartData, { syncProductIds: [cartKey] })
     return true
   } catch (error) {
     console.error('setCartItemQuantity failed:', error)
@@ -437,8 +632,22 @@ export const removeFromCart = (productIds) => {
     }
 
     const cartData = readCartData()
-    ids.forEach((productId) => {
-      delete cartData[productId]
+    ids.forEach((id) => {
+      const cartKey = resolveCartItemKey(id)
+      if (cartData[cartKey]) {
+        delete cartData[cartKey]
+        return
+      }
+      const { productId, skuId } = splitCartItemKey(cartKey)
+      if (!skuId && productId) {
+        Object.keys(cartData).forEach((existingKey) => {
+          const entry = cartData[existingKey]
+          const existingProductId = normalizeId(entry?.productId || splitCartItemKey(existingKey).productId)
+          if (existingProductId === productId) {
+            delete cartData[existingKey]
+          }
+        })
+      }
     })
 
     writeCartData(cartData, { syncRemoveIds: ids })
@@ -463,17 +672,17 @@ export const clearCart = () => {
 
 export const updateProductSelection = (productId, selected) => {
   try {
-    const normalizedId = normalizeId(productId)
+    const cartKey = resolveCartItemKey(productId)
     const cartData = readCartData()
-    if (!cartData[normalizedId]) {
+    if (!cartData[cartKey]) {
       return false
     }
 
-    cartData[normalizedId].selected = isCartEntryAvailable(cartData[normalizedId])
+    cartData[cartKey].selected = isCartEntryAvailable(cartData[cartKey])
       ? toFlag(selected, true)
       : false
-    writeCartData(cartData, { syncProductIds: [normalizedId] })
-    return selected ? cartData[normalizedId].selected : true
+    writeCartData(cartData, { syncProductIds: [cartKey] })
+    return selected ? cartData[cartKey].selected : true
   } catch (error) {
     console.error('updateProductSelection failed:', error)
     return false
@@ -485,12 +694,12 @@ export const updateMultipleSelections = (selectionMap = {}) => {
     const cartData = readCartData()
     const changedIds = []
     Object.entries(selectionMap).forEach(([productId, selected]) => {
-      const normalizedId = normalizeId(productId)
-      if (cartData[normalizedId]) {
-        cartData[normalizedId].selected = isCartEntryAvailable(cartData[normalizedId])
+      const cartKey = resolveCartItemKey(productId)
+      if (cartData[cartKey]) {
+        cartData[cartKey].selected = isCartEntryAvailable(cartData[cartKey])
           ? toFlag(selected, true)
           : false
-        changedIds.push(normalizedId)
+        changedIds.push(cartKey)
       }
     })
     writeCartData(cartData, { syncProductIds: changedIds })
@@ -504,38 +713,14 @@ export const updateMultipleSelections = (selectionMap = {}) => {
 export const getSelectedProductIds = () => {
   return Object.entries(readCartData())
     .filter(([, entry]) => entry.verified && entry.selected && isCartEntryAvailable(entry))
-    .map(([productId]) => productId)
+    .map(([cartKey]) => cartKey)
 }
 
 export const setCheckoutProductIds = (productIds = []) => {
-  try {
-    uni.setStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS, uniqueIds(productIds))
-    return true
-  } catch (error) {
-    console.error('setCheckoutProductIds failed:', error)
-    return false
-  }
+  return setCheckoutProductIdsInternal(productIds)
 }
 
-export const getCheckoutProductIds = () => {
-  try {
-    const ids = uni.getStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS) || []
-    return uniqueIds(ids)
-  } catch (error) {
-    console.error('getCheckoutProductIds failed:', error)
-    return []
-  }
-}
-
-export const clearCheckoutProductIds = () => {
-  try {
-    uni.removeStorageSync(STORAGE_KEY_CHECKOUT_PRODUCT_IDS)
-    return true
-  } catch (error) {
-    console.error('clearCheckoutProductIds failed:', error)
-    return false
-  }
-}
+export { getCheckoutProductIds, clearCheckoutProductIds }
 
 export const getCurrentCheckoutProductIds = () => {
   const checkoutIds = getCheckoutProductIds()
@@ -553,16 +738,16 @@ export const validateCheckoutStock = (productIds = [], categories = []) => {
   }
 
   const cartData = readCartData()
-  for (const productId of ids) {
-    const entry = cartData[productId]
-    const product = findProductById(categories, productId)
-    const productName = resolveProductDisplayName(product || {}, entry || {}, productId)
+  for (const cartKey of ids) {
+    const entry = cartData[cartKey]
+    const product = findProductById(categories, cartKey)
+    const productName = resolveProductDisplayName(product || {}, entry || {}, cartKey)
 
     if (!entry || !product) {
-      console.warn('category=CHECKOUT_STOCK_GUARD action=validate result=denied reason=product_missing productId=%s productName=%s', productId, productName)
+      console.warn('category=CHECKOUT_STOCK_GUARD action=validate result=denied reason=product_missing cartKey=%s productName=%s', cartKey, productName)
       return {
         valid: false,
-        productId,
+        productId: cartKey,
         message: `商品「${productName}」信息已失效，请刷新购物车后重试`,
         reason: 'product_missing'
       }
@@ -575,10 +760,10 @@ export const validateCheckoutStock = (productIds = [], categories = []) => {
       : (hasExplicitAvailable(product) ? resolveAvailableFlag(product, true) : resolveAvailableFlag(entry, true))
 
     if (!latestAvailable) {
-      console.warn('category=CHECKOUT_STOCK_GUARD action=validate result=denied reason=unavailable productId=%s productName=%s quantity=%s latestStock=%s', productId, productName, quantity, latestStock)
+      console.warn('category=CHECKOUT_STOCK_GUARD action=validate result=denied reason=unavailable cartKey=%s productName=%s quantity=%s latestStock=%s', cartKey, productName, quantity, latestStock)
       return {
         valid: false,
-        productId,
+        productId: cartKey,
         quantity,
         latestStock,
         message: `商品「${productName}」已售罄或下架，请调整购物车后重试`,
@@ -587,10 +772,10 @@ export const validateCheckoutStock = (productIds = [], categories = []) => {
     }
 
     if (latestStock !== null && quantity > latestStock) {
-      console.warn('category=CHECKOUT_STOCK_GUARD action=validate result=denied reason=stock_shortage productId=%s productName=%s quantity=%s latestStock=%s', productId, productName, quantity, latestStock)
+      console.warn('category=CHECKOUT_STOCK_GUARD action=validate result=denied reason=stock_shortage cartKey=%s productName=%s quantity=%s latestStock=%s', cartKey, productName, quantity, latestStock)
       return {
         valid: false,
-        productId,
+        productId: cartKey,
         quantity,
         latestStock,
         message: `商品「${productName}」库存不足，当前库存${latestStock}件，请调整数量后重试`,
@@ -609,7 +794,7 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
     const cartItems = []
     let needsSave = false
 
-    Object.entries(cartData).forEach(([productId, entry]) => {
+    Object.entries(cartData).forEach(([cartKey, entry]) => {
       if (!entry.verified) {
         return
       }
@@ -617,7 +802,7 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         return
       }
 
-      const product = findProductById(categories, productId)
+      const product = findProductById(categories, cartKey)
       if (!product) {
         return
       }
@@ -633,6 +818,12 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
       const nextBizType = entry.bizType ?? resolveProductBizType(product)
       const nextGoodsMerchantType = entry.goodsMerchantType ?? resolveGoodsMerchantType(product)
       const nextNeedQuestionnaire = entry.needQuestionnaire ?? toNumber(product.needQuestionnaire, 0)
+      const nextQuestionnaireId = nextNeedQuestionnaire === 1
+        ? pickValue(entry.questionnaireId, product.questionnaireId, product.questionnaire_id)
+        : null
+      const nextAnswerId = nextNeedQuestionnaire === 1
+        ? pickValue(entry.answerId, product.answerId, product.answer_id)
+        : null
       const nextQuestionnairePassed = entry.questionnairePassed !== undefined
         ? entry.questionnairePassed
         : nextNeedQuestionnaire !== 1
@@ -642,6 +833,13 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         : (hasExplicitAvailable(product) ? resolveAvailableFlag(product, true) : resolveAvailableFlag(entry, true))
       const nextSelected = nextAvailable ? entry.selected !== false : false
       const nextQuantity = clampQuantityToStock(entry.quantity, nextStock)
+      const productSkuId = normalizeId(product.skuId ?? product.sku_id ?? entry.skuId)
+      const productId = normalizeId(product.productId ?? product.product_id ?? entry.productId ?? splitCartItemKey(cartKey).productId)
+      const skuSpecText = pickText(product.skuSpecText, product.sku_spec_text, product.specText, entry.skuSpecText)
+      const skuName = pickText(product.skuName, product.sku_name, entry.skuName)
+      const price = product.price !== undefined && product.price !== null && product.price !== ''
+        ? Number(product.price)
+        : (entry.price ?? 0)
 
       if (
         entry.bizType !== nextBizType ||
@@ -651,14 +849,20 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         entry.categoryId !== nextCategoryId ||
         entry.categoryCode !== nextCategoryCode ||
         entry.needQuestionnaire !== nextNeedQuestionnaire ||
+        entry.questionnaireId !== nextQuestionnaireId ||
+        entry.answerId !== nextAnswerId ||
         entry.questionnairePassed !== nextQuestionnairePassed ||
         entry.available !== nextAvailable ||
         entry.stock !== nextStock ||
         entry.selected !== nextSelected ||
         entry.quantity !== nextQuantity
       ) {
-        cartData[productId] = {
+        cartData[cartKey] = {
           ...entry,
+          productId,
+          skuId: productSkuId || null,
+          skuName,
+          skuSpecText,
           selected: nextSelected,
           quantity: nextQuantity,
           available: nextAvailable,
@@ -670,6 +874,8 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
           categoryId: nextCategoryId,
           categoryCode: nextCategoryCode,
           needQuestionnaire: nextNeedQuestionnaire,
+          questionnaireId: nextQuestionnaireId,
+          answerId: nextAnswerId,
           questionnairePassed: nextQuestionnairePassed
         }
         needsSave = true
@@ -681,6 +887,20 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
 
       cartItems.push({
         ...product,
+        id: cartKey,
+        cartKey,
+        productId,
+        skuId: productSkuId || null,
+        skuCode: pickText(product.skuCode, product.sku_code, entry.skuCode),
+        skuName,
+        skuSpecText,
+        specText: skuSpecText || product.specText || entry.skuSpecText || '',
+        name: product.name || product.productName || entry.name || entry.productName || '',
+        productName: product.productName || product.name || entry.productName || entry.name || '',
+        image: product.image || product.coverImage || entry.image || entry.coverImage || '',
+        coverImage: product.coverImage || product.image || entry.coverImage || entry.image || '',
+        price,
+        unit: product.unit || entry.unit || '',
         quantity: nextQuantity,
         selected: nextSelected,
         verified: entry.verified !== false,
@@ -693,6 +913,8 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         categoryId: nextCategoryId,
         categoryCode: nextCategoryCode,
         needQuestionnaire: nextNeedQuestionnaire,
+        questionnaireId: nextQuestionnaireId,
+        answerId: nextAnswerId,
         questionnairePassed: nextQuestionnairePassed,
         timestamp: entry.timestamp || Date.now()
       })
@@ -710,18 +932,26 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
 }
 
 export const mapServerCartItemToProduct = (item = {}) => {
-  const productId = item.productId ?? item.id
+  const productId = normalizeId(item.productId ?? item.product_id ?? item.id)
+  const skuId = normalizeId(item.skuId ?? item.sku_id)
+  const cartKey = buildCartItemKey(productId, skuId)
+  const specText = pickText(item.skuSpecText, item.sku_spec_text, item.specText, item.spec_text, item.subTitle, item.sub_title)
   return {
-    id: productId,
+    id: cartKey,
+    cartKey,
     productId,
-    name: item.productName || '',
-    productName: item.productName || '',
-    description: item.subTitle || '',
-    image: item.coverImage || '',
-    coverImage: item.coverImage || '',
+    skuId: skuId || null,
+    skuCode: pickText(item.skuCode, item.sku_code),
+    skuName: pickText(item.skuName, item.sku_name),
+    skuSpecText: specText,
+    name: item.productName || item.product_name || item.name || '',
+    productName: item.productName || item.product_name || item.name || '',
+    description: item.subTitle || item.sub_title || '',
+    image: item.coverImage || item.cover_image || item.image || '',
+    coverImage: item.coverImage || item.cover_image || item.image || '',
     price: Number(item.price || 0),
     unit: item.unit || '件',
-    specText: item.specText || item.subTitle || '',
+    specText,
     bizType: item.bizType,
     goodsMerchantType: item.goodsMerchantType,
     productCategory: item.productCategory,
@@ -729,6 +959,8 @@ export const mapServerCartItemToProduct = (item = {}) => {
     categoryId: item.categoryId ?? item.category_id,
     categoryCode: item.categoryCode || item.category_code || '',
     needQuestionnaire: toNumber(item.needQuestionnaire, 0),
+    questionnaireId: item.questionnaireId ?? item.questionnaire_id ?? null,
+    answerId: item.answerId ?? item.answer_id ?? null,
     stock: resolveStockValue(item, null),
     available: resolveStockValue(item, null) === 0 ? false : item.available !== false
   }
@@ -773,8 +1005,15 @@ export const buildOrderItems = (cartItems = [], selectedProductIds = null) => {
     const quantity = toPositiveInt(item.quantity, 1)
     return {
       id: item.id,
-      name: item.name,
+      cartKey: item.cartKey || item.id,
+      productId: normalizeId(item.productId ?? splitCartItemKey(item.id).productId),
+      skuId: normalizeId(item.skuId ?? splitCartItemKey(item.id).skuId) || null,
+      skuCode: item.skuCode || '',
+      skuName: item.skuName || '',
+      skuSpecText: item.skuSpecText || item.specText || '',
+      name: item.name || item.productName || '',
       type: resolveProductTypeLabel(item),
+      specText: item.specText || item.skuSpecText || '',
       unitPrice: Number(unitPrice.toFixed(2)),
       price: Number((unitPrice * quantity).toFixed(2)),
       quantity
@@ -799,7 +1038,7 @@ export const buildOrderInfo = (
   const bizType = flow.valid ? flow.bizType : BIZ_TYPE_HOSPITAL_MEDICAL
 
   return {
-    prescriptions: orderItems.map(item => item.id),
+    prescriptions: orderItems.map(item => item.productId),
     bizType,
     items: orderItems,
     deliveryInfo: {
@@ -818,10 +1057,21 @@ export const buildOrderInfo = (
 }
 
 export const resolveCartCompatibility = (productOrMeta, options = {}) => {
+  const ignoreCartKey = normalizeId(options.ignoreProductId ?? options.ignoreCartKey)
+  const ignoreProductId = splitCartItemKey(ignoreCartKey).productId
   const currentEntries = Object.entries(readCartData())
-    .filter(([productId, entry]) => entry.verified && normalizeId(productId) !== normalizeId(options.ignoreProductId))
-    .map(([productId, entry]) => ({
-      id: productId,
+    .filter(([cartKey, entry]) => {
+      if (!entry.verified) {
+        return false
+      }
+      if (!ignoreCartKey) {
+        return true
+      }
+      return normalizeId(cartKey) !== ignoreCartKey && normalizeId(entry.productId) !== ignoreProductId
+    })
+    .map(([cartKey, entry]) => ({
+      id: cartKey,
+      cartKey,
       ...entry
     }))
 
@@ -901,7 +1151,7 @@ export const prepareCheckout = (productIds = [], categories = []) => {
 
   const resolved = resolveCheckoutFlow(productIds, categories)
   if (resolved.productIds.length > 0) {
-    setCheckoutProductIds(resolved.productIds)
+    setCheckoutProductIdsInternal(resolved.productIds)
   }
   return resolved
 }

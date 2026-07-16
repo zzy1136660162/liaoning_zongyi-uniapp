@@ -224,12 +224,14 @@ import {
 import {
   loadCartItems,
   buildOrderInfo,
+  getCartEntries,
   getCurrentCheckoutProductIds,
   getCartProductQuantity,
   updateProductSelection,
   updateMultipleSelections,
   getSelectedProductIds,
-  setCheckoutProductIds
+  setCheckoutProductIds,
+  splitCartItemKey
 } from '@/utils/cart.js'
 
 // ==================== API 接口 ====================
@@ -448,6 +450,7 @@ const syncSelectedCartState = () => {
       const productIds = checkoutIds.length > 0
         ? checkoutIds
         : Object.keys(verifiedProducts).filter(id => verifiedProducts[id])
+      const cartEntries = getCartEntries()
       
       // 如果购物车为空，不需要加载商品数据
       if (productIds.length === 0) {
@@ -466,29 +469,41 @@ const syncSelectedCartState = () => {
       }
       
       // 逐个获取购物车中每个商品的详细信息
-      for (const productId of productIds) {
+      for (const itemKey of productIds) {
         try {
           if (typeof getProductDetail === 'function') {
+            const entry = cartEntries[itemKey] || {}
+            const { productId, skuId } = splitCartItemKey(itemKey)
             const productDetail = await getProductDetail(productId)
             if (productDetail) {
+              const skus = Array.isArray(productDetail.skus) ? productDetail.skus : []
+              const sku = skuId ? skus.find(item => String(item.id) === String(skuId)) : null
+              const displaySpec = sku?.specText || entry.skuSpecText || productDetail.specText || ''
+              const displayPrice = sku?.price ?? entry.price ?? productDetail.price
+              const displayImage = sku?.imageUrl || entry.image || entry.coverImage || productDetail.coverImage || productDetail.image
               // 将API返回的数据转换为页面所需的格式
               cartCategory.products.push({
-                id: productDetail.id,
+                id: itemKey,
+                cartKey: itemKey,
+                productId: productDetail.id,
+                skuId: sku ? sku.id : (entry.skuId || null),
+                skuName: sku?.skuName || entry.skuName || '',
+                skuSpecText: displaySpec,
                 name: productDetail.productName || productDetail.name,
                 description: productDetail.subTitle || productDetail.description,
-                image: productDetail.coverImage || productDetail.image,
-                price: productDetail.price,
-                quantity: getCartProductQuantity(productId, 1),
-                unit: productDetail.unit || '份',
+                image: displayImage,
+                price: displayPrice,
+                quantity: getCartProductQuantity(productId, 1, skuId || null),
+                unit: sku?.unit || productDetail.unit || '份',
                 notice: productDetail.usageDesc || productDetail.notice,
                 doctorName: currentPrescriptionDoctorName.value || productDetail.pharmacistName || '医师'
               })
             }
           } else {
-            console.warn('商品详情API不可用，跳过商品:', productId)
+            console.warn('商品详情API不可用，跳过商品:', itemKey)
           }
         } catch (err) {
-          console.error(`获取商品详情失败 [${productId}]:`, err)
+          console.error(`获取商品详情失败 [${itemKey}]:`, err)
         }
       }
       

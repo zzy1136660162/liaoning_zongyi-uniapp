@@ -242,9 +242,11 @@ import {
 import {
   calculateTotalPrice,
   calculateTotalQuantity,
+  getCartEntries,
   getCurrentCheckoutProductIds,
   loadCartItems,
-  setCheckoutProductIds
+  setCheckoutProductIds,
+  splitCartItemKey
 } from '@/utils/cart.js'
 import { getPatientList, deletePatient } from '@/api/patient.js'
 import { getProductDetail } from '@/api/product.js'
@@ -360,27 +362,51 @@ const loadProducts = async () => {
     }
 
     uni.showLoading({ title: '加载商品...' })
-    for (const productId of requestedIds) {
+    const cartEntries = getCartEntries()
+    for (const itemKey of requestedIds) {
       try {
+        const entry = cartEntries[itemKey] || {}
+        const split = splitCartItemKey(itemKey)
+        const productId = entry.productId || split.productId || itemKey
+        const skuId = entry.skuId || split.skuId || null
         const productDetail = await getProductDetail(productId)
         if (productDetail) {
+          const skus = Array.isArray(productDetail.skus) ? productDetail.skus : []
+          const sku = skuId
+            ? skus.find(item => String(item.id) === String(skuId))
+            : null
+          const displayPrice = sku ? Number(sku.price || 0) : Number(productDetail.price || 0)
+          const displayStock = sku
+            ? (sku.stock ?? productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
+            : (productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
+          const displayImage = sku?.image || sku?.imageUrl || productDetail.coverImage || productDetail.image
+          const displaySpec = sku?.specText || sku?.skuName || productDetail.specText || productDetail.specDesc
           checkoutCategory.products.push({
-            id: productDetail.id,
+            id: itemKey,
+            cartKey: itemKey,
+            productId: productDetail.id,
+            skuId,
+            skuCode: sku?.skuCode || entry.skuCode || '',
+            skuName: sku?.skuName || entry.skuName || '',
+            skuSpecText: displaySpec || entry.skuSpecText || '',
             name: productDetail.productName || productDetail.name,
             description: productDetail.subTitle || productDetail.description,
-            image: productDetail.coverImage || productDetail.image,
-            price: Number(productDetail.price || 0),
+            image: displayImage,
+            price: displayPrice,
             bizType: productDetail.bizType,
             productCategory: productDetail.productCategory,
             isPrescription: productDetail.isPrescription,
             goodsMerchantType: productDetail.goodsMerchantType,
-            unit: productDetail.unit || '件',
+            stock: displayStock,
+            available: productDetail.available ?? productDetail.saleable ?? productDetail.onSale,
+            unit: sku?.unit || productDetail.unit || '件',
+            specText: displaySpec,
             notice: productDetail.usageDesc || productDetail.notice,
             needQuestionnaire: productDetail.needQuestionnaire || 0
           })
         }
       } catch (error) {
-        console.error(`load checkout product failed: ${productId}`, error)
+        console.error(`load checkout product failed: ${itemKey}`, error)
       }
     }
 

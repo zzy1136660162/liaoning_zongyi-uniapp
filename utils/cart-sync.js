@@ -5,28 +5,42 @@ import {
   upsertCartItem
 } from '@/api/cart.js'
 import { getToken } from '@/utils/request.js'
-import { getCartEntries, replaceCartData } from '@/utils/cart.js'
+import { buildCartItemKey, getCartEntries, replaceCartData } from '@/utils/cart.js'
+import { buildCartSyncPayload } from '@/utils/cart-sync-payload.js'
 
+const CART_REMOTE_SYNC_EVENT = 'cartRemoteSync'
 const pushTimers = new Map()
 
 const isLoggedIn = () => Boolean(getToken())
 
-const toServerChecked = (selected) => (selected ? 1 : 0)
-
-const buildUpsertPayload = (productId, entry = {}) => ({
-  productId: Number(productId),
-  quantity: entry.quantity || 1,
-  checked: toServerChecked(entry.selected !== false)
-})
+const normalizeId = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return ''
+  }
+  return String(value).trim()
+}
 
 const serverItemsToLocalCart = (items = []) => {
   const cartData = {}
   items.forEach((item) => {
-    const productId = String(item.productId)
+    const productId = normalizeId(item.productId)
     if (!productId) {
       return
     }
-    cartData[productId] = {
+    const skuId = normalizeId(item.skuId)
+    const cartKey = buildCartItemKey(productId, skuId)
+    cartData[cartKey] = {
+      productId,
+      skuId: skuId || null,
+      skuCode: item.skuCode || '',
+      skuName: item.skuName || '',
+      skuSpecText: item.skuSpecText || item.specText || '',
+      productName: item.productName || '',
+      name: item.productName || '',
+      coverImage: item.coverImage || '',
+      image: item.coverImage || '',
+      price: item.price ?? null,
+      unit: item.unit || '',
       verified: true,
       selected: item.checked === 1 || item.checked === true,
       quantity: item.quantity || 1,
@@ -34,8 +48,14 @@ const serverItemsToLocalCart = (items = []) => {
       stock: item.stock ?? item.stockQuantity ?? item.inventory ?? null,
       bizType: item.bizType ?? null,
       goodsMerchantType: item.goodsMerchantType ?? null,
+      productCategory: item.productCategory ?? null,
+      isPrescription: item.isPrescription ?? null,
+      categoryId: item.categoryId ?? null,
+      categoryCode: item.categoryCode || '',
       needQuestionnaire: item.needQuestionnaire ?? 0,
-      questionnairePassed: (item.needQuestionnaire ?? 0) !== 1,
+      questionnaireId: item.questionnaireId ?? item.questionnaire_id ?? null,
+      answerId: item.answerId ?? item.answer_id ?? null,
+      questionnairePassed: (item.needQuestionnaire ?? 0) !== 1 || !!(item.answerId ?? item.answer_id),
       timestamp: item.updatedAt ? new Date(item.updatedAt).getTime() : Date.now()
     }
   })
@@ -44,11 +64,7 @@ const serverItemsToLocalCart = (items = []) => {
 
 const buildSyncPayload = () => {
   const entries = getCartEntries()
-  return Object.entries(entries).map(([productId, entry]) => ({
-    productId: Number(productId),
-    quantity: entry.quantity || 1,
-    checked: toServerChecked(entry.selected !== false)
-  }))
+  return Object.entries(entries).map(([cartKey, entry]) => buildCartSyncPayload(cartKey, entry))
 }
 
 export const applyServerCartToLocal = (items = []) => {
@@ -80,32 +96,32 @@ export const syncCartOnLogin = async () => {
       bizCode: error?.code,
       message: error?.message || error?.errMsg,
       hint: error?.statusCode === 404
-        ? 'POST /api/cart/sync 不存在，请更新后端'
+        ? 'POST /api/cart/sync 不存在，请更新后端服务'
         : '登录后购物车同步失败，暂用本地数据'
     })
   }
 }
 
-const pushSingleItem = async (productId) => {
+const pushSingleItem = async (cartKey) => {
   if (!isLoggedIn()) {
     return
   }
 
-  const entry = getCartEntries()[String(productId)]
+  const entry = getCartEntries()[String(cartKey)]
   if (!entry || !entry.verified) {
-    await deleteCartItem(productId).catch(() => {})
+    await deleteCartItem(cartKey).catch(() => {})
     return
   }
 
-  await upsertCartItem(buildUpsertPayload(productId, entry))
+  await upsertCartItem(buildCartSyncPayload(cartKey, entry))
 }
 
-export const schedulePushCartItem = (productId) => {
-  if (!isLoggedIn() || !productId) {
+export const schedulePushCartItem = (cartKey) => {
+  if (!isLoggedIn() || !cartKey) {
     return
   }
 
-  const key = String(productId)
+  const key = String(cartKey)
   if (pushTimers.has(key)) {
     clearTimeout(pushTimers.get(key))
   }
@@ -121,16 +137,17 @@ export const schedulePushCartItem = (productId) => {
 }
 
 export const pushCartRemoval = async (productIds = []) => {
-  if (!isLoggedIn() || !productIds.length) {
+  const ids = Array.isArray(productIds) ? productIds : [productIds]
+  if (!isLoggedIn() || !ids.length) {
     return
   }
 
   try {
-    if (productIds.length === 1) {
-      await deleteCartItem(productIds[0])
+    if (ids.length === 1) {
+      await deleteCartItem(ids[0])
       return
     }
-    await deleteCartItems(productIds.map((id) => Number(id)))
+    await deleteCartItems(ids)
   } catch (error) {
     console.warn('pushCartRemoval failed:', error)
   }
@@ -155,8 +172,8 @@ export const handleCartRemoteSync = async (action, payload) => {
 
   switch (action) {
     case 'upsert':
-      (Array.isArray(payload) ? payload : [payload]).forEach((productId) => {
-        schedulePushCartItem(productId)
+      (Array.isArray(payload) ? payload : [payload]).forEach((cartKey) => {
+        schedulePushCartItem(cartKey)
       })
       break
     case 'remove':
@@ -170,10 +187,9 @@ export const handleCartRemoteSync = async (action, payload) => {
   }
 }
 
-const CART_REMOTE_SYNC_EVENT = 'cartRemoteSync'
 let cartRemoteSyncBound = false
 
-/** 在 App 启动时注册，避免 cart.js 与 cart-sync.js 循环依赖导致小程序编译/运行异常 */
+/** 在 App 启动时注册，避免 cart.js 与 cart-sync.js 循环依赖导致小程序编译或运行异常。 */
 export const initCartRemoteSync = () => {
   if (cartRemoteSyncBound) {
     return

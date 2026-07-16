@@ -5,6 +5,26 @@
 import { get, post, put, del } from '@/utils/request.js'
 import { API_PATHS } from '@/utils/config.js'
 
+const normalizeId = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return ''
+  }
+  return String(value).trim()
+}
+
+const splitCartItemKey = (productIdOrKey, skuId = null) => {
+  const explicitSkuId = normalizeId(skuId)
+  const key = normalizeId(productIdOrKey)
+  if (!key) {
+    return { productId: '', skuId: explicitSkuId }
+  }
+  if (key.includes(':') && !explicitSkuId) {
+    const [productId, ...rest] = key.split(':')
+    return { productId, skuId: rest.join(':') }
+  }
+  return { productId: key, skuId: explicitSkuId }
+}
+
 const logCartApiError = (action, error) => {
   const statusCode = error?.statusCode
   const bizCode = error?.code
@@ -56,23 +76,33 @@ export const upsertCartItem = (data) => {
   })
 }
 
-export const updateCartItem = (productId, data) => {
-  return put(API_PATHS.CART.UPDATE_ITEM(productId), data, {
+export const updateCartItem = (productId, data = {}) => {
+  const { productId: resolvedProductId, skuId } = splitCartItemKey(productId, data.skuId)
+  const payload = skuId && data.skuId === undefined
+    ? { ...data, skuId }
+    : data
+  return put(API_PATHS.CART.UPDATE_ITEM(resolvedProductId), payload, {
     needAuth: true,
     showLoading: false
   })
 }
 
-export const deleteCartItem = (productId) => {
-  return del(API_PATHS.CART.DELETE_ITEM(productId), {}, {
+export const deleteCartItem = (productId, skuId = null) => {
+  const resolved = splitCartItemKey(productId, skuId)
+  const query = resolved.skuId ? `?skuId=${encodeURIComponent(resolved.skuId)}` : ''
+  return del(`${API_PATHS.CART.DELETE_ITEM(resolved.productId)}${query}`, {}, {
     needAuth: true,
     showLoading: false
   })
 }
 
 export const deleteCartItems = (productIds = []) => {
-  const query = productIds.length > 0
-    ? `?productIds=${productIds.map((id) => encodeURIComponent(id)).join(',')}`
+  const ids = Array.isArray(productIds) ? productIds : [productIds]
+  const hasSkuKey = ids.some((id) => normalizeId(id).includes(':'))
+  const query = ids.length > 0
+    ? (hasSkuKey
+      ? `?itemKeys=${ids.map((id) => encodeURIComponent(normalizeId(id))).join(',')}`
+      : `?productIds=${ids.map((id) => encodeURIComponent(id)).join(',')}`)
     : ''
   return del(`${API_PATHS.CART.DELETE_ITEMS}${query}`, {}, {
     needAuth: true,

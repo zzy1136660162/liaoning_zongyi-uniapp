@@ -173,6 +173,37 @@
       </view>
     </view>
 
+    <view
+      v-if="skuList.length > 1"
+      class="sku-section"
+    >
+      <view class="sku-title">
+        规格
+      </view>
+      <view class="sku-options">
+        <view
+          v-for="sku in skuList"
+          :key="sku.id"
+          class="sku-option"
+          :class="{ active: String(selectedSkuId) === String(sku.id), disabled: Number(sku.stock || 0) <= 0 }"
+          @click="selectSku(sku)"
+        >
+          <text class="sku-name">
+            {{ sku.skuName || sku.specText || '默认规格' }}
+          </text>
+          <text
+            v-if="sku.specText && sku.skuName && sku.specText !== sku.skuName"
+            class="sku-spec"
+          >
+            {{ sku.specText }}
+          </text>
+          <text class="sku-price">
+            ¥{{ Number(sku.price || 0).toFixed(2) }}
+          </text>
+        </view>
+      </view>
+    </view>
+
     <view class="select-section">
       <view class="select-label">
         已选
@@ -744,6 +775,7 @@ import { getProductDetail, mapProductDetail } from '@/api/product.js'
 import { getImageUrl } from '@/utils/config.js'
 import {
   addCartItem,
+  buildCartItemKey,
   getCartProductInfo,
   getCartProductQuantity,
   getCartTotalQuantity,
@@ -805,11 +837,13 @@ const createEmptyProduct = () => ({
   executionStandard: '',
   warmTips: '',
   relatedProducts: [],
-  starProducts: []
+  starProducts: [],
+  skus: []
 })
 
 const product = ref(createEmptyProduct())
 const quantity = ref(1)
+const selectedSkuId = ref(null)
 const showManual = ref(false)
 const showPolicy = ref(false)
 const detailTab = ref('desc')
@@ -824,6 +858,9 @@ const starProducts = ref([])
 const pharmacistAvatar = getImageUrl('https://smf.lntcm.com/static/medicine/yaoshi1.svg')
 
 const productImages = computed(() => {
+  if (selectedSku.value?.image) {
+    return [selectedSku.value.image]
+  }
   if (product.value.images && product.value.images.length > 0) {
     return product.value.images
   }
@@ -833,13 +870,29 @@ const productImages = computed(() => {
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
 const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
-const selectedSpec = computed(() => product.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
+const skuList = computed(() => Array.isArray(product.value.skus) ? product.value.skus : [])
+const selectedSku = computed(() => {
+  if (!skuList.value.length) {
+    return null
+  }
+  return skuList.value.find(item => String(item.id) === String(selectedSkuId.value)) ||
+    skuList.value.find(item => Number(item.defaultFlag) === 1) ||
+    skuList.value[0]
+})
+const selectedSpec = computed(() => {
+  const sku = selectedSku.value
+  return sku?.specText || sku?.skuName || product.value.specText || product.value.packageSpec || product.value.unit || '默认规格'
+})
+const displayPrice = computed(() => {
+  const sku = selectedSku.value
+  return Number(sku?.price ?? product.value.price ?? 0)
+})
 const priceInteger = computed(() => {
-  const [integer = '0'] = Number(product.value.price || 0).toFixed(2).split('.')
+  const [integer = '0'] = displayPrice.value.toFixed(2).split('.')
   return integer
 })
 const priceDecimal = computed(() => {
-  const [, decimal = '00'] = Number(product.value.price || 0).toFixed(2).split('.')
+  const [, decimal = '00'] = displayPrice.value.toFixed(2).split('.')
   return decimal
 })
 const originTypeText = computed(() => {
@@ -897,12 +950,66 @@ const resolveRecommendTab = () => {
   return 'combo'
 }
 
+const resolveDefaultSkuId = (skus = []) => {
+  if (!Array.isArray(skus) || skus.length === 0) {
+    return null
+  }
+  const availableDefault = skus.find(item => Number(item.defaultFlag) === 1 && Number(item.stock ?? 0) > 0)
+  const available = skus.find(item => Number(item.stock ?? 0) > 0)
+  const fallback = skus.find(item => Number(item.defaultFlag) === 1) || skus[0]
+  return (availableDefault || available || fallback)?.id || null
+}
+
+const getSelectedCartKey = (targetProduct = product.value) => {
+  const productId = targetProduct?.productId || targetProduct?.id
+  const skuId = targetProduct?.skuId || selectedSku.value?.id || null
+  return buildCartItemKey(productId, skuId)
+}
+
+const withSelectedSku = (targetProduct = product.value) => {
+  const sku = String(targetProduct?.id) === String(product.value.id) ? selectedSku.value : null
+  if (!sku) {
+    return targetProduct
+  }
+  return {
+    ...targetProduct,
+    id: product.value.id,
+    productId: product.value.id,
+    skuId: sku.id,
+    skuCode: sku.skuCode || '',
+    skuName: sku.skuName || '',
+    skuSpecText: sku.specText || sku.skuName || '',
+    price: Number(sku.price || 0),
+    originalPrice: Number(sku.originalPrice || 0),
+    stock: Number(sku.stock ?? product.value.stock ?? 0),
+    unit: sku.unit || product.value.unit,
+    specText: sku.specText || sku.skuName || product.value.specText,
+    image: sku.image || product.value.image,
+    coverImage: sku.image || product.value.coverImage || product.value.image
+  }
+}
+
+const selectSku = (sku) => {
+  if (!sku?.id) {
+    return
+  }
+  if (Number(sku.stock || 0) <= 0) {
+    uni.showToast({
+      title: '该规格已售罄',
+      icon: 'none'
+    })
+    return
+  }
+  selectedSkuId.value = sku.id
+  loadQuantityFromStorage()
+}
+
 const loadQuantityFromStorage = () => {
   if (!product.value.id) {
     quantity.value = 1
     return
   }
-  quantity.value = getCartProductQuantity(product.value.id, 1)
+  quantity.value = getCartProductQuantity(product.value.id, 1, selectedSku.value?.id)
 }
 
 const loadRecommendCartQuantities = () => {
@@ -926,6 +1033,7 @@ const applyProduct = (source) => {
   comboProducts.value = Array.isArray(mapped.relatedProducts) ? mapped.relatedProducts : []
   starProducts.value = Array.isArray(mapped.starProducts) ? mapped.starProducts : []
   recommendTab.value = resolveRecommendTab()
+  selectedSkuId.value = resolveDefaultSkuId(mapped.skus)
   loadQuantityFromStorage()
   loadRecommendCartQuantities()
 }
@@ -988,7 +1096,7 @@ const ensureLogin = () => {
 
 const ensureCartCompatible = (targetProduct) => {
   const result = resolveCartCompatibility(targetProduct, {
-    ignoreProductId: targetProduct?.id
+    ignoreCartKey: getSelectedCartKey(targetProduct)
   })
   if (!result.valid) {
     uni.showToast({
@@ -1000,22 +1108,30 @@ const ensureCartCompatible = (targetProduct) => {
   return true
 }
 
-const hasQuestionnairePassed = (productId) => {
-  const entry = getCartProductInfo(productId)
+const hasQuestionnairePassed = (targetProduct) => {
+  const entry = getCartProductInfo(targetProduct?.productId || targetProduct?.id, targetProduct?.skuId || null)
   return !!(entry && entry.questionnairePassed)
 }
 
 const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart') => {
+  const skuParam = targetProduct?.skuId ? `&skuId=${encodeURIComponent(targetProduct.skuId)}` : ''
   uni.navigateTo({
-    url: `/pages/products/product_notice?id=${targetProduct.id}&quantity=${selectedQuantity}&action=${action}`
+    url: `/pages/products/product_notice?id=${targetProduct.id}&quantity=${selectedQuantity}&action=${action}${skuParam}`
   })
   return false
 }
 
 const goCheckout = (targetProduct) => {
-  const checkout = prepareCheckout([String(targetProduct.id)], [{
+  const cartKey = getSelectedCartKey(targetProduct)
+  const checkoutProduct = {
+    ...targetProduct,
+    id: cartKey,
+    cartKey,
+    productId: targetProduct.productId || targetProduct.id
+  }
+  const checkout = prepareCheckout([cartKey], [{
     id: 'detail_checkout',
-    products: [targetProduct]
+    products: [checkoutProduct]
   }])
 
   if (!checkout.valid) {
@@ -1047,22 +1163,23 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
     return false
   }
 
+  const saleProduct = withSelectedSku(targetProduct)
   if (!ensureLogin()) {
     return false
   }
 
-  if (!ensureCartCompatible(targetProduct)) {
+  if (!ensureCartCompatible(saleProduct)) {
     return false
   }
 
   const nextQuantity = Math.max(1, Number(selectedQuantity) || 1)
-  const alreadyPassed = hasQuestionnairePassed(targetProduct.id)
-  if (Number(targetProduct.needQuestionnaire) === 1 && !alreadyPassed) {
-    return navigateToNotice(targetProduct, nextQuantity, mode)
+  const alreadyPassed = hasQuestionnairePassed(saleProduct)
+  if (Number(saleProduct.needQuestionnaire) === 1 && !alreadyPassed) {
+    return navigateToNotice(saleProduct, nextQuantity, mode)
   }
 
-  const saved = addCartItem(targetProduct, nextQuantity, {
-    questionnairePassed: Number(targetProduct.needQuestionnaire) !== 1 || alreadyPassed
+  const saved = addCartItem(saleProduct, nextQuantity, {
+    questionnairePassed: Number(saleProduct.needQuestionnaire) !== 1 || alreadyPassed
   })
   if (!saved) {
     uni.showToast({
@@ -1074,12 +1191,12 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
 
   loadCartCount()
   loadRecommendCartQuantities()
-  if (String(targetProduct.id) === String(product.value.id)) {
+  if (String(saleProduct.productId || saleProduct.id) === String(product.value.id)) {
     loadQuantityFromStorage()
   }
 
   if (mode === 'buy') {
-    return goCheckout(targetProduct)
+    return goCheckout(saleProduct)
   }
 
   uni.showToast({
@@ -1634,6 +1751,69 @@ onShow(() => {
   text-align: center;
   padding: 24rpx 0;
   border-radius: 44rpx;
+}
+
+.sku-section {
+  background: #fff;
+  padding: 24rpx 30rpx 18rpx;
+  margin-bottom: 16rpx;
+}
+
+.sku-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 18rpx;
+}
+
+.sku-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.sku-option {
+  min-width: 180rpx;
+  max-width: 100%;
+  padding: 16rpx 18rpx;
+  border: 2rpx solid #e5e7eb;
+  border-radius: 8rpx;
+  background: #f9fafb;
+  color: #1f2937;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  box-sizing: border-box;
+}
+
+.sku-option.active {
+  border-color: #ef4444;
+  background: #fff5f5;
+  color: #b91c1c;
+}
+
+.sku-option.disabled {
+  opacity: 0.45;
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+.sku-name {
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.sku-spec {
+  font-size: 22rpx;
+  color: #6b7280;
+  line-height: 1.25;
+}
+
+.sku-price {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #ef4444;
 }
 
 .select-section {

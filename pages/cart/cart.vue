@@ -203,6 +203,7 @@ import {
   STORAGE_KEY_USER_REGISTER
 } from '@/utils/storage.js'
 import {
+  buildCartItemKey,
   getCartEntries,
   getCartTotalQuantity,
   buildCategoriesFromServerCart,
@@ -211,6 +212,7 @@ import {
   setCartItemQuantity,
   prepareCheckout,
   removeFromCart,
+  splitCartItemKey,
   updateProductSelection,
   updateMultipleSelections
 } from '@/utils/cart.js'
@@ -427,7 +429,10 @@ export default {
         this.suppressNextServerCartEvent = false
       }
       this.categories = buildCategoriesFromServerCart(normalizedItems)
-      const serverMetaById = new Map(normalizedItems.map(item => [String(item.productId ?? item.id), item]))
+      const serverMetaById = new Map(normalizedItems.map(item => [
+        buildCartItemKey(item.productId ?? item.id, item.skuId),
+        item
+      ]))
       this.categories.forEach(category => {
         (category.products || []).forEach(product => {
           const meta = serverMetaById.get(String(product.id))
@@ -442,10 +447,10 @@ export default {
     async loadLocalCartFallback() {
       try {
         const cartEntries = getCartEntries()
-        const productIds = Object.keys(cartEntries)
-        console.log('[cart] loadLocalCartFallback', { productIds })
+        const itemKeys = Object.keys(cartEntries)
+        console.log('[cart] loadLocalCartFallback', { itemKeys })
 
-        if (productIds.length === 0) {
+        if (itemKeys.length === 0) {
           this.categories = []
           this.loadCartData()
           return
@@ -457,30 +462,50 @@ export default {
           products: []
         }
 
-        for (const productId of productIds) {
+        for (const itemKey of itemKeys) {
           try {
+            const entry = cartEntries[itemKey] || {}
+            const split = splitCartItemKey(itemKey)
+            const productId = entry.productId || split.productId || itemKey
+            const skuId = entry.skuId || split.skuId || null
             const productDetail = await getProductDetail(productId)
             if (productDetail) {
+              const skus = Array.isArray(productDetail.skus) ? productDetail.skus : []
+              const sku = skuId
+                ? skus.find(item => String(item.id) === String(skuId))
+                : null
+              const displayPrice = sku ? Number(sku.price || 0) : Number(productDetail.price || 0)
+              const displayStock = sku
+                ? (sku.stock ?? productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
+                : (productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
+              const displayImage = sku?.image || sku?.imageUrl || productDetail.coverImage || productDetail.image
+              const displaySpec = sku?.specText || sku?.skuName || productDetail.specText || productDetail.specDesc
               cartCategory.products.push({
-                id: productDetail.id,
+                id: itemKey,
+                cartKey: itemKey,
+                productId: productDetail.id,
+                skuId,
+                skuCode: sku?.skuCode || entry.skuCode || '',
+                skuName: sku?.skuName || entry.skuName || '',
+                skuSpecText: displaySpec || entry.skuSpecText || '',
                 name: productDetail.productName || productDetail.name,
                 description: productDetail.subTitle || productDetail.description,
-                image: productDetail.coverImage || productDetail.image,
-                price: Number(productDetail.price || 0),
+                image: displayImage,
+                price: displayPrice,
                 bizType: productDetail.bizType,
                 productCategory: productDetail.productCategory,
                 isPrescription: productDetail.isPrescription,
                 goodsMerchantType: productDetail.goodsMerchantType,
-                stock: productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory,
+                stock: displayStock,
                 available: productDetail.available ?? productDetail.saleable ?? productDetail.onSale,
-                unit: productDetail.unit || '件',
+                unit: sku?.unit || productDetail.unit || '件',
                 notice: productDetail.usageDesc || productDetail.notice,
-                specText: productDetail.specText || productDetail.specDesc,
+                specText: displaySpec,
                 needQuestionnaire: productDetail.needQuestionnaire || 0
               })
             }
           } catch (error) {
-            console.error('load cart product detail failed: ' + productId, error)
+            console.error('load cart product detail failed: ' + itemKey, error)
           }
         }
 
@@ -561,9 +586,10 @@ export default {
     },
     goToProductDetail(item) {
       const page = isTraditionalTherapyProduct(item) ? 'therapy_detail' : 'medicine_detail'
-      console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=CART targetPage=%s productId=%s', page, item.id)
+      const productId = item.productId || splitCartItemKey(item.id).productId || item.id
+      console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=CART targetPage=%s productId=%s cartKey=%s', page, productId, item.id)
       uni.navigateTo({
-        url: `/pages/products/${page}?id=${item.id}`
+        url: `/pages/products/${page}?id=${productId}`
       })
     },
     goShopping() {

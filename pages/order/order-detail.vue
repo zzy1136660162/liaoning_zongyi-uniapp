@@ -135,6 +135,12 @@
                 <view class="medicine-name">
                   {{ item.name }}
                 </view>
+                <view
+                  v-if="item.specText"
+                  class="medicine-spec"
+                >
+                  {{ item.specText }}
+                </view>
                 <view class="medicine-price">
                   ¥{{ ((item.price || 0) * (Number(item.quantity) || 1)).toFixed(2) }}
                 </view>
@@ -686,6 +692,10 @@
               this.allCartItems = orderDetail.items.map(item => ({
                 id: item.productId || item.product_id || item.goodsId || item.goods_id || item.id,
                 orderItemId: item.id || item.orderItemId || item.order_item_id,
+                skuId: item.skuId || item.sku_id || null,
+                skuCode: item.skuCode || item.sku_code || '',
+                skuName: item.skuName || item.sku_name || '',
+                specText: item.skuSpecText || item.sku_spec_text || item.specText || item.spec_text || '',
                 name: item.productName || item.product_name || item.name,
                 price: parseFloat(item.price || 0),
                 // 兼容不同后端字段命名并确保为数值
@@ -1400,6 +1410,13 @@
     font-size: 28rpx;
     font-weight: 500;
     color: #333333;
+  }
+
+  .medicine-spec {
+    margin-top: 6rpx;
+    font-size: 24rpx;
+    color: #64748b;
+    line-height: 1.4;
   }
 
   .medicine-price {

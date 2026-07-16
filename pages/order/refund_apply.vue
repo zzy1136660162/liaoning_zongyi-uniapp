@@ -25,6 +25,7 @@
               <image class="product-image" :src="item.image" mode="aspectFill" />
               <view class="product-info">
                 <text class="product-name">{{ item.name }}</text>
+                <text class="product-spec" v-if="item.specText">{{ item.specText }}</text>
                 <text class="product-price">¥{{ item.price }}</text>
                 <text class="product-refund-tip" v-if="Number(item.refundableQuantity || 0) <= 0">
                   {{ item.refundBlockedReason || '已无可退数量' }}
@@ -223,7 +224,10 @@ export default {
           refundable: Boolean(item.refundable),
           refundBlockedReason: item.refundBlockedReason || item.refund_blocked_reason || '',
           image: getImageUrl(item.productImage || item.coverImage || item.image || ''), // 商品图片
-          specText: item.specText,
+          skuId: item.skuId || item.sku_id || null,
+          skuCode: item.skuCode || item.sku_code || '',
+          skuName: item.skuName || item.sku_name || '',
+          specText: item.skuSpecText || item.sku_spec_text || item.specText || item.spec_text || '',
           unit: item.unit,
           redeemVouchers: item.redeemVouchers || item.redeem_vouchers || []
         }))
@@ -484,6 +488,14 @@ export default {
             font-size: 28rpx;
             color: #333;
             margin-bottom: 8rpx;
+            line-height: 1.4;
+          }
+
+          .product-spec {
+            display: block;
+            font-size: 24rpx;
+            color: #64748b;
+            margin-bottom: 6rpx;
             line-height: 1.4;
           }
 

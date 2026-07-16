@@ -117,6 +117,57 @@ const main = async () => {
   cart.addCartItem({ id: '101', stock: 8, available: true }, 1)
   assert.equal(lastCartUpdated().payload.source, 'local')
 
+  resetState()
+  cart.addCartItem({
+    id: '401',
+    productId: '401',
+    name: 'questionnaire product',
+    needQuestionnaire: 1,
+    stock: 8,
+    available: true
+  }, 1, {
+    questionnairePassed: true,
+    questionnaireId: 901,
+    answerId: 902
+  })
+  const questionnaireEntry = cart.getCartProductInfo('401')
+  assert.equal(questionnaireEntry.questionnairePassed, true)
+  assert.equal(questionnaireEntry.questionnaireId, 901)
+  assert.equal(questionnaireEntry.answerId, 902)
+
+  resetState()
+  cart.addCartItem({
+    id: '501',
+    productId: '501',
+    skuId: 'sku-a',
+    skuName: 'small',
+    specText: '5g',
+    price: 10,
+    stock: 8,
+    available: true
+  }, 1)
+  cart.addCartItem({
+    id: '501',
+    productId: '501',
+    skuId: 'sku-b',
+    skuName: 'large',
+    specText: '10g',
+    price: 18,
+    stock: 8,
+    available: true
+  }, 2)
+  const skuCategories = [{
+    id: 'cart_items',
+    name: 'cart',
+    products: [
+      { id: '501:sku-a', productId: '501', skuId: 'sku-a', name: 'sku product', specText: '5g', price: 10, stock: 8, available: true },
+      { id: '501:sku-b', productId: '501', skuId: 'sku-b', name: 'sku product', specText: '10g', price: 18, stock: 8, available: true }
+    ]
+  }]
+  const skuItems = cart.loadCartItems(skuCategories)
+  assert.deepEqual(skuItems.map(item => item.id), ['501:sku-a', '501:sku-b'])
+  assert.equal(cart.calculateTotalPrice(skuItems), 46)
+
   cart.replaceCartData({
     101: { verified: true, selected: true, quantity: 1, available: true, stock: 8 }
   })

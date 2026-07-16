@@ -169,7 +169,7 @@ const applyTips = (orderData = {}) => {
   const orderType = orderData.orderType ?? orderData.order_type
   if (Number(orderType) === ORDER_TYPE_THERAPY) {
     paymentInfo.value.primaryTip = '支付成功后可在订单详情查看核销二维码'
-    paymentInfo.value.secondaryTip = '传统疗法到店核销，无需物流配送'
+    paymentInfo.value.secondaryTip = '传统疗法到院核销，无需物流配送'
     return
   }
   paymentInfo.value.primaryTip = '订单已提交，我们将尽快为您处理'
@@ -191,7 +191,7 @@ const clearPaidCartItems = (orderData = {}) => {
     ? uniqueStringIds(orderData.items.map(resolveOrderItemProductId))
     : []
   const checkoutProductIds = uniqueStringIds(getCurrentCheckoutProductIds())
-  const productIds = itemProductIds.length > 0 ? itemProductIds : checkoutProductIds
+  const productIds = checkoutProductIds.length > 0 ? checkoutProductIds : itemProductIds
 
   if (productIds.length > 0 && removeFromCart(productIds)) {
     uni.$emit('cartUpdated')

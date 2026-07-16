@@ -182,9 +182,32 @@ const mapLimitInfo = (product) => {
   }
 }
 
+const mapProductSku = (sku = {}) => {
+  const image = getImageUrl(pickField(sku, 'imageUrl', 'image_url', 'image'))
+  return {
+    id: pickField(sku, 'id'),
+    productId: pickField(sku, 'productId', 'product_id'),
+    skuCode: pickField(sku, 'skuCode', 'sku_code') || '',
+    skuName: pickField(sku, 'skuName', 'sku_name') || '',
+    specText: pickField(sku, 'specText', 'spec_text') || '',
+    unit: pickField(sku, 'unit') || '',
+    price: Number(pickField(sku, 'price') || 0),
+    originalPrice: Number(pickField(sku, 'originalPrice', 'original_price') || 0),
+    stock: Number(pickField(sku, 'stock') || 0),
+    stockWarn: Number(pickField(sku, 'stockWarn', 'stock_warn') || 0),
+    salesVolume: Number(pickField(sku, 'salesVolume', 'sales_volume') || 0),
+    imageUrl: image,
+    image,
+    defaultFlag: Number(pickField(sku, 'defaultFlag', 'default_flag') || 0),
+    sort: Number(pickField(sku, 'sort') || 0),
+    status: Number(pickField(sku, 'status') || 1)
+  }
+}
+
 export const mapProductDetail = (product = {}) => {
   const listView = mapProductListItem(product)
   const coverImage = pickField(product, 'coverImage', 'cover_image', 'image', 'productImage')
+  const rawSkus = pickField(product, 'skus', 'skuList', 'sku_list') || []
 
   return {
     ...listView,
@@ -218,6 +241,7 @@ export const mapProductDetail = (product = {}) => {
     isStarProduct: Number(pickField(product, 'isStarProduct', 'is_star_product') || 0),
     relatedProducts: mapRecommendationProducts(pickField(product, 'relatedProducts', 'related_products') || []),
     starProducts: mapRecommendationProducts(pickField(product, 'starProducts', 'star_products') || []),
+    skus: Array.isArray(rawSkus) ? rawSkus.map(mapProductSku).filter(item => item.id !== null && item.id !== undefined) : [],
     limitInfo: mapLimitInfo(product)
   }
 }
