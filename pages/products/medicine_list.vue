@@ -10,6 +10,10 @@
     <view
       class="hospital-intro"
       :class="{ collapsed: imageCollapsed }"
+      :style="{ marginTop: imageCollapsed ? '-400rpx' : hospitalIntroMarginTop }"
+      @touchstart="onPullStart"
+      @touchmove="onPullMove"
+      @touchend="onPullEnd"
     >
       <view class="logo-wrap">
         <image
@@ -488,9 +492,15 @@ export default {
       sortType: '',
       sortOrder: 'desc',
       imageCollapsed: false,
+      hospitalIntroMarginTop: '-40rpx',
       unsubscribeCartUpdated: null,
       searchTimer: null,
-      requestSeq: 0
+      requestSeq: 0,
+      pullStartY: 0,
+      pullOffset: 0,
+      isPullingIntro: false,
+      pullTimer: null,
+      collapseTimer: null
     }
   },
   computed: {
@@ -525,9 +535,7 @@ export default {
       this.loadVerifiedProductsFromStorage('cartUpdated')
     })
     this.loadProducts()
-    setTimeout(() => {
-      this.imageCollapsed = true
-    }, 2000)
+    this.scheduleImageCollapse(2000)
   },
   onShow() {
     this.loadVerifiedProductsFromStorage()
@@ -545,12 +553,72 @@ export default {
       clearTimeout(this.searchTimer)
       this.searchTimer = null
     }
+    if (this.collapseTimer) {
+      clearTimeout(this.collapseTimer)
+      this.collapseTimer = null
+    }
   },
   methods: {
     getImageUrl,
     getExternalUseLabel,
     getColdShippingLabel,
     isSelfDevelopedProduct,
+    scheduleImageCollapse(delay = 2000) {
+      if (this.collapseTimer) {
+        clearTimeout(this.collapseTimer)
+        this.collapseTimer = null
+      }
+      this.collapseTimer = setTimeout(() => {
+        this.imageCollapsed = true
+        this.collapseTimer = null
+      }, delay)
+    },
+    onPullStart(e) {
+      // 清除自动盖住定时器
+      if (this.collapseTimer) {
+        clearTimeout(this.collapseTimer)
+        this.collapseTimer = null
+      }
+      // 清除下拉盖住定时器
+      if (this.pullTimer) {
+        clearTimeout(this.pullTimer)
+        this.pullTimer = null
+      }
+      // 如果已经盖住，先临时展开
+      if (this.imageCollapsed) {
+        this.imageCollapsed = false
+        this.hospitalIntroMarginTop = '-40rpx'
+      }
+      this.pullStartY = e.touches[0].clientY
+      this.isPullingIntro = true
+    },
+    onPullMove(e) {
+      if (!this.isPullingIntro) {
+        return
+      }
+      const currentY = e.touches[0].clientY
+      const deltaY = currentY - this.pullStartY
+      if (deltaY > 0) {
+        const pullPx = Math.min(deltaY, 50)
+        this.hospitalIntroMarginTop = `${-40 + pullPx}rpx`
+      }
+    },
+    onPullEnd() {
+      if (!this.isPullingIntro) {
+        return
+      }
+      this.isPullingIntro = false
+      if (this.pullTimer) {
+        clearTimeout(this.pullTimer)
+      }
+      // 立即恢复下拉位置到原位
+      this.hospitalIntroMarginTop = '-40rpx'
+      // 2秒后自动盖住图片
+      this.pullTimer = setTimeout(() => {
+        this.imageCollapsed = true
+        this.pullTimer = null
+      }, 2000)
+    },
     removeZeroQuantityMarker(productId) {
       const normalizedId = String(productId)
       if (!this.zeroQuantityProducts[normalizedId]) {
@@ -1237,10 +1305,11 @@ scroll-view ::-webkit-scrollbar {
 }
 
 .category-nav {
-  width: 200rpx;
+  width: 120rpx;
   background-color: #ffffff;
   border-right: 1rpx solid #e5e5e5;
   padding-bottom: 20rpx;
+  background: #fff;
 }
 
 .category-group {
@@ -1740,6 +1809,9 @@ scroll-view ::-webkit-scrollbar {
 }
 
 .hospital-intro {
+  border-top-left-radius: 36rpx;
+  border-top-right-radius: 36rpx;
+  overflow: hidden;
   display: flex;
   align-items: flex-start;
   background: linear-gradient(135deg, #fafafa, #fff);
@@ -1747,7 +1819,7 @@ scroll-view ::-webkit-scrollbar {
   position: relative;
   margin-top: -40rpx;
   z-index: 10;
-  transition: margin-top 1.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: margin-top 1.1s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .hospital-intro.collapsed {
@@ -1826,7 +1898,7 @@ scroll-view ::-webkit-scrollbar {
   align-items: center;
   justify-content: center;
   padding: 20rpx; */
-  background: #fff;
+  /* background: #fff; */
 }
 .toggle-text {
   font-size: 22rpx;

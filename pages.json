@@ -66,8 +66,9 @@
       "style": {
         "navigationBarTitleText": "商品列表",
         "navigationStyle": "custom",
-        "enablePullDownRefresh": true,
-        "backgroundTextStyle": "dark"
+        "enablePullDownRefresh": false,
+        "backgroundTextStyle": "dark",
+		"disableScroll": true
       }
     },
     {
