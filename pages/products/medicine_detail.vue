@@ -28,7 +28,6 @@
         {{ currentIndex }}/{{ productImages.length }}
       </view>
     </view>
-    <view class="split-line" />
     <view class="price-box">
       <view class="price-main">
         <view class="price-left">
@@ -1453,7 +1452,6 @@ onShow(() => {
   flex-direction: column;
   width: 100%;
   box-sizing: border-box;
-  border-radius: 36rpx 36rpx 0 0;
 }
 
 .price-main {
