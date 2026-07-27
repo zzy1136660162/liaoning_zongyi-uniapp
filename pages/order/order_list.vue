@@ -167,7 +167,7 @@ const tabs = ref([
   { key: 'pending', label: '待支付' },
   { key: 'shipping', label: '待发货' },
   { key: 'received', label: '待收货' },
-  { key: 'afterSale', label: '退款/售后' }
+  { key: 'afterSale', label: '退款' }
 ])
 
 const normalizeRedeemVouchers = (item = {}) => {

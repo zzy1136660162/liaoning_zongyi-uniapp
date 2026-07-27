@@ -113,7 +113,7 @@
                   诊断:
                 </text>
                 <text class="info-value">
-                  {{ cartItem.diagnosis || '无' }}
+                  {{ cartItem.diagnosis || '复诊调方' }}
                 </text>
               </view>
 

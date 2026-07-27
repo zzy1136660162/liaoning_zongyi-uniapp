@@ -33,7 +33,7 @@
       <view class="price-main">
         <view class="price-left">
           <view class="price-tag">
-            商品价格
+            制剂价格
           </view>
           <view class="price-info">
             <text class="price-unit">
@@ -608,7 +608,7 @@
       class="detail-body"
     >
       <view class="detail-title">
-        {{ product.detailTitle || '商品详情' }}
+        {{ product.detailTitle || '制剂详情' }}
       </view>
       <rich-text
         v-if="product.intro"
@@ -647,7 +647,7 @@
         class="usage-box"
       >
         <view class="usage-title">
-          商品基本信息
+          制剂基本信息
         </view>
         <view class="usage-list">
           <view
@@ -703,7 +703,7 @@
         !
       </text>
       <text class="reminder-text">
-        请仔细阅读说明书或在医师、药师指导下使用。商品包装及说明请以实际收到的商品为准。
+        请仔细阅读说明书或在医师、药师指导下使用。制剂包装及说明请以实际收到的商品为准。
       </text>
     </view>
 
@@ -760,7 +760,7 @@
           :class="{ disabled: product.stock === 0 }"
           @click="product.stock !== 0 && buyNow()"
         >
-          立即购买
+          立即开方
         </view>
       </view>
     </view>

@@ -33,7 +33,7 @@
           <!-- <text class="verify-icon">✓</text> -->
         </view>
         <view class="hospital-desc">
-          便捷配方 · 权威认证 · 品质保障 · 放心购买
+          便捷配方 · 权威认证 · 品质保障 · 放心开方
         </view>
         <view
           class="internet-hospital-toggle"
@@ -48,51 +48,6 @@
             color="#ff6b35"
           />
         </view>
-        <!-- <view class="hospital-tags">
-          <text class="journey-title">
-            流程
-          </text>
-          <view class="journey-strip">
-            <template
-              v-for="(step, index) in flowSteps"
-              :key="step"
-            >
-              <view
-                class="journey-step"
-                :class="{ featured: index === 2 }"
-              >
-                <text class="journey-step-index">
-                  {{ index + 1 }}
-                </text>
-                <text class="journey-step-text">
-                  {{ step }}
-                </text>
-              </view>
-              <text
-                v-if="index < flowSteps.length - 1"
-                class="journey-arrow"
-              >
-                {{ '>' }}
-              </text>
-            </template>
-          </view>
-        </view> -->
-        <!-- <view class="hospital-stats">
-          <view class="stat-item">
-            <text class="stat-value">9999+</text>
-            <text class="stat-label">月销量</text>
-          </view>
-          <view class="stat-divider"></view>
-          <view class="stat-item">
-            <text class="stat-value">4.9</text>
-            <text class="stat-label">综合评分</text>
-          </view>
-          <view class="stat-divider"></view>
-          <view class="stat-item">
-            <text class="stat-value">100%</text>
-            <text class="stat-label">好评率</text>
-          </view>
-        </view> -->
       </view>
     </view>
     <view
@@ -574,30 +529,53 @@ export default {
       }, delay)
     },
     onPullStart(e) {
-      // 清除自动盖住定时器
-      if (this.collapseTimer) {
-        clearTimeout(this.collapseTimer)
-        this.collapseTimer = null
-      }
-      // 清除下拉盖住定时器
-      if (this.pullTimer) {
-        clearTimeout(this.pullTimer)
-        this.pullTimer = null
-      }
-      // 如果已经盖住，先临时展开
-      if (this.imageCollapsed) {
-        this.imageCollapsed = false
-        this.hospitalIntroMarginTop = '-40rpx'
+      // 如果触摸目标是 .internet-hospital-toggle 或其子元素，不启动下拉
+      const target = e.target || e.currentTarget
+      if (target) {
+        const targetClass = target.className || ''
+        if (typeof targetClass === 'string' && (
+          targetClass.includes('internet-hospital-toggle') ||
+          targetClass.includes('toggle-text') ||
+          targetClass.includes('flow-text-animate') ||
+          targetClass.includes('uni-icons')
+        )) {
+          return
+        }
       }
       this.pullStartY = e.touches[0].clientY
-      this.isPullingIntro = true
+      this.isPullingIntro = false
+      this.hasPullMoved = false
     },
     onPullMove(e) {
-      if (!this.isPullingIntro) {
+      if (this.isPullingIntro === null || this.isPullingIntro === undefined) {
+        // touchstart 没执行，直接 return
         return
       }
       const currentY = e.touches[0].clientY
       const deltaY = currentY - this.pullStartY
+      // 下拉阈值 15rpx（约 7.5px），只有超过阈值才认为是下拉
+      const threshold = 7.5
+      if (!this.hasPullMoved) {
+        if (deltaY > threshold) {
+          this.hasPullMoved = true
+          this.isPullingIntro = true
+          // 首次确认是下拉时才清除定时器、展开图片
+          if (this.collapseTimer) {
+            clearTimeout(this.collapseTimer)
+            this.collapseTimer = null
+          }
+          if (this.pullTimer) {
+            clearTimeout(this.pullTimer)
+            this.pullTimer = null
+          }
+          if (this.imageCollapsed) {
+            this.imageCollapsed = false
+            this.hospitalIntroMarginTop = '-40rpx'
+          }
+        } else {
+          return
+        }
+      }
       if (deltaY > 0) {
         const pullPx = Math.min(deltaY, 50)
         this.hospitalIntroMarginTop = `${-40 + pullPx}rpx`
@@ -608,6 +586,7 @@ export default {
         return
       }
       this.isPullingIntro = false
+      this.hasPullMoved = false
       if (this.pullTimer) {
         clearTimeout(this.pullTimer)
       }
@@ -1305,11 +1284,9 @@ scroll-view ::-webkit-scrollbar {
 }
 
 .category-nav {
-  width: 120rpx;
-  background-color: #ffffff;
-  border-right: 1rpx solid #e5e5e5;
+  width: 180rpx;
   padding-bottom: 20rpx;
-  background: #fff;
+  background: #fcfcfc;
 }
 
 .category-group {
