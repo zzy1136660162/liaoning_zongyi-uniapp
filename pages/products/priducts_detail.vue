@@ -1,113 +1,168 @@
 <template>
-    <view class="page">
+  <view class="page">
+    <!-- 商品大图 -->
+    <image 
+      class="banner"
+      :src="getImageUrl(product.image)"
+      mode="widthFix"
+    />
   
-      <!-- 商品大图 -->
-      <image 
-        class="banner"
-        :src="getImageUrl(product.image)"
-        mode="widthFix"
-      />
+    <!-- 标题 + 价格 + 数量 -->
+    <view class="box">
+      <view class="title">
+        {{ product.name }}
+      </view>
   
-      <!-- 标题 + 价格 + 数量 -->
-      <view class="box">
-        <view class="title">{{ product.name }}</view>
+      <view class="price-row">
+        <text class="price">
+          ￥{{ formattedPrice }}
+        </text>
   
-        <view class="price-row">
-          <text class="price">￥{{ formattedPrice }}</text>
-  
-          <view class="counter">
-            <!-- <button class="btn" @click="dec">-</button>
+        <view class="counter">
+          <!-- <button class="btn" @click="dec">-</button>
             <text class="num">{{ count }}</text>
             <button class="btn" @click="inc">+</button> -->
-          </view>
         </view>
       </view>
-  
-      <!-- 商品详情富文本内容 -->
-      <view class="content" v-if="product.intro">
-        <rich-text :nodes="formatRichText(product.intro)" class="rich-text-content"></rich-text>
-      </view>
-
-      <!-- 默认宣传文案（当没有富文本内容时显示） -->
-      <view class="content" v-else>
-
-        <view class="section">
-          <view class="section-title">冬季养生 · 辽派膏滋怎么吃才对？</view>
-          <view class="p">
-            天气一冷，"冬季养生"就成了大家嘴边的热门话题。
-            而"膏方"更是凭借其温和滋补的特性，频频出现在养生清单里。
-          </view>
-          <view class="p">
-            但不少粉丝总问：膏方是不是贴的膏药？
-            ——非也！此"膏"非彼"膏"。
-          </view>
-          <view class="p">
-            辽派膏滋，根据您的体质定制的"一人一方"内服调补佳品，
-            是辽宁人自己的冬季养生好选择。
-          </view>
-        </view>
-
-
-        <!-- 一、辽派膏滋介绍 -->
-        <view class="section">
-          <view class="section-subtitle">一、辽派膏滋，为您"量身定制"的冬季补剂</view>
-
-          <view class="p">
-            辽派膏滋从选材到制作，都透着"精细"二字，完全根据个人体质"量体裁衣"：
-          </view>
-
-          <view class="ul">
-            <view class="li">• 选料严：只选用道地药材，保证品质。</view>
-            <view class="li">• 工艺精：传统慢火熬制，多道工序浓缩精华。</view>
-            <view class="li">• 优势多：吸收好、药效温和、便携易坚持。</view>
-          </view>
-        </view>
-
-
-        <!-- 二、服用方法 -->
-        <view class="section">
-          <view class="section-subtitle">二、服用膏方，记住这几招"锦囊妙计"</view>
-
-          <view class="ol">
-            <view class="li"><text class="b">1. 最佳时节：</text>冬季主"封藏"，此时调补吸收更佳。</view>
-            <view class="li"><text class="b">2. 服用方法：</text>早晚各一次，每次10-15克，温水冲服。</view>
-            <view class="li"><text class="b">3. 注意事项：</text>感冒发烧、拉肚子时暂停；忌茶水牛奶送服。</view>
-          </view>
-        </view>
-
-
-        <!-- 三、活动信息 -->
-        <view class="section">
-          <view class="section-subtitle">三、想了解膏方？这场活动别错过！</view>
-
-          <view class="p">
-            11月7日 "五脏同调滋元气 · 膏方养正润安康" 主题膏方活动亮点抢先看：
-          </view>
-
-          <view class="ul">
-            <view class="li">• 专家义诊：现场辨证，定制专属养生方案。</view>
-            <view class="li">• 免费体验：艾灸/推拿/拔罐/穴位贴敷。</view>
-            <view class="li">• 特色福利：试喝代茶饮、文创区、抽奖活动。</view>
-          </view>
-
-          <view class="p">
-            <text class="b">活动时间：</text>11月7日 9:00-11:00
-            <br />
-            <text class="b">活动地点：</text>主院区门诊1号楼1楼大厅、门诊2号楼1楼大厅
-          </view>
-        </view>
-
-        <view class="p center bold">快约上家人朋友，一起来赴这场健康之约吧！</view>
-      </view>
-  
-      <!-- 悬浮客服按钮 -->
-      <view class="customer-service-btn" @click="handleCustomerService">
-        <text class="icon">💬</text>
-        <text class="text">客服</text>
-      </view>
-  
     </view>
-  </template>
+  
+    <!-- 商品详情富文本内容 -->
+    <view
+      v-if="product.intro"
+      class="content"
+    >
+      <rich-text
+        :nodes="formatRichText(product.intro)"
+        class="rich-text-content"
+      />
+    </view>
+
+    <!-- 默认宣传文案（当没有富文本内容时显示） -->
+    <view
+      v-else
+      class="content"
+    >
+      <view class="section">
+        <view class="section-title">
+          冬季养生 · 辽派膏滋怎么吃才对？
+        </view>
+        <view class="p">
+          天气一冷，"冬季养生"就成了大家嘴边的热门话题。
+          而"膏方"更是凭借其温和滋补的特性，频频出现在养生清单里。
+        </view>
+        <view class="p">
+          但不少粉丝总问：膏方是不是贴的膏药？
+          ——非也！此"膏"非彼"膏"。
+        </view>
+        <view class="p">
+          辽派膏滋，根据您的体质定制的"一人一方"内服调补佳品，
+          是辽宁人自己的冬季养生好选择。
+        </view>
+      </view>
+
+
+      <!-- 一、辽派膏滋介绍 -->
+      <view class="section">
+        <view class="section-subtitle">
+          一、辽派膏滋，为您"量身定制"的冬季补剂
+        </view>
+
+        <view class="p">
+          辽派膏滋从选材到制作，都透着"精细"二字，完全根据个人体质"量体裁衣"：
+        </view>
+
+        <view class="ul">
+          <view class="li">
+            • 选料严：只选用道地药材，保证品质。
+          </view>
+          <view class="li">
+            • 工艺精：传统慢火熬制，多道工序浓缩精华。
+          </view>
+          <view class="li">
+            • 优势多：吸收好、药效温和、便携易坚持。
+          </view>
+        </view>
+      </view>
+
+
+      <!-- 二、服用方法 -->
+      <view class="section">
+        <view class="section-subtitle">
+          二、服用膏方，记住这几招"锦囊妙计"
+        </view>
+
+        <view class="ol">
+          <view class="li">
+            <text class="b">
+              1. 最佳时节：
+            </text>冬季主"封藏"，此时调补吸收更佳。
+          </view>
+          <view class="li">
+            <text class="b">
+              2. 服用方法：
+            </text>早晚各一次，每次10-15克，温水冲服。
+          </view>
+          <view class="li">
+            <text class="b">
+              3. 注意事项：
+            </text>感冒发烧、拉肚子时暂停；忌茶水牛奶送服。
+          </view>
+        </view>
+      </view>
+
+
+      <!-- 三、活动信息 -->
+      <view class="section">
+        <view class="section-subtitle">
+          三、想了解膏方？这场活动别错过！
+        </view>
+
+        <view class="p">
+          11月7日 "五脏同调滋元气 · 膏方养正润安康" 主题膏方活动亮点抢先看：
+        </view>
+
+        <view class="ul">
+          <view class="li">
+            • 专家义诊：现场辨证，定制专属养生方案。
+          </view>
+          <view class="li">
+            • 免费体验：艾灸/推拿/拔罐/穴位贴敷。
+          </view>
+          <view class="li">
+            • 特色福利：试喝代茶饮、文创区、抽奖活动。
+          </view>
+        </view>
+
+        <view class="p">
+          <text class="b">
+            活动时间：
+          </text>11月7日 9:00-11:00
+          <br>
+          <text class="b">
+            活动地点：
+          </text>主院区门诊1号楼1楼大厅、门诊2号楼1楼大厅
+        </view>
+      </view>
+
+      <view class="p center bold">
+        快约上家人朋友，一起来赴这场健康之约吧！
+      </view>
+    </view>
+  
+    <!-- 悬浮客服按钮 -->
+    <view
+      class="customer-service-btn"
+      @click="handleCustomerService"
+    >
+      <text class="icon">
+        💬
+      </text>
+      <text class="text">
+        客服
+      </text>
+    </view>
+  </view>
+</template>
   
 <script setup>
 import { ref, computed, watch } from 'vue'

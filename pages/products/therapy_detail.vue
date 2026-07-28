@@ -32,7 +32,7 @@
       <view class="price-main">
         <view class="price-left">
           <view class="price-tag">
-            商品价格
+            传统疗法价格
           </view>
           <view class="price-info">
             <text class="price-unit">
@@ -163,6 +163,7 @@
       class="policy-row"
       @click="showPolicyDrawer"
     >
+      <image class="policy-icon" src="https://smf.lntcm.com/static/shop/axg_1.svg" mode="aspectFit" />
       <text class="policy-text">
         支持七天无理由退换 · 售后服务
       </text>
@@ -171,6 +172,7 @@
       </text>
     </view>
     <view class="delivery-row">
+      <image class="delivery-icon" src="https://smf.lntcm.com/static/shop/spps.svg" mode="aspectFit" />
       <text class="delivery-label">
         配送
       </text>
@@ -1419,7 +1421,7 @@ onShow(() => {
   display: flex;
   align-items: center;
   background: #fff;
-  padding: 16rpx 30rpx;
+  padding: 0rpx 30rpx;
 }
 
 .policy-row .policy-text {
@@ -1429,6 +1431,12 @@ onShow(() => {
 .policy-text {
   font-size: 24rpx;
   color: #666;
+}
+
+.policy-icon {
+  width: 75rpx;
+  height: 75rpx;
+  margin-right: 8rpx;
 }
 
 .policy-overlay,
@@ -1533,7 +1541,7 @@ onShow(() => {
 
 .select-section {
   background: #fff;
-  padding: 20rpx 30rpx;
+  padding: 20rpx 30rpx 0 30rpx;
   display: flex;
   align-items: center;
 }
@@ -1595,6 +1603,12 @@ onShow(() => {
   font-size: 26rpx;
   color: #222;
   margin-right: 16rpx;
+}
+
+.delivery-icon {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 8rpx;
 }
 
 .delivery-text {
