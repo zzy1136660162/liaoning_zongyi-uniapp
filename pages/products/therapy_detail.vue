@@ -28,7 +28,6 @@
         {{ currentIndex }}/{{ productImages.length }}
       </view>
     </view>
-    <view class="split-line" />
     <view class="price-box">
       <view class="price-main">
         <view class="price-left">
@@ -1233,21 +1232,15 @@ onShow(() => {
 
 .price-box {
   margin-bottom: 18rpx;
-  background:
-    repeating-linear-gradient(
-      45deg,
-      transparent,
-      transparent 10rpx,
-      rgba(255, 255, 255, 0.03) 10rpx,
-      rgba(255, 255, 255, 0.03) 20rpx
-    ),
-    linear-gradient(90deg, #f05a5a, #ff6b6b);
+  background-image: url('https://smf.lntcm.com/static/shop/green.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   padding: 20rpx 30rpx 16rpx;
   display: flex;
   flex-direction: column;
   width: 100%;
   box-sizing: border-box;
-  border-radius: 36rpx 36rpx 0 0;
 }
 
 .price-main {

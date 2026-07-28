@@ -1438,15 +1438,10 @@ onShow(() => {
 
 .price-box {
   margin-bottom: 18rpx;
-  background:
-    repeating-linear-gradient(
-      45deg,
-      transparent,
-      transparent 10rpx,
-      rgba(255, 255, 255, 0.03) 10rpx,
-      rgba(255, 255, 255, 0.03) 20rpx
-    ),
-    linear-gradient(90deg, #f05a5a, #ff6b6b);
+  background-image: url('https://smf.lntcm.com/static/shop/vph_1.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   padding: 20rpx 30rpx 16rpx;
   display: flex;
   flex-direction: column;
