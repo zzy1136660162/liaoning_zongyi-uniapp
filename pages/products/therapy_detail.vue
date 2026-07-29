@@ -177,7 +177,7 @@
         配送
       </text>
       <text class="delivery-text">
-        医院自提
+        {{ deliverySummary }}
       </text>
     </view>
 

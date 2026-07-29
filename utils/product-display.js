@@ -13,7 +13,7 @@ export const getColdShippingLabel = (type) => {
 export const getDeliverySummary = (type) => {
   const value = Number(type)
   if (value === COLD_SHIPPING_SELF_PICKUP) {
-    return '到店自提，请按预约时间到院体验'
+    return '到院自提，请按预约时间到院体验'
   }
   if (value === COLD_SHIPPING_COLD_CHAIN) {
     return '精温专递配送，时效以实际收货地址为准'

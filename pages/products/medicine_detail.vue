@@ -28,7 +28,7 @@
         {{ currentIndex }}/{{ productImages.length }}
       </view>
     </view>
-    <view class="price-box">
+    <view class="price-box" :style="{ backgroundImage: product.categoryId === 35 ? 'url(https://smf.lntcm.com/static/shop/vph_2.jpg)' : 'url(https://smf.lntcm.com/static/shop/vph_1.png)' }">
       <view class="price-main">
         <view class="price-left">
           <view class="price-tag">
@@ -253,6 +253,7 @@
       </text>
     </view>
     <view class="delivery-row">
+      <image class="delivery-icon" src="https://smf.lntcm.com/static/shop/spps.svg" mode="aspectFit" />
       <text class="delivery-label">
         配送
       </text>
@@ -1620,7 +1621,7 @@ onShow(() => {
 
 .drug-reminder {
   font-size: 24rpx;
-  color: #999;
+  color: #666;
   margin-top: 8rpx;
 }
 
@@ -1639,6 +1640,7 @@ onShow(() => {
 
 .policy-row .policy-text {
   flex: 1;
+  color: #d40c0c;
 }
 
 .policy-text {
@@ -1873,6 +1875,12 @@ onShow(() => {
   font-size: 26rpx;
   color: #222;
   margin-right: 16rpx;
+}
+
+.delivery-icon {
+  width: 26rpx;
+  height: 26rpx;
+  margin-right: 8rpx;
 }
 
 .delivery-text {
