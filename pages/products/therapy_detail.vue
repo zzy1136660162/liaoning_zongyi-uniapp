@@ -1238,7 +1238,7 @@ onShow(() => {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  padding: 20rpx 30rpx 16rpx;
+  padding: 20rpx 30rpx 50rpx;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -1342,8 +1342,10 @@ onShow(() => {
 }
 
 .goods-info {
+  margin-top: -50rpx;
   background: #fff;
-  padding: 0 30rpx 2rpx;
+  padding: 30rpx 30rpx 2rpx;
+  border-radius: 32rpx;
 }
 
 .goods-name-row {
