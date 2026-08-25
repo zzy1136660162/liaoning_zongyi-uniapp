@@ -11,6 +11,10 @@
       </view>
       <text class="tab-text">购物车</text>
     </view>
+    <view class="tab-item" :class="{ active: currentTab === 'order' }" @click="switchTab('order')">
+      <uni-icons type="list" :size="26" :color="currentTab === 'order' ? '#1890ff' : '#8c8c8c'"></uni-icons>
+      <text class="tab-text">订单</text>
+    </view>
     <view class="tab-item" :class="{ active: currentTab === 'mine' }" @click="switchTab('mine')">
       <uni-icons type="person" :size="26" :color="currentTab === 'mine' ? '#1890ff' : '#8c8c8c'"></uni-icons>
       <text class="tab-text">我的</text>
@@ -54,6 +58,8 @@ export default {
         redirectToWithFallback('/pages/products/medicine_list')
       } else if (tab === 'cart') {
         redirectToWithFallback('/pages/cart/cart')
+      } else if (tab === 'order') {
+        redirectToWithFallback('/pages/order/order_list')
       } else if (tab === 'mine') {
         redirectToWithFallback('/pages/user/profile')
       }

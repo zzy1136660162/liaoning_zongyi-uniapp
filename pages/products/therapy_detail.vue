@@ -91,7 +91,21 @@
         v-if="product.limitInfo && product.limitInfo.enabled"
         class="limit-reminder"
       >
-        {{ product.limitInfo.text }}<text v-if="product.limitInfo.remainingQuantity != null">，还可购买{{ product.limitInfo.remainingQuantity }}件</text>
+        <view v-if="product.limitInfo.text">
+          {{ product.limitInfo.text }}
+        </view>
+        <view v-if="product.limitInfo.periodLabel != null">
+          限购周期：{{ product.limitInfo.periodLabel }}
+        </view>
+        <view v-if="product.limitInfo.limitQuantity != null">
+          限购上限：{{ product.limitInfo.limitQuantity }}件
+        </view>
+        <view v-if="product.limitInfo.purchasedQuantity != null">
+          已购数量：{{ product.limitInfo.purchasedQuantity }}件
+        </view>
+        <view v-if="product.limitInfo.remainingQuantity != null">
+          剩余可购：{{ product.limitInfo.remainingQuantity }}件
+        </view>
       </view>
     </view>
 
@@ -153,9 +167,29 @@
       </view>
       <view class="select-value">
         <text>{{ selectedSpec }}</text>
-        <text class="select-num">
-          ×{{ quantity }}
+      </view>
+      <view class="quantity-stepper">
+        <button
+          class="quantity-button"
+          :class="{ disabled: !canDecreaseQuantity }"
+          :disabled="!canDecreaseQuantity"
+          aria-label="减少数量"
+          @click="decreaseQuantity"
+        >
+          −
+        </button>
+        <text class="quantity-value">
+          {{ quantity }}
         </text>
+        <button
+          class="quantity-button"
+          :class="{ disabled: !canIncreaseQuantity }"
+          :disabled="!canIncreaseQuantity"
+          aria-label="增加数量"
+          @click="increaseQuantity"
+        >
+          +
+        </button>
       </view>
     </view>
 
@@ -586,6 +620,20 @@
           使用说明
         </view>
         <view class="usage-list">
+          <view
+            v-for="item in usageItems"
+            :key="item.label"
+            class="usage-item"
+          >
+            <text class="usage-label">
+              {{ item.label }}
+            </text>
+            <text class="usage-text">
+              {{ item.value }}
+            </text>
+          </view>
+        </view>
+        <view class="usage-tip">
           <text class="usage-text">
             凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
           </text>
@@ -654,15 +702,15 @@
       <view class="bottom-right">
         <view
           class="btn-add-cart"
-          :class="{ disabled: product.stock === 0 }"
-          @click="product.stock !== 0 && addCart()"
+          :class="{ disabled: !canPurchase }"
+          @click="addCart"
         >
           加入购物车
         </view>
         <view
           class="btn-buy"
-          :class="{ disabled: product.stock === 0 }"
-          @click="product.stock !== 0 && buyNow()"
+          :class="{ disabled: !canPurchase }"
+          @click="buyNow"
         >
           立即购买
         </view>
@@ -689,6 +737,11 @@ import {
 import { logPageView } from '@/api/access-log.js'
 import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
+import {
+  isPurchaseAvailable,
+  normalizePurchaseQuantity,
+  resolvePurchaseQuantityLimit
+} from '@/utils/purchase-quantity.js'
 import { getToken } from '@/utils/request.js'
 import {
   getDeliverySummary,
@@ -769,6 +822,15 @@ const showDetailImages = computed(() => !product.value.intro && productImages.va
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
 const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
 const selectedSpec = computed(() => product.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
+const maxPurchaseQuantity = computed(() => resolvePurchaseQuantityLimit(product.value))
+const canPurchase = computed(() => isPurchaseAvailable(product.value))
+const canDecreaseQuantity = computed(() => canPurchase.value && quantity.value > 1)
+const canIncreaseQuantity = computed(() => {
+  if (!canPurchase.value) {
+    return false
+  }
+  return maxPurchaseQuantity.value === null || quantity.value < maxPurchaseQuantity.value
+})
 const priceInteger = computed(() => {
   const [integer = '0'] = Number(product.value.price || 0).toFixed(2).split('.')
   return integer
@@ -810,10 +872,12 @@ const usageItems = computed(() => {
   return [
     { label: '制剂组成', value: product.value.ingredients },
     { label: '功能主治', value: product.value.indications },
+    { label: '适用人群', value: product.value.suitableCrowd },
     { label: '用法用量', value: usageText.value },
     { label: '不良反应', value: product.value.adverseReactions },
     { label: '禁忌', value: product.value.contraindication },
     { label: '注意事项', value: product.value.precautions },
+    { label: '药物相互作用', value: product.value.drugInteractions },
     { label: '贮藏', value: product.value.storageCondition }
   ].filter(item => item.value)
 })
@@ -837,7 +901,51 @@ const loadQuantityFromStorage = () => {
     quantity.value = 1
     return
   }
-  quantity.value = getCartProductQuantity(product.value.id, 1)
+  quantity.value = normalizePurchaseQuantity(
+    product.value,
+    getCartProductQuantity(product.value.id, 1)
+  )
+}
+
+const getQuantityLimitMessage = (targetProduct = product.value) => {
+  const maxQuantity = resolvePurchaseQuantityLimit(targetProduct)
+  const limitInfo = targetProduct?.limitInfo || targetProduct?.limit_info || {}
+  const limitEnabled = limitInfo.enabled === true || limitInfo.enabled === 1 || limitInfo.enabled === '1'
+  const remainingQuantity = Number(limitInfo.remainingQuantity ?? limitInfo.remaining_quantity)
+  const stock = Number(targetProduct?.stock)
+
+  if (limitEnabled && Number.isFinite(remainingQuantity) && remainingQuantity <= 0) {
+    return '已达到该项目限购数量'
+  }
+  if (Number.isFinite(stock) && stock <= 0) {
+    return '该项目已售罄'
+  }
+  if (limitEnabled && Number.isFinite(remainingQuantity) && maxQuantity === Math.floor(remainingQuantity)) {
+    return `本周期最多还可购买${maxQuantity}件`
+  }
+  return maxQuantity === null ? '当前数量不可购买' : `库存最多可购买${maxQuantity}件`
+}
+
+const showQuantityLimit = (targetProduct = product.value) => {
+  uni.showToast({
+    title: getQuantityLimitMessage(targetProduct),
+    icon: 'none'
+  })
+}
+
+const decreaseQuantity = () => {
+  if (!canDecreaseQuantity.value) {
+    return
+  }
+  quantity.value = normalizePurchaseQuantity(product.value, quantity.value - 1)
+}
+
+const increaseQuantity = () => {
+  if (!canIncreaseQuantity.value) {
+    showQuantityLimit(product.value)
+    return
+  }
+  quantity.value = normalizePurchaseQuantity(product.value, quantity.value + 1)
 }
 
 const loadRecommendCartQuantities = () => {
@@ -982,13 +1090,27 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
     return false
   }
 
-  const nextQuantity = Math.max(1, Number(selectedQuantity) || 1)
-  const alreadyPassed = hasQuestionnairePassed(targetProduct.id)
-  if (Number(targetProduct.needQuestionnaire) === 1 && !alreadyPassed) {
-    return navigateToNotice(targetProduct, nextQuantity, mode)
+  if (!isPurchaseAvailable(targetProduct)) {
+    showQuantityLimit(targetProduct)
+    return false
   }
 
-  const saved = addCartItem(targetProduct, nextQuantity, {
+  const rawQuantity = Number(selectedQuantity)
+  const normalizedRawQuantity = Number.isFinite(rawQuantity)
+    ? Math.max(1, Math.floor(rawQuantity))
+    : 1
+  const requestedQuantity = normalizePurchaseQuantity(targetProduct, normalizedRawQuantity)
+  if (requestedQuantity !== normalizedRawQuantity) {
+    showQuantityLimit(targetProduct)
+    return false
+  }
+
+  const alreadyPassed = hasQuestionnairePassed(targetProduct.id)
+  if (Number(targetProduct.needQuestionnaire) === 1 && !alreadyPassed) {
+    return navigateToNotice(targetProduct, requestedQuantity, mode)
+  }
+
+  const saved = addCartItem(targetProduct, requestedQuantity, {
     questionnairePassed: Number(targetProduct.needQuestionnaire) !== 1 || alreadyPassed
   })
   if (!saved) {
@@ -1541,9 +1663,10 @@ onShow(() => {
 
 .select-section {
   background: #fff;
-  padding: 20rpx 30rpx 0 30rpx;
+  padding: 20rpx 30rpx;
   display: flex;
   align-items: center;
+  min-height: 64rpx;
 }
 
 .select-label {
@@ -1556,10 +1679,50 @@ onShow(() => {
   flex: 1;
   font-size: 28rpx;
   color: #222;
+  min-width: 0;
+  padding-right: 20rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.select-num {
-  color: #ff4b4b;
+.quantity-stepper {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 16rpx;
+}
+
+.quantity-button {
+  width: 52rpx;
+  height: 52rpx;
+  margin: 0;
+  padding: 0;
+  border: 1rpx solid #d9d9d9;
+  border-radius: 50%;
+  background: #fff;
+  color: #222;
+  font-size: 32rpx;
+  line-height: 48rpx;
+  text-align: center;
+}
+
+.quantity-button::after {
+  border: none;
+}
+
+.quantity-button.disabled {
+  border-color: #eee;
+  background: #f7f7f7;
+  color: #bbb;
+}
+
+.quantity-value {
+  min-width: 48rpx;
+  color: #222;
+  font-size: 28rpx;
+  font-weight: 600;
+  text-align: center;
 }
 
 .select-arrow {
@@ -2016,6 +2179,10 @@ onShow(() => {
   font-size: 26rpx;
   color: #333;
   line-height: 1.6;
+}
+
+.usage-tip {
+  margin-top: 20rpx;
 }
 
 .empty-block {

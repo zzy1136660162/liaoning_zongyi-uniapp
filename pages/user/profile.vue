@@ -371,7 +371,7 @@ const goToAddressList = () => {
 const goToPatientList = () => {
   logButtonClick('就诊人管理', 'USER_PROFILE')
   uni.navigateTo({
-    url: '/pages/dispense/apply'
+    url: '/pages/user/patient_list'
   })
 }
 

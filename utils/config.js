@@ -103,6 +103,7 @@ export const API_PATHS = {
     // 就诊人模块
     PATIENT: {
         LIST: '/api/patients',                    // 获取就诊人列表
+        DETAIL: (id) => `/api/patients/${id}`,   // 获取就诊人详情
         ADD: '/api/patients',                     // 新增就诊人
         UPDATE: (id) => `/api/patients/${id}`,   // 编辑就诊人
         DELETE: (id) => `/api/patients/${id}`,   // 删除就诊人

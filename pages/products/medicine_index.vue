@@ -62,7 +62,13 @@
         <view class="section-title">推荐商品</view>
         <text class="section-link" @click="goMedicineList">查看全部</text>
       </view>
-      <view class="product-grid">
+      <view v-if="loading" class="status-state">推荐商品加载中...</view>
+      <view v-else-if="loadError" class="status-state error-state">
+        <text>推荐商品加载失败，请稍后重试</text>
+        <button class="retry-button" @click="loadFeaturedProducts">重新加载</button>
+      </view>
+      <view v-else-if="featuredProducts.length === 0" class="status-state">暂无推荐商品</view>
+      <view v-else class="product-grid">
         <view
           v-for="item in featuredProducts"
           :key="item.id"
@@ -85,7 +91,6 @@
           </view>
         </view>
       </view>
-      <view class="empty-state" v-if="!loading && featuredProducts.length === 0">暂无推荐商品</view>
     </view>
 
     <view class="bottom-space"></view>
@@ -107,14 +112,21 @@ const HOSPITAL_BIZ_TYPE = 1
 const featuredProducts = ref([])
 const cartCount = ref(0)
 const loading = ref(false)
+const loadError = ref(false)
 
 const loadFeaturedProducts = async () => {
+  if (loading.value) {
+    return
+  }
+
+  loadError.value = false
   loading.value = true
   try {
     const productPage = await getCategoryProducts(null, 1, 8, HOSPITAL_BIZ_TYPE)
     const productList = productPage.records || productPage.list || []
     featuredProducts.value = productList.map(item => mapProductListItem(item))
   } catch (error) {
+    loadError.value = true
     console.error('loadFeaturedProducts failed:', error)
     uni.showToast({
       title: '加载推荐商品失败',
@@ -475,11 +487,36 @@ onShow(() => {
   color: #94a3b8;
 }
 
-.empty-state {
+.status-state {
   padding: 40rpx 0;
   text-align: center;
   font-size: 24rpx;
   color: #94a3b8;
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20rpx;
+  color: #64748b;
+}
+
+.retry-button {
+  min-width: 176rpx;
+  height: 64rpx;
+  margin: 0;
+  padding: 0 28rpx;
+  border: none;
+  border-radius: 32rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 24rpx;
+  line-height: 64rpx;
+}
+
+.retry-button::after {
+  border: none;
 }
 
 .bottom-space {

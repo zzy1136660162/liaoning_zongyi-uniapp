@@ -125,6 +125,25 @@
           </view>
         </view>
 
+        <!-- 订单备注 -->
+        <view class="section">
+          <view class="section-title">
+            订单备注
+          </view>
+          <view class="remark-field">
+            <textarea
+              v-model="orderRemark"
+              class="remark-input"
+              maxlength="255"
+              placeholder="选填，请填写订单备注"
+              placeholder-class="remark-placeholder"
+            />
+            <text class="remark-count">
+              {{ orderRemark.length }}/255
+            </text>
+          </view>
+        </view>
+
         <!-- 费用明细 -->
         <view class="section">
           <view class="section-title">
@@ -244,6 +263,7 @@ const calculatingFreight = ref(false)
 const selectedProductIds = ref([])
 const selectedBizType = ref(1)
 const selectedRequiresConsultation = ref(true)
+const orderRemark = ref('')
 
 const requiresShipping = computed(() => !isTherapyOrder.value)
 
@@ -734,7 +754,7 @@ const submitOrder = async () => {
         quantity: item.quantity || 1,
         price: item.price
       })),
-      remark: '',
+      remark: orderRemark.value.trim(),
       totalAmount: orderInfo.value.total
     }
     if (isTherapyOrder.value) {
@@ -902,6 +922,35 @@ const submitOrder = async () => {
   font-weight: 600;
   color: #333;
   margin-bottom: 20rpx;
+}
+
+.remark-field {
+  position: relative;
+}
+
+.remark-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 160rpx;
+  padding: 20rpx 20rpx 52rpx;
+  border: 1rpx solid #e5e5e5;
+  border-radius: 8rpx;
+  background: #fafafa;
+  color: #333;
+  font-size: 28rpx;
+  line-height: 1.5;
+}
+
+.remark-placeholder {
+  color: #aaa;
+}
+
+.remark-count {
+  position: absolute;
+  right: 16rpx;
+  bottom: 14rpx;
+  color: #999;
+  font-size: 22rpx;
 }
 
 .address-section {

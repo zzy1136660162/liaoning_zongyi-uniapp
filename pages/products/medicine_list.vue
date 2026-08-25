@@ -313,7 +313,15 @@
                   </text>
                 </view> -->
                 <view class="product-footer">
-                  <!-- <text class="product-unit">{{ product.specText || product.unit || '' }}</text> -->
+                  <view class="product-summary">
+                    <text
+                      v-if="product.specText || product.unit"
+                      class="product-unit"
+                    >
+                      {{ product.specText || product.unit }}
+                    </text>
+                    <text class="product-sales">已售 {{ product.salesVolume ?? 0 }}</text>
+                  </view>
                   <view class="product-price-row">
                     <!-- 售罄状态 -->
                     <view
@@ -1522,6 +1530,7 @@ scroll-view ::-webkit-scrollbar {
 
 .product-info {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1529,6 +1538,7 @@ scroll-view ::-webkit-scrollbar {
 }
 
 .product-name {
+  display: -webkit-box;
   font-size: 28rpx;
   font-weight: 500;
   color: #333333;
@@ -1536,6 +1546,10 @@ scroll-view ::-webkit-scrollbar {
   line-height: 1.4;
   word-wrap: break-word;
   word-break: break-all;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .self-tag,
@@ -1609,9 +1623,29 @@ scroll-view ::-webkit-scrollbar {
   margin-top: auto;
 }
 
+.product-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  min-width: 0;
+}
+
 .product-unit {
+  min-width: 0;
   font-size: 22rpx;
   color: #999999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-sales {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 22rpx;
+  color: #999999;
+  white-space: nowrap;
 }
 
 .product-price-row {

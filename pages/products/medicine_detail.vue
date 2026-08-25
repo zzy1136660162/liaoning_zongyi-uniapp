@@ -115,7 +115,21 @@
         v-if="product.limitInfo && product.limitInfo.enabled"
         class="limit-reminder"
       >
-        {{ product.limitInfo.text }}<text v-if="product.limitInfo.remainingQuantity != null">，还可购买{{ product.limitInfo.remainingQuantity }}件</text>
+        <view v-if="product.limitInfo.text">
+          {{ product.limitInfo.text }}
+        </view>
+        <view v-if="product.limitInfo.periodLabel != null">
+          限购周期：{{ product.limitInfo.periodLabel }}
+        </view>
+        <view v-if="product.limitInfo.limitQuantity != null">
+          限购上限：{{ product.limitInfo.limitQuantity }}件
+        </view>
+        <view v-if="product.limitInfo.purchasedQuantity != null">
+          已购数量：{{ product.limitInfo.purchasedQuantity }}件
+        </view>
+        <view v-if="product.limitInfo.remainingQuantity != null">
+          剩余可购：{{ product.limitInfo.remainingQuantity }}件
+        </view>
       </view>
     </view>
 
@@ -928,10 +942,12 @@ const usageItems = computed(() => {
   return [
     { label: '制剂组成', value: product.value.ingredients },
     { label: '功能主治', value: product.value.indications },
+    { label: '适用人群', value: product.value.suitableCrowd },
     { label: '用法用量', value: usageText.value },
     { label: '不良反应', value: product.value.adverseReactions },
     { label: '禁忌', value: product.value.contraindication },
     { label: '注意事项', value: product.value.precautions },
+    { label: '药物相互作用', value: product.value.drugInteractions },
     { label: '贮藏', value: product.value.storageCondition }
   ].filter(item => item.value)
 })

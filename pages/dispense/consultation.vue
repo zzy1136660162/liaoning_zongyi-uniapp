@@ -62,6 +62,8 @@ const consultationMode = ref(CONSULTATION_MODE_AI)
 const doctorName = ref(AI_DOCTOR.name)
 const doctorAvatar = ref(AI_DOCTOR.avatar)
 const doctorId = ref(null)
+const patientId = ref(null)
+const isSubmitting = ref(false)
 
 const messages = ref([
   {
@@ -188,6 +190,10 @@ const loadProductsForConsultation = async () => {
 
 // ✅ 创建咨询
 const createConsultationRecord = async () => {
+  if (!patientId.value || isSubmitting.value) {
+    return null
+  }
+  isSubmitting.value = true
   try {
     const products = await loadProductsForConsultation()
     const flow = resolveProductFlow(products)
@@ -223,6 +229,7 @@ const createConsultationRecord = async () => {
     }))
     
     const consultationData = {
+      patientId: patientId.value,
       consultType: 1, // 在线咨询
       symptomDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? '人工接诊复诊开药' : '实时接诊复诊开药',
       historyDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? `人工接诊医生：${doctorName.value}` : '实时医生接诊',
@@ -243,7 +250,10 @@ const createConsultationRecord = async () => {
     return result
   } catch (error) {
     console.error('创建咨询失败:', error)
+    uni.showToast({ title: error?.message || '问诊创建失败，请重新选择就诊人', icon: 'none' })
     return null
+  } finally {
+    isSubmitting.value = false
   }
 }
 
@@ -262,6 +272,9 @@ const redirectHealthGoodsToConfirm = async () => {
 }
 
 onMounted(async () => {
+  if (!patientId.value) {
+    return
+  }
   if (await redirectHealthGoodsToConfirm()) {
     return
   }
@@ -279,6 +292,13 @@ onMounted(async () => {
 })
 
 onLoad((options) => {
+  const parsedPatientId = Number(options?.patientId)
+  if (!Number.isInteger(parsedPatientId) || parsedPatientId <= 0) {
+    uni.showToast({ title: '请选择有效就诊人', icon: 'none' })
+    setTimeout(() => uni.navigateBack(), 1200)
+    return
+  }
+  patientId.value = parsedPatientId
   if (options?.selectedItems) {
     selectedProductIds.value = options.selectedItems.split(',').filter(id => id.trim())
     setCheckoutProductIds(selectedProductIds.value)

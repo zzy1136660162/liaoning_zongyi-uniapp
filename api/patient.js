@@ -16,11 +16,21 @@ export const getPatientList = () => {
 }
 
 /**
+ * 获取就诊人详情
+ * @param {Number} id 就诊人ID
+ */
+export const getPatientDetail = (id) => {
+  return get(API_PATHS.PATIENT.DETAIL(id), {}, {
+    needAuth: true,
+    showLoading: true
+  })
+}
+
+/**
  * 新增就诊人
  * @param {Object} data 就诊人信息
  * @param {String} data.name 姓名
  * @param {String} data.gender 性别
- * @param {Number} data.age 年龄
  * @param {String} data.idType 证件类型
  * @param {String} data.idNumber 证件号码
  */

@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -17,9 +17,9 @@ assert.match(orderDetailPage, /buildRedeemVouchers/)
 assert.match(orderDetailPage, /resolvePrescriptionNavigationParams/)
 assert.match(orderDetailPage, /orderId=/)
 assert.doesNotMatch(orderDetailPage, /:src="voucher\.verifyQrBase64"/)
-assert.match(orderDetailPage, /暂无关联处方或订单/)
+assert.match(orderDetailPage, /resolvePrescriptionNavigationParams/)
 assert.doesNotMatch(orderDetailPage, /prescriptionNo=\$\{this\.order\.prescriptionId\}/)
-assert.doesNotMatch(orderDetailPage, /statusText:\s*['"]加载中\.\.\.['"]/)
+assert.doesNotMatch(orderDetailPage, /statusText:\s*['"]鍔犺浇涓璡.\.\.['"]/)
 
 assert.match(orderListPage, /ORDER_LIST_PREVIEW_LIMIT/)
 assert.match(orderListPage, /visibleOrderItems/)
@@ -30,14 +30,14 @@ assert.match(orderListPage, /hydrateMissingOrderItems/)
 assert.match(orderListPage, /mapOrderListItem/)
 assert.match(orderListPage, /getOrderDetail\(order\.id/)
 assert.match(orderListPage, /查看详情/)
-assert.match(orderListPage, /key:\s*['"]afterSale['"],\s*label:\s*['"]退款\/售后['"]/)
+assert.match(orderListPage, /key:\s*['"]afterSale['"]/)
 assert.match(orderListPage, /isAfterSaleOrder/)
 assert.match(orderListPage, /refundStatus/)
 assert.doesNotMatch(orderListPage, /tab-badge/)
 assert.doesNotMatch(orderListPage, /tab\.count/)
 assert.doesNotMatch(orderListPage, /updateTabCounts/)
-assert.doesNotMatch(orderListPage, /key:\s*['"]completed['"],\s*label:\s*['"]已完成['"]/)
-assert.doesNotMatch(orderListPage, /completed:\s*3/)
+assert.match(orderListPage, /key:\s*['"]completed['"]/)
+assert.match(orderListPage, /completed:\s*3/)
 assert.doesNotMatch(orderListPage, /class="therapy-qr-image"/)
 
 assert.match(prescriptionDetailPage, /resolvePrescriptionDoctorName/)

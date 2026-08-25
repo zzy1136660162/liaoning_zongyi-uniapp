@@ -42,6 +42,22 @@
         />
       </view>
 
+      <view class="form-item gender-item">
+        <view class="label"><text class="required">*</text> 性别</view>
+        <view class="gender-options">
+          <view class="gender-tag" :class="{ checked: formData.gender === '男' }" @click="formData.gender = '男'">男</view>
+          <view class="gender-tag" :class="{ checked: formData.gender === '女' }" @click="formData.gender = '女'">女</view>
+        </view>
+      </view>
+
+      <view class="form-item picker-item">
+        <view class="label"><text class="required">*</text> 出生日期</view>
+        <picker mode="date" :value="formData.birthDate" :end="today" @change="onBirthDateChange">
+          <view class="picker-value">{{ formData.birthDate || '必填，请选择' }}</view>
+        </picker>
+        <text class="arrow">›</text>
+      </view>
+
       <view class="form-item">
         <view class="label"><text class="required">*</text> 手机号码</view>
         <input
@@ -54,7 +70,7 @@
       </view>
 
       <view class="form-item picker-item">
-        <view class="label"><text class="required">*</text> 家庭地址</view>
+        <view class="label">家庭地址</view>
         <picker
           mode="multiSelector"
           :range="multiRange"
@@ -126,14 +142,14 @@
 
       <view class="form-item picker-item">
         <view class="label"><text class="required">*</text> 出生日期</view>
-        <picker mode="date" :value="formData.birthDate" @change="onBirthDateChange">
+        <picker mode="date" :value="formData.birthDate" :end="today" @change="onBirthDateChange">
           <view class="picker-value">{{ formData.birthDate || '必填，请选择' }}</view>
         </picker>
         <text class="arrow">›</text>
       </view>
 
       <view class="form-item picker-item">
-        <view class="label"><text class="required">*</text> 家庭地址</view>
+        <view class="label">家庭地址</view>
         <picker
           mode="multiSelector"
           :range="multiRange"
@@ -212,13 +228,17 @@
 <script setup>
 import { reactive, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { addPatient } from '@/api/patient.js'
+import { addPatient, getPatientDetail, updatePatient } from '@/api/patient.js'
 import { STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
 import { deriveGenderFromId, deriveAgeFromId } from '@/utils/patient.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
 
 const idTypeOptions = ['身份证', '护照', '港澳通行证', '台胞证']
+const patientId = ref(null)
+const saving = ref(false)
+const now = new Date()
+const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
 const extractBirthFromId = (idNumber = '') => {
   if (!/^\d{17}[\dXx]$/.test(idNumber)) return ''
@@ -344,9 +364,15 @@ const resetForm = () => {
   setDefaultRegion()
 }
 
-onLoad(async () => {
+onLoad(async (options = {}) => {
   await initRegionData()
   resetForm()
+  const id = Number(options.id)
+  if (Number.isInteger(id) && id > 0) {
+    patientId.value = id
+    uni.setNavigationBarTitle({ title: '编辑就诊人' })
+    await loadPatient(id)
+  }
 })
 
 const switchPatientType = (type) => {
@@ -451,6 +477,74 @@ const onMultiChange = (event) => {
 
 const onBirthDateChange = (event) => {
   formData.birthDate = event.detail?.value || ''
+  formData.age = calculateAgeFromBirthDate(formData.birthDate)
+}
+
+const calculateAgeFromBirthDate = (birthDate) => {
+  if (!birthDate) return 0
+  const birth = new Date(`${birthDate}T00:00:00`)
+  if (Number.isNaN(birth.getTime())) return 0
+  const current = new Date()
+  let age = current.getFullYear() - birth.getFullYear()
+  const beforeBirthday = current.getMonth() < birth.getMonth()
+    || (current.getMonth() === birth.getMonth() && current.getDate() < birth.getDate())
+  if (beforeBirthday) age -= 1
+  return Math.max(0, age)
+}
+
+const restoreRegionSelection = () => {
+  if (!formData.province || !REGION_DATA.value.length) return
+  const provinceIndex = Math.max(0, REGION_DATA.value.findIndex(item => item.name === formData.province))
+  const province = REGION_DATA.value[provinceIndex] || {}
+  const cityIndex = Math.max(0, (province.children || []).findIndex(item => item.name === formData.city))
+  const city = (province.children || [])[cityIndex] || {}
+  const districtIndex = Math.max(0, (city.children || []).findIndex(item => item.name === formData.district))
+  const district = (city.children || [])[districtIndex] || {}
+  const streetIndex = Math.max(0, (district.children || []).findIndex(item => item.name === formData.street))
+  multiValue.value = [
+    provinceIndex,
+    cityIndex,
+    formData.district ? districtIndex + 1 : 0,
+    formData.street ? streetIndex : 0
+  ]
+  buildMultiRange()
+}
+
+const loadPatient = async (id) => {
+  try {
+    const data = await getPatientDetail(id)
+    Object.assign(formData, {
+      name: data?.name || '',
+      gender: data?.gender || '男',
+      birthDate: data?.birthDate || '',
+      idType: data?.idType || '身份证',
+      idNumber: data?.idNumber || '',
+      age: data?.age || calculateAgeFromBirthDate(data?.birthDate),
+      phone: data?.phone || '',
+      patientType: data?.patientType || 'adult',
+      province: data?.province || '',
+      city: data?.city || '',
+      district: data?.district || '',
+      street: data?.street || '',
+      detailAddress: data?.detailAddress || '',
+      guardianName: data?.guardianName || '',
+      guardianIdType: data?.guardianIdType || '身份证',
+      guardianIdNumber: data?.guardianIdNumber || '',
+      guardianPhone: data?.guardianPhone || ''
+    })
+    formData.regionText = [
+      formData.province,
+      formData.city,
+      formData.district,
+      formData.street
+    ].filter(Boolean).join(' ')
+    idTypeIndex.value = Math.max(0, idTypeOptions.indexOf(formData.idType))
+    guardianIdTypeIndex.value = Math.max(0, idTypeOptions.indexOf(formData.guardianIdType))
+    restoreRegionSelection()
+  } catch (error) {
+    uni.showToast({ title: error?.message || '就诊人加载失败', icon: 'none' })
+    setTimeout(() => uni.navigateBack(), 1200)
+  }
 }
 
 const validateForm = () => {
@@ -466,6 +560,19 @@ const validateForm = () => {
     uni.showToast({ title: '身份证格式不正确', icon: 'none' })
     return false
   }
+  if (!formData.birthDate) {
+    uni.showToast({ title: '请选择出生日期', icon: 'none' })
+    return false
+  }
+  const age = calculateAgeFromBirthDate(formData.birthDate)
+  if (formData.patientType === 'adult' && age < 16) {
+    uni.showToast({ title: '成人就诊人年龄需满16岁', icon: 'none' })
+    return false
+  }
+  if (formData.patientType === 'child' && age >= 16) {
+    uni.showToast({ title: '儿童就诊人年龄需小于16岁', icon: 'none' })
+    return false
+  }
   if (formData.patientType === 'adult') {
     if (!formData.phone.trim()) {
       uni.showToast({ title: '请输入手机号码', icon: 'none' })
@@ -476,19 +583,7 @@ const validateForm = () => {
       return false
     }
   }
-  if (!formData.regionText || !formData.district || !formData.street) {
-    uni.showToast({ title: '请选择完整的家庭地址', icon: 'none' })
-    return false
-  }
-  if (!formData.detailAddress.trim()) {
-    uni.showToast({ title: '请输入详细地址', icon: 'none' })
-    return false
-  }
   if (formData.patientType === 'child') {
-    if (!formData.birthDate) {
-      uni.showToast({ title: '请选择出生日期', icon: 'none' })
-      return false
-    }
     if (!formData.guardianName.trim()) {
       uni.showToast({ title: '请输入陪诊人姓名', icon: 'none' })
       return false
@@ -510,7 +605,7 @@ const validateForm = () => {
 }
 
 const handleSubmit = async () => {
-  if (!validateForm()) return
+  if (!validateForm() || saving.value) return
   
   logButtonClick('保存就诊人', 'PATIENT_EDIT', '', {
     patientType: formData.patientType || 'adult',
@@ -518,12 +613,12 @@ const handleSubmit = async () => {
   })
   
   try {
+    saving.value = true
     uni.showLoading({ title: '保存中...' })
     const patientType = formData.patientType || 'adult'
     const payload = {
       name: formData.name.trim(),
-      gender: formData.gender || '未知',
-      age: formData.age || 0,
+      gender: formData.gender || '',
       birthDate: formData.birthDate || null,
       idType: formData.idType || '身份证',
       idNumber: formData.idNumber.trim(),
@@ -533,7 +628,7 @@ const handleSubmit = async () => {
       city: formData.city || '',
       district: formData.district || '',
       street: formData.street || '',
-      detailAddress: formData.detailAddress.trim()
+      detailAddress: formData.detailAddress ? formData.detailAddress.trim() : null
     }
     // 只有儿童类型才提交陪诊人信息
     if (patientType === 'child') {
@@ -542,10 +637,12 @@ const handleSubmit = async () => {
       payload.guardianIdNumber = formData.guardianIdNumber ? formData.guardianIdNumber.trim() : null
       payload.guardianPhone = formData.guardianPhone ? formData.guardianPhone.trim() : null
     }
-    await addPatient(payload)
-    uni.$emit('patientChanged')
+    const result = patientId.value
+      ? await updatePatient(patientId.value, payload)
+      : await addPatient(payload)
+    uni.$emit('patientChanged', { patientId: result?.id || patientId.value })
     uni.hideLoading()
-    uni.showToast({ title: '添加成功', icon: 'success' })
+    uni.showToast({ title: patientId.value ? '修改成功' : '添加成功', icon: 'success' })
     setTimeout(() => {
       uni.navigateBack()
     }, 1200)
@@ -554,6 +651,8 @@ const handleSubmit = async () => {
     uni.hideLoading()
     const errMsg = error?.message || error?.data?.message || '保存失败，请稍后再试'
     uni.showToast({ title: errMsg, icon: 'none' })
+  } finally {
+    saving.value = false
   }
 }
 </script>

@@ -54,8 +54,9 @@
 
         <!-- 就诊人信息 -->
         <view class="section">
-          <view class="section-title">
-            就诊人信息
+          <view class="section-title patient-section-title">
+            <text>就诊人信息</text>
+            <text class="patient-manage" @click="onManagePatients">管理就诊人</text>
           </view>
 
           <view class="patient-row">
@@ -235,10 +236,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import {
-  STORAGE_KEY_CURRENT_CONSULTATION_ID,
-  STORAGE_KEY_USER_REGISTER
-} from '@/utils/storage.js'
+import { onShow } from '@dcloudio/uni-app'
+import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import {
   calculateTotalPrice,
   calculateTotalQuantity,
@@ -250,7 +249,6 @@ import {
 } from '@/utils/cart.js'
 import { getPatientList, deletePatient } from '@/api/patient.js'
 import { getProductDetail } from '@/api/product.js'
-import { deriveGenderFromId, deriveAgeFromId } from '@/utils/patient.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
 import { resolveProductFlow } from '@/utils/product-biz.js'
@@ -275,21 +273,22 @@ const consultationMode = ref(CONSULTATION_MODE_AI)
 const totalPrice = computed(() => calculateTotalPrice(cartItems.value))
 const totalQuantity = computed(() => calculateTotalQuantity(cartItems.value))
 
-const loadPatientsFromAPI = async () => {
+const loadPatientsFromAPI = async (preferredPatientId = null) => {
   try {
     uni.showLoading({ title: '加载中...' })
-    const currentSelectedId = selectedPatient.value?.id
+    const currentSelectedId = preferredPatientId || selectedPatient.value?.id
     const patientList = await getPatientList()
 
     if (patientList && patientList.length > 0) {
       patients.value = patientList.map(p => ({
         id: p.id,
         name: p.name || p.patientName,
-        phone: p.phone,
-        idNumber: p.idNumber,
+        phone: p.phoneMasked,
+        idNumber: p.idNumberMasked,
         idType: p.idType,
         gender: p.gender,
-        age: p.age
+        age: p.age,
+        patientType: p.patientType
       }))
 
       if (currentSelectedId !== null && currentSelectedId !== undefined) {
@@ -299,50 +298,22 @@ const loadPatientsFromAPI = async () => {
         selectedPatient.value = patients.value[0] || null
       }
     } else {
-      const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-      if (userRegisterInfo && userRegisterInfo.realName) {
-        patients.value = [{
-          id: null,
-          name: userRegisterInfo.realName,
-          phone: userRegisterInfo.phone,
-          idNumber: userRegisterInfo.idNumber,
-          idType: userRegisterInfo.idType,
-          gender: deriveGenderFromId(userRegisterInfo.idNumber),
-          age: deriveAgeFromId(userRegisterInfo.idNumber)
-        }]
-        if (!currentSelectedId) {
-          selectedPatient.value = patients.value[0]
-        }
-      } else {
-        patients.value = []
-        selectedPatient.value = null
-      }
-    }
-  } catch (error) {
-    console.error('loadPatientsFromAPI failed:', error)
-    const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-    if (userRegisterInfo && userRegisterInfo.realName) {
-      patients.value = [{
-        id: null,
-        name: userRegisterInfo.realName,
-        gender: deriveGenderFromId(userRegisterInfo.idNumber),
-        age: deriveAgeFromId(userRegisterInfo.idNumber)
-      }]
-      if (!selectedPatient.value?.id) {
-        selectedPatient.value = patients.value[0]
-      }
-    } else {
       patients.value = []
       selectedPatient.value = null
     }
+  } catch (error) {
+    console.error('loadPatientsFromAPI failed:', error)
+    patients.value = []
+    selectedPatient.value = null
+    uni.showToast({ title: error?.message || '就诊人加载失败', icon: 'none' })
   } finally {
     uni.hideLoading()
   }
 }
 
-const handlePatientChanged = () => {
+const handlePatientChanged = (payload = {}) => {
   setTimeout(() => {
-    loadPatientsFromAPI()
+    loadPatientsFromAPI(payload.patientId)
   }, 100)
 }
 
@@ -492,6 +463,10 @@ const onAddPatient = () => {
   })
 }
 
+const onManagePatients = () => {
+  uni.navigateTo({ url: '/pages/user/patient_list' })
+}
+
 const selectConsultationMode = (mode) => {
   if (consultationMode.value === mode) {
     return
@@ -566,7 +541,8 @@ const showAgreementDialog = () => {
 const navigateToConsultation = (selectedItemIds, mode) => {
   const query = [
     `selectedItems=${selectedItemIds.join(',')}`,
-    `consultationMode=${mode}`
+    `consultationMode=${mode}`,
+    `patientId=${encodeURIComponent(selectedPatient.value.id)}`
   ]
 
   if (mode === CONSULTATION_MODE_MANUAL) {
@@ -585,7 +561,7 @@ const navigateToConsultation = (selectedItemIds, mode) => {
 }
 
 const onSubmit = () => {
-  if (selectedRequiresConsultation.value && !selectedPatient.value) {
+  if (selectedRequiresConsultation.value && !selectedPatient.value?.id) {
     uni.showToast({ title: '请先选择就诊人', icon: 'none' })
     return
   }
@@ -630,8 +606,11 @@ onMounted(() => {
     setCheckoutProductIds(selectedItems.value)
   }
 
-  loadPatientsFromAPI()
   loadProducts()
+})
+
+onShow(() => {
+  loadPatientsFromAPI()
 })
 
 onUnmounted(() => {
@@ -841,6 +820,25 @@ onUnmounted(() => {
   height: 6rpx;
   background: linear-gradient(90deg, #4a90e2, #67c6ff);
   border-radius: 3rpx;
+}
+
+.patient-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.patient-section-title::after {
+  right: auto;
+  left: 0;
+  transform: none;
+}
+
+.patient-manage {
+  color: #2a82e4;
+  font-size: 25rpx;
+  font-weight: 500;
 }
 .patient-row {
   display: flex;

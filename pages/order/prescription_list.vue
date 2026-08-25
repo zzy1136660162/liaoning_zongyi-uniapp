@@ -57,6 +57,13 @@
           >
             就诊时间: {{ latestConsultationTime }}
           </view>
+          <view v-if="currentPrescription" class="consultation-time">
+            就诊人:
+            <text v-if="currentPrescription.patientSnapshotAvailable">
+              {{ currentPrescription.patientName }} {{ currentPrescription.patientGender }} {{ currentPrescription.patientAge }}岁
+            </text>
+            <text v-else>历史记录未关联就诊人</text>
+          </view>
         </view>
         
         <!-- 购物车商品列表：每个商品以处方卡片形式展示 -->
@@ -123,7 +130,7 @@
                   医师:
                 </text>
                 <text class="info-value">
-                  {{ cartItem.doctorName || '医师' }}
+                  {{ cartItem.doctorName || AI_DOCTOR.name }}
                 </text>
               </view>
 
@@ -214,7 +221,6 @@ import dayjs from 'dayjs'
 
 // ==================== 存储键常量 ====================
 import { 
-  STORAGE_KEY_USER_REGISTER,
   STORAGE_KEY_CURRENT_ORDER,
   STORAGE_KEY_VERIFIED_PRODUCTS,
   STORAGE_KEY_CURRENT_CONSULTATION_ID
@@ -237,7 +243,7 @@ import {
 // ==================== API 接口 ====================
 import { getConsultationDetail } from '@/api/consultation.js'
 import { getProductDetail } from '@/api/product.js'
-import { resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
+import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
 
 // ==================== 其他 ====================
 import { logPageView } from '@/api/access-log.js'
@@ -247,11 +253,6 @@ import { logPageView } from '@/api/access-log.js'
  * 医院名称 - 显示在页面顶部
  */
   const hospitalName = ref('辽宁中医药大学附属医院')
-
-/**
- * 当前用户名 - 显示在页面顶部右侧
- */
-const currentUserName = ref('')
 
 /**
  * 选中的购物车产品ID列表 - 用户选择要购买的处方
@@ -350,22 +351,10 @@ const syncSelectedCartState = () => {
       await loadSingleConsultation(consultationId)
     }
     await loadProducts()
-    loadUserInfo()
     loadSelectedProducts()
 
     logPageView('处方列表', '用户进入处方列表页面')
   })
-  
-  const loadUserInfo = () => {
-    try {
-      const userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-      if (userInfo && userInfo.realName) {
-        currentUserName.value = userInfo.realName
-      }
-    } catch (e) {
-      console.error('加载用户信息失败:', e)
-    }
-  }
   
   /**
    * 加载用户之前选中的产品状态
@@ -415,7 +404,11 @@ const syncSelectedCartState = () => {
           createdAt: consultation.createdAt,
           productId: consultation.productId,
           productPrice: consultation.totalAmount || 0,
-          quantity: consultation.quantity || 1
+          quantity: consultation.quantity || 1,
+          patientName: consultation.patientName || '',
+          patientGender: consultation.patientGender || '',
+          patientAge: consultation.patientAge || 0,
+          patientSnapshotAvailable: consultation.patientSnapshotAvailable === true
         }
 
         // 保存当前处方信息，用于显示就诊时间等
@@ -496,7 +489,7 @@ const syncSelectedCartState = () => {
                 quantity: getCartProductQuantity(productId, 1, skuId || null),
                 unit: sku?.unit || productDetail.unit || '份',
                 notice: productDetail.usageDesc || productDetail.notice,
-                doctorName: currentPrescriptionDoctorName.value || productDetail.pharmacistName || '医师'
+                doctorName: currentPrescriptionDoctorName.value
               })
             }
           } else {
@@ -532,7 +525,7 @@ const syncSelectedCartState = () => {
   })
 
   const currentPrescriptionDoctorName = computed(() => {
-    return currentPrescription.value?.doctorName || ''
+    return currentPrescription.value?.doctorName || AI_DOCTOR.name
   })
 
   // ==================== 购物车相关计算属性 ====================

@@ -144,22 +144,34 @@
         </view>
       </view>
     </scroll-view>
+
+    <TabBar
+      current="order"
+      :cart-count="cartCount"
+      @change="handleTabChange"
+    />
   </view>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { getMyOrders, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/order.js'
 import { checkCanApplyRefund, getRefundList } from '@/api/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { isTherapyOrder } from '@/utils/therapy.js'
 import { getOrderStatusText } from '@/utils/order-status.js'
+import { getCartTotalQuantity } from '@/utils/cart.js'
+import { subscribeCartUpdated } from '@/utils/cart-events.js'
+import TabBar from '@/components/TabBar/TabBar.vue'
 
 const activeTab = ref('all')
 const orders = ref([])
 const navigatingOrderId = ref(null)
+const cartCount = ref(0)
 const ORDER_LIST_PREVIEW_LIMIT = 2
 const AFTER_SALE_ORDER_STATUSES = [5, 6, 7]
+let unsubscribeCartUpdated = null
 
 const tabs = ref([
   { key: 'all', label: '全部' },
@@ -583,6 +595,14 @@ const viewRefundApplication = (refundApplicationId) => {
   })
 }
 
+const refreshCartCount = () => {
+  cartCount.value = getCartTotalQuantity()
+}
+
+const handleTabChange = () => {
+  refreshCartCount()
+}
+
 // 简单日期格式化 YYYY-MM-DD HH:mm
 const formatDate = (dateStr) => {
   if (!dateStr) return ''
@@ -611,7 +631,20 @@ onMounted(() => {
   }
 
   logPageView('ORDER_LIST', activeTab.value)
+  refreshCartCount()
+  unsubscribeCartUpdated = subscribeCartUpdated(refreshCartCount)
   loadOrders()
+})
+
+onShow(() => {
+  refreshCartCount()
+})
+
+onUnmounted(() => {
+  if (unsubscribeCartUpdated) {
+    unsubscribeCartUpdated()
+    unsubscribeCartUpdated = null
+  }
 })
 </script>
 
@@ -690,7 +723,7 @@ $info: #3b82f6;
 /* 列表容器：底部留安全区 */
 .order-list {
   flex: 1;
-  padding: 20rpx 20rpx calc(24rpx + env(safe-area-inset-bottom));
+  padding: 20rpx 20rpx calc(140rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 

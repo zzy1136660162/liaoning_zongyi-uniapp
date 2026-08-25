@@ -20,20 +20,28 @@
 
         <view class="dash-line"></view>
 
+        <view v-if="!detail.patientSnapshotAvailable" class="snapshot-empty">
+          历史记录未关联就诊人
+        </view>
+
         <!-- 基本信息两列布局 -->
         <view class="info-grid">
-          <view class="info-col">
+          <view v-if="detail.patientSnapshotAvailable" class="info-col">
             <text class="info-label">姓名：</text>
             <text class="info-value">{{ detail.name }}</text>
           </view>
-          <view class="info-col">
+          <view v-if="detail.patientSnapshotAvailable" class="info-col">
             <text class="info-label">性别：</text>
             <text class="info-value">{{ detail.gender }}</text>
           </view>
 
-          <view class="info-col">
+          <view v-if="detail.patientSnapshotAvailable" class="info-col">
             <text class="info-label">年龄：</text>
             <text class="info-value">{{ detail.age }}岁</text>
+          </view>
+          <view v-if="detail.patientSnapshotAvailable && detail.idNumberMasked" class="info-col">
+            <text class="info-label">证件号：</text>
+            <text class="info-value">{{ detail.idNumberMasked }}</text>
           </view>
 <!--          <view class="info-col">
             <text class="info-label">临床诊断：</text>
@@ -46,7 +54,7 @@
           </view>-->
           <view class="info-col">
             <text class="info-label">开方医师：</text>
-            <text class="info-value">{{ detail.doctorName || '—' }}</text>
+            <text class="info-value">{{ detail.doctorName || AI_DOCTOR.name }}</text>
           </view>
           <view class="info-col">
             <text class="info-label">开方日期：</text>
@@ -132,13 +140,12 @@
 <script>
 import {
   STORAGE_KEY_CURRENT_ORDER,
-  STORAGE_KEY_USER_REGISTER,
   STORAGE_KEY_PRESCRIPTION_ORDERS,
   STORAGE_KEY_VERIFIED_PRODUCTS,
   STORAGE_KEY_PRODUCT_QUANTITIES, STORAGE_KEY_SELECTED_PRODUCTS
 } from '@/utils/storage.js'
 import { getPrescriptionDetail, getPrescriptionItems, getConsultationDetail } from '@/api/consultation.js'
-import { resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
+import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
 import { getProductDetail } from '@/api/product.js'
 import { getOrderByPrescriptionId, getMyOrders, getOrderDetail } from '@/api/order.js'
 import { getImageUrl } from '@/utils/config.js'
@@ -154,13 +161,16 @@ export default {
         name: '',
         gender: '',
         age: 0,
+        idType: '',
+        idNumberMasked: '',
+        patientSnapshotAvailable: false,
         diagnosis: '',
         department: '便捷配药门诊',
         date: '',
         formulaName: '',
         packCount: 1,
         usage: '',
-        doctorName: '',
+        doctorName: AI_DOCTOR.name,
         pharmacistName: '',
         productPrice: 0,
         prescriptionItems: [], // 处方药品列表
@@ -219,7 +229,6 @@ export default {
   async onLoad(options) {
     this.pageOptions.prescriptionNo = this.isValidPrescriptionId(options.prescriptionNo) ? options.prescriptionNo : null
     this.pageOptions.orderId = this.isUsableId(options.orderId) ? options.orderId : null
-    this.loadUserInfo()
 
     if (this.pageOptions.prescriptionNo) {
       await this.loadPrescriptionById(this.pageOptions.prescriptionNo)
@@ -238,11 +247,7 @@ export default {
         this.detail.formulaName = prescriptionData.details || prescriptionData.medicineName || prescriptionData.formulaName || prescriptionData.name || this.detail.formulaName
         this.detail.packCount = prescriptionData.doses || prescriptionData.quantity || prescriptionData.packCount || this.detail.packCount
         this.detail.productPrice = prescriptionData.productPrice || this.detail.productPrice
-        this.detail.name = prescriptionData.patientName || prescriptionData.name || this.detail.name
-        // 注意：性别和年龄优先从身份证号识别，只有在没有身份证号时才使用参数中的值
-        // 这里先设置参数中的值，但后面会从身份证号重新识别（如果有身份证号）
-        this.detail.gender = prescriptionData.patientGender || prescriptionData.gender || this.detail.gender
-        this.detail.age = prescriptionData.patientAge || prescriptionData.age || this.detail.age
+        this.applyPatientSnapshot(prescriptionData)
         this.detail.diagnosis = prescriptionData.diagnosis || this.detail.diagnosis
         this.detail.department = prescriptionData.department || this.detail.department
         const doctorName = this.resolvePrescriptionDoctorName(prescriptionData)
@@ -272,10 +277,6 @@ export default {
       }
     }
 
-    // 确保性别和年龄优先从身份证号识别（如果有身份证号）
-    // 这样可以覆盖 URL 参数中的性别和年龄，确保身份证号的信息优先级最高
-    this.ensureGenderAndAgeFromIdCard()
-
     await this.loadOrderStatus()
 
     logPageView('处方详情', '用户进入处方详情页面')
@@ -296,15 +297,35 @@ export default {
       return this.isUsableId(value) && /^\d+$/.test(String(value).trim())
     },
 
+    applyPatientSnapshot(source = {}) {
+      if (!Object.prototype.hasOwnProperty.call(source, 'patientSnapshotAvailable')) {
+        return
+      }
+      const available = source.patientSnapshotAvailable === true
+      this.detail.patientSnapshotAvailable = available
+      this.detail.name = available ? (source.patientName || '') : ''
+      this.detail.gender = available ? (source.patientGender || '') : ''
+      this.detail.age = available ? (source.patientAge || 0) : 0
+      this.detail.idType = available ? (source.patientIdType || '') : ''
+      this.detail.idNumberMasked = available ? (source.patientIdNumberMasked || '') : ''
+    },
+
     async applyDoctorFromPrescription(prescriptionData) {
       if (!prescriptionData) {
         return
       }
+      const doctorId = prescriptionData.doctorId || prescriptionData.doctor_id || null
+      this.detail.doctorId = doctorId
+      if (!doctorId) {
+        this.detail.doctorName = AI_DOCTOR.name
+        this.detail.doctorSignatureUrl = ''
+        return
+      }
+
       const resolvedDoctorName = this.resolvePrescriptionDoctorName(prescriptionData)
-      if (resolvedDoctorName && !this.detail.doctorName) {
+      if (resolvedDoctorName) {
         this.detail.doctorName = resolvedDoctorName
       }
-      const doctorId = prescriptionData.doctorId || prescriptionData.doctor_id || null
       if (doctorId) {
         try {
           const doc = await getDoctorDetail(doctorId)
@@ -327,6 +348,7 @@ export default {
       if (consultationId) {
         try {
           const consultation = await getConsultationDetail(consultationId)
+          this.applyPatientSnapshot(consultation)
           const displayName = resolveConsultationDoctorName(consultation)
           if (displayName) {
             this.detail.doctorName = displayName
@@ -355,10 +377,7 @@ export default {
 
     // 从订单信息更新处方详情
     updateDetailFromOrder(orderInfo) {
-      const doctorName = this.resolvePrescriptionDoctorName(orderInfo)
-      if (doctorName && !this.detail.doctorName) {
-        this.detail.doctorName = doctorName
-      }
+      this.applyPatientSnapshot(orderInfo)
       if (orderInfo.prescriptionDiagnosis) {
         this.detail.diagnosis = orderInfo.prescriptionDiagnosis
       }
@@ -444,9 +463,6 @@ export default {
           }
 
           this.updateDetailFromOrder(orderInfo)
-          if (!this.detail.doctorName && orderInfo.doctorId) {
-            await this.applyDoctorFromPrescription({ doctorId: orderInfo.doctorId })
-          }
 
           console.log('通过处方ID查询到订单状态:', this.orderStatus)
           console.log('从订单更新处方详情:', this.detail)
@@ -498,71 +514,6 @@ export default {
       }
     },
 
-    // 从身份证号计算年龄
-    calculateAgeFromIdCard(idCard) {
-      if (!idCard || idCard.length < 15) {
-        return 0
-      }
-
-      let birthDateStr = ''
-      // 18位身份证：第7-14位为出生日期 YYYYMMDD
-      if (idCard.length === 18) {
-        birthDateStr = idCard.substring(6, 14)
-      }
-      // 15位身份证：第7-12位为出生日期 YYMMDD，年份前两位需要判断
-      else if (idCard.length === 15) {
-        const year = idCard.substring(6, 8)
-        const month = idCard.substring(8, 10)
-        const day = idCard.substring(10, 12)
-        // 简单判断：如果年份大于当前年份后两位，则认为是19xx年，否则是20xx年
-        const currentYear = new Date().getFullYear() % 100
-        const birthYear = parseInt(year) > currentYear ? `19${year}` : `20${year}`
-        birthDateStr = `${birthYear}${month}${day}`
-      } else {
-        return 0
-      }
-
-      // 解析出生日期
-      const birthYear = parseInt(birthDateStr.substring(0, 4))
-      const birthMonth = parseInt(birthDateStr.substring(4, 6))
-      const birthDay = parseInt(birthDateStr.substring(6, 8))
-
-      const birthDate = new Date(birthYear, birthMonth - 1, birthDay)
-      const today = new Date()
-
-      let age = today.getFullYear() - birthYear
-      const monthDiff = today.getMonth() - (birthMonth - 1)
-      const dayDiff = today.getDate() - birthDay
-
-      // 如果还没过生日，年龄减1
-      if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
-        age--
-      }
-
-      return age > 0 ? age : 0
-    },
-
-    // 从身份证号判断性别
-    getGenderFromIdCard(idCard) {
-      if (!idCard || idCard.length < 15) {
-        return '未知'
-      }
-
-      let genderCode = ''
-      // 18位身份证：倒数第二位为性别码，奇数为男，偶数为女
-      if (idCard.length === 18) {
-        genderCode = idCard.substring(16, 17)
-      }
-      // 15位身份证：最后一位为性别码，奇数为男，偶数为女
-      else if (idCard.length === 15) {
-        genderCode = idCard.substring(14, 15)
-      } else {
-        return '未知'
-      }
-
-      return parseInt(genderCode) % 2 === 1 ? '男' : '女'
-    },
-
     // 格式化日期，只显示年月日
     formatDate(dateStr) {
       if (!dateStr) {
@@ -610,6 +561,10 @@ export default {
     },
 
     resolvePrescriptionDoctorName(source = {}) {
+      const doctorId = source.doctorId ?? source.doctor_id ?? null
+      if (!this.isUsableId(doctorId)) {
+        return AI_DOCTOR.name
+      }
       return source.doctorName ||
         source.doctor_name ||
         source.doctor ||
@@ -628,58 +583,6 @@ export default {
         source.created_at ||
         source.date ||
         ''
-    },
-
-    // 从 storage 加载用户信息
-    loadUserInfo() {
-      try {
-        const userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-        if (userInfo) {
-          this.detail.name = userInfo.realName || this.detail.name
-
-          // 从身份证号计算年龄和性别
-          if (userInfo.idNumber) {
-            this.detail.age = this.calculateAgeFromIdCard(userInfo.idNumber)
-            this.detail.gender = this.getGenderFromIdCard(userInfo.idNumber)
-
-            console.log('从 storage 加载用户信息:', {
-              name: userInfo.realName,
-              idNumber: userInfo.idNumber,
-              age: this.detail.age,
-              gender: this.detail.gender
-            })
-          }
-        }
-      } catch (e) {
-        console.error('加载用户信息失败:', e)
-      }
-    },
-
-    // 确保性别和年龄从身份证号识别（优先级最高）
-    ensureGenderAndAgeFromIdCard() {
-      try {
-        const userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-        if (userInfo && userInfo.idNumber) {
-          // 优先使用身份证号识别的性别和年龄
-          const ageFromIdCard = this.calculateAgeFromIdCard(userInfo.idNumber)
-          const genderFromIdCard = this.getGenderFromIdCard(userInfo.idNumber)
-
-          if (ageFromIdCard > 0) {
-            this.detail.age = ageFromIdCard
-          }
-          if (genderFromIdCard !== '未知') {
-            this.detail.gender = genderFromIdCard
-          }
-
-          console.log('从身份证号重新识别性别和年龄:', {
-            idNumber: userInfo.idNumber,
-            age: this.detail.age,
-            gender: this.detail.gender
-          })
-        }
-      } catch (e) {
-        console.error('从身份证号识别性别和年龄失败:', e)
-      }
     },
 
     // 根据处方ID从 storage 加载处方信息
@@ -719,6 +622,7 @@ export default {
           this.detail.department = prescriptionData.department || '便捷配药门诊'
           this.detail.doctorName = this.resolvePrescriptionDoctorName(prescriptionData) || this.detail.doctorName
           this.detail.date = this.formatDate(this.resolvePrescriptionDate(prescriptionData)) || this.detail.date
+          this.applyPatientSnapshot(prescriptionData)
 
           this.detail.doctorId = prescriptionData.doctorId || null
           await this.applyDoctorFromPrescription(prescriptionData)
@@ -903,6 +807,7 @@ export default {
           }
           const rawDate = this.resolvePrescriptionDate(prescription) || this.detail.date
           this.detail.date = this.formatDate(rawDate) || this.detail.date
+          this.applyPatientSnapshot(prescription)
         } else {
           // 如果 storage 中没有找到，使用 prescriptionNo 作为 visitNo
           this.detail.visitNo = id
@@ -1144,6 +1049,12 @@ export default {
 
 .big-space {
   margin-top: 40rpx;
+}
+
+.snapshot-empty {
+  padding: 12rpx 0 20rpx;
+  font-size: 26rpx;
+  color: #999999;
 }
 
 /* 两列信息 */

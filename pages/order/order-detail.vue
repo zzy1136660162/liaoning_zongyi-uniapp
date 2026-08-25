@@ -47,7 +47,7 @@
         <view class="doctor-info">
           <view class="doctor-name-row">
             <text class="doctor-name">
-              {{ order.doctorName || order.doctor || '线上医生' }}
+              {{ displayDoctorName }}
             </text>
             <text class="doctor-title">
               {{ order.doctorTitle }}
@@ -60,6 +60,17 @@
             {{ order.department }}
           </text>
         </view>
+      </view>
+
+      <view v-if="order.prescriptionId" class="patient-snapshot">
+        <text class="patient-snapshot-label">就诊人</text>
+        <view v-if="order.patientSnapshotAvailable" class="patient-snapshot-content">
+          <text>{{ order.patientName }} {{ order.patientGender }} {{ order.patientAge }}岁</text>
+          <text v-if="order.patientIdNumberMasked" class="patient-snapshot-id">
+            {{ order.patientIdNumberMasked }}
+          </text>
+        </view>
+        <text v-else class="patient-snapshot-empty">历史记录未关联就诊人</text>
       </view>
 
       <!-- 信息区域 -->
@@ -230,7 +241,7 @@
   import { getProductDetail } from '@/api/product.js'
   import { getDoctorDetail } from '@/api/hospital.js'
   import { getConsultationDetail, getPrescriptionByConsultation, getPrescriptionDetail } from '@/api/consultation.js'
-  import { resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
+  import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
   import { getOrderDetail } from '@/api/order.js'
   import { checkCanApplyRefund } from '@/api/refund.js'
   import { getImageUrl } from '@/utils/config.js'
@@ -269,7 +280,14 @@
           refundApplicationId: null,
           routeStatusDesc: '', // 顺丰最新路由描述
           logisticsNo: '', // 运单号
-          shippingPaymentMethod: '' // 运费支付方式（到付）
+          shippingPaymentMethod: '', // 运费支付方式（到付）
+          patientId: null,
+          patientName: '',
+          patientGender: '',
+          patientAge: 0,
+          patientIdType: '',
+          patientIdNumberMasked: '',
+          patientSnapshotAvailable: false
         },
         allCartItems: [], // 订单商品列表
         productDetailCache: {},
@@ -298,8 +316,14 @@
           this.order.prescriptionId = orderData.prescriptionId || orderData.prescription_id || orderData.prescriptionNo || orderData.prescription_no || this.order.prescriptionId
           this.order.prescriptionNo = orderData.prescriptionNo || orderData.prescription_no || this.order.prescriptionNo
           this.order.diagnosis = orderData.diagnosis || this.order.diagnosis
-          this.order.doctor = orderData.doctor || orderData.doctorName || this.order.doctor
-          this.order.doctorName = orderData.doctorName || this.order.doctorName
+          this.applyPatientSnapshot(orderData)
+          if (this.order.prescriptionId) {
+            this.applyAiDoctorInfo()
+          } else {
+            this.order.doctorId = orderData.doctorId || orderData.doctor_id || this.order.doctorId
+            this.order.doctor = orderData.doctor || orderData.doctorName || this.order.doctor
+            this.order.doctorName = orderData.doctorName || this.order.doctorName
+          }
           this.order.hospital = orderData.hospital || this.order.hospital
           this.order.amount = orderData.amount || this.order.amount
           this.order.statusText = orderData.statusText || this.order.statusText
@@ -332,6 +356,12 @@
         }
         return String(value)
       },
+      displayDoctorName() {
+        if (!this.isUsableId(this.order.doctorId)) {
+          return AI_DOCTOR.name
+        }
+        return this.order.doctorName || this.order.doctor || AI_DOCTOR.name
+      },
       infoList() {
         // 判断是否是传统疗法订单
         const isTherapyOrder = this.allCartItems && this.allCartItems.some(item => item.redeemVouchers && item.redeemVouchers.length > 0)
@@ -339,7 +369,7 @@
           // 优先展示 lnzy_prescription 表的 id（prescriptionId），回退到 prescriptionNo 文案
           // { label: '处方单号', labelKey: 'prescriptionId', value: this.displayPrescriptionNo },
           { label: '订单号', labelKey: 'orderNo', value: this.order.orderNo },
-          { label: '开方医生', labelKey: 'doctor', value: this.order.doctor },
+          { label: '开方医生', labelKey: 'doctor', value: this.displayDoctorName },
           { label: '订单金额', labelKey: 'payableAmount', value: this.order.payableAmount ? Number(this.order.payableAmount).toFixed(2) : '' },
           { label: '支付时间', labelKey: 'payTime', value: this.formatDateTime(this.order.payTime) || '未支付' },
           { label: '运费', labelKey: 'shippingPaymentMethod', value: isTherapyOrder ? '无' : (this.order.shippingPaymentMethod || '到付，以实际为准') }
@@ -353,7 +383,7 @@
         return list
       },
       doctorAvatar() {
-        return getImageUrl(this.order.doctorAvatar || '/liaoning_zongyi/zaixian_mingyi_logo.png')
+        return getImageUrl(this.order.doctorAvatar || AI_DOCTOR.avatar)
       },
       // 计算订单总金额：优先使用API返回的金额，否则基于商品列表计算
       totalAmount() {
@@ -546,6 +576,20 @@
         return this.isUsableId(value) && /^\d+$/.test(String(value).trim())
       },
 
+      applyPatientSnapshot(source = {}) {
+        if (!Object.prototype.hasOwnProperty.call(source, 'patientSnapshotAvailable')) {
+          return
+        }
+        const available = source.patientSnapshotAvailable === true
+        this.order.patientSnapshotAvailable = available
+        this.order.patientId = available ? (source.patientId || null) : null
+        this.order.patientName = available ? (source.patientName || '') : ''
+        this.order.patientGender = available ? (source.patientGender || '') : ''
+        this.order.patientAge = available ? (source.patientAge || 0) : 0
+        this.order.patientIdType = available ? (source.patientIdType || '') : ''
+        this.order.patientIdNumberMasked = available ? (source.patientIdNumberMasked || '') : ''
+      },
+
       resolvePrescriptionNavigationParams() {
         if (this.isNumericId(this.order.prescriptionId)) {
           return `prescriptionNo=${encodeURIComponent(this.order.prescriptionId)}`
@@ -594,19 +638,28 @@
         this.order.department = doctor.department || this.order.department
       },
 
+      applyAiDoctorInfo() {
+        this.order.doctorId = null
+        this.order.doctorName = AI_DOCTOR.name
+        this.order.doctor = AI_DOCTOR.name
+        this.order.doctorTitle = ''
+        this.order.department = ''
+        this.order.hospital = ''
+        this.order.doctorAvatar = AI_DOCTOR.avatar
+      },
+
       needsProductEnrichment() {
         if (!this.allCartItems || this.allCartItems.length === 0) {
           return false
         }
         return !this.order.diagnosis ||
-          !this.order.doctorName ||
+          (!this.order.prescriptionId && !this.order.doctorName) ||
           this.allCartItems.some(item => item.id && !item.image)
       },
 
       needsPrescriptionEnrichment() {
         return !!this.order.prescriptionId &&
-          !this.prescriptionInfoLoaded &&
-          (!this.order.doctorName || !this.order.doctorTitle || !this.order.diagnosis || !this.order.prescriptionNo)
+          !this.prescriptionInfoLoaded
       },
 
       // 从API加载订单详情
@@ -635,6 +688,7 @@
           }
 
           if (orderDetail) {
+            this.applyPatientSnapshot(orderDetail)
             // 设置订单基本信息
             this.order.id = orderDetail.id || orderId || this.order.id
             this.order.amount = orderDetail.payableAmount || orderDetail.totalAmount || orderDetail.amount || '0.00'
@@ -671,13 +725,14 @@
             if (prescriptionId) {
               this.order.prescriptionId = prescriptionId
               this.order.prescriptionNo = prescriptionNo || String(prescriptionId)
+              this.applyAiDoctorInfo()
             }
             if (prescriptionNo) {
               this.order.prescriptionNo = prescriptionNo
             }
 
             // 如果订单中包含 doctorId（直接来自订单或处方），优先从医生表获取头像/职称等信息
-            if (orderDetail.doctorId) {
+            if (orderDetail.doctorId && !this.order.prescriptionId) {
               this.order.doctorId = orderDetail.doctorId
               try {
                 this.applyDoctorInfo(await this.getCachedDoctorDetail(orderDetail.doctorId), orderDetail.doctorId)
@@ -839,7 +894,7 @@
           const product = await this.getCachedProductDetail(productId)
           if (product) {
             // 诊断信息已通过 enrichDiagnosisFromAllProducts 处理，这里不再覆盖
-            if (!this.order.doctorName) {
+            if (!this.order.prescriptionId && !this.order.doctorName) {
               this.order.doctorId = product.doctorId || this.order.doctorId
               this.order.doctorName = product.doctorName || this.order.doctorName
               this.order.doctor = this.order.doctorName
@@ -893,6 +948,7 @@
               const pres = await getPrescriptionDetail(prescriptionId)
               console.log('fillPrescriptionInfo: treated id as prescriptionId, fetched prescription:', pres)
               if (pres) {
+                this.applyPatientSnapshot(pres)
                 // 记录处方表 id 到页面状态（用于后续跳转等）
                 this.order.prescriptionId = pres.id || this.order.prescriptionId
                 // 尝试从处方记录中取 consultation id 字段（兼容命名）
@@ -920,6 +976,7 @@
 
           const detail = consultationDetail
           console.log('fillPrescriptionInfo - consultation detail fetched:', detail)
+          this.applyPatientSnapshot(detail)
 
             // 设置咨询时间（如果还没有设置）
             if (!this.order.time && detail.createdAt) {
@@ -935,6 +992,7 @@
             const prescriptionRecord = await getPrescriptionByConsultation(detail.id)
             console.log('getPrescriptionByConsultation result:', prescriptionRecord)
             if (prescriptionRecord && prescriptionRecord.id) {
+              this.applyPatientSnapshot(prescriptionRecord)
               // 将 lnzy_prescription 表的 id 作为页面使用的处方ID（用于跳转到处方详情）
               this.order.prescriptionId = prescriptionRecord.id
               this.order.prescriptionNo = String(prescriptionRecord.id)
@@ -944,6 +1002,7 @@
               try {
                 const presDetail = await getPrescriptionDetail(this.order.prescriptionId)
                 console.log('lnzy_prescription detail:', presDetail)
+                this.applyPatientSnapshot(presDetail)
                 if (presDetail && presDetail.diagnosis) {
                   this.order.diagnosis = presDetail.diagnosis
                   this.order.prescriptionDiagnosis = presDetail.diagnosis
@@ -960,10 +1019,11 @@
             if (detail.diagnosis && !this.order.diagnosis) {
               this.order.diagnosis = detail.diagnosis
             }
-            // 设置医生信息
-            if (detail.doctorName) {
-              this.order.doctor = detail.doctorName
-              this.order.doctorName = detail.doctorName
+            // 接诊医师只以咨询记录的 doctor_id 为准，空值统一展示 AI 在线医生
+            const detailDoctorName = resolveConsultationDoctorName(detail)
+            if (detailDoctorName) {
+              this.order.doctor = detailDoctorName
+              this.order.doctorName = detailDoctorName
             }
             // 暂时使用默认医生头像，不从API获取
             // this.order.doctorAvatar = detail.doctorAvatar || this.order.doctorAvatar
@@ -999,7 +1059,12 @@
           if (!prescription) {
             return
           }
+          this.applyPatientSnapshot(prescription)
           const doctorId = prescription.doctorId || prescription.doctor_id
+          if (!doctorId) {
+            this.applyAiDoctorInfo()
+            return
+          }
           if (doctorId) {
             const doctor = await this.getCachedDoctorDetail(doctorId)
             if (doctor) {
@@ -1237,6 +1302,33 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+  }
+
+  .patient-snapshot {
+    padding: 8rpx 32rpx 16rpx;
+    display: flex;
+    align-items: flex-start;
+  }
+
+  .patient-snapshot-label {
+    width: 160rpx;
+    font-size: 26rpx;
+    color: #999999;
+  }
+
+  .patient-snapshot-content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 6rpx;
+    font-size: 28rpx;
+    color: #333333;
+  }
+
+  .patient-snapshot-id,
+  .patient-snapshot-empty {
+    font-size: 24rpx;
+    color: #999999;
   }
 
   /* 信息行 */

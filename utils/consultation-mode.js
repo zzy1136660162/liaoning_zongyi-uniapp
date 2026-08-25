@@ -3,7 +3,7 @@ export const CONSULTATION_MODE_MANUAL = 'manual'
 
 export const AI_DOCTOR = {
   id: null,
-  name: '在线医生',
+  name: 'AI在线医生',
   avatar: '/profile/liaoning_zongyi/zaixian_mingyi_logo.png',
   mode: CONSULTATION_MODE_AI
 }
@@ -51,8 +51,15 @@ export const resolveConsultationDoctorName = (consultation) => {
   if (!consultation) {
     return ''
   }
-  if (consultation.doctorName) {
-    return consultation.doctorName
+
+  const doctorId = consultation.doctorId ?? consultation.doctor_id ?? null
+  if (doctorId === null || doctorId === undefined || String(doctorId).trim() === '') {
+    return AI_DOCTOR.name
+  }
+
+  const doctorName = consultation.doctorName || consultation.doctor_name
+  if (doctorName) {
+    return doctorName
   }
   const history = consultation.historyDesc || ''
   if (history.includes('AI') || history.includes('AI药师')) {

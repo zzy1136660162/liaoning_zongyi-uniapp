@@ -26,7 +26,7 @@
           mode="aspectFill"
         />
         <view class="card-title">
-          <text>{{ prescription.doctorName || '线上医生' }} (门诊号: {{ prescription.outpatientNo || '暂无' }})</text>
+          <text>{{ prescription.doctorName || AI_DOCTOR.name }} (门诊号: {{ prescription.outpatientNo || '暂无' }})</text>
           <text class="card-time">
             {{ formattedConsultationTime }}
           </text>
@@ -43,6 +43,19 @@
           </text>
           <text class="info-value">
             {{ prescription.diagnosis }}
+          </text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">
+            就诊人:
+          </text>
+          <text class="info-value">
+            <template v-if="prescription.patientSnapshotAvailable">
+              {{ prescription.patientName }} {{ prescription.patientGender }} {{ prescription.patientAge }}岁
+            </template>
+            <template v-else>
+              历史记录未关联就诊人
+            </template>
           </text>
         </view>
         <view class="info-row">
@@ -156,7 +169,6 @@ import { ref, computed, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { 
   STORAGE_KEY_CURRENT_ORDER,
-  STORAGE_KEY_USER_REGISTER,
   STORAGE_KEY_VERIFIED_PRODUCTS,
   STORAGE_KEY_PRODUCT_QUANTITIES
 } from '@/utils/storage.js'
@@ -166,6 +178,7 @@ import { getProductDetail } from '@/api/product.js'
 import { getDoctorDetail } from '@/api/hospital.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getConsultationDetail } from '@/api/consultation.js'
+import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
 import dayjs from 'dayjs'
 
 const allCartItems = ref([]) // 所有购物车商品
@@ -173,7 +186,7 @@ const allCartItems = ref([]) // 所有购物车商品
 const prescription = ref({
   id: '',
   doctorId: null,
-  doctorName: '',
+  doctorName: AI_DOCTOR.name,
   doctorTitle: '',
   doctorAvatar: '',
   department: '',
@@ -188,7 +201,14 @@ const prescription = ref({
   productId: '',
   productPrice: 0,
   quantity: 1,
-  outpatientNo: '' // 医生门诊号
+  outpatientNo: '', // 医生门诊号
+  patientId: null,
+  patientName: '',
+  patientGender: '',
+  patientAge: 0,
+  patientIdType: '',
+  patientIdNumberMasked: '',
+  patientSnapshotAvailable: false
 })
 
 const totalPrice = computed(() => {
@@ -260,7 +280,8 @@ onLoad((options) => {
       // 确保所有字段都正确映射
       prescription.value = {
         id: prescriptionData.id || '',
-        doctorName: prescriptionData.doctorName || '线上名医',
+        doctorId: prescriptionData.doctorId || prescriptionData.doctor_id || null,
+        doctorName: resolveConsultationDoctorName(prescriptionData) || AI_DOCTOR.name,
         doctorAvatar: prescriptionData.doctorAvatar || '',
         department: prescriptionData.department || '便捷配药门诊',
         consultationTime: prescriptionData.consultationTime || '',
@@ -274,7 +295,14 @@ onLoad((options) => {
         productId: prescriptionData.productId || prescriptionData.id || '',
         productPrice: prescriptionData.productPrice || 0,
         quantity: prescriptionData.quantity || prescriptionData.doses || 1,
-        outpatientNo: prescriptionData.outpatientNo || '' // 医生门诊号
+        outpatientNo: prescriptionData.outpatientNo || '', // 医生门诊号
+        patientId: prescriptionData.patientId || null,
+        patientName: prescriptionData.patientName || '',
+        patientGender: prescriptionData.patientGender || '',
+        patientAge: prescriptionData.patientAge || 0,
+        patientIdType: prescriptionData.patientIdType || '',
+        patientIdNumberMasked: prescriptionData.patientIdNumberMasked || '',
+        patientSnapshotAvailable: prescriptionData.patientSnapshotAvailable === true
       }
       
       console.log('解析后的处方信息:', prescription.value)
@@ -328,11 +356,9 @@ const fillConsultationTime = async (consultationId) => {
     if (detail && detail.createdAt) {
       prescription.value.consultationTime = detail.createdAt
     }
-    if (detail && detail.doctorId) {
-      prescription.value.doctorId = detail.doctorId
-    }
-    if (detail && detail.doctorName) {
-      prescription.value.doctorName = detail.doctorName
+    if (detail) {
+      prescription.value.doctorId = detail.doctorId || detail.doctor_id || null
+      prescription.value.doctorName = resolveConsultationDoctorName(detail) || AI_DOCTOR.name
     }
     if (detail && detail.department) {
       prescription.value.department = detail.department
@@ -349,6 +375,15 @@ const fillConsultationTime = async (consultationId) => {
     if (detail && detail.outpatientNo) {
       prescription.value.outpatientNo = detail.outpatientNo
     }
+    if (detail) {
+      prescription.value.patientId = detail.patientId || null
+      prescription.value.patientName = detail.patientName || ''
+      prescription.value.patientGender = detail.patientGender || ''
+      prescription.value.patientAge = detail.patientAge || 0
+      prescription.value.patientIdType = detail.patientIdType || ''
+      prescription.value.patientIdNumberMasked = detail.patientIdNumberMasked || ''
+      prescription.value.patientSnapshotAvailable = detail.patientSnapshotAvailable === true
+    }
   } catch (e) {
     console.warn('查询咨询创建时间失败', e)
   }
@@ -364,13 +399,6 @@ const enrichByProduct = async (productId) => {
     if (product) {
       prescription.value.diagnosis = product.prescriptionDiagnosis || prescription.value.diagnosis
       prescription.value.productId = product.id || prescription.value.productId
-      if (!prescription.value.doctorId) {
-        prescription.value.doctorId = product.doctorId || prescription.value.doctorId
-      }
-      if (!prescription.value.doctorName) {
-        prescription.value.doctorName = product.doctorName || prescription.value.doctorName
-      }
-
       // 如果商品列表为空，用商品数据补齐一条
       if (!allCartItems.value.length) {
         allCartItems.value = [{
@@ -410,108 +438,7 @@ const enrichByProduct = async (productId) => {
   }
 }
 
-// 从身份证号计算年龄
-const calculateAgeFromIdCard = (idCard) => {
-  if (!idCard || idCard.length < 15) {
-    return 0
-  }
-  
-  let birthDateStr = ''
-  // 18位身份证：第7-14位为出生日期 YYYYMMDD
-  if (idCard.length === 18) {
-    birthDateStr = idCard.substring(6, 14)
-  } 
-  // 15位身份证：第7-12位为出生日期 YYMMDD，年份前两位需要判断
-  else if (idCard.length === 15) {
-    const year = idCard.substring(6, 8)
-    const month = idCard.substring(8, 10)
-    const day = idCard.substring(10, 12)
-    // 简单判断：如果年份大于当前年份后两位，则认为是19xx年，否则是20xx年
-    const currentYear = new Date().getFullYear() % 100
-    const birthYear = parseInt(year) > currentYear ? `19${year}` : `20${year}`
-    birthDateStr = `${birthYear}${month}${day}`
-  } else {
-    return 0
-  }
-  
-  // 解析出生日期
-  const birthYear = parseInt(birthDateStr.substring(0, 4))
-  const birthMonth = parseInt(birthDateStr.substring(4, 6))
-  const birthDay = parseInt(birthDateStr.substring(6, 8))
-  
-  const birthDate = new Date(birthYear, birthMonth - 1, birthDay)
-  const today = new Date()
-  
-  let age = today.getFullYear() - birthYear
-  const monthDiff = today.getMonth() - (birthMonth - 1)
-  const dayDiff = today.getDate() - birthDay
-  
-  // 如果还没过生日，年龄减1
-  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
-    age--
-  }
-  
-  return age > 0 ? age : 0
-}
-
-// 从身份证号判断性别
-const getGenderFromIdCard = (idCard) => {
-  if (!idCard || idCard.length < 15) {
-    return '未知'
-  }
-  
-  let genderCode = ''
-  // 18位身份证：倒数第二位为性别码，奇数为男，偶数为女
-  if (idCard.length === 18) {
-    genderCode = idCard.substring(16, 17)
-  } 
-  // 15位身份证：最后一位为性别码，奇数为男，偶数为女
-  else if (idCard.length === 15) {
-    genderCode = idCard.substring(14, 15)
-  } else {
-    return '未知'
-  }
-  
-  return parseInt(genderCode) % 2 === 1 ? '男' : '女'
-}
-
-// 从 storage 获取患者信息
-const getPatientInfo = () => {
-  let patientName = ''
-  let patientGender = '未知'
-  let patientAge = 0
-  
-  try {
-    const userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-    if (userInfo) {
-      patientName = userInfo.realName || ''
-      
-      // 从身份证号计算年龄和性别
-      if (userInfo.idNumber) {
-        patientAge = calculateAgeFromIdCard(userInfo.idNumber)
-        patientGender = getGenderFromIdCard(userInfo.idNumber)
-      }
-      
-      console.log('从 storage 获取患者信息:', {
-        name: patientName,
-        idNumber: userInfo.idNumber,
-        age: patientAge,
-        gender: patientGender
-      })
-    } else {
-      console.warn('未找到用户注册信息')
-    }
-  } catch (e) {
-    console.error('获取患者信息失败:', e)
-  }
-  
-  return { patientName, patientGender, patientAge }
-}
-
 const onConsultationClick = () => {
-  // 从 storage 获取患者信息
-  const { patientName, patientGender, patientAge } = getPatientInfo()
-  
   // 构建复诊数据
   const consultationData = {
     id: prescription.value.id,
@@ -526,9 +453,13 @@ const onConsultationClick = () => {
     quantity: prescription.value.quantity,
     details: prescription.value.details,
     productPrice: prescription.value.productPrice,
-    patientName: patientName,
-    patientGender: patientGender,
-    patientAge: patientAge
+    patientId: prescription.value.patientId,
+    patientName: prescription.value.patientName,
+    patientGender: prescription.value.patientGender,
+    patientAge: prescription.value.patientAge,
+    patientIdType: prescription.value.patientIdType,
+    patientIdNumberMasked: prescription.value.patientIdNumberMasked,
+    patientSnapshotAvailable: prescription.value.patientSnapshotAvailable
   }
   
   // 跳转到复诊详情页

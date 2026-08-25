@@ -104,6 +104,13 @@
       }
     },
     {
+      "path": "pages/user/patient_list",
+      "style": {
+        "navigationBarTitleText": "就诊人管理",
+        "navigationBarBackgroundColor": "#ffffff"
+      }
+    },
+    {
       "path": "pages/ai/chat",
       "style": {
         "navigationStyle": "custom",
