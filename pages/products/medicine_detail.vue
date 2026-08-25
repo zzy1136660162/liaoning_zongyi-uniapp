@@ -28,7 +28,10 @@
         {{ currentIndex }}/{{ productImages.length }}
       </view>
     </view>
-    <view class="price-box" :style="{ backgroundImage: product.categoryId === 35 ? 'url(https://smf.lntcm.com/static/shop/vph_2.jpg)' : 'url(https://smf.lntcm.com/static/shop/vph_1.png)' }">
+    <view
+      class="price-box"
+      :style="{ backgroundImage: product.categoryId === 35 ? 'url(https://smf.lntcm.com/static/shop/vph_2.jpg)' : 'url(https://smf.lntcm.com/static/shop/vph_1.png)' }"
+    >
       <view class="price-main">
         <view class="price-left">
           <view class="price-tag">
@@ -98,16 +101,20 @@
         >
           {{ product.limitInfo.text }}
         </text>
-        <text class="goods-name">
+        <text
+          class="goods-name"
+          selectable="true"
+        >
           {{ product.name }}&nbsp;{{ product.description }}
         </text>
       </view>
-      <view
+      <text
         v-if="product.subtitle || product.indications"
         class="goods-sub"
+        selectable="true"
       >
         {{ product.indications }}
-      </view>
+      </text>
       <view class="drug-reminder">
         {{ product.isPrescription === 1 ? '处方药，请在医师指导下购买和使用' : '制剂，请按说明书或医生指导使用' }}
       </view>
@@ -116,19 +123,29 @@
         class="limit-reminder"
       >
         <view v-if="product.limitInfo.text">
-          {{ product.limitInfo.text }}
+          <text selectable="true">
+            {{ product.limitInfo.text }}
+          </text>
         </view>
         <view v-if="product.limitInfo.periodLabel != null">
-          限购周期：{{ product.limitInfo.periodLabel }}
+          <text selectable="true">
+            限购周期：{{ product.limitInfo.periodLabel }}
+          </text>
         </view>
         <view v-if="product.limitInfo.limitQuantity != null">
-          限购上限：{{ product.limitInfo.limitQuantity }}件
+          <text selectable="true">
+            限购上限：{{ product.limitInfo.limitQuantity }}件
+          </text>
         </view>
         <view v-if="product.limitInfo.purchasedQuantity != null">
-          已购数量：{{ product.limitInfo.purchasedQuantity }}件
+          <text selectable="true">
+            已购数量：{{ product.limitInfo.purchasedQuantity }}件
+          </text>
         </view>
         <view v-if="product.limitInfo.remainingQuantity != null">
-          剩余可购：{{ product.limitInfo.remainingQuantity }}件
+          <text selectable="true">
+            剩余可购：{{ product.limitInfo.remainingQuantity }}件
+          </text>
         </view>
       </view>
     </view>
@@ -267,7 +284,11 @@
       </text>
     </view>
     <view class="delivery-row">
-      <image class="delivery-icon" src="https://smf.lntcm.com/static/shop/spps.svg" mode="aspectFit" />
+      <image
+        class="delivery-icon"
+        src="https://smf.lntcm.com/static/shop/spps.svg"
+        mode="aspectFit"
+      />
       <text class="delivery-label">
         配送
       </text>
@@ -628,6 +649,7 @@
         v-if="product.intro"
         class="detail-richtext"
         :nodes="formatRichText(product.intro)"
+        selectable="true"
       />
       <view
         v-else
@@ -647,15 +669,6 @@
           class="detail-img"
         />
       </view>
-
-      <!-- <view class="spec-list">
-        <view class="spec-title">药品基本信息</view>
-        <view class="spec-item" v-for="item in specItems" :key="item.label">
-          <text class="spec-label">{{ item.label }}</text>
-          <text class="spec-value">{{ item.value }}</text>
-        </view>
-      </view> -->
-
       <view
         v-if="specItems.length > 0"
         class="usage-box"
@@ -669,10 +682,16 @@
             :key="item.label"
             class="usage-item"
           >
-            <text class="usage-label">
+            <text
+              class="usage-label"
+              selectable="true"
+            >
               {{ item.label }}
             </text>
-            <text class="usage-text">
+            <text
+              class="usage-text"
+              selectable="true"
+            >
               {{ item.value }}
             </text>
           </view>
@@ -692,10 +711,16 @@
             :key="item.label"
             class="usage-item"
           >
-            <text class="usage-label">
+            <text
+              class="usage-label"
+              selectable="true"
+            >
               {{ item.label }}
             </text>
-            <text class="usage-text">
+            <text
+              class="usage-text"
+              selectable="true"
+            >
               {{ item.value }}
             </text>
           </view>
@@ -731,7 +756,11 @@
           class="action-icon-btn"
           @click="toggleCollect"
         >
-          <uni-icons :type="isCollected ? 'star-filled' : 'star'" size="20" :color="isCollected ? '#ff6b35' : '#666'"></uni-icons>
+          <uni-icons
+            :type="isCollected ? 'star-filled' : 'star'"
+            size="20"
+            :color="isCollected ? '#ff6b35' : '#666'"
+          />
           <text class="action-text">
             {{ isCollected ? '已收藏' : '收藏' }}
           </text>
@@ -740,7 +769,11 @@
           class="action-icon-btn"
           @click="goCart"
         >
-          <uni-icons type="cart" size="20" color="#666"></uni-icons>
+          <uni-icons
+            type="cart"
+            size="20"
+            color="#666"
+          />
           <text class="action-text">
             购物车
           </text>
@@ -755,7 +788,11 @@
           class="action-icon-btn"
           @click="showCustomerService"
         >
-          <uni-icons type="headphones" size="20" color="#666"></uni-icons>
+          <uni-icons
+            type="headphones"
+            size="20"
+            color="#666"
+          />
           <text class="action-text">
             客服
           </text>
@@ -1459,7 +1496,7 @@ onShow(() => {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  padding: 20rpx 30rpx 16rpx;
+  padding: 20rpx 30rpx 50rpx;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -1563,12 +1600,14 @@ onShow(() => {
 }
 
 .goods-info {
+  margin-top: -50rpx;
   background: #fff;
-  padding: 0 30rpx 2rpx;
+  padding: 30rpx 30rpx 2rpx;
+  border-radius: 32rpx;
 }
 
 .goods-name-row {
-  display: inline;
+  margin-bottom: 10rpx;
   vertical-align: middle;
 }
 

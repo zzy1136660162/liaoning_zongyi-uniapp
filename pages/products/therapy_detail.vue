@@ -35,40 +35,33 @@
             传统疗法价格
           </view>
           <view class="price-info">
-            <text class="price-unit">
+            <text class="price-unit" selectable="true">
               ￥
             </text>
-            <text class="price-num">
+            <text class="price-num" selectable="true">
               {{ priceInteger }}
             </text>
-            <text class="price-decimal">
+            <text class="price-decimal" selectable="true">
               .{{ priceDecimal }}
             </text>
           </view>
         </view>
         <view class="price-right">
           <view class="sales-box">
-            <text class="sales-icon">
+            <text class="sales-icon" selectable="true">
               🔥
             </text>
-            <text class="sales-count">
+            <text class="sales-count" selectable="true">
               已售 {{ product.salesVolume || 0 }}
             </text>
           </view>
         </view>
       </view>
-      <!-- <view class="trust-badges">
-        <view class="trust-item"><image class="trust-icon" src="/static/logotou.png" mode="aspectFit" /><text class="trust-text">医院自营</text></view>
-        <view class="trust-item"><text class="trust-icon">🛡️</text><text class="trust-text">正品保证</text></view>
-        <view class="trust-item"><text class="trust-icon">💯</text><text class="trust-text">购买无忧</text></view>
-        <view class="trust-item"><text class="trust-icon">🚚</text><text class="trust-text">专业物流</text></view>
-        <view class="trust-item"><text class="trust-icon">⏰</text><text class="trust-text">24h发货</text></view>
-      </view> -->
     </view>
 
     <view class="goods-info">
       <view class="goods-name-row">
-        <text class="therapy-tag">
+        <text class="therapy-tag" selectable="true">
           传统疗法
         </text>
         <text
@@ -77,34 +70,48 @@
         >
           {{ product.limitInfo.text }}
         </text>
-        <text class="goods-name">
+        <text
+          class="goods-name"
+          selectable="true"
+        >
           {{ product.name }}&nbsp;{{ product.description }}
         </text>
       </view>
-      <view
+      <text
         v-if="product.subtitle || product.indications"
         class="goods-sub"
+        selectable="true"
       >
         {{ product.indications }}
-      </view>
+      </text>
       <view
         v-if="product.limitInfo && product.limitInfo.enabled"
         class="limit-reminder"
       >
         <view v-if="product.limitInfo.text">
-          {{ product.limitInfo.text }}
+          <text selectable="true">
+            {{ product.limitInfo.text }}
+          </text>
         </view>
         <view v-if="product.limitInfo.periodLabel != null">
-          限购周期：{{ product.limitInfo.periodLabel }}
+          <text selectable="true">
+            限购周期：{{ product.limitInfo.periodLabel }}
+          </text>
         </view>
         <view v-if="product.limitInfo.limitQuantity != null">
-          限购上限：{{ product.limitInfo.limitQuantity }}件
+          <text selectable="true">
+            限购上限：{{ product.limitInfo.limitQuantity }}件
+          </text>
         </view>
         <view v-if="product.limitInfo.purchasedQuantity != null">
-          已购数量：{{ product.limitInfo.purchasedQuantity }}件
+          <text selectable="true">
+            已购数量：{{ product.limitInfo.purchasedQuantity }}件
+          </text>
         </view>
         <view v-if="product.limitInfo.remainingQuantity != null">
-          剩余可购：{{ product.limitInfo.remainingQuantity }}件
+          <text selectable="true">
+            剩余可购：{{ product.limitInfo.remainingQuantity }}件
+          </text>
         </view>
       </view>
     </view>
@@ -119,7 +126,7 @@
         @click.stop
       >
         <view class="policy-header">
-          <text class="policy-title">
+          <text class="policy-title" selectable="true">
             退换货说明
           </text>
           <view
@@ -131,21 +138,22 @@
         </view>
         <view class="policy-body">
           <view class="policy-section">
-            <text class="policy-section-title">
-              <text class="check-icon">
+            <text class="policy-section-title" selectable="true">
+              <text class="check-icon" selectable="true">
                 ✓
               </text> 支持七天无理由退换
             </text>
-            <text class="policy-content">支持七天无理由退换，随时可退。
+            <text class="policy-content" selectable="true">
+              支持七天无理由退换，随时可退。
             </text>
           </view>
           <view class="policy-section">
-            <text class="policy-section-title">
-              <text class="check-icon">
+            <text class="policy-section-title" selectable="true">
+              <text class="check-icon" selectable="true">
                 ✓
               </text> 售后保障
             </text>
-            <text class="policy-content">
+            <text class="policy-content" selectable="true">
               如需了解相关问题，可联系平台医生或医院相关科室咨询。
             </text>
           </view>
@@ -166,7 +174,9 @@
         已选
       </view>
       <view class="select-value">
-        <text>{{ selectedSpec }}</text>
+        <text selectable="true">
+          {{ selectedSpec }}
+        </text>
       </view>
       <view class="quantity-stepper">
         <button
@@ -178,7 +188,10 @@
         >
           −
         </button>
-        <text class="quantity-value">
+        <text
+          class="quantity-value"
+          selectable="true"
+        >
           {{ quantity }}
         </text>
         <button
@@ -197,62 +210,70 @@
       class="policy-row"
       @click="showPolicyDrawer"
     >
-      <image class="policy-icon" src="https://smf.lntcm.com/static/shop/axg_1.svg" mode="aspectFit" />
-      <text class="policy-text">
+      <image
+        class="policy-icon"
+        src="https://smf.lntcm.com/static/shop/axg_1.svg"
+        mode="aspectFit"
+      />
+      <text class="policy-text" selectable="true">
         支持七天无理由退换 · 售后服务
       </text>
-      <text class="select-arrow">
+      <text class="select-arrow" selectable="true">
         ›
       </text>
     </view>
     <view class="delivery-row">
-      <image class="delivery-icon" src="https://smf.lntcm.com/static/shop/spps.svg" mode="aspectFit" />
-      <text class="delivery-label">
+      <image
+        class="delivery-icon"
+        src="https://smf.lntcm.com/static/shop/spps.svg"
+        mode="aspectFit"
+      />
+      <text class="delivery-label" selectable="true">
         配送
       </text>
-      <text class="delivery-text">
+      <text class="delivery-text" selectable="true">
         {{ deliverySummary }}
       </text>
     </view>
 
     <view class="promise-box">
       <view class="promise-item">
-        <text class="promise-icon">
+        <text class="promise-icon" selectable="true">
           ✓
         </text>
-        <text class="promise-text">
+        <text class="promise-text" selectable="true">
           医院自研
         </text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">
+        <text class="promise-icon" selectable="true">
           ✓
         </text>
-        <text class="promise-text">
+        <text class="promise-text" selectable="true">
           正品保障
         </text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">
+        <text class="promise-icon" selectable="true">
           ✓
         </text>
-        <text class="promise-text">
+        <text class="promise-text" selectable="true">
           专业医生
         </text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">
+        <text class="promise-icon" selectable="true">
           ✓
         </text>
-        <text class="promise-text">
+        <text class="promise-text" selectable="true">
           线下体验
         </text>
       </view>
       <view class="promise-item">
-        <text class="promise-icon">
+        <text class="promise-icon" selectable="true">
           ✓
         </text>
-        <text class="promise-text">
+        <text class="promise-text" selectable="true">
           隐私保护
         </text>
       </view>
@@ -268,7 +289,7 @@
         @click.stop
       >
         <view class="drawer-header">
-          <text class="drawer-title">
+          <text class="drawer-title" selectable="true">
             制剂说明
           </text>
           <view
@@ -286,10 +307,10 @@
             v-if="product.ingredients"
             class="drawer-section"
           >
-            <text class="drawer-label">
+            <text class="drawer-label" selectable="true">
               【成份】
             </text>
-            <text class="drawer-text">
+            <text class="drawer-text" selectable="true">
               {{ product.ingredients }}
             </text>
           </view>
@@ -297,10 +318,10 @@
             v-if="product.indications"
             class="drawer-section"
           >
-            <text class="drawer-label">
+            <text class="drawer-label" selectable="true">
               【功能主治】
             </text>
-            <text class="drawer-text">
+            <text class="drawer-text" selectable="true">
               {{ product.indications }}
             </text>
           </view>
@@ -308,10 +329,10 @@
             v-if="usageText"
             class="drawer-section"
           >
-            <text class="drawer-label">
+            <text class="drawer-label" selectable="true">
               【用法用量】
             </text>
-            <text class="drawer-text">
+            <text class="drawer-text" selectable="true">
               {{ usageText }}
             </text>
           </view>
@@ -319,10 +340,10 @@
             v-if="product.adverseReactions"
             class="drawer-section"
           >
-            <text class="drawer-label">
+            <text class="drawer-label" selectable="true">
               【不良反应】
             </text>
-            <text class="drawer-text">
+            <text class="drawer-text" selectable="true">
               {{ product.adverseReactions }}
             </text>
           </view>
@@ -330,10 +351,10 @@
             v-if="product.contraindication"
             class="drawer-section"
           >
-            <text class="drawer-label">
+            <text class="drawer-label" selectable="true">
               【禁忌】
             </text>
-            <text class="drawer-text">
+            <text class="drawer-text" selectable="true">
               {{ product.contraindication }}
             </text>
           </view>
@@ -341,10 +362,10 @@
             v-if="product.precautions"
             class="drawer-section"
           >
-            <text class="drawer-label">
+            <text class="drawer-label" selectable="true">
               【注意事项】
             </text>
-            <text class="drawer-text">
+            <text class="drawer-text" selectable="true">
               {{ product.precautions }}
             </text>
           </view>
@@ -352,10 +373,10 @@
             v-if="product.storageCondition"
             class="drawer-section"
           >
-            <text class="drawer-label">
+            <text class="drawer-label" selectable="true">
               【贮藏】
             </text>
-            <text class="drawer-text">
+            <text class="drawer-text" selectable="true">
               {{ product.storageCondition }}
             </text>
           </view>
@@ -363,10 +384,10 @@
             v-if="product.manufacturer"
             class="drawer-section"
           >
-            <text class="drawer-label">
+            <text class="drawer-label" selectable="true">
               【生产单位】
             </text>
-            <text class="drawer-text">
+            <text class="drawer-text" selectable="true">
               {{ product.manufacturer }}
             </text>
           </view>
@@ -441,11 +462,11 @@
               mode="aspectFit"
             />
             <view class="recommend-info">
-              <text class="recommend-name">
+              <text class="recommend-name" selectable="true">
                 {{ item.name }}
               </text>
               <view class="recommend-bottom">
-                <text class="recommend-price">
+                <text class="recommend-price" selectable="true">
                   ￥{{ Number(item.price || 0).toFixed(2) }}
                 </text>
                 <view
@@ -453,10 +474,10 @@
                   :class="{ 'has-quantity': cartQuantities[item.id] > 0 }"
                   @click.stop="flyToCart($event, item)"
                 >
-                  <text v-if="cartQuantities[item.id]">
+                  <text v-if="cartQuantities[item.id]" selectable="true">
                     {{ cartQuantities[item.id] }}
                   </text>
-                  <text v-else>
+                  <text v-else selectable="true">
                     +
                   </text>
                 </view>
@@ -487,11 +508,11 @@
               mode="aspectFit"
             />
             <view class="recommend-info">
-              <text class="recommend-name">
+              <text class="recommend-name" selectable="true">
                 {{ item.name }}
               </text>
               <view class="recommend-bottom">
-                <text class="recommend-price">
+                <text class="recommend-price" selectable="true">
                   ￥{{ Number(item.price || 0).toFixed(2) }}
                 </text>
                 <view
@@ -499,10 +520,10 @@
                   :class="{ 'has-quantity': cartQuantities[item.id] > 0 }"
                   @click.stop="flyToCart($event, item)"
                 >
-                  <text v-if="cartQuantities[item.id]">
+                  <text v-if="cartQuantities[item.id]" selectable="true">
                     {{ cartQuantities[item.id] }}
                   </text>
-                  <text v-else>
+                  <text v-else selectable="true">
                     +
                   </text>
                 </view>
@@ -584,8 +605,8 @@
       <!-- <view class="spec-list">
         <view class="spec-title">药品基本信息</view>
         <view class="spec-item" v-for="item in specItems" :key="item.label">
-          <text class="spec-label">{{ item.label }}</text>
-          <text class="spec-value">{{ item.value }}</text>
+          <text class="spec-label" selectable="true">{{ item.label }}</text>
+          <text class="spec-value" selectable="true">{{ item.value }}</text>
         </view>
       </view> -->
 
@@ -602,10 +623,10 @@
             :key="item.label"
             class="usage-item"
           >
-            <text class="usage-label">
+            <text class="usage-label" selectable="true">
               {{ item.label }}
             </text>
-            <text class="usage-text">
+            <text class="usage-text" selectable="true">
               {{ item.value }}
             </text>
           </view>
@@ -625,16 +646,25 @@
             :key="item.label"
             class="usage-item"
           >
-            <text class="usage-label">
+            <text
+              class="usage-label"
+              selectable="true"
+            >
               {{ item.label }}
             </text>
-            <text class="usage-text">
+            <text
+              class="usage-text"
+              selectable="true"
+            >
               {{ item.value }}
             </text>
           </view>
         </view>
         <view class="usage-tip">
-          <text class="usage-text">
+          <text
+            class="usage-text"
+            selectable="true"
+          >
             凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
           </text>
         </view>
@@ -651,10 +681,10 @@
     </view>
 
     <!-- <view class="reminder-bar">
-      <text class="reminder-icon">
+      <text class="reminder-icon" selectable="true">
         !
       </text>
-      <text class="reminder-text">
+      <text class="reminder-text" selectable="true">
         凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
       </text>
     </view> -->
@@ -669,8 +699,12 @@
           class="action-icon-btn"
           @click="toggleCollect"
         >
-          <uni-icons :type="isCollected ? 'star-filled' : 'star'" size="20" :color="isCollected ? '#ff6b35' : '#666'"></uni-icons>
-          <text class="action-text">
+          <uni-icons
+            :type="isCollected ? 'star-filled' : 'star'"
+            size="20"
+            :color="isCollected ? '#ff6b35' : '#666'"
+          />
+          <text class="action-text" selectable="true">
             {{ isCollected ? '已收藏' : '收藏' }}
           </text>
         </view>
@@ -678,8 +712,12 @@
           class="action-icon-btn"
           @click="goCart"
         >
-          <uni-icons type="cart" size="20" color="#666"></uni-icons>
-          <text class="action-text">
+          <uni-icons
+            type="cart"
+            size="20"
+            color="#666"
+          />
+          <text class="action-text" selectable="true">
             购物车
           </text>
           <view
@@ -693,8 +731,12 @@
           class="action-icon-btn"
           @click="showCustomerService"
         >
-          <uni-icons type="headphones" size="20" color="#666"></uni-icons>
-          <text class="action-text">
+          <uni-icons
+            type="headphones"
+            size="20"
+            color="#666"
+          />
+          <text class="action-text" selectable="true">
             客服
           </text>
         </view>
@@ -1360,7 +1402,7 @@ onShow(() => {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  padding: 20rpx 30rpx 16rpx;
+  padding: 20rpx 30rpx 50rpx;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -1464,12 +1506,14 @@ onShow(() => {
 }
 
 .goods-info {
+  margin-top: -50rpx;
   background: #fff;
-  padding: 0 30rpx 2rpx;
+  padding: 30rpx 30rpx 2rpx;
+  border-radius: 32rpx;
 }
 
 .goods-name-row {
-  display: inline;
+  margin-bottom: 10rpx;
   vertical-align: middle;
 }
 
