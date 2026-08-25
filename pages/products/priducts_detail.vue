@@ -1,12 +1,12 @@
 <template>
   <view class="page">
     <!-- 商品大图 -->
-    <image 
+    <image
       class="banner"
       :src="getImageUrl(product.image)"
       mode="widthFix"
     />
-  
+
     <!-- 标题 + 价格 + 数量 -->
     <view class="box">
       <view class="title">
@@ -619,4 +619,3 @@ const handleCustomerService = () => {
     line-height: 1;
   }
   </style>
-  
