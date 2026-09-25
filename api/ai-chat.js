@@ -1,3 +1,4 @@
+import { getSessionGeneration, isCurrentSession, sessionChangedError } from '../utils/session.js'
 import {
   FASTGPT_API_KEY,
   FASTGPT_STREAM,
@@ -100,6 +101,7 @@ const normalizeReplyContent = (content) => {
 }
 
 export const sendAiChatMessage = ({ text, chatId = '', userInfo = {}, messages = [] } = {}) => {
+  const session = getSessionGeneration()
   const content = typeof text === 'string' ? text.trim() : ''
   const requestMessages = normalizeRequestMessages(messages, content)
 
@@ -139,6 +141,7 @@ export const sendAiChatMessage = ({ text, chatId = '', userInfo = {}, messages =
       },
       data: payload,
       success: (response) => {
+        if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
         const { statusCode, data } = response
 
         if (statusCode < 200 || statusCode >= 300) {
@@ -158,6 +161,7 @@ export const sendAiChatMessage = ({ text, chatId = '', userInfo = {}, messages =
         })
       },
       fail: (error) => {
+        if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
         const errorMessage = error?.errMsg || ''
         if (errorMessage.includes('timeout')) {
           reject(new Error('请求超时，请稍后重试'))

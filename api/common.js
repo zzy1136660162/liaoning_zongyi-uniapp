@@ -1,10 +1,11 @@
+import { getSessionGeneration, isCurrentSession, sessionChangedError } from '../utils/session.js'
 import { API_PATHS, BASE_URL, TIMEOUT, TOKEN_KEY } from '../utils/config.js'
 
 const getUploadToken = () => {
   try {
     return uni.getStorageSync(TOKEN_KEY) || ''
   } catch (error) {
-    console.warn('category=COMMON_UPLOAD action=get_token result=failed reason=storage_error message=%s', error?.message || error)
+    console.warn('event=common_upload stage=credential result=failed reason=storage_error')
     return ''
   }
 }
@@ -31,6 +32,7 @@ export const parseUploadResponse = (res = {}) => {
 }
 
 export const uploadFile = (filePath, options = {}) => {
+  const session = getSessionGeneration()
   const startTime = Date.now()
   const url = options.url || API_PATHS.COMMON.UPLOAD
 
@@ -43,7 +45,7 @@ export const uploadFile = (filePath, options = {}) => {
       header.Authorization = `Bearer ${token}`
     }
 
-    console.info('category=COMMON_UPLOAD action=upload_start result=pending url=%s filePath=%s', url, filePath)
+    console.info('event=common_upload stage=request result=pending')
     uni.uploadFile({
       url: BASE_URL + url,
       filePath,
@@ -52,19 +54,21 @@ export const uploadFile = (filePath, options = {}) => {
       header,
       timeout: options.timeout || TIMEOUT,
       success: (res) => {
+        if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
         const durationMs = Date.now() - startTime
         try {
           const data = parseUploadResponse(res)
-          console.info('category=COMMON_UPLOAD action=upload_complete result=success url=%s durationMs=%s fileUrl=%s', url, durationMs, data.url)
+          console.info('event=common_upload stage=response result=success durationMs=%s', durationMs)
           resolve(data)
         } catch (error) {
-          console.warn('category=COMMON_UPLOAD action=upload_complete result=failed url=%s durationMs=%s reason=parse_error message=%s', url, durationMs, error?.message || error)
+          console.warn('event=common_upload stage=response result=failed reason=parse_error durationMs=%s', durationMs)
           reject(error)
         }
       },
       fail: (error) => {
+        if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
         const durationMs = Date.now() - startTime
-        console.warn('category=COMMON_UPLOAD action=upload_complete result=failed url=%s durationMs=%s reason=request_error message=%s', url, durationMs, error?.errMsg || error?.message || error)
+        console.warn('event=common_upload stage=request result=failed reason=request_error durationMs=%s', durationMs)
         reject(error)
       }
     })

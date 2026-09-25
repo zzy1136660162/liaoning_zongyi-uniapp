@@ -5,7 +5,7 @@
 
 import { post } from './request.js'
 import { API_PATHS, TOKEN_KEY } from './config.js'
-import { getStoredWeChatSessionKey } from '@/api/auth.js'
+import { getAnalyticsSessionId } from './session.js'
 
 // 获取设备信息
 const getDeviceInfo = () => {
@@ -132,8 +132,7 @@ export const logAccess = async (options = {}) => {
       accessType: resolvedPageType,
       accessTitle: resolvedAccessTitle,
       pageId: pageId || '',
-      // 使用小程序 sessionKey 作为会话ID，便于服务端追踪
-      sessionId: getStoredWeChatSessionKey() || undefined,
+      sessionId: getAnalyticsSessionId(),
       // 使用本地持久化的 clientId 作为客户端标识
       clientId: getOrCreateClientId(),
       requestUri: requestUri || (currentPage ? `/${currentPage}` : ''),
@@ -216,4 +215,3 @@ export const logButtonClick = (buttonName, pageType = '', pageId = '', extraData
     extraData: extraData
   })
 }
-

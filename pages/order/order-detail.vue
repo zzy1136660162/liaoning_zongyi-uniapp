@@ -209,7 +209,7 @@
                   v-else
                   class="therapy-voucher-empty"
                 >
-                  暂无核销码
+                  {{ Number(voucher.redeemStatus) === 3 ? '退款处理中，暂不可核销' : '暂无核销码' }}
                 </view>
               </view>
             </view>
@@ -238,6 +238,7 @@
 </template>
 
   <script>
+  import { loadPrescriptionContext } from '@/utils/consultation-checkout.js'
   import { getProductDetail } from '@/api/product.js'
   import { getDoctorDetail } from '@/api/hospital.js'
   import { getConsultationDetail, getPrescriptionByConsultation, getPrescriptionDetail } from '@/api/consultation.js'
@@ -275,6 +276,7 @@
           orderStatus: null, // 订单状态：3为已完成
           orderType: null,
           payStatus: null,
+          paymentFulfillmentStatus: null,
           redeemStatus: null,
           refundStatus: null,
           refundApplicationId: null,
@@ -297,7 +299,7 @@
     },
     async onLoad(options) {
       logPageView('ORDER_DETAIL', options?.orderId || options?.id || '')
-      console.log('OrderDetail onLoad options:', options)
+      console.debug('event=ui_order_order_detail stage=page_load result=started')
 
       const orderId = options.orderId || options.id
       if (orderId) {
@@ -308,7 +310,7 @@
         // 从其它页面传来的序列化订单对象（例如 consultation_detail.vue 的 encoded order）
         try {
           const orderData = JSON.parse(decodeURIComponent(options.order))
-          console.log('接收到的订单数据:', orderData)
+          console.debug('event=ui_order_order_detail stage=route_snapshot result=parsed')
 
           // 映射常用字段（只映射必要用于展示/后续查询的字段）
           this.order.id = orderData.id || orderData.orderId || orderData.order_id || this.order.id
@@ -331,7 +333,7 @@
 
           // 如果获得了处方标识（可能是处方ID或咨询ID），尝试填充处方详情
           const presId = this.order.prescriptionId || this.order.prescriptionNo
-          console.log('解析后 presId:', presId)
+          console.debug('event=ui_order_order_detail stage=prescription_link result=resolved')
           if (presId) {
             await this.fillPrescriptionInfo(presId)
           } else {
@@ -339,12 +341,12 @@
             await this.loadOrderFromStorage()
           }
         } catch (e) {
-          console.warn('解析订单参数失败，回退到本地加载', e)
+          console.warn('event=ui_order_order_detail stage=route_snapshot result=fallback reason=invalid_route_context')
           await this.loadOrderFromStorage()
         }
       } else {
         // 如果没有订单ID也没有序列化订单对象，回退到旧的逻辑
-        console.warn('未提供订单ID，使用本地数据')
+        console.warn('event=ui_order_order_detail stage=page_load result=fallback reason=missing_order_id')
         await this.loadOrderFromStorage()
       }
     },
@@ -469,7 +471,7 @@
 
           return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
         } catch (e) {
-          console.error('格式化日期时间失败:', e)
+          console.error('event=ui_order_order_detail stage=format_date_time result=failed reason=operation_incomplete')
           return dateTimeStr
         }
       },
@@ -529,6 +531,7 @@
       },
 
       formatRedeemStatus(voucher = {}) {
+        if (Number(voucher.redeemStatus) === 3) return getRedeemStatusText(voucher)
         return voucher.redeemStatusText || voucher.redeem_status_text || getRedeemStatusText(voucher)
       },
 
@@ -668,24 +671,7 @@
           uni.showLoading({ title: '加载中...' })
 
           const orderDetail = await getOrderDetail(orderId, { showLoading: false })
-          console.log('订单详情:', orderDetail)
-          // 调试日志：打印 items 的原始结构与每个字段，便于定位 quantity 问题
-          try {
-            console.log('orderDetail.items raw:', orderDetail.items)
-            if (orderDetail.items && orderDetail.items.length > 0) {
-              orderDetail.items.forEach((it, idx) => {
-                try {
-                  console.log(`orderDetail.items[${idx}] keys:`, Object.keys(it), 'values:', it)
-                } catch (e) {
-                  console.log(`orderDetail.items[${idx}]`, it)
-                }
-              })
-            } else {
-              console.log('orderDetail.items is empty or undefined')
-            }
-          } catch (logErr) {
-            console.warn('打印 orderDetail.items 调试信息失败', logErr)
-          }
+          console.debug('event=ui_order_order_detail stage=order_detail result=received')
 
           if (orderDetail) {
             this.applyPatientSnapshot(orderDetail)
@@ -697,6 +683,7 @@
           this.order.orderStatus = orderDetail.orderStatus
           this.order.orderType = orderDetail.orderType ?? orderDetail.order_type ?? this.order.orderType
           this.order.payStatus = orderDetail.payStatus ?? orderDetail.pay_status ?? this.order.payStatus
+          this.order.paymentFulfillmentStatus = orderDetail.paymentFulfillmentStatus ?? orderDetail.payment_fulfillment_status ?? null
           this.order.refundStatus = orderDetail.refundStatus ?? orderDetail.refund_status ?? this.order.refundStatus
           this.order.redeemStatus = orderDetail.redeemStatus ?? orderDetail.redeem_status ?? this.order.redeemStatus
           this.order.refundApplicationId = orderDetail.refundApplicationId ?? orderDetail.refund_application_id ?? this.order.refundApplicationId
@@ -707,6 +694,7 @@
               orderStatus: this.order.orderStatus,
               orderType: this.order.orderType,
               payStatus: this.order.payStatus,
+          paymentFulfillmentStatus: this.order.paymentFulfillmentStatus,
               refundStatus: this.order.refundStatus,
               redeemStatus: this.order.redeemStatus,
               hasRedeemVouchers,
@@ -737,7 +725,7 @@
               try {
                 this.applyDoctorInfo(await this.getCachedDoctorDetail(orderDetail.doctorId), orderDetail.doctorId)
               } catch (e) {
-                console.warn('从订单 doctorId 获取医生信息失败', e)
+                console.warn('event=ui_order_order_detail stage=doctor_info result=failed reason=request_failed')
               }
             }
 
@@ -766,7 +754,7 @@
                 image: getImageUrl(item.productImage || item.product_image || item.coverImage || item.cover_image || item.image || ''),
                 redeemVouchers: this.buildRedeemVouchers(item)
               }))
-              console.log('从订单设置 allCartItems:', this.allCartItems)
+              console.debug('event=ui_order_order_detail stage=order_items result=applied')
             }
 
             if (this.needsProductEnrichment()) {
@@ -786,11 +774,11 @@
 
           uni.hideLoading()
         } catch (error) {
-          console.error('加载订单详情失败:', error)
+          console.error('event=ui_order_order_detail stage=order_detail result=failed reason=request_failed')
           uni.hideLoading()
 
           // API失败时回退到本地数据
-          console.warn('API加载失败，使用本地数据')
+          console.warn('event=ui_order_order_detail stage=order_detail result=fallback reason=request_failed')
           await this.loadOrderFromStorage()
         }
       },
@@ -805,11 +793,11 @@
           if (productId) {
             await this.enrichByProduct(productId)
           } else {
-            console.warn('未找到商品ID，跳过商品/医生信息补全')
+            console.warn('event=ui_order_order_detail stage=local_snapshot result=skipped reason=missing_product_id')
           }
           const prescriptionId = this.$options?.data?.order?.prescriptionId || null
           if (prescriptionId) {
-            console.log(prescriptionId,'prescriptionId');
+            console.debug('event=ui_order_order_detail stage=load_order_from_storage result=observed');
 
             await this.fillPrescriptionInfo(prescriptionId)
           }
@@ -837,12 +825,12 @@
                 })
               }
             } catch (e) {
-              console.warn('获取商品详情失败:', id, e)
+              console.warn('event=ui_order_order_detail stage=load_cart_from_storage result=warning reason=operation_incomplete')
             }
           }
           this.allCartItems = items
         } catch (e) {
-          console.error('加载购物车失败:', e)
+          console.error('event=ui_order_order_detail stage=load_cart_from_storage result=failed reason=operation_incomplete')
           this.allCartItems = []
         }
       },
@@ -857,7 +845,7 @@
           const diagnoses = []
           const productIds = this.allCartItems.map(item => item.id).filter(Boolean)
 
-          console.log('enrichDiagnosisFromAllProducts productIds:', productIds)
+          console.debug('event=ui_order_order_detail stage=diagnosis_enrichment result=started')
           // 遍历所有商品，获取每个商品的 prescription_diagnosis（兼容 snake_case/camelCase）
           for (const productId of productIds) {
             try {
@@ -872,7 +860,7 @@
                 }
               }
             } catch (e) {
-              console.warn(`获取商品${productId}的诊断信息失败:`, e)
+              console.warn('event=ui_order_order_detail stage=enrich_diagnosis_from_all_products result=warning reason=operation_incomplete')
             }
           }
 
@@ -881,10 +869,10 @@
             const joined = diagnoses.join('，')
             this.order.diagnosis = joined
             this.order.prescriptionDiagnosis = joined
-            console.log('收集到的诊断信息:', diagnoses, 'joined:', joined)
+            console.debug('event=ui_order_order_detail stage=diagnosis_enrichment result=applied')
           }
         } catch (e) {
-          console.error('收集商品诊断信息失败:', e)
+          console.error('event=ui_order_order_detail stage=enrich_diagnosis_from_all_products result=failed reason=operation_incomplete')
         }
       },
 
@@ -917,13 +905,13 @@
             try {
               const doctor = await this.getCachedDoctorDetail(this.order.doctorId)
               this.applyDoctorInfo(doctor, this.order.doctorId)
-              console.log('enrichByProduct fetched doctor:', doctor)
+              console.debug('event=ui_order_order_detail stage=enrich_by_product result=observed')
             } catch (e) {
-              console.warn('获取医生信息失败', e)
+              console.warn('event=ui_order_order_detail stage=enrich_by_product result=warning reason=operation_incomplete')
             }
           }
         } catch (e) {
-          console.error('补全商品/医生信息失败:', e)
+          console.error('event=ui_order_order_detail stage=enrich_by_product result=failed reason=operation_incomplete')
         }
       },
 
@@ -931,122 +919,22 @@
       async fillPrescriptionInfo(prescriptionId) {
         if (!prescriptionId) return
         try {
-          // 处理 ID 语义混淆：传入的 id 可能是 consultationId，也可能是 lnzy_prescription.id
-          let consultationDetail = null
-
-          // 1) 先尝试把传入 id 当作 consultationId 去读取咨询详情
-          try {
-            consultationDetail = await getConsultationDetail(prescriptionId)
-            console.log('fillPrescriptionInfo: treated id as consultationId, fetched consultation:', consultationDetail)
-          } catch (consultErr) {
-            console.log('fillPrescriptionInfo: treating id as consultationId failed, will try as prescriptionId', consultErr && consultErr.message)
-          }
-
-          // 2) 如果没有拿到 consultationDetail，再把 id 当作处方表 id 去读取处方详情，获得 consultationId 后再读咨询详情
-          if (!consultationDetail) {
-            try {
-              const pres = await getPrescriptionDetail(prescriptionId)
-              console.log('fillPrescriptionInfo: treated id as prescriptionId, fetched prescription:', pres)
-              if (pres) {
-                this.applyPatientSnapshot(pres)
-                // 记录处方表 id 到页面状态（用于后续跳转等）
-                this.order.prescriptionId = pres.id || this.order.prescriptionId
-                // 尝试从处方记录中取 consultation id 字段（兼容命名）
-                const consultId = pres.consultationId || pres.consultation_id || pres.consultation || null
-                if (consultId) {
-                  try {
-                    consultationDetail = await getConsultationDetail(consultId)
-                    console.log('fillPrescriptionInfo: fetched consultation by prescription.consultationId:', consultationDetail)
-                  } catch (e) {
-                    console.warn('fillPrescriptionInfo: failed to fetch consultation by prescription.consultationId', e)
-                  }
-                }
-              }
-            } catch (presErr) {
-              console.warn('fillPrescriptionInfo: getPrescriptionDetail failed', presErr)
-            }
-          }
-
-          // 如果仍然没有 consultationDetail，则直接返回（无进一步信息可补）
-          if (!consultationDetail) {
-            console.warn('fillPrescriptionInfo: no consultation detail available for id:', prescriptionId)
-            this.prescriptionInfoLoaded = true
-            return
-          }
-
-          const detail = consultationDetail
-          console.log('fillPrescriptionInfo - consultation detail fetched:', detail)
-          this.applyPatientSnapshot(detail)
-
-            // 设置咨询时间（如果还没有设置）
-            if (!this.order.time && detail.createdAt) {
-              this.order.time = this.formatDateTime(detail.createdAt)
-            }
-            // 设置处方单号（用于显示）
-            if (detail.consultationNo && !this.order.prescriptionNo) {
-              this.order.prescriptionNo = detail.consultationNo
-            }
-          // 根据 consultation 详情，查询 lnzy_prescription 表以获取对应处方记录的 id
-          // 优先使用后端提供的通过 consultationId 获取处方接口
-          try {
-            const prescriptionRecord = await getPrescriptionByConsultation(detail.id)
-            console.log('getPrescriptionByConsultation result:', prescriptionRecord)
-            if (prescriptionRecord && prescriptionRecord.id) {
-              this.applyPatientSnapshot(prescriptionRecord)
-              // 将 lnzy_prescription 表的 id 作为页面使用的处方ID（用于跳转到处方详情）
-              this.order.prescriptionId = prescriptionRecord.id
-              this.order.prescriptionNo = String(prescriptionRecord.id)
-              console.log('设置 order.prescriptionId 为 lnzy_prescription.id:', this.order.prescriptionId)
-
-              // 进一步获取 lnzy_prescription 表的详细记录，优先使用处方表的 diagnosis 作为临床诊断
-              try {
-                const presDetail = await getPrescriptionDetail(this.order.prescriptionId)
-                console.log('lnzy_prescription detail:', presDetail)
-                this.applyPatientSnapshot(presDetail)
-                if (presDetail && presDetail.diagnosis) {
-                  this.order.diagnosis = presDetail.diagnosis
-                  this.order.prescriptionDiagnosis = presDetail.diagnosis
-                  console.log('使用处方表 diagnosis 填充 order.diagnosis:', presDetail.diagnosis)
-                }
-              } catch (presErr) {
-                console.warn('获取 lnzy_prescription 详情失败，继续使用 consultation.diagnosis 回退', presErr)
-              }
-            }
-          } catch (e) {
-            console.warn('通过 consultationId 查询处方记录失败，无法获取 lnzy_prescription.id', e)
-          }
-            // 设置诊断信息（优先使用从商品中收集的诊断信息，如果没有则使用咨询详情中的）
-            if (detail.diagnosis && !this.order.diagnosis) {
-              this.order.diagnosis = detail.diagnosis
-            }
-            // 接诊医师只以咨询记录的 doctor_id 为准，空值统一展示 AI 在线医生
-            const detailDoctorName = resolveConsultationDoctorName(detail)
-            if (detailDoctorName) {
-              this.order.doctor = detailDoctorName
-              this.order.doctorName = detailDoctorName
-            }
-            // 暂时使用默认医生头像，不从API获取
-            // this.order.doctorAvatar = detail.doctorAvatar || this.order.doctorAvatar
-            // 设置医院信息
-            if (detail.hospitalName) {
-              this.order.hospital = detail.hospitalName
-            }
-            // 设置科室信息
-            if (detail.department) {
-              this.order.department = detail.department
-            }
-            // 如果处方/咨询详情中带有 doctorId，则从医生表补全医生头衔/头像等信息（参考 consultation_detail.vue）
-            if (detail.doctorId) {
-              this.order.doctorId = detail.doctorId
-              try {
-                this.applyDoctorInfo(await this.getCachedDoctorDetail(detail.doctorId), detail.doctorId)
-              } catch (e) {
-                console.warn('获取医生信息失败', e)
-            }
+          const { prescription, consultation } = await loadPrescriptionContext(prescriptionId, {
+            getPrescriptionDetail, getConsultationDetail
+          })
+          this.applyPatientSnapshot(prescription)
+          this.order.prescriptionId = prescription.id
+          this.order.prescriptionNo = prescription.prescriptionNo || String(prescription.id)
+          this.order.diagnosis = prescription.diagnosis || consultation?.diagnosis || ''
+          this.order.prescriptionDiagnosis = prescription.diagnosis || ''
+          if (consultation) {
+            const doctorName = resolveConsultationDoctorName(consultation)
+            this.order.doctor = doctorName
+            this.order.doctorName = doctorName
           }
           this.prescriptionInfoLoaded = true
-        } catch (e) {
-          console.warn('查询处方/咨询相关信息失败', e)
+        } catch (error) {
+          console.warn('event=ui_order_order_detail stage=fill_prescription_info result=warning reason=operation_incomplete')
         }
       },
 
@@ -1082,7 +970,7 @@
             }
           }
         } catch (e) {
-          console.warn('从处方补全医师信息失败', e)
+          console.warn('event=ui_order_order_detail stage=apply_doctor_from_prescription result=warning reason=operation_incomplete')
         }
       },
 
@@ -1091,6 +979,7 @@
           orderStatus: status,
           orderType: this.order.orderType,
           payStatus: this.order.payStatus,
+          paymentFulfillmentStatus: this.order.paymentFulfillmentStatus,
           refundStatus: this.order.refundStatus,
           redeemStatus: this.order.redeemStatus,
           hasRedeemVouchers
@@ -1107,7 +996,7 @@
           return
         }
 
-        console.log('跳转到处方详情，query:', query)
+        console.debug('event=ui_order_order_detail stage=handle_view result=observed')
         uni.navigateTo({
           url: `/pages/prescription/detail?${query}`
         })
@@ -1116,7 +1005,7 @@
       // 加载购物车数据
       loadCartItems() {
         this.allCartItems = []
-        console.log('loadCartItems is not used on this page')
+        console.debug('event=ui_order_order_detail stage=load_cart_items result=observed')
       },
 
 
@@ -1143,7 +1032,7 @@
           })
 
         } catch (error) {
-          console.error('检查退货条件失败:', error)
+          console.error('event=ui_order_order_detail stage=apply_refund result=failed reason=operation_incomplete')
           uni.showToast({
             title: error.message || '操作失败',
             icon: 'none'

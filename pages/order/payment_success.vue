@@ -4,10 +4,10 @@
       <view class="success-header">
         <view class="success-icon-wrapper">
           <view class="success-icon">
-            <uni-icons type="checkmarkempty" size="60" color="#07c160"></uni-icons>
+            <uni-icons :type="paymentOutcome.state === 'success' ? 'checkmarkempty' : 'info'" size="60" :color="paymentOutcome.state === 'success' ? '#07c160' : '#ff9900'"></uni-icons>
           </view>
         </view>
-        <text class="success-text">支付成功</text>
+        <text class="success-text">{{ paymentOutcome.title }}</text>
         <text v-if="syncing" class="sync-hint">正在确认订单状态...</text>
       </view>
 
@@ -69,20 +69,27 @@
 
 <script setup>
 import { ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { getOrderDetail } from '@/api/order.js'
 import { syncPaymentByOrder } from '@/api/payment.js'
-import { getCurrentCheckoutProductIds, removeFromCart } from '@/utils/cart.js'
+import { buildCartItemKey, removeFromCart } from '@/utils/cart.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
 import { ORDER_TYPE_THERAPY } from '@/utils/therapy.js'
+import { getPaymentOutcome } from '@/utils/order-status.js'
+import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
+
+const pageSession = getSessionGeneration()
+let pageActive = true
+const paymentOutcome = ref(getPaymentOutcome())
+onUnload(() => { pageActive = false })
 
 const paymentInfo = ref({
   amount: 0,
   goodsAmount: 0,
   itemCount: 0,
   paymentMethod: '在线支付',
-  orderStatusLabel: '支付成功',
+  orderStatusLabel: '待支付确认',
   orderNo: '',
   createdTime: '',
   paymentTime: '',
@@ -97,7 +104,6 @@ const cartCleared = ref(false)
 
 let currentOrderId = ''
 
-const PAY_STATUS_PAID = 1
 const POLL_INTERVAL_MS = 1500
 const POLL_MAX_ATTEMPTS = 12
 
@@ -146,10 +152,7 @@ const uniqueStringIds = (ids = []) => {
 }
 
 const resolveOrderStatusLabel = (orderData = {}) => {
-  if (isOrderPaid(orderData)) {
-    return '支付成功'
-  }
-  return '待支付确认'
+  return getPaymentOutcome(orderData).title
 }
 
 const resolveShippingFeeText = (orderData = {}) => {
@@ -166,6 +169,11 @@ const resolveShippingFeeText = (orderData = {}) => {
 }
 
 const applyTips = (orderData = {}) => {
+  if (paymentOutcome.value.state !== 'success') {
+    paymentInfo.value.primaryTip = paymentOutcome.value.tip
+    paymentInfo.value.secondaryTip = ''
+    return
+  }
   const orderType = orderData.orderType ?? orderData.order_type
   if (Number(orderType) === ORDER_TYPE_THERAPY) {
     paymentInfo.value.primaryTip = '支付成功后可在订单详情查看核销二维码'
@@ -176,11 +184,7 @@ const applyTips = (orderData = {}) => {
   paymentInfo.value.secondaryTip = paymentInfo.value.shippingFeeText
 }
 
-const isOrderPaid = (orderData) => {
-  const payStatus = orderData?.payStatus ?? orderData?.pay_status
-  const orderStatus = orderData?.orderStatus ?? orderData?.order_status ?? orderData?.status
-  return Number(payStatus) === PAY_STATUS_PAID || Number(orderStatus) >= 1
-}
+const isOrderPaid = orderData => getPaymentOutcome(orderData).state === 'success'
 
 const clearPaidCartItems = (orderData = {}) => {
   if (cartCleared.value || !isOrderPaid(orderData)) {
@@ -188,10 +192,9 @@ const clearPaidCartItems = (orderData = {}) => {
   }
 
   const itemProductIds = Array.isArray(orderData.items)
-    ? uniqueStringIds(orderData.items.map(resolveOrderItemProductId))
+    ? uniqueStringIds(orderData.items.map(item => buildCartItemKey(resolveOrderItemProductId(item), item.skuId ?? item.sku_id)))
     : []
-  const checkoutProductIds = uniqueStringIds(getCurrentCheckoutProductIds())
-  const productIds = checkoutProductIds.length > 0 ? checkoutProductIds : itemProductIds
+  const productIds = itemProductIds
 
   if (productIds.length > 0 && removeFromCart(productIds)) {
     uni.$emit('cartUpdated')
@@ -200,6 +203,9 @@ const clearPaidCartItems = (orderData = {}) => {
 }
 
 const applyOrderData = (orderData) => {
+  assertCurrentSession(pageSession)
+  if (!pageActive) return
+  paymentOutcome.value = getPaymentOutcome(orderData)
   paymentInfo.value.amount = toAmount(orderData.paidAmount || orderData.payableAmount || orderData.totalAmount || orderData.amount, 0)
   paymentInfo.value.goodsAmount = toAmount(orderData.totalAmount || orderData.amount || paymentInfo.value.amount, 0)
   paymentInfo.value.itemCount = sumItemCount(orderData.items)
@@ -208,7 +214,7 @@ const applyOrderData = (orderData) => {
   paymentInfo.value.createdTime = formatTime(orderData.createdAt || orderData.createTime || orderData.created_at)
   paymentInfo.value.shippingFeeText = resolveShippingFeeText(orderData)
 
-  const payTime = orderData.payTime || orderData.createTime || orderData.createdAt
+  const payTime = orderData.payTime || orderData.pay_time
   paymentInfo.value.paymentTime = formatTime(payTime)
 
   if (orderData.paymentType) {
@@ -221,7 +227,11 @@ const applyOrderData = (orderData) => {
 }
 
 const fetchOrderDetail = async (orderId) => {
-  return getOrderDetail(orderId, { showLoading: false })
+  assertCurrentSession(pageSession)
+  if (!pageActive) throw new Error('页面已关闭')
+  const result = await getOrderDetail(orderId, { showLoading: false })
+  assertCurrentSession(pageSession)
+  return result
 }
 
 const waitForPaymentConfirmed = async (orderId, outTradeNo) => {
@@ -230,12 +240,13 @@ const waitForPaymentConfirmed = async (orderId, outTradeNo) => {
   for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt += 1) {
     try {
       const orderData = await fetchOrderDetail(orderId)
-      if (isOrderPaid(orderData)) {
-        applyOrderData(orderData)
+      applyOrderData(orderData)
+      if (getPaymentOutcome(orderData).terminal) {
         return true
       }
     } catch (error) {
-      console.warn('轮询订单支付状态失败:', error)
+      if (!pageActive || error.code === 'SESSION_CHANGED') return false
+      console.warn('event=ui_order_payment_success stage=payment_poll result=unknown reason=query_failed')
     }
 
     if (attempt < POLL_MAX_ATTEMPTS - 1) {
@@ -245,14 +256,16 @@ const waitForPaymentConfirmed = async (orderId, outTradeNo) => {
 
   if (outTradeNo) {
     try {
+      assertCurrentSession(pageSession)
+      if (!pageActive) return false
       await syncPaymentByOrder(orderId, outTradeNo)
       const orderData = await fetchOrderDetail(orderId)
-      if (isOrderPaid(orderData)) {
-        applyOrderData(orderData)
+      applyOrderData(orderData)
+      if (getPaymentOutcome(orderData).terminal) {
         return true
       }
     } catch (error) {
-      console.warn('主动同步支付状态失败:', error)
+      console.warn('event=ui_order_payment_success stage=payment_sync result=unknown reason=sync_failed')
     }
   }
 
@@ -261,29 +274,28 @@ const waitForPaymentConfirmed = async (orderId, outTradeNo) => {
 
 const loadOrderInfo = async (orderId, outTradeNo = '') => {
   if (!orderId) {
-    console.warn('订单ID为空，无法加载订单信息')
+    console.warn('event=ui_order_payment_success stage=payment_state_request result=rejected reason=missing_order_id')
     loading.value = false
     return
   }
 
   try {
-    console.log('支付成功页开始加载订单详情:', {
-      orderId,
-      outTradeNo,
-      orderIdType: typeof orderId
-    })
+    console.debug('event=ui_order_payment_success stage=payment_state_request result=started')
     uni.showLoading({ title: '加载中...' })
 
     const orderData = await fetchOrderDetail(orderId)
-    console.log('支付成功页订单详情返回:', orderData)
+    console.debug('event=ui_order_payment_success stage=payment_state_response result=received')
     applyOrderData(orderData)
 
-    if (!isOrderPaid(orderData)) {
+    if (!getPaymentOutcome(orderData).terminal) {
       uni.hideLoading()
       await waitForPaymentConfirmed(orderId, outTradeNo)
     }
   } catch (error) {
-    console.error('加载订单信息失败:', error)
+    if (error.code === 'SESSION_CHANGED' || !pageActive) return
+    paymentOutcome.value = { state: 'unknown', title: '支付结果待确认', tip: '暂时无法获取订单状态，请稍后在订单列表查看。' }
+    paymentInfo.value.primaryTip = paymentOutcome.value.tip
+    console.error('event=ui_order_payment_success stage=payment_state_request result=unknown reason=query_failed')
     uni.showToast({
       title: '加载订单信息失败',
       icon: 'none',
@@ -297,21 +309,11 @@ const loadOrderInfo = async (orderId, outTradeNo = '') => {
 }
 
 onLoad(async (options) => {
-  console.log('支付成功页 onLoad 原始参数:', options)
+  console.debug('event=ui_order_payment_success stage=page_load result=started')
   const orderId = options.orderId || options.id
   const outTradeNo = options.combineOutTradeNo || options.outTradeNo || ''
   currentOrderId = orderId || ''
-  console.log('支付成功页解析参数:', {
-    orderId,
-    orderIdType: typeof orderId,
-    outTradeNo,
-    paymentType: options.paymentType,
-    amount: options.amount,
-    orderNo: options.orderNo,
-    itemCount: options.itemCount,
-    orderType: options.orderType,
-    therapy: options.therapy
-  })
+  console.debug('event=ui_order_payment_success stage=route_context result=parsed')
 
   logPageView('支付成功页面', '用户进入支付成功页面', orderId)
 
@@ -324,22 +326,10 @@ onLoad(async (options) => {
   if (orderId) {
     await loadOrderInfo(orderId, outTradeNo)
   } else {
-    if (options.amount) {
-      paymentInfo.value.amount = toAmount(options.amount, 0)
-      paymentInfo.value.goodsAmount = paymentInfo.value.amount
-    }
-
-    paymentInfo.value.orderNo = options.outTradeNo || '临时订单号'
-    paymentInfo.value.orderStatusLabel = '支付成功'
-    paymentInfo.value.createdTime = formatTime(new Date())
-    paymentInfo.value.paymentTime = formatTime(new Date())
-    paymentInfo.value.itemCount = Number(options.itemCount || 0)
-    paymentInfo.value.shippingFeeText = options.shippingFeeText
-      ? decodeURIComponent(options.shippingFeeText)
-      : '运费到付，由快递员收取，以实际支付为准'
-    paymentInfo.value.primaryTip = '订单已提交，我们将尽快为您处理'
-    paymentInfo.value.secondaryTip = paymentInfo.value.shippingFeeText
-
+    paymentOutcome.value = { state: 'unknown', title: '支付结果待确认' }
+    paymentInfo.value.orderStatusLabel = '缺少订单信息'
+    paymentInfo.value.primaryTip = '请在订单列表查看实际付款结果。'
+    paymentInfo.value.secondaryTip = ''
     loading.value = false
   }
 })

@@ -3,6 +3,7 @@ import { initCartRemoteSync } from '@/utils/cart-sync.js'
 
 export default {
 	onLaunch: function() {
+		uni.removeStorageSync('wechat_session_key')
 		initCartRemoteSync()
 		console.warn('当前组件仅支持 uni_modules 目录结构 ，请升级 HBuilderX 到 3.1.0 版本以上！')
 		console.log('App Launch')

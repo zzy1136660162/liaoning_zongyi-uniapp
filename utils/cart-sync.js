@@ -7,9 +7,14 @@ import {
 import { getToken } from '@/utils/request.js'
 import { buildCartItemKey, getCartEntries, replaceCartData } from '@/utils/cart.js'
 import { buildCartSyncPayload } from '@/utils/cart-sync-payload.js'
+import { getSessionGeneration, isCurrentSession, onSessionChanged } from './session.js'
 
 const CART_REMOTE_SYNC_EVENT = 'cartRemoteSync'
 const pushTimers = new Map()
+onSessionChanged(() => {
+  pushTimers.forEach(timer => clearTimeout(timer))
+  pushTimers.clear()
+})
 
 const isLoggedIn = () => Boolean(getToken())
 
@@ -78,6 +83,7 @@ export const applyServerCartToLocal = (items = []) => {
 }
 
 export const syncCartOnLogin = async () => {
+  const session = getSessionGeneration()
   if (!isLoggedIn()) {
     return
   }
@@ -86,6 +92,7 @@ export const syncCartOnLogin = async () => {
     const localItems = buildSyncPayload()
     console.log('[cart-sync] syncCartOnLogin start', { localCount: localItems.length })
     const serverItems = await syncCart(localItems)
+    if (!isCurrentSession(session)) return
     applyServerCartToLocal(serverItems || [])
     console.log('[cart-sync] syncCartOnLogin ok', {
       serverCount: Array.isArray(serverItems) ? serverItems.length : 0
@@ -117,6 +124,7 @@ const pushSingleItem = async (cartKey) => {
 }
 
 export const schedulePushCartItem = (cartKey) => {
+  const session = getSessionGeneration()
   if (!isLoggedIn() || !cartKey) {
     return
   }
@@ -127,6 +135,7 @@ export const schedulePushCartItem = (cartKey) => {
   }
 
   const timer = setTimeout(() => {
+    if (!isCurrentSession(session)) return
     pushTimers.delete(key)
     pushSingleItem(key).catch((error) => {
       console.warn('pushSingleItem failed:', error)

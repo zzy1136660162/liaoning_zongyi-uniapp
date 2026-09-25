@@ -210,6 +210,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getUserProfile, logout } from '@/api/auth.js'
+import { endSession } from '@/utils/session.js'
 import { getMyOrders } from '@/api/order.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { logButtonClick, logPageView } from '@/utils/accessLog.js'
@@ -218,7 +219,6 @@ import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { getImageUrl } from '@/utils/config.js'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import {
-  STORAGE_KEY_TOKEN,
   STORAGE_KEY_USER_REGISTER
 } from '@/utils/storage.js'
 
@@ -260,7 +260,7 @@ const loadUserProfile = async () => {
 
     uni.hideLoading()
   } catch (error) {
-    console.error('加载用户信息失败:', error)
+    console.error('event=ui_user_profile stage=profile_request result=failed reason=request_failed')
     uni.hideLoading()
 
     try {
@@ -269,7 +269,7 @@ const loadUserProfile = async () => {
         userInfo.value = localUserInfo
       }
     } catch (storageError) {
-      console.error('读取本地用户信息失败:', storageError)
+      console.error('event=ui_user_profile stage=profile_cache result=failed reason=storage_error')
     }
   }
 }
@@ -283,27 +283,15 @@ const handleLogout = async () => {
         return
       }
 
-      try {
-        uni.showLoading({ title: '退出中...' })
-        await logout()
-      } catch (error) {
-        console.error('退出登录失败:', error)
-      } finally {
-        uni.removeStorageSync(STORAGE_KEY_TOKEN)
-        uni.removeStorageSync(STORAGE_KEY_USER_REGISTER)
-        uni.hideLoading()
-      }
-
-      uni.showToast({
-        title: '已退出登录',
-        icon: 'success'
+      // 先发起携带旧 token 的服务端注销，再立即失效本地会话。
+      console.info('event=ui_user_profile stage=logout_request result=started')
+      logout().catch(() => {
+        console.warn('event=ui_user_profile stage=logout_request result=unknown reason=server_revocation_unconfirmed')
       })
-
-      setTimeout(() => {
-        uni.reLaunch({
-          url: `/pages/register/register?redirectUrl=${encodeURIComponent(getCurrentRoute())}`
-        })
-      }, 1500)
+      endSession()
+      console.info('event=ui_user_profile stage=logout_local result=cleared')
+      userInfo.value = { realName: '', phone: '', idNumber: '' }
+      uni.reLaunch({ url: '/pages/register/register' })
     }
   })
 }
@@ -321,7 +309,7 @@ const loadOrderStats = async () => {
       }
     }
   } catch (error) {
-    console.error('加载订单统计失败:', error)
+    console.error('event=ui_user_profile stage=load_order_stats result=failed reason=operation_incomplete')
   }
 }
 

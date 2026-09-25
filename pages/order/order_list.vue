@@ -233,7 +233,10 @@ const redeemSummaryText = (order = {}) => {
   const vouchers = flattenRedeemVouchers(order)
   if (vouchers.length > 0) {
     const redeemedCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 1).length
-    return `到店核销：${redeemedCount}/${vouchers.length} 已核销`
+    const availableCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 0).length
+    const frozenCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 3).length
+    const refundedCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 2).length
+    return `到店核销：可用 ${availableCount}，已核销 ${redeemedCount}，退款中 ${frozenCount}，已退废 ${refundedCount}`
   }
   return Number(order.redeemStatus) === 1 ? '到店核销：已核销' : '到店核销：待核销'
 }
@@ -259,6 +262,7 @@ const mapOrderListItem = (order = {}, refundInfo = null) => ({
   orderNo: order.orderNo || order.order_no || order.id,
   orderType: order.orderType ?? order.order_type,
   payStatus: order.payStatus ?? order.pay_status,
+  paymentFulfillmentStatus: order.paymentFulfillmentStatus ?? order.payment_fulfillment_status,
   redeemStatus: order.redeemStatus ?? order.redeem_status,
   displayStatusText: order.displayStatusText || order.display_status_text || '',
   verifyQrBase64: order.verifyQrBase64 || order.verify_qr_base64 || '',
@@ -295,7 +299,7 @@ const hydrateMissingOrderItems = async () => {
     getOrderDetail(order.id, { showLoading: false })
       .then(detail => ({ orderId: order.id, detail }))
       .catch(error => {
-        console.warn('补全订单商品明细失败:', order.id, error)
+        console.warn('event=ui_order_order_list stage=hydrate_missing_order_items result=warning reason=operation_incomplete')
         return null
       })
   ))
@@ -319,6 +323,7 @@ const hydrateMissingOrderItems = async () => {
       ...order,
       orderType: order.orderType ?? detail.orderType ?? detail.order_type,
       payStatus: order.payStatus ?? detail.payStatus ?? detail.pay_status,
+      paymentFulfillmentStatus: detail.paymentFulfillmentStatus ?? detail.payment_fulfillment_status ?? order.paymentFulfillmentStatus,
       redeemStatus: order.redeemStatus ?? detail.redeemStatus ?? detail.redeem_status,
       displayStatusText: order.displayStatusText || detail.displayStatusText || detail.display_status_text || '',
       verifyQrBase64: order.verifyQrBase64 || detail.verifyQrBase64 || detail.verify_qr_base64 || '',
@@ -338,8 +343,8 @@ const loadOrders = async () => {
       getRefundList().catch(() => []) // 如果加载失败，返回空数组
     ])
     
-    console.log('订单列表:', orderList)
-    console.log('退货申请列表:', refundList)
+    console.debug('event=ui_order_order_list stage=orders result=received')
+    console.debug('event=ui_order_order_list stage=refunds result=received')
     
     // 创建订单ID到退货申请ID的映射（包含所有退货申请）
     const refundMap = new Map()
@@ -371,7 +376,7 @@ const loadOrders = async () => {
     
     uni.hideLoading()
   } catch (error) {
-    console.error('加载订单列表失败:', error)
+    console.error('event=ui_order_order_list stage=load_orders result=failed reason=operation_incomplete')
     uni.hideLoading()
     uni.showToast({
       title: error.message || '加载失败',
@@ -482,7 +487,7 @@ const handleCancelOrder = async (orderId) => {
           // 重新加载订单列表
           loadOrders()
         } catch (error) {
-          console.error('取消订单失败:', error)
+          console.error('event=ui_order_order_list stage=cancel_order result=failed reason=request_failed')
           uni.hideLoading()
           uni.showToast({
             title: error.message || '取消失败',
@@ -526,7 +531,7 @@ const handleConfirmReceipt = async (orderId) => {
           // 重新加载订单列表
           loadOrders()
         } catch (error) {
-          console.error('确认收货失败:', error)
+          console.error('event=ui_order_order_list stage=confirm_receipt result=failed reason=request_failed')
           uni.hideLoading()
           uni.showToast({
             title: error.message || '确认失败',
@@ -545,7 +550,7 @@ const goToOrderDetail = (orderId) => {
   }
   navigatingOrderId.value = orderId
   logButtonClick('查看订单详情', 'ORDER_LIST', orderId.toString())
-  console.log('goToOrderDetail called with orderId=', orderId)
+  console.debug('event=ui_order_order_list stage=go_to_order_detail result=observed')
   uni.navigateTo({
     url: `/pages/order/order-detail?orderId=${encodeURIComponent(orderId)}`,
     complete: () => {
@@ -579,7 +584,7 @@ const applyRefund = async (orderId) => {
     })
 
   } catch (error) {
-    console.error('检查退货条件失败:', error)
+    console.error('event=ui_order_order_list stage=apply_refund result=failed reason=operation_incomplete')
     uni.showToast({
       title: error.message || '操作失败',
       icon: 'none'

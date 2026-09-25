@@ -41,7 +41,7 @@ export const TIMEOUT = API_CONFIG[ENV].timeout
 export const CUSTOMER_SERVICE_CONFIG = CUSTOMER_SERVICE_ENV[ENV]
 
 // Token存储Key
-export const TOKEN_KEY = 'user_token'
+export { STORAGE_KEY_TOKEN as TOKEN_KEY } from './storage.js'
 
 // 用户ID存储Key
 export const USER_ID_KEY = 'user_id'
@@ -94,10 +94,9 @@ export const API_PATHS = {
     AUTH: {
         SEND_SMS: '/api/auth/send-sms',           // 发送短信验证码
         LOGIN: '/api/auth/login',                 // 登录/注册
-        LOGIN_BY_OPENID: '/api/auth/login-by-openid', // 通过 openid 自动登录
+        LOGIN_BY_OPENID: '/api/auth/login-by-openid', // 使用微信临时 code 换取身份登录（保留旧路径）
         LOGOUT: '/api/auth/logout',               // 退出登录
         USER_PROFILE: '/api/user/profile',        // 获取用户信息
-        USER_BY_OPENID: '/api/user/by-openid',    // 通过 openid 查询用户信息
     },
 
     // 就诊人模块

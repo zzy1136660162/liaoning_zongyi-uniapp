@@ -2,14 +2,15 @@
  * 认证模块API
  */
 
-import { get, post } from '@/utils/request.js'
-import { API_PATHS } from '@/utils/config.js'
+import { get, post } from '../utils/request.js'
+import { API_PATHS } from '../utils/config.js'
+import { assertCurrentSession, getSessionGeneration } from '../utils/session.js'
 import { 
   STORAGE_KEY_WECHAT_OPENID, 
   STORAGE_KEY_WECHAT_UNIONID, 
   STORAGE_KEY_WECHAT_SESSION_KEY,
   STORAGE_KEY_USER_INFO
-} from '@/utils/storage.js'
+} from '../utils/storage.js'
 
 /**
  * 发送短信验证码
@@ -55,31 +56,20 @@ export const getUserProfile = () => {
   })
 }
 
-/**
- * 通过微信 openid 查询用户信息
- * @param {String} openid 微信 openid
- */
-export const getUserByOpenid = (openid) => {
-  return get(API_PATHS.AUTH.USER_BY_OPENID, { openid }, {
-    needAuth: false,
-    showLoading: false
-  })
-}
+/** 使用本次 uni.login 的一次性 code 登录；不能使用本地 openid 作为凭证。 */
+export const loginByWeChatCode = (code) => post(API_PATHS.AUTH.LOGIN_BY_OPENID, { code }, {
+  needAuth: false,
+  showLoading: false,
+  header: { 'Content-Type': 'application/x-www-form-urlencoded' }
+})
 
-/**
- * 通过 openid 自动登录（无需验证码）
- * @param {String} openid 微信 openid
- */
-export const loginByOpenid = (openid) => {
-  return post(API_PATHS.AUTH.LOGIN_BY_OPENID, null, {
-    needAuth: false,
-    showLoading: false,
-    header: {
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    data: { openid }
+export const getWeChatLoginCode = () => new Promise((resolve, reject) => {
+  uni.login({
+    provider: 'weixin',
+    success: result => result.code ? resolve(result.code) : reject(new Error('微信登录未返回授权码')),
+    fail: () => reject(new Error('微信登录失败，请重试'))
   })
-}
+})
 
 /**
  * 退出登录
@@ -93,62 +83,18 @@ export const logout = () => {
 
 /**
  * 获取微信 openid 和 unionid
- * @returns {Promise} 返回 { openid, sessionKey, unionid }
+ * @returns {Promise} 返回 { openid, unionid }
  */
-export const getWeChatOpenId = () => {
-  return new Promise((resolve, reject) => {
-    // 调用微信登录获取 code
-    uni.login({
-      provider: 'weixin',
-      success: async (loginRes) => {
-        console.log('微信登录成功，code:', loginRes.code)
-        
-        try {
-          // 调用后端接口，用 code 换取 openid（request 已经自动处理 code 和 data）
-          const wechatData = await get('/api/wechat/auth/jscode2session', { code: loginRes.code }, {
-            needAuth: false,
-            showLoading: false
-          })
-          console.log('获取微信信息成功:', wechatData)
-
-          // ✅ 保存微信信息到本地存储
-          try {
-            // 保存 openid（必有）
-            if (wechatData.openid) {
-              uni.setStorageSync(STORAGE_KEY_WECHAT_OPENID, wechatData.openid)
-              console.log('✅ 已保存 openid 到本地存储')
-            }
-            
-            // 保存 unionid（可能为空）
-            if (wechatData.unionid) {
-              uni.setStorageSync(STORAGE_KEY_WECHAT_UNIONID, wechatData.unionid)
-              console.log('✅ 已保存 unionid 到本地存储')
-            } else {
-              console.log('⚠️ unionid 为空，未保存')
-            }
-            
-            // 保存 sessionKey（用于后续解密）
-            if (wechatData.sessionKey) {
-              uni.setStorageSync(STORAGE_KEY_WECHAT_SESSION_KEY, wechatData.sessionKey)
-              console.log('✅ 已保存 sessionKey 到本地存储')
-            }
-          } catch (storageError) {
-            console.error('❌ 保存微信信息到本地存储失败:', storageError)
-            // 不影响主流程，继续执行
-          }
-          
-          resolve(wechatData)
-        } catch (error) {
-          console.error('获取openid异常:', error)
-          reject(error)
-        }
-      },
-      fail: (err) => {
-        console.error('微信登录失败:', err)
-        reject(new Error('微信登录失败'))
-      }
-    })
-  })
+export const getWeChatOpenId = async () => {
+  const session = getSessionGeneration()
+  const code = await getWeChatLoginCode()
+  assertCurrentSession(session)
+  const identity = await get('/api/wechat/auth/jscode2session', { code }, { needAuth: false, showLoading: false })
+  assertCurrentSession(session)
+  uni.removeStorageSync(STORAGE_KEY_WECHAT_SESSION_KEY)
+  if (identity.openid) uni.setStorageSync(STORAGE_KEY_WECHAT_OPENID, identity.openid)
+  if (identity.unionid) uni.setStorageSync(STORAGE_KEY_WECHAT_UNIONID, identity.unionid)
+  return { openid: identity.openid, unionid: identity.unionid }
 }
 
 /**
@@ -160,11 +106,11 @@ export const getWeChatUserInfo = () => {
     uni.getUserInfo({
       provider: 'weixin',
       success: (infoRes) => {
-        console.log('获取用户信息成功:', infoRes)
+        console.debug('event=wechat_profile stage=user_info result=received')
         resolve(infoRes.userInfo)
       },
-      fail: (err) => {
-        console.error('获取用户信息失败:', err)
+      fail: () => {
+        console.warn('event=wechat_profile stage=user_info result=failed reason=provider_error')
         reject(new Error('获取用户信息失败'))
       }
     })
@@ -180,11 +126,11 @@ export const getWeChatUserProfile = () => {
     uni.getUserProfile({
       desc: '用于完善用户资料',
       success: (res) => {
-        console.log('获取用户信息成功:', res)
+        console.debug('event=wechat_profile stage=user_profile result=received')
         resolve(res.userInfo)
       },
-      fail: (err) => {
-        console.error('获取用户信息失败:', err)
+      fail: () => {
+        console.warn('event=wechat_profile stage=user_profile result=failed reason=authorization_failed')
         reject(new Error('用户拒绝授权'))
       }
     })
@@ -211,7 +157,7 @@ export const getStoredWeChatOpenId = () => {
 
     return null
   } catch (e) {
-    console.error('获取本地存储的 openid 失败:', e)
+    console.warn('event=wechat_identity stage=local_identity result=failed reason=storage_error')
     return null
   }
 }
@@ -224,35 +170,21 @@ export const getStoredWeChatUnionId = () => {
   try {
     return uni.getStorageSync(STORAGE_KEY_WECHAT_UNIONID) || null
   } catch (e) {
-    console.error('获取本地存储的 unionid 失败:', e)
-    return null
-  }
-}
-
-/**
- * 从本地存储获取微信 sessionKey
- * @returns {String|null} sessionKey 或 null
- */
-export const getStoredWeChatSessionKey = () => {
-  try {
-    return uni.getStorageSync(STORAGE_KEY_WECHAT_SESSION_KEY) || null
-  } catch (e) {
-    console.error('获取本地存储的 sessionKey 失败:', e)
+    console.warn('event=wechat_identity stage=local_union result=failed reason=storage_error')
     return null
   }
 }
 
 /**
  * 确保本地存在可用的微信身份信息
- * @returns {Promise<{openid: string, unionid?: string, sessionKey?: string}>}
+ * @returns {Promise<{openid: string, unionid?: string}>}
  */
 export const ensureWeChatIdentity = async () => {
   const storedOpenid = getStoredWeChatOpenId()
   if (storedOpenid) {
     return {
       openid: storedOpenid,
-      unionid: getStoredWeChatUnionId(),
-      sessionKey: getStoredWeChatSessionKey()
+      unionid: getStoredWeChatUnionId()
     }
   }
 
@@ -272,8 +204,8 @@ export const clearStoredWeChatInfo = () => {
     uni.removeStorageSync(STORAGE_KEY_WECHAT_OPENID)
     uni.removeStorageSync(STORAGE_KEY_WECHAT_UNIONID)
     uni.removeStorageSync(STORAGE_KEY_WECHAT_SESSION_KEY)
-    console.log('✅ 已清除本地存储的微信信息')
+    console.info('event=wechat_identity stage=local_clear result=success')
   } catch (e) {
-    console.error('清除本地存储的微信信息失败:', e)
+    console.warn('event=wechat_identity stage=local_clear result=failed reason=storage_error')
   }
 }

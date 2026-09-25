@@ -1,5 +1,18 @@
 const normalizeId = value => String(value ?? '')
 
+export const createRefundRequestId = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {
+  const random = Math.floor(Math.random() * 16)
+  return (char === 'x' ? random : (random & 3) | 8).toString(16)
+})
+
+export const getPaymentRefundStatusText = status => ({
+  PENDING: '退款待处理',
+  PROCESSING: '退款处理中',
+  UNKNOWN: '退款结果确认中',
+  SUCCESS: '退款完成',
+  FAILED: '退款失败，请联系客服'
+}[status] || '')
+
 export const hasTherapyVoucher = (item = {}) => {
   const vouchers = item.redeemVouchers || item.redeem_vouchers || []
   return Array.isArray(vouchers) && vouchers.length > 0

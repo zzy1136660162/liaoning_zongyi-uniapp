@@ -105,18 +105,23 @@
 </template>
 
 <script>
+import { getSessionGeneration, isCurrentSession, assertCurrentSession } from '@/utils/session.js'
 import { getOrderDetail } from '@/api/order.js'
 import { applyRefund, checkCanApplyRefund } from '@/api/refund.js'
 import { uploadFile } from '@/api/common.js'
 import { getImageUrl } from '@/utils/config.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
-import { hasMixedTherapyAndNormalRefundItems, resolveRefundType } from '@/utils/refund.js'
+import { hasMixedTherapyAndNormalRefundItems, resolveRefundType, createRefundRequestId } from '@/utils/refund.js'
 
 export default {
   name: 'RefundApply',
   data() {
     return {
       orderId: null,
+      pageSession: getSessionGeneration(),
+      requestId: createRefundRequestId(),
+      submitting: false,
+      submitted: false,
       orderInfo: {},
       allProducts: [], // 订单所有商品
       selectedProducts: [], // 选中的退款商品
@@ -145,7 +150,7 @@ export default {
     },
 
     canSubmit() {
-      return this.allProducts.some(item => Number(item.selectedQuantity || 0) > 0) &&
+      return !this.submitting && !this.submitted && this.allProducts.some(item => Number(item.selectedQuantity || 0) > 0) &&
              this.form.refundReason &&
              this.refundAmount > 0
     }
@@ -236,7 +241,7 @@ export default {
           .map(item => ({ ...item, quantity: item.selectedQuantity }))
 
       } catch (error) {
-        console.error('加载订单详情失败:', error)
+        console.error('event=ui_order_refund_apply stage=load_order_detail result=failed reason=operation_incomplete')
         uni.showToast({
           title: error.message || '加载失败',
           icon: 'none'
@@ -276,20 +281,20 @@ export default {
 
         uni.showLoading({ title: '上传凭证中...' })
         for (const tempFilePath of result.tempFilePaths) {
-          console.info('category=REFUND_EVIDENCE_UPLOAD action=upload_start result=pending orderId=%s filePath=%s', this.orderId, tempFilePath)
+          console.info('event=ui_order_refund_apply stage=evidence_upload result=started')
           const uploaded = await uploadFile(tempFilePath)
           this.form.refundImages.push(uploaded.url)
-          console.info('category=REFUND_EVIDENCE_UPLOAD action=upload_complete result=success orderId=%s fileUrl=%s', this.orderId, uploaded.url)
+          console.info('event=ui_order_refund_apply stage=evidence_upload result=success')
         }
         uni.hideLoading()
 
       } catch (error) {
         uni.hideLoading()
         if (error?.errMsg && error.errMsg.includes('cancel')) {
-          console.info('category=REFUND_EVIDENCE_UPLOAD action=choose_image result=cancelled orderId=%s', this.orderId)
+          console.info('event=ui_order_refund_apply stage=evidence_choose result=cancelled')
           return
         }
-        console.warn('category=REFUND_EVIDENCE_UPLOAD action=upload_complete result=failed orderId=%s message=%s', this.orderId, error?.message || error?.errMsg || error)
+        console.warn('event=ui_order_refund_apply stage=evidence_upload result=failed reason=operation_incomplete')
         uni.showToast({
           title: error.message || '凭证上传失败，请重试',
           icon: 'none'
@@ -310,7 +315,9 @@ export default {
         return
       }
 
+      this.submitting = true
       try {
+        assertCurrentSession(this.pageSession)
         logButtonClick('提交退款申请', 'REFUND_APPLY', this.orderId?.toString())
 
         const selectedProducts = this.allProducts
@@ -329,6 +336,7 @@ export default {
 
         const submitData = {
           orderId: this.orderId,
+          requestId: this.requestId,
           refundType: resolveRefundType(this.allProducts, selectedProducts),
           refundReason: this.form.refundReason,
           refundDescription: this.form.refundDescription,
@@ -341,6 +349,8 @@ export default {
         }
 
         await applyRefund(submitData)
+        assertCurrentSession(this.pageSession)
+        this.submitted = true
 
         uni.hideLoading()
         uni.showToast({
@@ -350,16 +360,19 @@ export default {
 
         // 返回上一页
         setTimeout(() => {
-          this.safeNavigateBack()
+          if (isCurrentSession(this.pageSession)) this.safeNavigateBack()
         }, 1500)
 
       } catch (error) {
-        console.error('提交退款申请失败:', error)
+        if (error.code === 'SESSION_CHANGED') return
+        console.error('event=ui_order_refund_apply stage=submit_refund result=failed reason=operation_incomplete')
         uni.hideLoading()
         uni.showToast({
           title: error.message || '提交失败',
           icon: 'none'
         })
+      } finally {
+        this.submitting = false
       }
     },
 

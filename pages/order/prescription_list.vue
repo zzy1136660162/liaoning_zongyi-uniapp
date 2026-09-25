@@ -222,8 +222,7 @@ import dayjs from 'dayjs'
 // ==================== 存储键常量 ====================
 import { 
   STORAGE_KEY_CURRENT_ORDER,
-  STORAGE_KEY_VERIFIED_PRODUCTS,
-  STORAGE_KEY_CURRENT_CONSULTATION_ID
+  STORAGE_KEY_VERIFIED_PRODUCTS
 } from '@/utils/storage.js'
 
 // ==================== 工具函数 ====================
@@ -242,6 +241,8 @@ import {
 
 // ==================== API 接口 ====================
 import { getConsultationDetail } from '@/api/consultation.js'
+import { parseConsultationContext, requireConsultationPatient } from '@/utils/consultation-checkout.js'
+import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
 import { getProductDetail } from '@/api/product.js'
 import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
 
@@ -268,6 +269,8 @@ const selectedCartIds = ref([])
  * 当前显示的处方信息 - 用于显示就诊时间等信息
  */
 const currentPrescription = ref(null)
+const checkoutContext = ref(null)
+const pageSession = getSessionGeneration()
 
 const normalizeCartId = (value) => {
   if (value === undefined || value === null || value === '') {
@@ -335,21 +338,15 @@ const syncSelectedCartState = () => {
       setCheckoutProductIds(selectedItems)
     }
 
-    const consultationId = options?.consultationId || uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-    if (consultationId) {
-      loadSingleConsultation(consultationId)
-    }
-    // 如果没有consultationId，页面仍可正常显示购物车商品
+    checkoutContext.value = parseConsultationContext(options)
+    if (checkoutContext.value) loadSingleConsultation(checkoutContext.value.consultationId)
+    else uni.showToast({ title: '缺少本次复诊信息，请返回重新申请', icon: 'none' })
   })
 
   /**
    * 页面挂载时初始化数据
    */
   onMounted(async () => {
-    const consultationId = uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-    if (consultationId) {
-      await loadSingleConsultation(consultationId)
-    }
     await loadProducts()
     loadSelectedProducts()
 
@@ -363,7 +360,7 @@ const syncSelectedCartState = () => {
     try {
       syncSelectedCartState()
     } catch (e) {
-      console.error('加载选中产品状态失败:', e)
+      console.error('event=ui_order_prescription_list stage=load_selected_products result=failed reason=operation_incomplete')
       selectedCartIds.value = []
     }
   }
@@ -377,7 +374,7 @@ const syncSelectedCartState = () => {
   const loadSingleConsultation = async (consultationId) => {
     try {
       if (!consultationId) {
-        console.warn('未提供咨询ID')
+        console.warn('event=ui_order_prescription_list stage=consultation_context result=rejected reason=missing_consultation_id')
         return
       }
 
@@ -385,7 +382,9 @@ const syncSelectedCartState = () => {
 
       // 调用API获取咨询详情
       const consultation = await getConsultationDetail(consultationId)
-      console.log('咨询详情:', consultation)
+      assertCurrentSession(pageSession)
+      requireConsultationPatient(consultation, checkoutContext.value)
+      console.debug('event=ui_order_prescription_list stage=load_single_consultation result=observed')
 
       if (consultation) {
         // 将API返回的数据转换为页面所需的处方格式
@@ -426,7 +425,7 @@ const syncSelectedCartState = () => {
 
       uni.hideLoading()
     } catch (e) {
-      console.error('加载咨询详情失败:', e)
+      console.error('event=ui_order_prescription_list stage=load_single_consultation result=failed reason=operation_incomplete')
       uni.hideLoading()
     }
   }
@@ -451,7 +450,7 @@ const syncSelectedCartState = () => {
         return
       }
 
-      console.log('正在加载购物车商品数据...', productIds)
+      console.debug('event=ui_order_prescription_list stage=load_products result=observed')
       uni.showLoading({ title: '加载商品...' })
       
       // 创建购物车商品分类结构
@@ -467,6 +466,7 @@ const syncSelectedCartState = () => {
           if (typeof getProductDetail === 'function') {
             const entry = cartEntries[itemKey] || {}
             const { productId, skuId } = splitCartItemKey(itemKey)
+            assertCurrentSession(pageSession)
             const productDetail = await getProductDetail(productId)
             if (productDetail) {
               const skus = Array.isArray(productDetail.skus) ? productDetail.skus : []
@@ -493,10 +493,10 @@ const syncSelectedCartState = () => {
               })
             }
           } else {
-            console.warn('商品详情API不可用，跳过商品:', itemKey)
+            console.warn('event=ui_order_prescription_list stage=product_detail result=skipped reason=api_unavailable')
           }
         } catch (err) {
-          console.error(`获取商品详情失败 [${itemKey}]:`, err)
+          console.error('event=ui_order_prescription_list stage=load_products result=failed reason=operation_incomplete')
         }
       }
       
@@ -504,7 +504,7 @@ const syncSelectedCartState = () => {
       categories.value = [cartCategory]
       
     } catch (error) {
-      console.error('加载购物车商品失败:', error)
+      console.error('event=ui_order_prescription_list stage=load_products result=failed reason=operation_incomplete')
       categories.value = []
     } finally {
       uni.hideLoading()
@@ -649,7 +649,7 @@ const syncSelectedCartState = () => {
    * @param {Object} cartItem - 被点击的购物车商品对象
    */
   const onCartItemClick = (cartItem) => {
-    console.log('用户点击了商品:', cartItem)
+    console.debug('event=ui_order_prescription_list stage=on_cart_item_click result=observed')
 
     // TODO: 可以跳转到商品详情页面或显示商品详情弹窗
     // 目前显示简单的提示信息
@@ -664,6 +664,11 @@ const syncSelectedCartState = () => {
    * 收集用户选中的商品，构建订单信息并跳转到确认页面
    */
   const goToOrder = () => {
+    if (!checkoutContext.value || !currentPrescription.value) {
+      uni.showToast({ title: '本次复诊信息未就绪，请返回重试', icon: 'none' })
+      return
+    }
+    assertCurrentSession(pageSession)
     // 检查用户是否选择了商品
     if (selectedCartIds.value.length === 0) {
       uni.showToast({
@@ -689,10 +694,10 @@ const syncSelectedCartState = () => {
       // 跳转到订单确认页面
       setCheckoutProductIds(selectedProductIds)
       uni.navigateTo({
-        url: `/pages/order/confirm?selectedItems=${selectedProductIds.join(',')}`
+        url: `/pages/order/confirm?selectedItems=${selectedProductIds.join(',')}&consultationId=${checkoutContext.value.consultationId}&patientId=${checkoutContext.value.patientId}`
       })
     } catch (e) {
-      console.error('构建订单信息失败:', e)
+      console.error('event=ui_order_prescription_list stage=go_to_order result=failed reason=operation_incomplete')
       uni.showToast({
         title: '构建订单失败，请重试',
         icon: 'none'

@@ -58,7 +58,7 @@
             />
           </view>
         </view>
-      
+
         <!-- 配送信息 -->
         <view
           v-if="requiresShipping"
@@ -100,7 +100,7 @@
             </text>
           </view>
         </view>
-      
+
         <!-- 订单商品 -->
         <view class="section">
           <view class="section-title">
@@ -221,11 +221,13 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import {
   STORAGE_KEY_CURRENT_ORDER,
   STORAGE_KEY_SHIPPING_ADDRESSES,
-  STORAGE_KEY_DEFAULT_ADDRESS_ID,
-  STORAGE_KEY_CURRENT_CONSULTATION_ID
+  STORAGE_KEY_DEFAULT_ADDRESS_ID
 } from '@/utils/storage.js'
 import { buildOrderInfo, getCartEntries, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds, splitCartItemKey, validateCheckoutStock } from '@/utils/cart.js'
 import { createOrder } from '@/api/order.js'
+import { getConsultationDetail } from '@/api/consultation.js'
+import { parseConsultationContext, requireConsultationPatient } from '@/utils/consultation-checkout.js'
+import { getSessionGeneration, assertCurrentSession, isCurrentSession } from '@/utils/session.js'
 import { getAddressList } from '@/api/address.js'
 import { wechatSinglePay } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
@@ -237,6 +239,9 @@ import { resolveProductFlow } from '@/utils/product-biz.js'
 import { ORDER_TYPE_THERAPY } from '@/utils/therapy.js'
 
 const isTherapyOrder = ref(false)
+const checkoutContext = ref(null)
+const submitting = ref(false)
+const pageSession = getSessionGeneration()
 const therapyRouteRequested = ref(false)
 
 const orderInfo = ref({
@@ -268,6 +273,7 @@ const orderRemark = ref('')
 const requiresShipping = computed(() => !isTherapyOrder.value)
 
 const canSubmit = computed(() => {
+  if (submitting.value) return false
   if (!requiresShipping.value) {
     return orderInfo.value.items && orderInfo.value.items.length > 0
   }
@@ -275,6 +281,7 @@ const canSubmit = computed(() => {
 })
 
 onLoad((options) => {
+  checkoutContext.value = parseConsultationContext(options)
   therapyRouteRequested.value = options?.therapy === '1' || options?.therapy === 1 || options?.therapy === true
   isTherapyOrder.value = therapyRouteRequested.value
   if (options?.selectedItems) {
@@ -333,7 +340,7 @@ onShow(async () => {
       calculateTotal()
     }
   }
-  
+
   // 重新加载产品数据并更新订单金额（购物车数据可能已更新）
   await loadProducts()
   loadOrderInfo()
@@ -341,18 +348,19 @@ onShow(async () => {
 
 // 加载产品数据（只加载购物车中选中的商品）
 const loadProducts = async () => {
+  if (!isCurrentSession(pageSession)) return []
   try {
     const currentSelectedIds = selectedProductIds.value.length > 0
       ? selectedProductIds.value
       : getCurrentCheckoutProductIds()
-    
+
     if (currentSelectedIds.length === 0) {
       // 如果没有选中的商品，清空分类数据
       categories.value = []
       return []
     }
     setCheckoutProductIds(currentSelectedIds)
-    
+
     // 先检查缓存
     if (isCacheValid(currentSelectedIds)) {
       const cached = getCachedProducts(currentSelectedIds)
@@ -384,7 +392,7 @@ const loadProducts = async () => {
         )
       )
       if (hasAllProducts && hasFlowFields) {
-        console.log('使用缓存的商品数据')
+        console.debug('event=ui_order_confirm stage=products result=loaded source=cache')
         // 只取当前选中的商品，避免历史缓存中多余的商品混入本次订单
         const cachedCategory = {
           id: 'selected_items',
@@ -406,9 +414,9 @@ const loadProducts = async () => {
       }
     }
 
-    console.log('从服务器加载选中的商品数据')
+    console.debug('event=ui_order_confirm stage=products result=started source=server')
     uni.showLoading({ title: '加载商品...' })
-    
+
     // 为选中的商品创建虚拟分类结构
     const cartCategory = {
       id: 'selected_items',
@@ -416,7 +424,7 @@ const loadProducts = async () => {
       products: []
     }
     const cartEntries = getCartEntries()
-    
+
     // 逐个获取选中商品的详细信息
     for (const itemKey of currentSelectedIds) {
       try {
@@ -424,6 +432,7 @@ const loadProducts = async () => {
         const split = splitCartItemKey(itemKey)
         const productId = entry.productId || split.productId || itemKey
         const skuId = entry.skuId || split.skuId || null
+        assertCurrentSession(pageSession)
         const productDetail = await getProductDetail(productId)
         if (productDetail) {
           const skus = Array.isArray(productDetail.skus) ? productDetail.skus : []
@@ -463,14 +472,16 @@ const loadProducts = async () => {
           })
         }
       } catch (err) {
-        console.error(`获取商品${itemKey}详情失败:`, err)
+        if (err.code === 'SESSION_CHANGED') return []
+        console.error('event=ui_order_confirm stage=product_detail result=failed reason=request_failed')
       }
     }
-    
+
+    assertCurrentSession(pageSession)
     // 缓存数据
     const productsData = { selected_items: cartCategory.products }
     setCachedProducts([cartCategory], productsData, currentSelectedIds)
-    
+
     categories.value = [cartCategory]
     const flow = resolveProductFlow(cartCategory.products)
     if (!flow.valid) {
@@ -483,7 +494,7 @@ const loadProducts = async () => {
     isTherapyOrder.value = resolveTherapyOrderFlag(flow)
     return [cartCategory]
   } catch (error) {
-    console.error('加载商品失败:', error)
+    console.error('event=ui_order_confirm stage=products result=failed reason=load_failed')
     categories.value = []
     return []
   } finally {
@@ -492,6 +503,7 @@ const loadProducts = async () => {
 }
 
 const loadOrderInfo = () => {
+  if (!isCurrentSession(pageSession)) return
   try {
     const saved = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
     const cartItems = categories.value.length > 0 ? loadCartItems(categories.value) : []
@@ -539,7 +551,7 @@ const loadOrderInfo = () => {
     calculateTotal()
     uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
   } catch (e) {
-    console.error('加载订单信息失败:', e)
+    console.error('event=ui_order_confirm stage=load_order_info result=failed reason=operation_incomplete')
     uni.showToast({ title: '加载订单失败', icon: 'none' })
     setTimeout(() => {
       uni.navigateBack()
@@ -548,6 +560,7 @@ const loadOrderInfo = () => {
 }
 
 const loadAddresses = async () => {
+  if (!isCurrentSession(pageSession)) return
   if (!requiresShipping.value) {
     selectedAddress.value = null
     return
@@ -563,21 +576,22 @@ const loadAddresses = async () => {
         uni.setStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES, remoteAddresses)
       }
     } catch (apiError) {
-      console.warn('从后端获取地址失败，使用本地缓存:', apiError)
+      if (apiError.code === 'SESSION_CHANGED') return
+      console.warn('event=ui_order_confirm stage=addresses result=fallback reason=request_failed source=cache')
       // 如果API调用失败，使用本地缓存
       const saved = uni.getStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES) || []
       addresses.value = saved
     }
-    
+
     // 加载默认地址
     const defaultId = uni.getStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID)
     let defaultAddr = null
-    
+
     // 优先使用存储的默认地址ID
     if (defaultId) {
       defaultAddr = addresses.value.find(a => a.id === defaultId)
     }
-    
+
     // 如果没有找到默认地址，尝试从地址列表中找标记为默认的地址
     if (!defaultAddr) {
       defaultAddr = addresses.value.find(a => a.isDefault)
@@ -586,7 +600,7 @@ const loadAddresses = async () => {
         uni.setStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID, defaultAddr.id)
       }
     }
-    
+
     // 如果找到了默认地址，设置为选中状态
     if (defaultAddr) {
       selectedAddress.value = defaultAddr
@@ -599,14 +613,15 @@ const loadAddresses = async () => {
       await calculateShippingFee()
     }
   } catch (e) {
-    console.error('加载地址列表失败:', e)
+    console.error('event=ui_order_confirm stage=addresses result=failed reason=cache_read_failed')
   }
 }
 
 // 计算快递费
 const calculateShippingFee = async () => {
+  if (!isCurrentSession(pageSession)) return
   if (!requiresShipping.value) {
-    console.log('跳过传统疗法运费计算')
+    console.debug('event=ui_order_confirm stage=shipping_fee result=skipped reason=no_shipping_required')
     orderInfo.value.cost.shippingFee = 0
     calculateTotal()
     uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
@@ -615,10 +630,10 @@ const calculateShippingFee = async () => {
   if (!selectedAddress.value) {
     return
   }
-  
+
   try {
     calculatingFreight.value = true
-    
+
     // 调用后端查询运费接口（寄件人信息由后端配置提供）
     const freightParams = {
       expressType: '2', // 2-顺丰标快
@@ -629,11 +644,11 @@ const calculateShippingFee = async () => {
       destDistrict: selectedAddress.value.district,
       destAddress: selectedAddress.value.addressDetail || selectedAddress.value.detail || ''
     }
-    
-    console.log('查询运费参数:', freightParams)
-    
+
+    console.debug('event=ui_order_confirm stage=shipping_fee result=started')
+
     const freightResult = await queryFreight(freightParams)
-    
+
     // 检查响应并提取运费
     if (freightResult && freightResult.freight != null && freightResult.freight !== undefined) {
       // 更新快递费（后端返回的是元，直接使用）
@@ -644,21 +659,21 @@ const calculateShippingFee = async () => {
         calculateTotal()
         // 保存更新后的订单信息
         uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
-        
-        console.log('快递费计算成功:', orderInfo.value.cost.shippingFee)
+
+        console.debug('event=ui_order_confirm stage=shipping_fee result=calculated')
       } else {
-        console.warn('运费值无效:', freightResult.freight, '，使用默认值18元')
+        console.warn('event=ui_order_confirm stage=shipping_fee result=fallback reason=invalid_freight_value')
         orderInfo.value.cost.shippingFee = 18
         calculateTotal()
       }
     } else {
-      console.warn('未获取到运费，使用默认值18元，响应数据:', freightResult)
+      console.warn('event=ui_order_confirm stage=shipping_fee result=fallback reason=missing_freight_value')
       orderInfo.value.cost.shippingFee = 18
       calculateTotal()
     }
 
   } catch (error) {
-    console.error('计算快递费失败:', error)
+    console.error('event=ui_order_confirm stage=shipping_fee result=failed reason=request_failed')
     // 失败时使用默认值
     orderInfo.value.cost.shippingFee = 18
     calculateTotal()
@@ -696,176 +711,194 @@ const selectAddress = () => {
 }
 
 const submitOrder = async () => {
-  // 记录按钮点击日志
-  logButtonClick('下单页面', '用户点击下单按钮')
-
-  console.log('2222---------submitOrder' );
-  console.log('111111---------submitOrder', orderInfo.value);
-  
-  if (requiresShipping.value) {
-    if ((!orderInfo.value.cost || orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null)
-        && selectedAddress.value) {
-      await calculateShippingFee()
-    }
-    if (!selectedAddress.value) {
-      uni.showToast({ title: '请选择收货地址', icon: 'none' })
-      return
-    }
-  } else {
-    orderInfo.value.cost.shippingFee = 0
-  }
-  
-  if (!orderInfo.value.items || orderInfo.value.items.length === 0) {
-    uni.showToast({ title: '订单商品不能为空', icon: 'none' })
-    return
-  }
-
-  await loadProducts()
-  const stockCheck = validateCheckoutStock(selectedProductIds.value, categories.value)
-  if (!stockCheck.valid) {
-    console.warn('category=CHECKOUT_STOCK_GUARD action=submit_order result=blocked reason=%s productId=%s quantity=%s latestStock=%s',
-      stockCheck.reason,
-      stockCheck.productId,
-      stockCheck.quantity,
-      stockCheck.latestStock
-    )
-    uni.showToast({ title: stockCheck.message || '商品库存不足，请调整购物车后重试', icon: 'none' })
-    return
-  }
-  loadOrderInfo()
-  
+  if (submitting.value) return
+  submitting.value = true
   try {
-    uni.showLoading({ title: '获取支付信息...' })
+    assertCurrentSession(pageSession)
+    // 记录按钮点击日志
+    logButtonClick('下单页面', '用户点击下单按钮')
 
-    const wechatInfo = await ensureWeChatIdentity()
-    const openid = wechatInfo && wechatInfo.openid
-    if (!openid) {
-      throw new Error('未获取到微信支付信息，请稍后重试')
-    }
+    console.debug('event=ui_order_confirm stage=submit_order result=observed');
+    console.debug('event=ui_order_confirm stage=submit_order result=observed');
 
-    uni.showLoading({ title: '提交中...' })
-    
-    // ✅ 调用后端API创建订单
-    const orderData = {
-      shippingFee: 0,
-      items: orderInfo.value.items.map(item => ({
-        productId: item.productId || item.id,
-        skuId: item.skuId || null,
-        quantity: item.quantity || 1,
-        price: item.price
-      })),
-      remark: orderRemark.value.trim(),
-      totalAmount: orderInfo.value.total
-    }
-    if (isTherapyOrder.value) {
-      orderData.orderType = ORDER_TYPE_THERAPY
+    if (requiresShipping.value) {
+      if ((!orderInfo.value.cost || orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null)
+          && selectedAddress.value) {
+        await calculateShippingFee()
+      }
+      if (!selectedAddress.value) {
+        uni.showToast({ title: '请选择收货地址', icon: 'none' })
+        return
+      }
     } else {
-      orderData.addressId = selectedAddress.value.id
-      orderData.consultationId = !selectedRequiresConsultation.value
-        ? null
-        : (uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID) || null)
+      orderInfo.value.cost.shippingFee = 0
     }
-    console.log('orderData', orderData)
-    const order = await createOrder(orderData)
-    
-    console.log('订单创建成功:', order)
-    
-    uni.hideLoading()
-    
-    const orderId = order.id || order.orderId
-    
-    if (!orderId) {
-      console.error('订单ID为空，无法继续支付')
-      uni.showToast({ title: '订单创建失败，请重试', icon: 'none' })
+
+    if (!orderInfo.value.items || orderInfo.value.items.length === 0) {
+      uni.showToast({ title: '订单商品不能为空', icon: 'none' })
       return
     }
-    
-    console.log('订单创建成功，准备调起支付:', {
-      orderId,
-      orderNo: order.orderNo,
-      goodsAmount: orderInfo.value.cost.medicineCost,
-      shippingFee: orderInfo.value.cost.shippingFee,
-      total: orderInfo.value.total
-    })
-    
-    try {
-      console.log('使用openid发起支付:', openid)
-      
-      const payResult = await wechatSinglePay(orderId, {
-        openid,
-        totalAmount: orderInfo.value.total
-      })
-      console.log('单笔支付成功:', payResult)
-      const itemCount = (orderInfo.value.items || []).reduce((sum, item) => {
-        const quantity = Number(item.quantity || 1)
-        return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
-      }, 0)
-      const paymentSuccessParams = {
-        orderId,
-        amount: orderInfo.value.total,
-        outTradeNo: payResult.outTradeNo || '',
-        paymentType: 'single',
-        orderNo: order.orderNo || '',
-        itemCount,
-        orderType: isTherapyOrder.value ? ORDER_TYPE_THERAPY : '',
-        therapy: isTherapyOrder.value ? '1' : '0'
-      }
-      const paymentSuccessUrl = '/pages/order/payment_success?' + Object.entries(paymentSuccessParams)
-        .filter(([, value]) => value !== undefined && value !== null && value !== '')
-        .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
-        .join('&')
-      console.log('支付成功跳转参数:', paymentSuccessParams)
-      console.log('支付成功跳转URL:', paymentSuccessUrl)
-      uni.redirectTo({
-        url: paymentSuccessUrl,
-        success: (res) => {
-          console.log('跳转支付成功页成功:', res, paymentSuccessUrl)
-        },
-        fail: (err) => {
-          console.error('跳转支付成功页失败:', err, paymentSuccessUrl)
-        },
-        complete: (res) => {
-          console.log('跳转支付成功页完成:', res)
-        }
-      })
-    } catch (error) {
-      console.error('支付失败:', error)
-      
-      // 判断是否是用户取消
-      if (error.message === '用户取消支付') {
-        // 用户取消，跳转到订单详情
-        uni.showModal({
-          title: '支付已取消',
-          content: '您可以稍后在订单列表中继续支付',
-          showCancel: false,
-          success: () => {
-            uni.redirectTo({
-              url: `/pages/order/order-detail?orderId=${orderId}`
-            })
-          }
-        })
-      } else {
-        // 支付失败，跳转到订单详情
-        uni.showModal({
-          title: '支付失败',
-          content: error.message || '支付过程中出现错误，请稍后重试',
-          showCancel: false,
-          success: () => {
-            uni.redirectTo({
-              url: `/pages/order/order-detail?orderId=${orderId}`
-            })
-          }
-        })
-      }
+
+    await loadProducts()
+    const stockCheck = validateCheckoutStock(selectedProductIds.value, categories.value)
+    if (!stockCheck.valid) {
+      console.warn('category=CHECKOUT_STOCK_GUARD action=submit_order result=blocked reason=%s productId=%s quantity=%s latestStock=%s',
+        stockCheck.reason,
+        stockCheck.productId,
+        stockCheck.quantity,
+        stockCheck.latestStock
+      )
+      uni.showToast({ title: stockCheck.message || '商品库存不足，请调整购物车后重试', icon: 'none' })
+      return
     }
-    
+    loadOrderInfo()
+
+    try {
+      uni.showLoading({ title: '获取支付信息...' })
+
+      if (selectedRequiresConsultation.value && !isTherapyOrder.value) {
+        if (!checkoutContext.value) throw new Error('缺少本次复诊和就诊人信息，请返回重新申请')
+        const consultation = await getConsultationDetail(checkoutContext.value.consultationId)
+        requireConsultationPatient(consultation, checkoutContext.value)
+      }
+      assertCurrentSession(pageSession)
+      const wechatInfo = await ensureWeChatIdentity()
+      assertCurrentSession(pageSession)
+      const openid = wechatInfo && wechatInfo.openid
+      if (!openid) {
+        throw new Error('未获取到微信支付信息，请稍后重试')
+      }
+
+      uni.showLoading({ title: '提交中...' })
+
+      // ✅ 调用后端API创建订单
+      const orderData = {
+        shippingFee: 0,
+        items: orderInfo.value.items.map(item => ({
+          productId: item.productId || item.id,
+          skuId: item.skuId || null,
+          quantity: item.quantity || 1,
+          price: item.price
+        })),
+        remark: orderRemark.value.trim(),
+        totalAmount: orderInfo.value.total
+      }
+      if (isTherapyOrder.value) {
+        orderData.orderType = ORDER_TYPE_THERAPY
+      } else {
+        orderData.addressId = selectedAddress.value.id
+        orderData.consultationId = !selectedRequiresConsultation.value
+          ? null
+          : checkoutContext.value.consultationId
+        if (selectedRequiresConsultation.value) orderData.patientId = checkoutContext.value.patientId
+      }
+      console.debug('event=ui_order_confirm stage=order_create_request result=prepared')
+      assertCurrentSession(pageSession)
+      const order = await createOrder(orderData)
+      assertCurrentSession(pageSession)
+
+      console.debug('event=ui_order_confirm stage=order_create_response result=received')
+
+      uni.hideLoading()
+
+      const orderId = order.id || order.orderId
+
+      if (!orderId) {
+        console.error('event=ui_order_confirm stage=payment_prepare result=rejected reason=missing_order_id')
+        uni.showToast({ title: '订单创建失败，请重试', icon: 'none' })
+        return
+      }
+
+      console.debug('event=ui_order_confirm stage=payment_prepare result=started')
+
+      try {
+        console.debug('event=ui_order_confirm stage=payment_request result=started')
+
+        const payResult = await wechatSinglePay(orderId, {
+          openid,
+          totalAmount: orderInfo.value.total
+        })
+        assertCurrentSession(pageSession)
+        console.debug('event=ui_order_confirm stage=payment_client result=completed')
+        const itemCount = (orderInfo.value.items || []).reduce((sum, item) => {
+          const quantity = Number(item.quantity || 1)
+          return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
+        }, 0)
+        const paymentSuccessParams = {
+          orderId,
+          amount: orderInfo.value.total,
+          outTradeNo: payResult.outTradeNo || '',
+          paymentType: 'single',
+          orderNo: order.orderNo || '',
+          itemCount,
+          orderType: isTherapyOrder.value ? ORDER_TYPE_THERAPY : '',
+          therapy: isTherapyOrder.value ? '1' : '0'
+        }
+        const paymentSuccessUrl = '/pages/order/payment_success?' + Object.entries(paymentSuccessParams)
+          .filter(([, value]) => value !== undefined && value !== null && value !== '')
+          .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+          .join('&')
+        console.debug('event=ui_order_confirm stage=payment_navigation result=prepared')
+        console.debug('event=ui_order_confirm stage=payment_navigation result=prepared')
+        uni.redirectTo({
+          url: paymentSuccessUrl,
+          success: () => {
+            console.debug('event=ui_order_confirm stage=payment_navigation result=success')
+          },
+          fail: () => {
+            console.error('event=ui_order_confirm stage=payment_navigation result=failed reason=navigation_failed')
+          },
+          complete: () => {
+            console.debug('event=ui_order_confirm stage=payment_navigation result=completed')
+          }
+        })
+      } catch (error) {
+        if (error.code === 'SESSION_CHANGED') return
+        console.error('event=ui_order_confirm stage=payment_request result=failed reason=payment_call_failed')
+
+        // 判断是否是用户取消
+        if (error.message === '用户取消支付') {
+          // 用户取消，跳转到订单详情
+          uni.showModal({
+            title: '支付已取消',
+            content: '订单尚未支付，可在订单详情查看或取消后重新下单',
+            showCancel: false,
+            success: () => {
+              if (!isCurrentSession(pageSession)) return
+              uni.redirectTo({
+                url: `/pages/order/order-detail?orderId=${orderId}`
+              })
+            }
+          })
+        } else {
+          // 支付失败，跳转到订单详情
+          uni.showModal({
+            title: '支付失败',
+            content: error.message || '支付过程中出现错误，请稍后重试',
+            showCancel: false,
+            success: () => {
+              if (!isCurrentSession(pageSession)) return
+              uni.redirectTo({
+                url: `/pages/order/order-detail?orderId=${orderId}`
+              })
+            }
+          })
+        }
+      }
+
+    } catch (error) {
+      if (error.code === 'SESSION_CHANGED') return
+      console.error('event=ui_order_confirm stage=submit_order result=failed reason=order_or_payment_failed')
+      uni.hideLoading()
+      uni.showToast({
+        title: error.message || '提交失败，请重试',
+        icon: 'none'
+      })
+    }
   } catch (error) {
-    console.error('提交订单失败:', error)
-    uni.hideLoading()
-    uni.showToast({ 
-      title: error.message || '提交失败，请重试', 
-      icon: 'none' 
-    })
+    if (error?.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '提交失败', icon: 'none' })
+  } finally {
+    submitting.value = false
   }
 }
 </script>

@@ -2,29 +2,29 @@
   <view class="consultation-page">
     <!-- 状态栏占位 -->
     <view class="safe-top" />
-    
- 
-    
+
+
+
     <!-- 聊天内容区域 -->
-    <scroll-view 
-      class="chat-container" 
-      scroll-y 
-      :scroll-top="scrollTop" 
+    <scroll-view
+      class="chat-container"
+      scroll-y
+      :scroll-top="scrollTop"
       scroll-with-animation
       :scroll-into-view="scrollIntoView"
     >
       <view class="chat-messages" id="chat-messages">
-        <view 
-          v-for="(message, index) in messages" 
+        <view
+          v-for="(message, index) in messages"
           :key="index"
           class="message-item"
           :class="{ 'show': message.show }"
           :id="`message-${index}`"
         >
           <view class="message-avatar">
-            <image 
-              class="avatar-img" 
-              :src="getImageUrl(doctorAvatar)" 
+            <image
+              class="avatar-img"
+              :src="getImageUrl(doctorAvatar)"
               mode="aspectFill"
             />
           </view>
@@ -37,10 +37,14 @@
         </view>
       </view>
     </scroll-view>
-    
+
+    <view v-if="consultationError" class="footer">
+      <text>{{ consultationError }}</text>
+      <button :disabled="isSubmitting" @click="createConsultationRecord">重新获取本次处方</button>
+    </view>
     <!-- 查看处方按钮 -->
     <view class="footer" v-if="showPrescriptionBtn">
-      <view class="prescription-status-banner">处方审核通过</view>
+      <view class="prescription-status-banner">{{ prescriptionStatusText }}</view>
       <button class="prescription-btn" @click="viewPrescription">查看处方</button>
     </view>
   </view>
@@ -48,16 +52,24 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
-import { createConsultation } from '@/api/consultation.js'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
+import { createConsultation, getPrescriptionByConsultation } from '@/api/consultation.js'
 import { getProductDetail } from '@/api/product.js'
-import { STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
+import { STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
 import { getCartEntries, getCurrentCheckoutProductIds, setCheckoutProductIds, splitCartItemKey } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
 import { getImageUrl } from '@/utils/config.js'
 import { PRODUCT_FLOW_CONSULTATION, resolveProductFlow, resolveProductFlowType } from '@/utils/product-biz.js'
 import { AI_DOCTOR, CONSULTATION_MODE_AI, CONSULTATION_MODE_MANUAL, normalizeConsultationMode } from '@/utils/consultation-mode.js'
-	
+
+import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
+import { requireConsultationPatient, requireCreatedPrescription } from '@/utils/consultation-checkout.js'
+
+const pageSession = getSessionGeneration()
+let pageActive = true
+let createdConsultation = null
+const consultationError = ref('')
+const checkoutContext = ref(null)
 const consultationMode = ref(CONSULTATION_MODE_AI)
 const doctorName = ref(AI_DOCTOR.name)
 const doctorAvatar = ref(AI_DOCTOR.avatar)
@@ -65,56 +77,12 @@ const doctorId = ref(null)
 const patientId = ref(null)
 const isSubmitting = ref(false)
 
-const messages = ref([
-  {
-    text: '您好，我是辽宁中医在线医生，已收到您的复诊开药诉求，正在为您诊断开方，预计1分钟，请不要离开。',
-    show: false
-  },
-  {
-    text: '请问您是否还有其他信息需要补充，如无，我将依据您的资料开具处方。',
-    show: false
-  },
-  {
-    text: '请稍等，正在审核您提交的购买制剂信息。',
-    show: false
-  },
-  {
-    text: '如无信息补充，我将根据您提交的复诊信息开具处方。',
-    show: false
-  },
-  {
-    text: '已为您开具处方，您可以点击下方查看处方按钮，完成支付。',
-    show: false
-  }
-])
-
+const messages = ref([{ text: '正在提交本次复诊申请，请稍候。', show: true }])
 const showPrescriptionBtn = ref(false)
+const prescriptionStatusText = ref('')
 const scrollTop = ref(0)
 const scrollIntoView = ref('')
 const selectedProductIds = ref([])
-
-// 显示消息动画
-const showMessages = async () => {
-  for (let i = 0; i < messages.value.length; i++) {
-    // 延迟显示每条消息
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    // 显示当前消息
-    messages.value[i].show = true
-    
-    // 滚动到当前消息
-    await nextTick()
-    scrollToMessage(i)
-    
-    // 如果是最后一条消息，延迟后显示按钮
-    if (i === messages.value.length - 1) {
-      setTimeout(() => {
-        showPrescriptionBtn.value = true
-        scrollToMessage(i)
-      }, 1000)
-    }
-  }
-}
 
 // 滚动到指定消息
 const scrollToMessage = (index) => {
@@ -128,6 +96,8 @@ const scrollToMessage = (index) => {
 }
 
 const viewPrescription = () => {
+  if (!checkoutContext.value || !showPrescriptionBtn.value) return
+  assertCurrentSession(pageSession)
   const ids = selectedProductIds.value.length > 0
     ? selectedProductIds.value
     : getCurrentCheckoutProductIds()
@@ -135,10 +105,8 @@ const viewPrescription = () => {
   if (ids.length > 0) {
     queryParts.push(`selectedItems=${ids.join(',')}`)
   }
-  const consultationId = uni.getStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-  if (consultationId) {
-    queryParts.push(`consultationId=${consultationId}`)
-  }
+  queryParts.push(`consultationId=${checkoutContext.value.consultationId}`)
+  queryParts.push(`patientId=${checkoutContext.value.patientId}`)
   const query = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
   uni.navigateTo({
     url: `/pages/order/prescription_list${query}`
@@ -154,38 +122,34 @@ const loadProductsForConsultation = async () => {
 
   const products = []
   const cartEntries = getCartEntries()
-  try {
-    for (const itemKey of itemKeys) {
-      const entry = cartEntries[itemKey] || {}
-      const split = splitCartItemKey(itemKey)
-      const productId = entry.productId || split.productId || itemKey
-      const skuId = entry.skuId || split.skuId || null
-      const detail = await getProductDetail(productId)
-      if (detail) {
-        const skus = Array.isArray(detail.skus) ? detail.skus : []
-        const sku = skuId
-          ? skus.find(item => String(item.id) === String(skuId))
-          : null
-        products.push({
-          ...detail,
-          id: productId,
-          productId,
-          cartKey: itemKey,
-          skuId,
-          skuCode: sku?.skuCode || entry.skuCode || '',
-          skuName: sku?.skuName || entry.skuName || '',
-          skuSpecText: sku?.specText || sku?.skuName || entry.skuSpecText || '',
-          specText: sku?.specText || sku?.skuName || detail.specText,
-          price: sku ? Number(sku.price || 0) : detail.price,
-          quantity: entry.quantity || 1
-        })
-      }
+  for (const itemKey of itemKeys) {
+    const entry = cartEntries[itemKey] || {}
+    const split = splitCartItemKey(itemKey)
+    const productId = entry.productId || split.productId || itemKey
+    const skuId = entry.skuId || split.skuId || null
+    assertCurrentSession(pageSession)
+    const detail = await getProductDetail(productId)
+    if (detail) {
+      const skus = Array.isArray(detail.skus) ? detail.skus : []
+      const sku = skuId
+        ? skus.find(item => String(item.id) === String(skuId))
+        : null
+      products.push({
+        ...detail,
+        id: productId,
+        productId,
+        cartKey: itemKey,
+        skuId,
+        skuCode: sku?.skuCode || entry.skuCode || '',
+        skuName: sku?.skuName || entry.skuName || '',
+        skuSpecText: sku?.specText || sku?.skuName || entry.skuSpecText || '',
+        specText: sku?.specText || sku?.skuName || detail.specText,
+        price: sku ? Number(sku.price || 0) : detail.price,
+        quantity: entry.quantity || 1
+      })
     }
-    return products
-  } catch (e) {
-    console.error('获取商品详情失败:', e)
-    return products
   }
+  return products
 }
 
 // ✅ 创建咨询
@@ -194,16 +158,17 @@ const createConsultationRecord = async () => {
     return null
   }
   isSubmitting.value = true
+  consultationError.value = ''
+  showPrescriptionBtn.value = false
+  checkoutContext.value = null
+  console.info('event=ui_dispense_consultation stage=create result=started')
   try {
+    assertCurrentSession(pageSession)
     const products = await loadProductsForConsultation()
     const flow = resolveProductFlow(products)
-    if (!flow.valid || !flow.requiresConsultation) {
-      return null
-    }
+    if (!flow.valid || !flow.requiresConsultation) throw new Error(flow.message || '本次商品无需复诊，请返回重新结算')
     const consultationProducts = products.filter(product => resolveProductFlowType(product) === PRODUCT_FLOW_CONSULTATION)
-    if (consultationProducts.length === 0) {
-      return null
-    }
+    if (consultationProducts.length === 0) throw new Error('本次没有可复诊商品')
 
     // 人工模式使用上页传入的真实医生ID；AI模式不写入商品默认医生，避免下游展示与「」不一致
     const firstProduct = consultationProducts[0]
@@ -227,7 +192,7 @@ const createConsultationRecord = async () => {
       quantity: resolveQuantity(p),
       remark: p.usageDesc || p.notice || ''
     }))
-    
+
     const consultationData = {
       patientId: patientId.value,
       consultType: 1, // 在线咨询
@@ -238,19 +203,30 @@ const createConsultationRecord = async () => {
       usageNote: firstProduct?.usageDesc || '',
       prescriptionItems
     }
-    
-    const result = await createConsultation(consultationData)
-    console.log('创建咨询成功:', result)
-    
-    // 将问诊ID保存到本地，用于后续创建订单时关联处方
-    if (result && result.id) {
-      uni.setStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID, result.id)
-    }
-    
+
+    assertCurrentSession(pageSession)
+    const result = createdConsultation || await createConsultation(consultationData)
+    assertCurrentSession(pageSession)
+    if (!pageActive) return null
+    const context = { consultationId: Number(result?.id), patientId: patientId.value }
+    requireConsultationPatient(result, context)
+    createdConsultation = result
+    console.debug('event=ui_dispense_consultation stage=consultation_context result=validated')
+    const prescription = await getPrescriptionByConsultation(context.consultationId)
+    assertCurrentSession(pageSession)
+    if (!pageActive) return null
+    requireCreatedPrescription(prescription, context)
+    console.info('event=ui_dispense_consultation stage=prescription_context result=validated')
+    prescriptionStatusText.value = Number(prescription.status) === 0 ? '本次处方已生成，待审核' : '本次处方已生成'
+    checkoutContext.value = context
+    messages.value = [{ text: '本次复诊申请已提交，处方已生成。请查看处方信息后确认订单。', show: true }]
+    showPrescriptionBtn.value = true
     return result
   } catch (error) {
-    console.error('创建咨询失败:', error)
-    uni.showToast({ title: error?.message || '问诊创建失败，请重新选择就诊人', icon: 'none' })
+    if (!pageActive || error?.code === 'SESSION_CHANGED') return null
+    console.warn('event=ui_dispense_consultation stage=create result=failed reason=consultation_incomplete')
+    consultationError.value = error?.message || '问诊未完成，请重试'
+    messages.value = [{ text: '本次复诊尚未完成。', show: true }]
     return null
   } finally {
     isSubmitting.value = false
@@ -258,7 +234,15 @@ const createConsultationRecord = async () => {
 }
 
 const redirectHealthGoodsToConfirm = async () => {
-  const products = await loadProductsForConsultation()
+  let products
+  try {
+    products = await loadProductsForConsultation()
+    assertCurrentSession(pageSession)
+    if (!pageActive) return true
+  } catch (error) {
+    if (error.code === 'SESSION_CHANGED' || !pageActive) return true
+    return false
+  }
   const flow = resolveProductFlow(products)
   if (flow.valid && !flow.requiresConsultation) {
     const ids = selectedProductIds.value.length > 0 ? selectedProductIds.value : getCurrentCheckoutProductIds()
@@ -280,16 +264,13 @@ onMounted(async () => {
   }
 
   // 页面加载后创建咨询记录
-  createConsultationRecord()
-
-  // 开始显示消息
-  setTimeout(() => {
-    showMessages()
-  }, 500)
+  await createConsultationRecord()
 
   // 记录页面访问日志
   logPageView('咨询页面', '用户进入咨询页面')
 })
+
+onUnload(() => { pageActive = false })
 
 onLoad((options) => {
   const parsedPatientId = Number(options?.patientId)
@@ -501,4 +482,3 @@ onLoad((options) => {
   box-shadow: 0 4rpx 12rpx rgba(74, 144, 226, 0.2);
 }
 </style>
-

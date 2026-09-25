@@ -1,8 +1,10 @@
+import { getSessionGeneration, isCurrentSession, assertCurrentSession, sessionChangedError } from '../utils/session.js'
 /**
  * 支付模块API
  */
 
 import { post } from '@/utils/request.js'
+import { logPaymentDiagnostic } from '../utils/diagnostics.js'
 
 /**
  * 创建支付预订单
@@ -45,8 +47,9 @@ export const syncPaymentByOrder = async (orderId, outTradeNo) => {
  * @param {Object} paymentData 支付数据（可选，包含openid、totalAmount等）
  */
 export const wechatSinglePay = async (orderId, paymentData = {}) => {
+  const session = getSessionGeneration()
   try {
-    console.log('创建单笔支付订单:', orderId, paymentData)
+    logPaymentDiagnostic('client_pay_prepare', orderId)
     
     // 调用后端创建单笔支付订单
     // request.js 已统一处理 code，成功时直接返回 data
@@ -56,15 +59,16 @@ export const wechatSinglePay = async (orderId, paymentData = {}) => {
       loadingTitle: '正在创建支付订单...'
     })
     
-    console.log('单笔支付创建响应:', singlePayData)
+    logPaymentDiagnostic('client_pay_prepared', orderId)
     
     if (!singlePayData || !singlePayData.payParams) {
       throw new Error('支付参数不完整')
     }
     
+    assertCurrentSession(session)
     const payParams = singlePayData.payParams
     
-    console.log('调起微信支付:', payParams)
+    logPaymentDiagnostic('client_pay_invoke', orderId)
     
     // 调起微信支付
     return new Promise((resolve, reject) => {
@@ -76,9 +80,11 @@ export const wechatSinglePay = async (orderId, paymentData = {}) => {
         signType: payParams.signType || 'RSA',
         paySign: payParams.paySign,
         success: (res) => {
-          console.log('支付成功:', res)
+          if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
+          // The client callback is not authoritative proof of server settlement.
+          logPaymentDiagnostic('client_pay_submitted', orderId)
           uni.showToast({
-            title: '支付成功',
+            title: '付款已提交',
             icon: 'success'
           })
           resolve({
@@ -89,7 +95,9 @@ export const wechatSinglePay = async (orderId, paymentData = {}) => {
           })
         },
         fail: (err) => {
-          console.error('支付失败:', err)
+          if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
+          logPaymentDiagnostic('client_pay_failed', orderId,
+            err.errMsg === 'requestPayment:fail cancel' ? 'user_cancelled' : 'sdk_failure')
           if (err.errMsg === 'requestPayment:fail cancel') {
             uni.showToast({
               title: '已取消支付',
@@ -108,7 +116,8 @@ export const wechatSinglePay = async (orderId, paymentData = {}) => {
       })
     })
   } catch (error) {
-    console.error('微信单笔支付失败:', error)
+    logPaymentDiagnostic('client_pay_failed', orderId,
+      error && error.code === 'SESSION_CHANGED' ? 'session_changed' : 'prepare_failed')
     throw error
   }
 }

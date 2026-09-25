@@ -15,11 +15,12 @@
 </template>
 
 <script>
-import { ensureWeChatIdentity, getUserByOpenid, loginByOpenid } from '@/api/auth.js'
+import { getWeChatLoginCode, getUserProfile, loginByWeChatCode } from '@/api/auth.js'
 import { STORAGE_KEY_USER_REGISTER, STORAGE_KEY_USER_INFO, STORAGE_KEY_USER_LOGIN_STATUS } from '@/utils/storage.js'
 import { getToken, saveToken } from '@/utils/request.js'
 import { getImageUrl } from '@/utils/config.js'
 import { syncCartOnLogin } from '@/utils/cart-sync.js'
+import { assertCurrentSession, getSessionGeneration, isExplicitlyLoggedOut } from '@/utils/session.js'
 
 export default {
 	data() {
@@ -39,83 +40,31 @@ export default {
 		}
 	},
 	methods: {
-		/**
-		 * 通过 openid 查询用户信息，如果 STORAGE_KEY_USER_REGISTER 没有值则设置
-		 */
 		async loadUserInfoByOpenid() {
 			try {
-				// 1. 优先确保本地存在 openid，后续自动登录和支付链路都依赖它
-				let openid = ''
-				try {
-					const wechatInfo = await ensureWeChatIdentity()
-					openid = wechatInfo.openid
-				} catch (error) {
-					console.error('获取微信 openid 失败:', error)
-					return
-				}
-
-				if (!openid) {
-					console.log('未获取到 openid，跳过查询')
-					return
-				}
-
-				let userInfo = null
-				const existingRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-
-				if (!existingRegisterInfo) {
-					// 2. 首次进入时，使用 openid 回填本地注册资料
-					console.log('通过 openid 查询用户信息:', openid)
-					userInfo = await getUserByOpenid(openid)
-
-					if (!userInfo) {
-						console.log('未找到用户信息')
-					} else {
-						const registerInfo = {
-							realName: userInfo.userName || '',
-							idType: userInfo.idType || '身份证',
-							idNumber: userInfo.idCardNo || '',
-							phone: userInfo.phone || '',
-							verifyCode: ''
-						}
-
-						uni.setStorageSync(STORAGE_KEY_USER_REGISTER, registerInfo)
-						console.log('✅ 已设置 STORAGE_KEY_USER_REGISTER:', registerInfo)
-					}
-				} else {
-					console.log('STORAGE_KEY_USER_REGISTER 已有值，跳过资料回填')
-				}
-
-				// 3. 本地没有 token 时，尝试通过 openid 自动登录，修复登录态
+				if (isExplicitlyLoggedOut()) return
+				let session = getSessionGeneration()
 				if (!getToken()) {
-					try {
-						console.log('通过 openid 自动登录获取 token:', openid)
-						const loginResult = await loginByOpenid(openid)
-
-						if (loginResult && loginResult.token) {
-							saveToken(loginResult.token)
-							console.log('✅ 已保存 Token')
-
-							syncCartOnLogin()
-
-							const userInfoData = {
-								userId: loginResult.userId,
-								phone: loginResult.phone || userInfo?.phone || '',
-								userName: loginResult.userName || userInfo?.userName || '',
-								avatarUrl: loginResult.avatarUrl || userInfo?.avatarUrl || '',
-								openid: loginResult.wechatOpenid || openid
-							}
-							uni.setStorageSync(STORAGE_KEY_USER_INFO, userInfoData)
-							uni.setStorageSync(STORAGE_KEY_USER_LOGIN_STATUS, true)
-							console.log('✅ 已保存用户信息和登录状态:', userInfoData)
-						}
-					} catch (loginError) {
-						console.error('通过 openid 自动登录失败:', loginError)
-					}
+					const code = await getWeChatLoginCode()
+					assertCurrentSession(session)
+					const result = await loginByWeChatCode(code)
+					assertCurrentSession(session)
+					saveToken(result.token)
+					session = getSessionGeneration()
+					if (result.wechatOpenid) uni.setStorageSync('wechat_openid', result.wechatOpenid)
+					syncCartOnLogin()
 				}
-				
+				const profile = await getUserProfile()
+				assertCurrentSession(session)
+				uni.setStorageSync(STORAGE_KEY_USER_INFO, { ...profile, userId: profile.id })
+				uni.setStorageSync(STORAGE_KEY_USER_REGISTER, {
+					realName: profile.userName || '', idType: profile.idType || '身份证',
+					idNumber: profile.idCardNo || '', phone: profile.phone || '', verifyCode: ''
+				})
+				uni.setStorageSync(STORAGE_KEY_USER_LOGIN_STATUS, true)
 			} catch (error) {
-				console.error('通过 openid 查询用户信息失败:', error)
-				// 静默失败，不影响页面正常流程
+				// 未注册或登录态变化时保留访客流程，由用户主动登录。
+				if (error?.code !== 'SESSION_CHANGED') console.warn('event=ui_index_index stage=load_user_info_by_openid result=warning reason=operation_incomplete')
 			}
 		},
 		

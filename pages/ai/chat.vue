@@ -210,6 +210,9 @@
 </template>
 
 <script setup>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+const pageSession = getSessionGeneration()
+
 import { computed, nextTick, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import MarkdownMessage from '@/components/chat/MarkdownMessage.vue'
@@ -318,6 +321,7 @@ const loadCurrentUserInfo = () => {
 }
 
 const saveChatState = () => {
+  if (!isCurrentSession(pageSession)) return
   uni.setStorageSync(STORAGE_KEY_AI_CHAT_ID, chatId.value || '')
   uni.setStorageSync(STORAGE_KEY_AI_CHAT_MESSAGES, messages.value)
 }

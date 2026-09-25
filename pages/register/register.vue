@@ -111,11 +111,12 @@ import {
 	STORAGE_KEY_USER_INFO,
 	STORAGE_KEY_USER_LOGIN_STATUS
 } from '@/utils/storage.js'
-import { sendSmsCode, login, ensureWeChatIdentity, getWeChatUserProfile } from '@/api/auth.js'
+import { sendSmsCode, login, getWeChatLoginCode, getWeChatUserProfile } from '@/api/auth.js'
 import { saveToken } from '@/utils/request.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
 import { logPageView } from '@/api/access-log.js'
 import { syncCartOnLogin } from '@/utils/cart-sync.js'
+import { assertCurrentSession, getSessionGeneration } from '@/utils/session.js'
 
 export default {
 	data() {
@@ -132,12 +133,13 @@ export default {
 			isAgreed: false,
 			countdown: 0,
 			countdownTimer: null,
+			loggingIn: false,
 			redirectUrl: '' // 登录成功后的跳转地址
 		}
 	},
 	computed: {
 		canSubmit() {
-			return this.formData.realName &&
+			return !this.loggingIn && this.formData.realName &&
 			this.formData.idType &&
 			this.formData.idNumber &&
 			this.formData.phone &&
@@ -147,8 +149,8 @@ export default {
 	},
 	onLoad(options) {
 		// 鎺ユ敹 redirect 鍙傛暟
-		if (options && options.redirect) {
-			this.redirectUrl = decodeURIComponent(options.redirect)
+		if (options && (options.redirect || options.redirectUrl)) {
+			this.redirectUrl = decodeURIComponent(options.redirect || options.redirectUrl)
 		}
 		// 鍔犺浇宸蹭繚瀛樼殑娉ㄥ唽淇℃伅
 		this.loadSavedData()
@@ -182,17 +184,17 @@ export default {
 					this.isAgreed = agreementStatus
 				}
 			} catch (e) {
-				console.error('鍔犺浇淇濆瓨鏁版嵁澶辫触:', e)
+				console.error('event=ui_register_register stage=form_cache_read result=failed reason=storage_error')
 			}
 		},
 		
 		// 淇濆瓨琛ㄥ崟鏁版嵁
 		saveFormData() {
 			try {
-				uni.setStorageSync(STORAGE_KEY_USER_REGISTER, this.formData)
+				uni.setStorageSync(STORAGE_KEY_USER_REGISTER, { ...this.formData, verifyCode: '' })
 				uni.setStorageSync(STORAGE_KEY_AGREEMENT_ACCEPTED, this.isAgreed)
 			} catch (e) {
-				console.error('淇濆瓨鏁版嵁澶辫触:', e)
+				console.error('event=ui_register_register stage=form_cache_write result=failed reason=storage_error')
 			}
 		},
 		
@@ -239,7 +241,7 @@ export default {
 				}, 1000)
 				
 			} catch (error) {
-				console.error('发送验证码失败:', error)
+				console.error('event=ui_register_register stage=sms_request result=failed reason=request_failed')
 				uni.showToast({
 					title: error.message || '发送失败，请重试',
 					icon: 'none'
@@ -282,11 +284,14 @@ export default {
 				return
 			}
 
+			this.loggingIn = true
+			const session = getSessionGeneration()
 			try {
 				uni.showLoading({ title: '获取微信信息...' })
 				
 				// 1. 获取微信 openid / unionid，支付链路依赖该信息
-				const wechatInfo = await ensureWeChatIdentity()
+				const wechatCode = await getWeChatLoginCode()
+				assertCurrentSession(session)
 				
 				// 2. 灏濊瘯鑾峰彇寰俊鐢ㄦ埛淇℃伅锛堝ご鍍忋€佹樀绉帮級
 				let wechatUserInfo = {}
@@ -294,7 +299,7 @@ export default {
 					wechatUserInfo = await getWeChatUserProfile()
 
 				} catch (userInfoError) {
-					console.error('鑾峰彇寰俊鐢ㄦ埛淇℃伅澶辫触:', userInfoError)
+					console.error('event=ui_register_register stage=wechat_profile result=failed reason=provider_error')
 					// 鐢ㄦ埛鍙兘鎷掔粷鎺堟潈锛屼笉褰卞搷鐧诲綍
 				}
 				
@@ -302,13 +307,12 @@ export default {
 				
 				// 3. 鍑嗗鐧诲綍鏁版嵁锛堝寘鍚畬鏁寸殑鐢ㄦ埛淇℃伅锛?
 				const loginData = {
+					wechatCode,
 					phone: this.formData.phone,
 					code: this.formData.verifyCode,
 					userName: this.formData.realName, // 鐪熷疄濮撳悕
 					idType: this.formData.idType, // 璇佷欢绫诲瀷
 					idCardNo: this.formData.idNumber, // 璇佷欢鍙风爜
-					wechatOpenid: wechatInfo.openid || '', // 寰俊openid
-					wechatUnionid: wechatInfo.unionid || '', // 寰俊unionid锛堝彲鑳戒负绌猴級
 					avatarUrl: wechatUserInfo.avatarUrl || '', // 寰俊澶村儚
 					gender: this.parseGender(wechatUserInfo.gender), // 鎬у埆
 				}
@@ -316,13 +320,17 @@ export default {
 
 				
 				// 4. 璋冪敤鍚庣API鐧诲綍/娉ㄥ唽
+				assertCurrentSession(session)
 				const result = await login(loginData)
+				assertCurrentSession(session)
+				if (!result?.token) throw new Error('登录未返回有效凭证')
 				
 
 				
 				// 5. 淇濆瓨Token
 				if (result && result.token) {
 					saveToken(result.token)
+					if (result.wechatOpenid) uni.setStorageSync('wechat_openid', result.wechatOpenid)
 					syncCartOnLogin()
 				}
 				
@@ -334,13 +342,13 @@ export default {
 							phone: result.phone || this.formData.phone,
 							userName: result.userName || this.formData.realName,
 							avatarUrl: result.avatarUrl || wechatUserInfo.avatarUrl || '',
-							openid: wechatInfo.openid || ''
+							openid: result.wechatOpenid || ''
 						}
 						uni.setStorageSync(STORAGE_KEY_USER_INFO, userInfo)
 						uni.setStorageSync(STORAGE_KEY_USER_LOGIN_STATUS, true)
 					}
 				} catch (storageError) {
-					console.error('淇濆瓨鐢ㄦ埛淇℃伅澶辫触:', storageError)
+					console.error('event=ui_register_register stage=profile_cache_write result=failed reason=storage_error')
 				}
 				
 				// 7. 淇濆瓨鐢ㄦ埛鏁版嵁
@@ -353,19 +361,24 @@ export default {
 				})
 				
 				// 8. 鐧诲綍鎴愬姛鍚庤烦杞?
+				const signedInSession = getSessionGeneration()
 				setTimeout(() => {
+					if (signedInSession !== getSessionGeneration()) return
 					const rawUrl = this.redirectUrl || '/pages/products/medicine_list'
 					const targetUrl = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`
 					redirectToWithFallback(targetUrl)
 				}, 1500)
 				
 			} catch (error) {
-				console.error('鐧诲綍澶辫触:', error)
+				if (error?.code === 'SESSION_CHANGED') return
+				console.error('event=ui_register_register stage=login result=failed reason=login_incomplete')
 				uni.hideLoading()
 				uni.showToast({
 					title: error.message || '鐧诲綍澶辫触锛岃閲嶈瘯',
 					icon: 'none'
 				})
+			} finally {
+				this.loggingIn = false
 			}
 		},
 		

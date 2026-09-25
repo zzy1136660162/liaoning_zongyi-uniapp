@@ -15,7 +15,7 @@ assert.equal(getRedeemStatusText({ redeemStatus: 1 }), '已核销')
 assert.equal(getRedeemStatusText({ redeemStatus: 2 }), '已退款/已失效')
 
 assert.equal(
-  canShowRedeemCode({ orderStatus: 7, refundStatus: 5 }, { redeemStatus: 0, verifyCode: 'HX001' }),
+  canShowRedeemCode({ orderStatus: 7, refundStatus: 5 }, { redeemStatus: 2, verifyCode: 'HX001' }),
   false
 )
 assert.equal(

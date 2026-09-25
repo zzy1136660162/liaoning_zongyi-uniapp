@@ -4,7 +4,8 @@
  */
 
 import { BASE_URL, TIMEOUT, TOKEN_KEY } from './config.js'
-import { getStoredWeChatSessionKey } from '@/api/auth.js'
+import { createTraceId, logRequestDiagnostic } from './diagnostics.js'
+import { beginSession, endSession, getSessionGeneration, isCurrentSession, sessionChangedError, getAnalyticsSessionId } from './session.js'
 
 /**
  * 获取存储的Token
@@ -13,7 +14,7 @@ export const getToken = () => {
   try {
     return uni.getStorageSync(TOKEN_KEY) || ''
   } catch (e) {
-    console.error('获取Token失败:', e)
+    console.warn('[diagnostic] event=token_storage_read reason=storage_unavailable')
     return ''
   }
 }
@@ -22,22 +23,14 @@ export const getToken = () => {
  * 保存Token到本地存储
  */
 export const saveToken = (token) => {
-  try {
-    uni.setStorageSync(TOKEN_KEY, token)
-  } catch (e) {
-    console.error('保存Token失败:', e)
-  }
+  beginSession(token)
 }
 
 /**
  * 清除Token
  */
 export const clearToken = () => {
-  try {
-    uni.removeStorageSync(TOKEN_KEY)
-  } catch (e) {
-    console.error('清除Token失败:', e)
-  }
+  endSession()
 }
 
 /**
@@ -52,6 +45,7 @@ export const clearToken = () => {
  * @returns {Promise}
  */
 export const request = (options = {}) => {
+  const session = getSessionGeneration()
   return new Promise((resolve, reject) => {
     const {
       url,
@@ -63,6 +57,7 @@ export const request = (options = {}) => {
     } = options
 
     const startTime = Date.now()
+    const traceId = createTraceId()
 
     // 显示加载提示
     if (showLoading) {
@@ -75,7 +70,8 @@ export const request = (options = {}) => {
     // 构建请求头
     const requestHeader = {
       'Content-Type': 'application/json',
-      ...header
+      ...header,
+      'X-Request-Id': traceId
     }
 
     // 如果需要认证，添加Token
@@ -94,6 +90,13 @@ export const request = (options = {}) => {
       header: requestHeader,
       timeout: TIMEOUT,
       success: (res) => {
+        logRequestDiagnostic({ traceId, url, method: method.toUpperCase(),
+          httpStatus: res.statusCode, businessCode: res.data && res.data.code,
+          durationMs: Date.now() - startTime, stale: !isCurrentSession(session) })
+        if (!isCurrentSession(session)) {
+          reject(sessionChangedError())
+          return
+        }
         const durationMs = Date.now() - startTime
         // 隐藏加载提示
         if (showLoading) {
@@ -122,6 +125,7 @@ export const request = (options = {}) => {
         } else if (responseData.code === 401) {
           // Token过期或未登录
           clearToken()
+          const expiredSession = getSessionGeneration()
           uni.showToast({
             title: '登录已过期，请重新登录',
             icon: 'none',
@@ -129,6 +133,7 @@ export const request = (options = {}) => {
           })
           // 跳转到登录页
           setTimeout(() => {
+            if (!isCurrentSession(expiredSession) || getToken()) return
             uni.reLaunch({
               url: '/pages/register/register'
             })
@@ -142,19 +147,24 @@ export const request = (options = {}) => {
           //   icon: 'none',
           //   duration: 2000
           // })
-            console.log(responseData.message )
           logApiAccess(url, method, statusCode, durationMs)
           reject(responseData)
         }
       },
       fail: (err) => {
+        logRequestDiagnostic({ traceId, url, method: method.toUpperCase(), httpStatus: 0,
+          durationMs: Date.now() - startTime, stale: !isCurrentSession(session),
+          reason: typeof err.errMsg === 'string' && err.errMsg.includes('timeout') ? 'timeout' : 'network_failure' })
+        if (!isCurrentSession(session)) {
+          reject(sessionChangedError())
+          return
+        }
         const durationMs = Date.now() - startTime
         // 隐藏加载提示
         if (showLoading) {
           uni.hideLoading()
         }
 
-        console.error('请求失败:', err)
         
         let errorMessage = '网络请求失败'
         if (err.errMsg) {
@@ -164,7 +174,6 @@ export const request = (options = {}) => {
             errorMessage = '网络连接失败'
           }
         }
-          console.log(errorMessage)
         // uni.showToast({
         //   title: errorMessage,
         //   icon: 'none',
@@ -189,7 +198,7 @@ const getOrCreateClientIdForRequest = () => {
     }
     return clientId
   } catch (e) {
-    console.error('生成/读取 clientId 失败:', e)
+    console.warn('[diagnostic] event=analytics_identity reason=storage_unavailable')
     return undefined
   }
 }
@@ -219,7 +228,7 @@ const logApiAccess = (url, method, statusCode, durationMs) => {
   }
 
   // 生成去重键：基于用户会话 + URL + 方法，确保同一用户在会话期间不重复记录
-  const sessionId = getStoredWeChatSessionKey ? getStoredWeChatSessionKey() : 'anonymous'
+  const sessionId = getAnalyticsSessionId()
   const cacheKey = `${sessionId}_${method.toUpperCase()}_${url}`
   const now = Date.now()
 
@@ -227,7 +236,6 @@ const logApiAccess = (url, method, statusCode, durationMs) => {
   if (API_LOG_CACHE.has(cacheKey)) {
     const lastLogTime = API_LOG_CACHE.get(cacheKey)
     if (now - lastLogTime < API_LOG_CACHE_DURATION) {
-      console.log('API日志记录被跳过（重复）:', cacheKey)
       return
     }
   }
@@ -254,7 +262,7 @@ const logApiAccess = (url, method, statusCode, durationMs) => {
       header['Authorization'] = `Bearer ${token}`
     }
 
-    const sessionId = getStoredWeChatSessionKey ? getStoredWeChatSessionKey() : undefined
+    const sessionId = getAnalyticsSessionId()
     const clientId = getOrCreateClientIdForRequest()
 
     const data = {
@@ -276,7 +284,7 @@ const logApiAccess = (url, method, statusCode, durationMs) => {
       header
     })
   } catch (e) {
-    console.error('记录接口访问日志失败:', e)
+    console.warn('[diagnostic] event=access_log reason=write_failed')
   }
 }
 

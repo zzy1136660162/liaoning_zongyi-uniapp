@@ -27,7 +27,7 @@ export const STORAGE_KEY_USER_LOGIN_STATUS = 'user_login_status'
  * 用户认证Token
  * 存储格式: string
  */
-export const STORAGE_KEY_TOKEN = 'auth_token'
+export const STORAGE_KEY_TOKEN = 'user_token'
 
 /**
  * 用户基本信息

@@ -14,7 +14,8 @@ assert.match(confirmPage, /therapyRouteRequested/)
 assert.match(confirmPage, /resolveTherapyOrderFlag/)
 assert.doesNotMatch(confirmPage, /isTherapyOrder\.value\s*=\s*flow\.allTraditionalTherapy/)
 assert.match(confirmPage, /orderInfo\.value\.cost\.shippingFee\s*=\s*0/)
-assert.match(confirmPage, /跳过传统疗法运费计算/)
+// 运费规则由业务分支决定，不把诊断日志文案当成业务契约。
+assert.match(confirmPage, /if\s*\(!requiresShipping\.value\)\s*\{[\s\S]*?orderInfo\.value\.cost\.shippingFee\s*=\s*0[\s\S]*?return/)
 
 assert.match(paymentSuccessPage, /订单状态/)
 assert.match(paymentSuccessPage, /下单时间/)

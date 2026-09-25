@@ -17,8 +17,8 @@
           <uni-icons :type="getStatusIcon(detail.status)" size="48" :color="getStatusColor(detail.status)"></uni-icons>
         </view>
         <view class="status-info">
-          <text class="status-text">{{ detail.statusText }}</text>
-          <text class="status-desc">{{ getStatusDesc(detail.status) }}</text>
+          <text class="status-text">{{ getPaymentRefundStatusText(detail.paymentRefundStatus) || detail.statusText }}</text>
+          <text class="status-desc">{{ detail.paymentRefundStatus ? getPaymentRefundStatusText(detail.paymentRefundStatus) : getStatusDesc(detail.status) }}</text>
         </view>
       </view>
 
@@ -142,6 +142,7 @@
 </template>
 
 <script>
+import { getPaymentRefundStatusText } from '@/utils/refund.js'
 import dayjs from 'dayjs'
 import { getRefundDetail, submitReturnLogistics } from '@/api/refund.js'
 import { getImageUrl } from '@/utils/config.js'
@@ -181,6 +182,7 @@ export default {
   },
 
   methods: {
+    getPaymentRefundStatusText,
     async loadDetail() {
       try {
         uni.showLoading({ title: '加载中...' })
@@ -199,7 +201,7 @@ export default {
         }
 
       } catch (error) {
-        console.error('加载退货详情失败:', error)
+        console.error('event=ui_order_refund_detail stage=load_detail result=failed reason=operation_incomplete')
         uni.showToast({
           title: error.message || '加载失败',
           icon: 'none'
