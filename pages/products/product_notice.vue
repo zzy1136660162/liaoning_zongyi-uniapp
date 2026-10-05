@@ -31,6 +31,7 @@
 </template>
 
 <script>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId } from '@/api/questionnaire.js'
@@ -48,6 +49,7 @@ import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
 export default {
   data() {
     return {
+      sessionGeneration: getSessionGeneration(),
       productId: '',
       skuId: '',
       productName: '',
@@ -117,6 +119,7 @@ export default {
           return
         }
       } catch (error) {
+        if (!isCurrentSession(this.sessionGeneration)) return
         console.warn('loadProductDetail failed:', error)
       }
       if (!this.noticeText) {
@@ -143,6 +146,7 @@ export default {
       return true
     },
     goCheckout(detail) {
+      if (!isCurrentSession(this.sessionGeneration)) return false
       const saleProduct = this.resolveSelectedProduct(detail)
       const cartKey = this.getCartKey(saleProduct)
       const checkout = prepareCheckout([cartKey], [{
@@ -207,6 +211,7 @@ export default {
               questionnaire.questions.length > 0
             )
           } catch (error) {
+            if (!isCurrentSession(this.sessionGeneration)) return
             shouldGoQuestionnaire = false
           }
         }
@@ -220,6 +225,7 @@ export default {
         }
 
         const saleProduct = this.resolveSelectedProduct(detail)
+        if (!isCurrentSession(this.sessionGeneration)) return
         const success = addCartItem(saleProduct, selectedQuantity, {
           questionnairePassed: !hasBoundQuestionnaire(detail)
         })
@@ -242,6 +248,7 @@ export default {
         })
 
         setTimeout(() => {
+          if (!isCurrentSession(this.sessionGeneration)) return
           uni.navigateBack({
             delta: 1,
             success: () => {
@@ -250,13 +257,14 @@ export default {
           })
         }, 1200)
       } catch (error) {
+        if (!isCurrentSession(this.sessionGeneration)) return
         console.error('startQuestionnaire failed:', error)
         uni.showToast({
           title: error.message || '请求失败，请稍后重试',
           icon: 'none'
         })
       } finally {
-        uni.hideLoading()
+        if (isCurrentSession(this.sessionGeneration)) uni.hideLoading()
       }
     }
   }

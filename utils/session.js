@@ -5,6 +5,25 @@ let generation = 0
 let analyticsId = ''
 const listeners = new Set()
 
+export const getSessionToken = () => {
+  try { return uni.getStorageSync(storage.STORAGE_KEY_TOKEN) || '' }
+  catch (_) { return '' }
+}
+
+// Only account-owned data crosses this boundary. Public caches and consent are device preferences.
+export const ACCOUNT_STORAGE_KEYS = [
+  storage.STORAGE_KEY_USER_REGISTER, storage.STORAGE_KEY_USER_LOGIN_STATUS, storage.STORAGE_KEY_TOKEN,
+  storage.STORAGE_KEY_USER_INFO, storage.STORAGE_KEY_WECHAT_OPENID, storage.STORAGE_KEY_WECHAT_UNIONID,
+  storage.STORAGE_KEY_WECHAT_SESSION_KEY, storage.STORAGE_KEY_VERIFIED_PRODUCTS,
+  storage.STORAGE_KEY_PRODUCT_QUANTITIES, storage.STORAGE_KEY_SELECTED_PRODUCTS,
+  storage.STORAGE_KEY_CURRENT_CONSULTATION_ID, storage.STORAGE_KEY_CHECKOUT_PRODUCT_IDS,
+  storage.STORAGE_KEY_AI_CHAT_ID, storage.STORAGE_KEY_AI_CHAT_MESSAGES,
+  storage.STORAGE_KEY_PRESCRIPTION_ORDERS, storage.STORAGE_KEY_SELECTED_PRESCRIPTIONS,
+  storage.STORAGE_KEY_CURRENT_ORDER, storage.STORAGE_KEY_SHIPPING_ADDRESSES,
+  storage.STORAGE_KEY_DEFAULT_ADDRESS_ID,
+  'auth_token', 'user_id', 'temp_selected_address'
+]
+
 export const getSessionGeneration = () => generation
 export const isCurrentSession = value => value === generation
 export const sessionChangedError = () => Object.assign(new Error('登录状态已变更，请重新进入页面'), { code: 'SESSION_CHANGED' })
@@ -24,10 +43,7 @@ const advanceSession = () => {
 export const isExplicitlyLoggedOut = () => uni.getStorageSync(LOGOUT_KEY) === true
 
 const clearUserStorage = () => {
-  Object.entries(storage).forEach(([name, key]) => {
-    if (name.startsWith('STORAGE_KEY_')) uni.removeStorageSync(key)
-  })
-  ;['auth_token', 'user_token', 'user_id', 'temp_selected_address', 'wechat_session_key'].forEach(key => uni.removeStorageSync(key))
+  ACCOUNT_STORAGE_KEYS.forEach(key => uni.removeStorageSync(key))
 }
 
 // 用户数据在账号边界清理，不把上一账号购物车合并到新账号。

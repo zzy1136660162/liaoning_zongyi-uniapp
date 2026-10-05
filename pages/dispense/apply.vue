@@ -235,6 +235,8 @@
 </template>
 
 <script setup>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+const pageSession = getSessionGeneration()
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
@@ -302,17 +304,19 @@ const loadPatientsFromAPI = async (preferredPatientId = null) => {
       selectedPatient.value = null
     }
   } catch (error) {
+    if (!isCurrentSession(pageSession)) return
     console.error('loadPatientsFromAPI failed:', error)
     patients.value = []
     selectedPatient.value = null
     uni.showToast({ title: error?.message || '就诊人加载失败', icon: 'none' })
   } finally {
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
   }
 }
 
 const handlePatientChanged = (payload = {}) => {
   setTimeout(() => {
+    if (!isCurrentSession(pageSession)) return
     loadPatientsFromAPI(payload.patientId)
   }, 100)
 }
@@ -322,7 +326,7 @@ const loadProducts = async () => {
     const requestedIds = selectedItems.value.length > 0 ? selectedItems.value : getCurrentCheckoutProductIds()
     if (requestedIds.length === 0) {
       uni.showToast({ title: '购物车为空', icon: 'none' })
-      setTimeout(() => uni.navigateBack(), 1200)
+      setTimeout(() => { if (isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
       return
     }
 
@@ -377,6 +381,7 @@ const loadProducts = async () => {
           })
         }
       } catch (error) {
+        if (!isCurrentSession(pageSession)) return
         console.error(`load checkout product failed: ${itemKey}`, error)
       }
     }
@@ -387,14 +392,14 @@ const loadProducts = async () => {
 
     if (cartItems.value.length === 0) {
       uni.showToast({ title: '购物车为空', icon: 'none' })
-      setTimeout(() => uni.navigateBack(), 1200)
+      setTimeout(() => { if (isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
       return
     }
 
     const flow = resolveProductFlow(cartItems.value)
     if (!flow.valid) {
       uni.showToast({ title: flow.message, icon: 'none' })
-      setTimeout(() => uni.navigateBack(), 1200)
+      setTimeout(() => { if (isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
       return
     }
     selectedBizType.value = flow.bizType
@@ -409,10 +414,11 @@ const loadProducts = async () => {
       })
     }
   } catch (error) {
+    if (!isCurrentSession(pageSession)) return
     console.error('loadProducts failed:', error)
     uni.showToast({ title: '加载商品失败', icon: 'none' })
   } finally {
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
   }
 }
 
@@ -444,13 +450,14 @@ const onDeletePatient = (patientId) => {
         uni.showToast({ title: '删除成功', icon: 'success' })
         await loadPatientsFromAPI()
       } catch (error) {
+        if (!isCurrentSession(pageSession)) return
         console.error('onDeletePatient failed:', error)
         uni.showToast({
           title: error.message || '删除失败',
           icon: 'none'
         })
       } finally {
-        uni.hideLoading()
+        if (isCurrentSession(pageSession)) uni.hideLoading()
       }
     }
   })

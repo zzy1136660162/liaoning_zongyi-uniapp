@@ -80,6 +80,8 @@
 </template>
 
 <script setup>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+const pageSession = getSessionGeneration()
 import { ref, reactive, onMounted } from 'vue'
 import { 
   STORAGE_KEY_SHIPPING_ADDRESSES,
@@ -223,6 +225,7 @@ const setMultiValueFromForm = () => {
 onMounted(async () => {
   // 初始化四级联动数据（先加载区域 JSON，再构建多列选择数据）
   await initRegionData()
+  if (!isCurrentSession(pageSession)) return
   buildMultiRange()
 
   // 检查是否是编辑模式
@@ -286,15 +289,16 @@ const loadAddress = async () => {
       // 更新多列选择器索引
       setMultiValueFromForm()
       
-      uni.hideLoading()
+      if (isCurrentSession(pageSession)) uni.hideLoading()
     } else {
-      uni.hideLoading()
+      if (isCurrentSession(pageSession)) uni.hideLoading()
       console.error('地址数据为空')
       uni.showToast({ title: '地址数据加载失败', icon: 'none' })
     }
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('加载地址详情失败:', e)
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
     uni.showToast({ 
       title: e.message || '加载失败，请重试', 
       icon: 'none' 
@@ -371,19 +375,21 @@ const saveAddress = async () => {
       await addAddress(addressData)
     }
     
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
     uni.showToast({ 
       title: isEdit.value ? '保存成功' : '添加成功', 
       icon: 'success'
     })
     
     setTimeout(() => {
+      if (!isCurrentSession(pageSession)) return
       uni.navigateBack()
     }, 1500)
     
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('保存地址失败:', e)
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
     uni.showToast({ 
       title: e.message || '保存失败，请重试', 
       icon: 'none' 

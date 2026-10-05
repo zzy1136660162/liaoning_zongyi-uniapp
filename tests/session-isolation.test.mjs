@@ -36,7 +36,10 @@ test('退出清除实际凭证、就诊/地址/购物车/AI状态并保持显式
   assert.equal(isExplicitlyLoggedOut(), true)
   assert.equal(values.has('temp_selected_address'), false)
   for (const [name, key] of Object.entries(storage)) {
-    if (name.startsWith('STORAGE_KEY_')) assert.equal(values.has(key), false, key)
+    if (name.startsWith('STORAGE_KEY_')) {
+      const preserved = ['agreement_accepted', 'privacy_accepted', 'products_cache'].includes(key)
+      assert.equal(values.has(key), preserved, key)
+    }
   }
   beginSession('new-token')
   assert.equal(isExplicitlyLoggedOut(), false)

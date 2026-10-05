@@ -3,21 +3,15 @@
  * 统一处理请求和响应
  */
 
-import { BASE_URL, TIMEOUT, TOKEN_KEY } from './config.js'
+import { BASE_URL, TIMEOUT } from './config.js'
 import { createTraceId, logRequestDiagnostic } from './diagnostics.js'
-import { beginSession, endSession, getSessionGeneration, isCurrentSession, sessionChangedError, getAnalyticsSessionId } from './session.js'
+import { handleAuthenticationFailure } from './auth-failure.js'
+import { beginSession, endSession, getSessionGeneration, isCurrentSession, sessionChangedError, getAnalyticsSessionId, getSessionToken } from './session.js'
 
 /**
  * 获取存储的Token
  */
-export const getToken = () => {
-  try {
-    return uni.getStorageSync(TOKEN_KEY) || ''
-  } catch (e) {
-    console.warn('[diagnostic] event=token_storage_read reason=storage_unavailable')
-    return ''
-  }
-}
+export const getToken = getSessionToken
 
 /**
  * 保存Token到本地存储
@@ -53,7 +47,8 @@ export const request = (options = {}) => {
       data = {},
       header = {},
       needAuth = true,
-      showLoading = true
+      showLoading = true,
+      authRedirect = true
     } = options
 
     const startTime = Date.now()
@@ -82,6 +77,8 @@ export const request = (options = {}) => {
       }
     }
 
+    const sentToken = (requestHeader.Authorization || '').replace(/^Bearer\s+/i, '')
+
     // 发送请求
     uni.request({
       url: BASE_URL + url,
@@ -105,6 +102,13 @@ export const request = (options = {}) => {
 
         const { statusCode, data: responseData } = res
 
+        if (statusCode === 401 || Number(responseData?.code) === 401) {
+          logApiAccess(url, method, statusCode, durationMs)
+          reject(handleAuthenticationFailure({ generation: session, token: sentToken, required: needAuth,
+            redirect: authRedirect, message: responseData?.message }))
+          return
+        }
+
         // HTTP状态码检查
         if (statusCode !== 200) {
           uni.showToast({
@@ -122,24 +126,6 @@ export const request = (options = {}) => {
           // ✅ 统一返回 data 字段，页面层无需再取 .data
           logApiAccess(url, method, statusCode, durationMs)
           resolve(responseData.data)
-        } else if (responseData.code === 401) {
-          // Token过期或未登录
-          clearToken()
-          const expiredSession = getSessionGeneration()
-          uni.showToast({
-            title: '登录已过期，请重新登录',
-            icon: 'none',
-            duration: 2000
-          })
-          // 跳转到登录页
-          setTimeout(() => {
-            if (!isCurrentSession(expiredSession) || getToken()) return
-            uni.reLaunch({
-              url: '/pages/register/register'
-            })
-          }, 2000)
-          logApiAccess(url, method, statusCode, durationMs)
-          reject(responseData)
         } else {
           // 其他业务错误
           // uni.showToast({

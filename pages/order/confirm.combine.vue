@@ -93,6 +93,8 @@
 </template>
 
 <script setup>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+const pageSession = getSessionGeneration()
 import { ref, computed, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { 
@@ -197,15 +199,17 @@ const loadProducts = async () => {
     categories.value = [cartCategory]
     return [cartCategory]
   } catch (error) {
+    if (!isCurrentSession(pageSession)) return
     console.error('加载商品失败:', error)
     categories.value = []
     return []
   } finally {
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
   }
 }
 
 const loadOrderInfo = () => {
+  if (!isCurrentSession(pageSession)) return
   try {
     const saved = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
     if (saved) {
@@ -235,15 +239,18 @@ const loadOrderInfo = () => {
       uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
     }
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('加载订单信息失败:', e)
     uni.showToast({ title: '加载订单失败', icon: 'none' })
     setTimeout(() => {
+      if (!isCurrentSession(pageSession)) return
       uni.navigateBack()
     }, 1500)
   }
 }
 
 const loadAddresses = () => {
+  if (!isCurrentSession(pageSession)) return
   try {
     const saved = uni.getStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES) || []
     addresses.value = saved
@@ -260,6 +267,7 @@ const loadAddresses = () => {
       selectedAddress.value = addresses.value[0]
     }
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('加载地址列表失败:', e)
   }
 }
@@ -275,6 +283,7 @@ const calculateTotal = () => {
 }
 
 const toggleDecocted = () => {
+  if (!isCurrentSession(pageSession)) return
   orderInfo.value.cost.isDecocted = !orderInfo.value.cost.isDecocted
   calculateTotal()
   // 保存订单信息
@@ -288,6 +297,7 @@ const selectAddress = () => {
 }
 
 const submitOrder = async () => {
+  if (!isCurrentSession(pageSession)) return
   if (!selectedAddress.value) {
     uni.showToast({ title: '请选择收货地址', icon: 'none' })
     return
@@ -325,7 +335,7 @@ const submitOrder = async () => {
     
     console.log('订单创建成功:', order)
     
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
     
     // ✅ 订单创建成功，调起单笔支付
     const orderId = order.id || order.orderNo
@@ -360,6 +370,7 @@ const submitOrder = async () => {
               url: `/pages/order/payment_success?orderId=${orderId}&amount=${orderInfo.value.total}&outTradeNo=${payResult.outTradeNo || ''}&paymentType=single`
             })
           } catch (error) {
+            if (!isCurrentSession(pageSession)) return
             console.error('单笔支付失败:', error)
             
             // 判断是否是用户取消
@@ -399,8 +410,9 @@ const submitOrder = async () => {
     })
     
   } catch (error) {
+    if (!isCurrentSession(pageSession)) return
     console.error('提交订单失败:', error)
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
     uni.showToast({ 
       title: error.message || '提交失败，请重试', 
       icon: 'none' 

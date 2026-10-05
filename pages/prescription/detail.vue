@@ -138,6 +138,7 @@
 </template>
 
 <script>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import {
   STORAGE_KEY_CURRENT_ORDER,
   STORAGE_KEY_PRESCRIPTION_ORDERS,
@@ -156,6 +157,7 @@ export default {
   name: 'PrescriptionDetail',
   data() {
     return {
+      sessionGeneration: getSessionGeneration(),
       detail: {
         visitNo: '',
         name: '',
@@ -763,6 +765,7 @@ export default {
           const index = prescriptions.findIndex(p => p.id === id)
           if (index > -1) {
             prescriptions[index] = { ...prescriptions[index], ...prescriptionData }
+            if (!isCurrentSession(this.sessionGeneration)) return
             uni.setStorageSync(STORAGE_KEY_PRESCRIPTION_ORDERS, prescriptions)
           }
         }
@@ -936,13 +939,19 @@ export default {
             }
           }
 
+          if (!isCurrentSession(this.sessionGeneration)) return
+
           uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, verified)
+          if (!isCurrentSession(this.sessionGeneration)) return
           uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, quantities)
+          if (!isCurrentSession(this.sessionGeneration)) return
           uni.setStorageSync(STORAGE_KEY_SELECTED_PRODUCTS, selected)
           console.log('同步购物车已验证商品:', associatedProductIds.length ? associatedProductIds : (this.detail.visitNo || 'visitNo'), verified, quantities)
         } catch (syncErr) {
           console.warn('同步购物车信息失败:', syncErr)
         }
+
+        if (!isCurrentSession(this.sessionGeneration)) return
 
         uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo)
 

@@ -226,6 +226,8 @@
 </template>
 
 <script setup>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+const pageSession = getSessionGeneration()
 import { reactive, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { addPatient, getPatientDetail, updatePatient } from '@/api/patient.js'
@@ -366,6 +368,7 @@ const resetForm = () => {
 
 onLoad(async (options = {}) => {
   await initRegionData()
+  if (!isCurrentSession(pageSession)) return
   resetForm()
   const id = Number(options.id)
   if (Number.isInteger(id) && id > 0) {
@@ -542,8 +545,9 @@ const loadPatient = async (id) => {
     guardianIdTypeIndex.value = Math.max(0, idTypeOptions.indexOf(formData.guardianIdType))
     restoreRegionSelection()
   } catch (error) {
+    if (!isCurrentSession(pageSession)) return
     uni.showToast({ title: error?.message || '就诊人加载失败', icon: 'none' })
-    setTimeout(() => uni.navigateBack(), 1200)
+    setTimeout(() => { if (isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
   }
 }
 
@@ -641,14 +645,16 @@ const handleSubmit = async () => {
       ? await updatePatient(patientId.value, payload)
       : await addPatient(payload)
     uni.$emit('patientChanged', { patientId: result?.id || patientId.value })
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
     uni.showToast({ title: patientId.value ? '修改成功' : '添加成功', icon: 'success' })
     setTimeout(() => {
+      if (!isCurrentSession(pageSession)) return
       uni.navigateBack()
     }, 1200)
   } catch (error) {
+    if (!isCurrentSession(pageSession)) return
     console.error('保存就诊人失败:', error)
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
     const errMsg = error?.message || error?.data?.message || '保存失败，请稍后再试'
     uni.showToast({ title: errMsg, icon: 'none' })
   } finally {

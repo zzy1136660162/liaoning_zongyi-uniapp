@@ -40,13 +40,16 @@
 </template>
 
 <script>
-import { onLoad } from '@dcloudio/uni-app'
-import { BASE_URL, TOKEN_KEY, API_PATHS } from '@/utils/config.js'
+import { API_PATHS } from '@/utils/config.js'
+import { get } from '@/utils/request.js'
+import { uploadFile } from '@/api/common.js'
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 
 export default {
   name: 'DoctorSignature',
   data() {
     return {
+      sessionGeneration: getSessionGeneration(),
       doctorId: null,
       doctorName: null,
       ctx: null,
@@ -67,7 +70,7 @@ export default {
 
     // 延迟初始化画布，确保节点已渲染
     this.$nextTick(() => {
-      this.initCanvas()
+      if (isCurrentSession(this.sessionGeneration)) this.initCanvas()
     })
   },
   methods: {
@@ -75,32 +78,13 @@ export default {
       if (!this.doctorId) return
 
       try {
-        const token = uni.getStorageSync(TOKEN_KEY)
-        const response = await new Promise((resolve, reject) => {
-          uni.request({
-            url: BASE_URL + API_PATHS.DOCTOR.DETAIL(this.doctorId),
-            method: 'GET',
-            header: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            success: (res) => {
-              if (res.statusCode === 200 && res.data && res.data.code === 200) {
-                resolve(res.data)
-              } else {
-                reject(new Error(res.data?.message || '获取医生信息失败'))
-              }
-            },
-            fail: reject
-          })
-        })
+        const response = await get(API_PATHS.DOCTOR.DETAIL(this.doctorId), {}, { showLoading: false })
+        if (!isCurrentSession(this.sessionGeneration)) return
+        if (response) this.doctorName = response.name || response.doctorName || '未知医生'
 
-        if (response.data) {
-          // 根据API返回的数据结构获取医生姓名
-          this.doctorName = response.data.name || response.data.doctorName || '未知医生'
-        }
       } catch (error) {
-        console.error('获取医生信息失败:', error)
+        if (!isCurrentSession(this.sessionGeneration) || error.code === 'SESSION_CHANGED') return
+        console.warn('event=doctor_signature stage=load result=failed')
         this.doctorName = '未知医生'
         uni.showToast({
           title: '获取医生信息失败',
@@ -235,80 +219,32 @@ export default {
       }
     },
 
-    submitSignature() {
+    async submitSignature() {
+      const session = this.sessionGeneration
+      if (!isCurrentSession(session) || this.submitting) return
       if (!this.doctorId) {
         uni.showToast({ title: '缺少医生ID', icon: 'none' })
         return
       }
-      if (this.submitting) return
-
       this.submitting = true
-
-      // 将画布内容导出为临时文件
-      uni.canvasToTempFilePath(
-        {
-          canvasId: 'signatureCanvas',
-          success: res => {
-            const tempFilePath = res.tempFilePath
-            // 获取token
-            const token = uni.getStorageSync(TOKEN_KEY)
-            const header = {}
-            if (token) {
-              header['Authorization'] = `Bearer ${token}`
-            }
-            // 上传文件到后端，并更新医生签名
-            uni.uploadFile({
-              url: `${BASE_URL}/api/doctors/${this.doctorId}/signature`,
-              filePath: tempFilePath,
-              name: 'file',
-              header: header,
-              success: uploadRes => {
-                try {
-                  const data = JSON.parse(uploadRes.data || '{}')
-                  if (data && data.code === 200) {
-                    uni.showToast({
-                      title: '签名已提交',
-                      icon: 'success'
-                    })
-                    setTimeout(() => {
-                      uni.navigateBack({ delta: 1 })
-                    }, 1500)
-                  } else {
-                    uni.showToast({
-                      title: data.message || '上传失败',
-                      icon: 'none'
-                    })
-                  }
-                } catch (e) {
-                  uni.showToast({
-                    title: '上传返回数据异常',
-                    icon: 'none'
-                  })
-                }
-              },
-              fail: err => {
-                console.error('上传签名失败:', err)
-                uni.showToast({
-                  title: '上传失败',
-                  icon: 'none'
-                })
-              },
-              complete: () => {
-                this.submitting = false
-              }
-            })
-          },
-          fail: err => {
-            console.error('导出签名失败:', err)
-            uni.showToast({
-              title: '导出签名失败',
-              icon: 'none'
-            })
-            this.submitting = false
-          }
-        },
-        this
-      )
+      try {
+        const image = await new Promise((resolve, reject) => uni.canvasToTempFilePath({
+          canvasId: 'signatureCanvas', success: resolve, fail: reject
+        }, this))
+        if (!isCurrentSession(session)) return
+        await uploadFile(image.tempFilePath, { url: `/api/doctors/${this.doctorId}/signature` })
+        if (!isCurrentSession(session)) return
+        uni.showToast({ title: '签名已提交', icon: 'success' })
+        setTimeout(() => {
+          if (isCurrentSession(session)) uni.navigateBack({ delta: 1 })
+        }, 1500)
+      } catch (error) {
+        if (!isCurrentSession(session) || error.code === 'SESSION_CHANGED') return
+        console.warn('event=doctor_signature stage=submit result=failed')
+        uni.showToast({ title: error.message || '签名提交失败', icon: 'none' })
+      } finally {
+        if (isCurrentSession(session)) this.submitting = false
+      }
     }
   }
 }

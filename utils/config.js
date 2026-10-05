@@ -94,7 +94,7 @@ export const API_PATHS = {
     AUTH: {
         SEND_SMS: '/api/auth/send-sms',           // 发送短信验证码
         LOGIN: '/api/auth/login',                 // 登录/注册
-        LOGIN_BY_OPENID: '/api/auth/login-by-openid', // 使用微信临时 code 换取身份登录（保留旧路径）
+        LOGIN_BY_WECHAT_CODE: '/api/auth/login-by-openid', // 使用微信临时 code 换取身份登录（保留旧路径）
         LOGOUT: '/api/auth/logout',               // 退出登录
         USER_PROFILE: '/api/user/profile',        // 获取用户信息
     },

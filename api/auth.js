@@ -49,15 +49,16 @@ export const login = (params) => {
 /**
  * 获取当前登录用户信息
  */
-export const getUserProfile = () => {
+export const getUserProfile = ({ authRedirect = true } = {}) => {
   return get(API_PATHS.AUTH.USER_PROFILE, {}, {
     needAuth: true,
+    authRedirect,
     showLoading: false
   })
 }
 
 /** 使用本次 uni.login 的一次性 code 登录；不能使用本地 openid 作为凭证。 */
-export const loginByWeChatCode = (code) => post(API_PATHS.AUTH.LOGIN_BY_OPENID, { code }, {
+export const loginByWeChatCode = (code) => post(API_PATHS.AUTH.LOGIN_BY_WECHAT_CODE, { code }, {
   needAuth: false,
   showLoading: false,
   header: { 'Content-Type': 'application/x-www-form-urlencoded' }
@@ -74,12 +75,7 @@ export const getWeChatLoginCode = () => new Promise((resolve, reject) => {
 /**
  * 退出登录
  */
-export const logout = () => {
-  return post(API_PATHS.AUTH.LOGOUT, {}, {
-    needAuth: true,
-    showLoading: true
-  })
-}
+export { logout } from './logout.js'
 
 /**
  * 获取微信 openid 和 unionid

@@ -104,6 +104,7 @@
 </template>
 
 <script>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { getRefundDetail, submitReturnLogistics } from '@/api/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 
@@ -112,6 +113,8 @@ export default {
   data() {
     return {
       refundApplicationId: null,
+      sessionGeneration: getSessionGeneration(),
+      submitting: false,
       refundDetail: {},
       selectedCompanyIndex: 0,
       logisticsCompanies: [
@@ -149,8 +152,10 @@ export default {
     },
 
     canSubmit() {
-      return this.form.logisticsCompany &&
-             this.form.logisticsNo &&
+      return !this.submitting && this.refundDetail.status === 1 &&
+             !['PROCESSING', 'UNKNOWN', 'SUCCESS'].includes(this.refundDetail.paymentRefundStatus) &&
+             this.form.logisticsCompany.trim() && this.form.logisticsCompany.trim().length <= 50 &&
+             this.form.logisticsNo.trim() && this.form.logisticsNo.trim().length <= 64 &&
              this.form.returnTime
     }
   },
@@ -166,7 +171,7 @@ export default {
         icon: 'none'
       })
       setTimeout(() => {
-        uni.navigateBack()
+        if (isCurrentSession(this.sessionGeneration)) uni.navigateBack()
       }, 1500)
     }
 
@@ -177,10 +182,12 @@ export default {
     async loadRefundDetail() {
       try {
         const result = await getRefundDetail(this.refundApplicationId)
+        if (!isCurrentSession(this.sessionGeneration)) return
         this.refundDetail = result || {}
 
       } catch (error) {
-        console.error('加载退货详情失败:', error)
+        if (!isCurrentSession(this.sessionGeneration)) return
+        console.warn('event=refund_logistics_load result=failed')
         uni.showToast({
           title: error.message || '加载失败',
           icon: 'none'
@@ -194,6 +201,7 @@ export default {
 
       this.minDate = this.formatDate(sevenDaysAgo)
       this.maxDate = this.formatDate(now)
+      this.form.returnTime = this.maxDate
     },
 
     formatDate(date) {
@@ -220,6 +228,7 @@ export default {
     },
 
     async submitLogistics() {
+      if (!isCurrentSession(this.sessionGeneration)) return
       if (!this.canSubmit) {
         uni.showToast({
           title: '请完善物流信息',
@@ -246,6 +255,7 @@ export default {
       }
 
       try {
+        this.submitting = true
         logButtonClick('提交退货物流信息', 'REFUND_LOGISTICS', this.refundApplicationId?.toString())
 
         uni.showLoading({ title: '提交中...' })
@@ -257,6 +267,7 @@ export default {
         }
 
         await submitReturnLogistics(this.refundApplicationId, submitData)
+        if (!isCurrentSession(this.sessionGeneration)) return
 
         uni.hideLoading()
         uni.showToast({
@@ -266,11 +277,13 @@ export default {
 
         // 延迟返回，让用户看到成功提示
         setTimeout(() => {
-          this.navigateAfterSubmit()
+          if (isCurrentSession(this.sessionGeneration)) this.navigateAfterSubmit()
         }, 1500)
 
       } catch (error) {
-        console.error('提交物流信息失败:', error)
+        if (!isCurrentSession(this.sessionGeneration)) return
+        this.submitting = false
+        console.warn('event=refund_logistics_submit result=failed')
         uni.hideLoading()
         uni.showToast({
           title: error.message || '提交失败，请重试',

@@ -17,8 +17,8 @@
           <uni-icons :type="getStatusIcon(detail.status)" size="48" :color="getStatusColor(detail.status)"></uni-icons>
         </view>
         <view class="status-info">
-          <text class="status-text">{{ getPaymentRefundStatusText(detail.paymentRefundStatus) || detail.statusText }}</text>
-          <text class="status-desc">{{ detail.paymentRefundStatus ? getPaymentRefundStatusText(detail.paymentRefundStatus) : getStatusDesc(detail.status) }}</text>
+          <text class="status-text">{{ getRefundStageText(detail) }}</text>
+          <text class="status-desc">{{ detail.refundLastError || getRefundStageText(detail) }}</text>
         </view>
       </view>
 
@@ -142,9 +142,10 @@
 </template>
 
 <script>
-import { getPaymentRefundStatusText } from '@/utils/refund.js'
+import { getPaymentRefundStatusText, getRefundStageText } from '@/utils/refund.js'
 import dayjs from 'dayjs'
-import { getRefundDetail, submitReturnLogistics } from '@/api/refund.js'
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+import { getRefundDetail } from '@/api/refund.js'
 import { getImageUrl } from '@/utils/config.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 
@@ -153,41 +154,46 @@ export default {
   data() {
     return {
       refundApplicationId: null,
-      detail: {}
+      detail: {},
+      sessionGeneration: getSessionGeneration()
     }
   },
 
   computed: {
     showActionButton() {
       // 审核通过状态且未填写物流信息时显示操作按钮
-      return this.detail.status === 1 && !this.detail.returnLogisticsCompany
+      return this.detail.status === 1 && !['PROCESSING', 'UNKNOWN', 'SUCCESS'].includes(this.detail.paymentRefundStatus) &&
+        !String(this.detail.refundScene || '').startsWith('THERAPY_') && this.detail.refundScene !== 'FORMULATION_PRE_SHIP' &&
+        (!this.detail.returnLogisticsCompany || !this.detail.returnLogisticsNo)
     }
   },
 
   onLoad(options) {
     this.refundApplicationId = options.refundApplicationId
-    if (this.refundApplicationId) {
-      this.loadDetail()
-    } else {
+    if (!this.refundApplicationId) {
       uni.showToast({
         title: '参数错误',
         icon: 'none'
       })
       setTimeout(() => {
-        this.safeNavigateBack()
+        if (isCurrentSession(this.sessionGeneration)) this.safeNavigateBack()
       }, 1500)
     }
 
     logPageView('退货详情', 'REFUND_DETAIL')
   },
 
+  onShow() { if (this.refundApplicationId && isCurrentSession(this.sessionGeneration)) this.loadDetail() },
+
   methods: {
     getPaymentRefundStatusText,
+    getRefundStageText,
     async loadDetail() {
       try {
         uni.showLoading({ title: '加载中...' })
 
         const detail = await getRefundDetail(this.refundApplicationId)
+        if (!isCurrentSession(this.sessionGeneration)) return
         this.detail = detail || {}
 
         // 处理商品图片URL（如果后端没有返回，使用占位图）
@@ -201,13 +207,14 @@ export default {
         }
 
       } catch (error) {
+        if (!isCurrentSession(this.sessionGeneration) || error.code === 'SESSION_CHANGED') return
         console.error('event=ui_order_refund_detail stage=load_detail result=failed reason=operation_incomplete')
         uni.showToast({
           title: error.message || '加载失败',
           icon: 'none'
         })
       } finally {
-        uni.hideLoading()
+        if (isCurrentSession(this.sessionGeneration)) uni.hideLoading()
       }
     },
 

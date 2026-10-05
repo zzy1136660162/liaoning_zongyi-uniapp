@@ -13,6 +13,18 @@ export const getPaymentRefundStatusText = status => ({
   FAILED: '退款失败，请联系客服'
 }[status] || '')
 
+export const getRefundStageText = (detail = {}) => {
+  if (['PROCESSING', 'UNKNOWN', 'SUCCESS'].includes(detail.paymentRefundStatus)) return getPaymentRefundStatusText(detail.paymentRefundStatus)
+  if (detail.status === 4) return '退款成功'
+  if (detail.status === 0) return '申请已提交，等待审核'
+  if (detail.status === 2) return '申请未通过审核'
+  if (detail.status === 5) return '申请已关闭'
+  const needsReturn = !String(detail.refundScene || '').startsWith('THERAPY_') && detail.refundScene !== 'FORMULATION_PRE_SHIP'
+  if (needsReturn && detail.status === 1) return '待填写退货物流'
+  if (needsReturn && detail.status === 3 && !detail.returnReceivedAt) return '等待商家收货处理'
+  return '等待执行退款'
+}
+
 export const hasTherapyVoucher = (item = {}) => {
   const vouchers = item.redeemVouchers || item.redeem_vouchers || []
   return Array.isArray(vouchers) && vouchers.length > 0

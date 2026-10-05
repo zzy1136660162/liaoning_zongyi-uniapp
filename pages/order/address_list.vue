@@ -38,6 +38,8 @@
 </template>
 
 <script setup>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+const pageSession = getSessionGeneration()
 import { ref, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { 
@@ -70,14 +72,17 @@ onShow(() => {
 })
 
 const loadAddresses = async () => {
+  if (!isCurrentSession(pageSession)) return
   try {
     // ✅ 从后端API获取地址列表
     const list = await getAddressList()
+    if (!isCurrentSession(pageSession)) return
     addresses.value = list
     
     // 同步到本地存储（作为缓存）
     uni.setStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES, list)
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('加载地址列表失败:', e)
     // 失败时从本地存储读取
     const saved = uni.getStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES) || []
@@ -86,6 +91,7 @@ const loadAddresses = async () => {
 }
 
 const selectAddress = (address) => {
+  if (!isCurrentSession(pageSession)) return
   if (isSelectMode.value) {
     // 选择模式：返回选中的地址
     const pages = getCurrentPages()
@@ -103,9 +109,11 @@ const selectAddress = (address) => {
 }
 
 const setDefaultAddress = async (addressId) => {
+  if (!isCurrentSession(pageSession)) return
   try {
     // ✅ 调用后端API设置默认地址
     await setDefaultApi(addressId)
+    if (!isCurrentSession(pageSession)) return
     
     // 更新本地数据
     addresses.value.forEach(addr => {
@@ -118,6 +126,7 @@ const setDefaultAddress = async (addressId) => {
     // 重新加载列表
     await loadAddresses()
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('设置默认地址失败:', e)
     uni.showToast({ title: '设置失败', icon: 'none' })
   }
@@ -130,20 +139,23 @@ const editAddress = (address) => {
 }
 
 const deleteAddress = (addressId) => {
+  if (!isCurrentSession(pageSession)) return
   uni.showModal({
     title: '确认删除',
     content: '确定要删除这个收货地址吗？',
     success: async (res) => {
-      if (res.confirm) {
+      if (res.confirm && isCurrentSession(pageSession)) {
         try {
           // ✅ 调用后端API删除地址
           await delAddressApi(addressId)
+    if (!isCurrentSession(pageSession)) return
           
           uni.showToast({ title: '删除成功', icon: 'success' })
           
           // 重新加载列表
           await loadAddresses()
         } catch (e) {
+    if (!isCurrentSession(pageSession)) return
           console.error('删除地址失败:', e)
           uni.showToast({ title: '删除失败', icon: 'none' })
         }

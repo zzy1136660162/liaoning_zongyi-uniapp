@@ -210,7 +210,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getUserProfile, logout } from '@/api/auth.js'
-import { endSession } from '@/utils/session.js'
+import { endSession, getSessionToken, getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { getMyOrders } from '@/api/order.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { logButtonClick, logPageView } from '@/utils/accessLog.js'
@@ -243,10 +243,12 @@ const orderStats = ref({
 })
 
 const loadUserProfile = async () => {
+  const session = getSessionGeneration()
   try {
     uni.showLoading({ title: '加载中...' })
 
     const userData = await getUserProfile()
+    if (!isCurrentSession(session)) return
 
     if (userData) {
       userInfo.value = {
@@ -260,6 +262,7 @@ const loadUserProfile = async () => {
 
     uni.hideLoading()
   } catch (error) {
+    if (!isCurrentSession(session)) return
     console.error('event=ui_user_profile stage=profile_request result=failed reason=request_failed')
     uni.hideLoading()
 
@@ -275,30 +278,33 @@ const loadUserProfile = async () => {
 }
 
 const handleLogout = async () => {
+  const session = getSessionGeneration()
   uni.showModal({
     title: '提示',
     content: '确定要退出登录吗？',
     success: async (res) => {
-      if (!res.confirm) {
+      if (!res.confirm || !isCurrentSession(session)) {
         return
       }
 
-      // 先发起携带旧 token 的服务端注销，再立即失效本地会话。
-      console.info('event=ui_user_profile stage=logout_request result=started')
-      logout().catch(() => {
-        console.warn('event=ui_user_profile stage=logout_request result=unknown reason=server_revocation_unconfirmed')
-      })
+      const revocation = logout(getSessionToken())
       endSession()
-      console.info('event=ui_user_profile stage=logout_local result=cleared')
+      const endedGeneration = getSessionGeneration()
       userInfo.value = { realName: '', phone: '', idNumber: '' }
       uni.reLaunch({ url: '/pages/register/register' })
+      const result = await revocation
+      if (!result.confirmed && isCurrentSession(endedGeneration)) {
+        uni.showToast({ title: '本机已退出，服务端注销暂未确认', icon: 'none', duration: 3000 })
+      }
     }
   })
 }
 
 const loadOrderStats = async () => {
+  const session = getSessionGeneration()
   try {
     const orderList = await getMyOrders()
+    if (!isCurrentSession(session)) return
 
     if (orderList && orderList.length > 0) {
       orderStats.value = {
@@ -309,6 +315,7 @@ const loadOrderStats = async () => {
       }
     }
   } catch (error) {
+    if (!isCurrentSession(session)) return
     console.error('event=ui_user_profile stage=load_order_stats result=failed reason=operation_incomplete')
   }
 }

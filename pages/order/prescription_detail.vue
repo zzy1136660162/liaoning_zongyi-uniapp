@@ -165,6 +165,8 @@
 </template>
 
 <script setup>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+const pageSession = getSessionGeneration()
 import { ref, computed, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { 
@@ -263,6 +265,7 @@ const loadCartFromStorage = async () => {
     console.log('allCartItems',allCartItems);
     
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('从 storage 加载购物车失败', e)
     allCartItems.value = []
   }
@@ -313,6 +316,7 @@ onLoad((options) => {
         await fillConsultationTime(consultationId)
       }
     } catch (e) {
+      if (!isCurrentSession(pageSession)) return
       console.error('解析处方数据失败:', e)
       uni.showToast({
         title: '加载处方信息失败',
@@ -326,6 +330,7 @@ onLoad((options) => {
       icon: 'none'
     })
     setTimeout(() => {
+      if (!isCurrentSession(pageSession)) return
       uni.navigateBack()
     }, 1500)
   }
@@ -385,6 +390,7 @@ const fillConsultationTime = async (consultationId) => {
       prescription.value.patientSnapshotAvailable = detail.patientSnapshotAvailable === true
     }
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.warn('查询咨询创建时间失败', e)
   }
 }
@@ -428,13 +434,15 @@ const enrichByProduct = async (productId) => {
           prescription.value.outpatientNo = doctor.outpatientNo || prescription.value.outpatientNo // 医生门诊号
         }
       } catch (e) {
+        if (!isCurrentSession(pageSession)) return
         console.warn('获取医生信息失败', e)
       }
     }
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('基于商品补全信息失败', e)
   } finally {
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
   }
 }
 
@@ -487,6 +495,7 @@ const onContinuePrescription = () => {
 }
 
 const onGoToOrder = () => {
+  if (!isCurrentSession(pageSession)) return
   // 验证必要数据
   if (!prescription.value.id) {
     uni.showToast({
@@ -542,6 +551,7 @@ const onGoToOrder = () => {
       }
     })
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('保存订单信息失败:', e)
     uni.showToast({
       title: '保存订单信息失败',

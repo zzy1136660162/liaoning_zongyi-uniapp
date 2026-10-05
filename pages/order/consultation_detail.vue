@@ -99,6 +99,8 @@
 </template>
 
 <script setup>
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+const pageSession = getSessionGeneration()
 import { ref, computed, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { 
@@ -189,10 +191,11 @@ const loadConsultationDetail = async (id) => {
       }
     }
     
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
   } catch (error) {
+    if (!isCurrentSession(pageSession)) return
     console.error('加载咨询详情失败:', error)
-    uni.hideLoading()
+    if (isCurrentSession(pageSession)) uni.hideLoading()
   }
 }
 
@@ -222,6 +225,7 @@ const loadDoctorDetail = async (doctorId) => {
       }
     }
   } catch (error) {
+    if (!isCurrentSession(pageSession)) return
     console.warn('获取医生详情失败:', error)
   }
 }
@@ -253,6 +257,7 @@ const loadCartFromStorage = async () => {
     console.log('加载的商品列表:', allCartItems.value)
     
   } catch (e) {
+    if (!isCurrentSession(pageSession)) return
     console.error('从 storage 加载购物车失败', e)
     allCartItems.value = []
   }
@@ -296,6 +301,7 @@ onLoad(async (options) => {
         await loadDoctorDetail(consultation.value.doctorId)
       }
     } catch (e) {
+      if (!isCurrentSession(pageSession)) return
       console.error('解析复诊数据失败:', e)
       uni.showToast({
         title: '加载复诊信息失败',
@@ -353,6 +359,7 @@ const onRefresh = () => {
   })
   // 可以在这里添加刷新数据的逻辑
   setTimeout(() => {
+    if (!isCurrentSession(pageSession)) return
     uni.showToast({
       title: '刷新完成',
       icon: 'success'

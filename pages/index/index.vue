@@ -20,7 +20,7 @@ import { STORAGE_KEY_USER_REGISTER, STORAGE_KEY_USER_INFO, STORAGE_KEY_USER_LOGI
 import { getToken, saveToken } from '@/utils/request.js'
 import { getImageUrl } from '@/utils/config.js'
 import { syncCartOnLogin } from '@/utils/cart-sync.js'
-import { assertCurrentSession, getSessionGeneration, isExplicitlyLoggedOut } from '@/utils/session.js'
+import { assertCurrentSession, getSessionGeneration, isExplicitlyLoggedOut, isCurrentSession } from '@/utils/session.js'
 
 export default {
 	data() {
@@ -31,7 +31,7 @@ export default {
 		}
 	},
 	onLoad() {
-		this.loadUserInfoByOpenid()
+		this.loadCurrentUser()
 		this.startCountdown()
 	},
 	onUnload() {
@@ -40,21 +40,29 @@ export default {
 		}
 	},
 	methods: {
-		async loadUserInfoByOpenid() {
+		async loadCurrentUser() {
 			try {
 				if (isExplicitlyLoggedOut()) return
 				let session = getSessionGeneration()
-				if (!getToken()) {
-					const code = await getWeChatLoginCode()
-					assertCurrentSession(session)
-					const result = await loginByWeChatCode(code)
-					assertCurrentSession(session)
-					saveToken(result.token)
-					session = getSessionGeneration()
-					if (result.wechatOpenid) uni.setStorageSync('wechat_openid', result.wechatOpenid)
-					syncCartOnLogin()
-				}
-				const profile = await getUserProfile()
+                const signIn = async () => {
+                    const code = await getWeChatLoginCode()
+                    assertCurrentSession(session)
+                    const result = await loginByWeChatCode(code)
+                    assertCurrentSession(session)
+                    saveToken(result.token)
+                    session = getSessionGeneration()
+                    if (result.wechatOpenid) uni.setStorageSync('wechat_openid', result.wechatOpenid)
+                    syncCartOnLogin()
+                }
+                if (!getToken()) await signIn()
+                let profile
+                try { profile = await getUserProfile({ authRedirect: false }) }
+                catch (error) {
+                    if (!error.invalidated || !isCurrentSession(error.sessionGeneration) || isExplicitlyLoggedOut()) throw error
+                    session = error.sessionGeneration
+                    await signIn()
+                    profile = await getUserProfile()
+                }
 				assertCurrentSession(session)
 				uni.setStorageSync(STORAGE_KEY_USER_INFO, { ...profile, userId: profile.id })
 				uni.setStorageSync(STORAGE_KEY_USER_REGISTER, {

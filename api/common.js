@@ -1,18 +1,10 @@
-import { getSessionGeneration, isCurrentSession, sessionChangedError } from '../utils/session.js'
-import { API_PATHS, BASE_URL, TIMEOUT, TOKEN_KEY } from '../utils/config.js'
-
-const getUploadToken = () => {
-  try {
-    return uni.getStorageSync(TOKEN_KEY) || ''
-  } catch (error) {
-    console.warn('event=common_upload stage=credential result=failed reason=storage_error')
-    return ''
-  }
-}
+import { getSessionGeneration, isCurrentSession, sessionChangedError, getSessionToken } from '../utils/session.js'
+import { handleAuthenticationFailure } from '../utils/auth-failure.js'
+import { API_PATHS, BASE_URL, TIMEOUT } from '../utils/config.js'
 
 export const parseUploadResponse = (res = {}) => {
   if (res.statusCode !== 200) {
-    throw new Error(`上传失败(${res.statusCode || 0})`)
+    throw Object.assign(new Error(`上传失败(${res.statusCode || 0})`), { code: res.statusCode })
   }
 
   const responseData = typeof res.data === 'string'
@@ -20,10 +12,10 @@ export const parseUploadResponse = (res = {}) => {
     : (res.data || {})
 
   if (responseData.code !== 200) {
-    throw new Error(responseData.message || '上传失败')
+    throw Object.assign(new Error(responseData.message || '上传失败'), { code: responseData.code })
   }
 
-  const data = responseData.data || {}
+  const data = typeof responseData.data === 'string' ? { url: responseData.data } : (responseData.data || {})
   if (!data.url) {
     throw new Error('上传成功但未返回文件地址')
   }
@@ -37,7 +29,8 @@ export const uploadFile = (filePath, options = {}) => {
   const url = options.url || API_PATHS.COMMON.UPLOAD
 
   return new Promise((resolve, reject) => {
-    const token = getUploadToken()
+    const required = options.needAuth !== false
+    const token = required ? getSessionToken() : ''
     const header = {
       ...(options.header || {})
     }
@@ -45,6 +38,7 @@ export const uploadFile = (filePath, options = {}) => {
       header.Authorization = `Bearer ${token}`
     }
 
+    const sentToken = (header.Authorization || '').replace(/^Bearer\s+/i, '')
     console.info('event=common_upload stage=request result=pending')
     uni.uploadFile({
       url: BASE_URL + url,
@@ -61,6 +55,7 @@ export const uploadFile = (filePath, options = {}) => {
           console.info('event=common_upload stage=response result=success durationMs=%s', durationMs)
           resolve(data)
         } catch (error) {
+          if (Number(error.code) === 401) error = handleAuthenticationFailure({ generation: session, token: sentToken, required, redirect: options.authRedirect !== false })
           console.warn('event=common_upload stage=response result=failed reason=parse_error durationMs=%s', durationMs)
           reject(error)
         }
