@@ -48,8 +48,11 @@ const getVoucherList = (order = {}) => {
 export const isAfterSaleOrderStatus = status => AFTER_SALE_ORDER_STATUSES.includes(toNumber(status))
 
 export const isTherapyLikeOrder = (order = {}) => {
+  const redeemStatus = toNumber(order.redeemStatus ?? order.redeem_status)
+  // 仅 orderType=4 或核销状态非 0（确已发生核销活动）才视为疗法订单；
+  // 普通订单 redeem_status 恒为 0，不能仅凭字段存在判定。
   return toNumber(order.orderType ?? order.order_type) === ORDER_TYPE_THERAPY ||
-    toNumber(order.redeemStatus ?? order.redeem_status) !== null ||
+    (redeemStatus !== null && redeemStatus !== 0) ||
     getVoucherList(order).length > 0 ||
     Boolean(order.hasRedeemVouchers)
 }

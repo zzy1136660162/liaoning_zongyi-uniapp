@@ -229,6 +229,12 @@ const hasRedeemVouchers = (order = {}) => {
     (isTherapyOrder(order) && (order.redeemStatus !== null && order.redeemStatus !== undefined))
 }
 
+// 已支付的传统疗法订单：履约状态由核销状态表达（order_status 可能停留为 0），
+// 不应归入"待支付"分类。
+const isPaidTherapyLikeOrder = (order = {}) => {
+  return (isTherapyOrder(order) || hasRedeemVouchers(order)) && Number(order.payStatus) === 1
+}
+
 const redeemSummaryText = (order = {}) => {
   const vouchers = flattenRedeemVouchers(order)
   if (vouchers.length > 0) {
@@ -431,6 +437,12 @@ const filteredOrders = computed(() => {
   const status = statusMap[activeTab.value]
   if (status === undefined) {
     return orders.value
+  }
+
+  // 已支付的传统疗法订单（order_status 可能仍为 0）不作为"待支付"展示，
+  // 保留未支付的订单；疗法订单仍在"全部"分类可见。
+  if (activeTab.value === 'pending') {
+    return orders.value.filter(o => o.status === 0 && !isPaidTherapyLikeOrder(o))
   }
 
   return orders.value.filter(o => o.status === status)

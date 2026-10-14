@@ -131,7 +131,7 @@
 
       <!-- 底部按钮 -->
     </view>
-    <view class="bottom-bar" v-if="orderStatus.status === 0">
+    <view class="bottom-bar" v-if="canBuyMedicine">
       <button class="bottom-btn" @tap="goBuy">去购药</button>
     </view>
   </view>
@@ -150,6 +150,7 @@ import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-m
 import { getProductDetail } from '@/api/product.js'
 import { getOrderByPrescriptionId, getMyOrders, getOrderDetail } from '@/api/order.js'
 import { getImageUrl } from '@/utils/config.js'
+import { getOrderStatusText } from '@/utils/order-status.js'
 import { getDoctorDetail, getDoctorByOutpatientNo } from '@/api/hospital.js'
 import { logPageView } from '@/api/access-log.js'
 
@@ -187,7 +188,8 @@ export default {
         status: 0, // 订单状态：0待支付，1待发货，2待收货，3已完成，4已取消
         orderNo: '', // 订单号
         logisticsNo: '', // 快递单号
-        logisticsCompany: '' // 快递公司
+        logisticsCompany: '', // 快递公司
+        order: null // 接口返回的完整订单对象，用于统一展示状态（displayStatusText 等）
       },
       // 保存页面参数，用于订单查询
       pageOptions: {
@@ -197,8 +199,11 @@ export default {
     }
   },
   computed: {
-    // 根据订单状态计算显示的文本
+    // 状态主文案：优先采用接口返回的展示状态（displayStatusText），与订单详情页口径一致
     statusMainText() {
+      if (this.orderStatus.order) {
+        return getOrderStatusText(this.orderStatus.order)
+      }
       const statusMap = {
         0: '待支付',
         1: '已支付',
@@ -209,6 +214,23 @@ export default {
       return statusMap[this.orderStatus.status] || '待下单'
     },
     statusSubText() {
+      const order = this.orderStatus.order
+      const payStatus = order ? Number(order.payStatus ?? order.pay_status) : null
+      if (order && payStatus === 1) {
+        const redeemStatus = order.redeemStatus ?? order.redeem_status
+        if (Number(order.orderType ?? order.order_type) === 4 && redeemStatus !== null && redeemStatus !== undefined) {
+          if (Number(redeemStatus) === 0) {
+            return '请凭核销码到店核销'
+          }
+          if (Number(redeemStatus) === 1) {
+            return '订单已完成'
+          }
+        }
+        if (this.orderStatus.logisticsNo) {
+          return `${this.orderStatus.logisticsCompany || '快递'}单号：${this.orderStatus.logisticsNo}`
+        }
+        return '药品准备中'
+      }
       switch (this.orderStatus.status) {
         case 0:
           return '等待下单支付'
@@ -226,6 +248,14 @@ export default {
         default:
           return '等待下单支付'
       }
+    },
+    // 仅未支付订单允许从处方购药；已支付订单（含传统疗法待核销）不再展示购药入口
+    canBuyMedicine() {
+      const order = this.orderStatus.order
+      if (order && Number(order.payStatus ?? order.pay_status) === 1) {
+        return false
+      }
+      return this.orderStatus.status === 0
     }
   },
   async onLoad(options) {
@@ -457,6 +487,7 @@ export default {
             ? orderInfo.orderStatus
             : (orderInfo.status || 0)
           this.orderStatus.orderNo = orderInfo.orderNo || orderInfo.id || ''
+          this.orderStatus.order = orderInfo
 
           // 如果是配送中状态，尝试获取物流信息
           if (this.orderStatus.status === 2 && orderInfo.logisticsNo) {
@@ -495,6 +526,7 @@ export default {
                 ? relatedOrder.orderStatus
                 : (relatedOrder.status || 0)
               this.orderStatus.orderNo = relatedOrder.orderNo || relatedOrder.id || ''
+              this.orderStatus.order = relatedOrder
 
               // 如果是配送中状态，尝试获取物流信息
               if (this.orderStatus.status === 2 && relatedOrder.logisticsNo) {
@@ -835,6 +867,7 @@ export default {
         this.orderStatus.orderNo = orderInfo.orderNo || orderInfo.id || ''
         this.orderStatus.logisticsNo = orderInfo.logisticsNo || ''
         this.orderStatus.logisticsCompany = orderInfo.logisticsCompany || ''
+        this.orderStatus.order = orderInfo
         this.updateDetailFromOrder(orderInfo)
 
         const prescriptionId = orderInfo.prescriptionId || orderInfo.prescription_id
@@ -852,8 +885,8 @@ export default {
     },
 
     goBuy() {
-      // 验证订单状态，只有待支付状态才能购药
-      if (this.orderStatus.status !== 0) {
+      // 验证订单状态，只有待支付订单才能购药（已支付订单不可重复购药）
+      if (!this.canBuyMedicine) {
         const statusText = this.statusMainText || '非待支付状态'
         uni.showToast({
           title: `订单状态为${statusText}，无法购药`,
