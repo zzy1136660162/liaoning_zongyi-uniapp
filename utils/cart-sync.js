@@ -1,3 +1,4 @@
+import { inventoryFields } from './inventory.js'
 import {
   deleteCartItem,
   deleteCartItems,
@@ -49,8 +50,9 @@ const serverItemsToLocalCart = (items = []) => {
       verified: true,
       selected: item.checked === 1 || item.checked === true,
       quantity: item.quantity || 1,
-      available: item.available !== false,
-      stock: item.stock ?? item.stockQuantity ?? item.inventory ?? null,
+      ...inventoryFields(item),
+      available: item.inventoryMode === 'HIS_AVAILABILITY' ? inventoryFields(item).available : item.available !== false,
+      stock: item.stock !== undefined ? item.stock : (item.stockQuantity ?? item.inventory ?? null),
       bizType: item.bizType ?? null,
       goodsMerchantType: item.goodsMerchantType ?? null,
       productCategory: item.productCategory ?? null,
@@ -72,9 +74,17 @@ const buildSyncPayload = () => {
   return Object.entries(entries).map(([cartKey, entry]) => buildCartSyncPayload(cartKey, entry))
 }
 
-export const applyServerCartToLocal = (items = []) => {
+export const applyServerCartToLocal = (items = [], preserveMissing = false) => {
   const list = Array.isArray(items) ? items : []
   const cartData = serverItemsToLocalCart(list)
+  if (preserveMissing) {
+    Object.entries(getCartEntries()).forEach(([key, entry]) => {
+      if (!cartData[key]) {
+        cartData[key] = { ...entry, selected: false, available: false, stock: 0,
+          inventoryStatus: 'UNAVAILABLE', inventoryReason: 'INVALID_CART_ITEM' }
+      }
+    })
+  }
   console.log('[cart-sync] applyServerCartToLocal', {
     serverCount: list.length,
     localKeys: Object.keys(cartData)
@@ -93,7 +103,7 @@ export const syncCartOnLogin = async () => {
     console.log('[cart-sync] syncCartOnLogin start', { localCount: localItems.length })
     const serverItems = await syncCart(localItems)
     if (!isCurrentSession(session)) return
-    applyServerCartToLocal(serverItems || [])
+    applyServerCartToLocal(serverItems || [], true)
     console.log('[cart-sync] syncCartOnLogin ok', {
       serverCount: Array.isArray(serverItems) ? serverItems.length : 0
     })

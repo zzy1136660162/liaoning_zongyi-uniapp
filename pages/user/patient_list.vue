@@ -18,6 +18,12 @@
           <text v-if="patient.phoneMasked" class="patient-meta">
             联系电话 {{ patient.phoneMasked }}
           </text>
+          <text
+            v-if="patientHisSyncNotice(patient.hisBindingStatus)"
+            class="patient-sync-notice"
+          >
+            医院信息待同步，可编辑核对资料。
+          </text>
         </view>
         <view class="patient-actions">
           <button class="action-btn edit" @click="editPatient(patient.id)">编辑</button>
@@ -41,6 +47,7 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { deletePatient, getPatientList } from '@/api/patient.js'
+import { patientHisSyncNotice } from '@/utils/patient.js'
 
 const patients = ref([])
 const loading = ref(false)
@@ -138,6 +145,13 @@ onShow(loadPatients)
   margin-top: 8rpx;
   color: #6b7280;
   font-size: 26rpx;
+}
+
+.patient-sync-notice {
+  display: block;
+  margin-top: 12rpx;
+  color: #a15c00;
+  font-size: 24rpx;
 }
 
 .patient-actions {

@@ -211,7 +211,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getUserProfile, logout } from '@/api/auth.js'
 import { endSession, getSessionToken, getSessionGeneration, isCurrentSession } from '@/utils/session.js'
-import { getMyOrders } from '@/api/order.js'
+import { getOrderStats } from '@/api/order.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { logButtonClick, logPageView } from '@/utils/accessLog.js'
 import { getCartTotalQuantity } from '@/utils/cart.js'
@@ -303,16 +303,14 @@ const handleLogout = async () => {
 const loadOrderStats = async () => {
   const session = getSessionGeneration()
   try {
-    const orderList = await getMyOrders()
+    const stats = (await getOrderStats()) || {}
     if (!isCurrentSession(session)) return
 
-    if (orderList && orderList.length > 0) {
-      orderStats.value = {
-        pending: orderList.filter((item) => (item.orderStatus === 0 || item.status === 0) && (item.payStatus === 0 || item.payStatus === undefined)).length,
-        paid: orderList.filter((item) => (item.payStatus === 1 || item.orderStatus === 1 || item.orderStatus === 2 || item.orderStatus === 3) && item.orderStatus !== 4).length,
-        cancelled: orderList.filter((item) => item.orderStatus === 4).length,
-        refund: orderList.filter((item) => item.payStatus === 2 || item.payStatus === 3).length
-      }
+    orderStats.value = {
+      pending: Number(stats.pending) || 0,
+      paid: Number(stats.paid) || 0,
+      cancelled: Number(stats.cancelled) || 0,
+      refund: Number(stats.refund) || 0
     }
   } catch (error) {
     if (!isCurrentSession(session)) return

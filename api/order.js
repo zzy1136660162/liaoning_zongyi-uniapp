@@ -5,6 +5,16 @@
 import { get, post } from '@/utils/request.js'
 import { API_PATHS } from '@/utils/config.js'
 
+/** Idempotent hint only: the server transaction already saved the durable order event. */
+export const triggerOrderInventorySync = (orderId) => post(`/api/orders/${orderId}/his-inventory-sync`, {}, {
+  needAuth: true, showLoading: false, authRedirect: false, silent: true
+})
+
+const afterOrderCreated = (order) => {
+  if (order?.id) triggerOrderInventorySync(order.id).catch(() => {})
+  return order
+}
+
 /**
  * 处方一键下单
  * @param {Object} data 订单信息
@@ -16,7 +26,7 @@ export const createOrderFromPrescription = (data) => {
   return post(API_PATHS.ORDER.FROM_PRESCRIPTION, data, {
     needAuth: true,
     showLoading: true
-  })
+  }).then(afterOrderCreated)
 }
 
 /**
@@ -33,20 +43,38 @@ export const createOrder = (data) => {
   return post(API_PATHS.ORDER.CREATE, data, {
     needAuth: true,
     showLoading: true
-  })
+  }).then(afterOrderCreated)
 }
 
 /**
- * 获取订单列表
+ * 获取订单第一页（数组兼容入口；完整翻页使用 getOrderPage）
  * @param {Number} orderStatus 订单状态筛选（可选）
  */
 export const getOrderList = (orderStatus = null) => {
-  const params = orderStatus !== null ? { orderStatus } : {}
+  return getOrderPage(orderStatus !== null ? { orderStatus } : {}).then(page => page.rows)
+}
+
+/** 获取一页订单及总数；旧列表接口继续返回数组。 */
+export const getOrderPage = (params = {}) => {
   return get(API_PATHS.ORDER.LIST, params, {
     needAuth: true,
-    showLoading: true
+    showLoading: false,
+    returnResponse: true
+  }).then(response => {
+    const rows = Array.isArray(response.data) ? response.data : []
+    return {
+      rows,
+      total: response.total ?? rows.length,
+      pageNum: response.pageNum ?? 1,
+      pageSize: response.pageSize ?? rows.length,
+      hasMore: response.hasMore === true
+    }
   })
 }
+
+export const getOrderStats = () => get(`${API_PATHS.ORDER.LIST}/stats`, {}, {
+  needAuth: true, showLoading: false
+})
 
 /**
  * 获取订单详情
@@ -73,7 +101,7 @@ export const cancelOrder = (id, reason = '') => {
 }
 
 /**
- * 获取我的订单列表
+ * 获取我的订单第一页；统计使用 getOrderStats，翻页使用 getOrderPage
  * @param {Number} orderStatus 订单状态筛选（可选）
  */
 export const getMyOrders = (orderStatus = null) => {

@@ -232,7 +232,7 @@ import { reactive, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { addPatient, getPatientDetail, updatePatient } from '@/api/patient.js'
 import { STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
-import { deriveGenderFromId, deriveAgeFromId } from '@/utils/patient.js'
+import { deriveGenderFromId, deriveAgeFromId, patientHisSyncNotice } from '@/utils/patient.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
 
@@ -646,11 +646,12 @@ const handleSubmit = async () => {
       : await addPatient(payload)
     uni.$emit('patientChanged', { patientId: result?.id || patientId.value })
     if (isCurrentSession(pageSession)) uni.hideLoading()
-    uni.showToast({ title: patientId.value ? '修改成功' : '添加成功', icon: 'success' })
+    const syncNotice = patientHisSyncNotice(result?.hisBindingStatus)
+    uni.showToast({ title: syncNotice || (patientId.value ? '修改成功' : '添加成功'), icon: syncNotice ? 'none' : 'success', duration: syncNotice ? 2500 : 1200 })
     setTimeout(() => {
       if (!isCurrentSession(pageSession)) return
       uni.navigateBack()
-    }, 1200)
+    }, syncNotice ? 2500 : 1200)
   } catch (error) {
     if (!isCurrentSession(pageSession)) return
     console.error('保存就诊人失败:', error)

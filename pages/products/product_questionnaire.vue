@@ -3,6 +3,9 @@
     <view v-if="loading" class="loading-section">
       <text>问卷加载中...</text>
     </view>
+    <view v-else-if="questionnaireError" class="empty-section">
+      <text>{{ questionnaireError }}</text>
+    </view>
     <view class="content-section" v-else-if="questions && questions.length > 0">
       <view
         class="question-item"
@@ -43,7 +46,14 @@
 </template>
 
 <script>
-import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
+import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
+import {
+  getQuestionnaireDraftAccountId,
+  saveQuestionnaireDraft,
+  restoreQuestionnaireDraft,
+  clearQuestionnaireDraft
+} from '@/utils/questionnaire-draft.js'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import {
   addCartItem,
@@ -56,13 +66,18 @@ import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId, submitQuestionnaire } from '@/api/questionnaire.js'
 import { logPageView } from '@/api/access-log.js'
 
+const UNSUPPORTED_QUESTION_TYPE_MESSAGE = '当前问卷含暂不支持的题型，请联系管理员调整后再试'
+
 export default {
   data() {
     return {
       sessionGeneration: getSessionGeneration(),
+      draftAccountId: '',
+      stopSessionListener: null,
       productId: '',
       skuId: '',
       questionnaireId: null,
+      questionnaireError: '',
       loading: false,
       questions: [],
       requestedQuantity: 1,
@@ -71,6 +86,12 @@ export default {
     }
   },
   onLoad(options) {
+    this.stopSessionListener = onSessionChanged(() => {
+      this.questions = []
+      this.questionnaireId = null
+      this.questionnaireError = '登录状态已变更，请重新进入页面'
+      this.loading = false
+    })
     this.productId = options.id || ''
     this.skuId = options.skuId || ''
     this.requestedQuantity = Math.max(1, Number(options.quantity) || 1)
@@ -80,7 +101,13 @@ export default {
     }
   logPageView('PRODUCT_QUESTIONNAIRE', this.productId)
   },
+  onUnload() {
+    this.stopSessionListener?.()
+  },
   methods: {
+    isQuestionnaireSessionCurrent() {
+      return isCurrentSession(this.sessionGeneration) && this.draftAccountId === getQuestionnaireDraftAccountId()
+    },
     resolveSelectedProduct(detail = this.productDetail) {
       if (!detail || !this.skuId) {
         return detail
@@ -100,7 +127,8 @@ export default {
         specText: sku.specText || sku.skuName || detail.specText,
         price: Number(sku.price || 0),
         originalPrice: Number(sku.originalPrice || 0),
-        stock: Number(sku.stock ?? detail.stock ?? 0),
+        stock: inventoryStock(sku.stock, detail.stock),
+        ...inventoryFields(sku, detail),
         unit: sku.unit || detail.unit,
         image: sku.image || detail.image,
         coverImage: sku.image || detail.coverImage || detail.image
@@ -132,6 +160,8 @@ export default {
       return true
     },
     async loadQuestionnaire() {
+      if (!isCurrentSession(this.sessionGeneration)) return
+      this.draftAccountId = getQuestionnaireDraftAccountId()
       if (!this.productId) {
         uni.showToast({
           title: '缺少商品信息',
@@ -142,10 +172,18 @@ export default {
 
       try {
         this.loading = true
+        this.questionnaireError = ''
+        this.questionnaireId = null
+        this.questions = []
         uni.showLoading({ title: '问卷加载中...' })
         const response = await getQuestionnaireByProductId(this.productId)
+        if (!this.isQuestionnaireSessionCurrent()) return
         const questionnaire = response.data || response
 
+        if ((questionnaire.questions || []).some(q => q.questionType !== 1)) {
+          this.questionnaireError = UNSUPPORTED_QUESTION_TYPE_MESSAGE
+          return
+        }
         this.questionnaireId = questionnaire.questionnaireId
         this.questions = (questionnaire.questions || []).map(q => ({
           questionId: q.questionId,
@@ -164,6 +202,13 @@ export default {
           answer: null,
           selectedOptionId: null
         }))
+        if (this.draftAccountId) {
+          try {
+            this.questions = restoreQuestionnaireDraft(this.draftAccountId, this.productId, this.questionnaireId, this.questions)
+          } catch (_) {
+            uni.showToast({ title: '草稿读取失败，请重新作答', icon: 'none' })
+          }
+        }
       } catch (error) {
         if (!isCurrentSession(this.sessionGeneration)) return
         console.error('loadQuestionnaire failed:', error)
@@ -217,6 +262,7 @@ export default {
       return true
     },
     selectAnswer(questionIndex, optionId) {
+      if (!this.isQuestionnaireSessionCurrent()) return
       this.questions[questionIndex].selectedOptionId = optionId
       const option = this.questions[questionIndex].options.find(opt => opt.optionId === optionId)
       if (option) {
@@ -224,12 +270,23 @@ export default {
       }
     },
     saveDraft() {
-      uni.showToast({
-        title: '已暂存',
-        icon: 'success'
-      })
+      if (!this.isQuestionnaireSessionCurrent()) return
+      try {
+        if (!this.draftAccountId || this.questionnaireError || this.loading || !this.questions.length) {
+          throw new Error('问卷暂存信息不完整')
+        }
+        saveQuestionnaireDraft(this.draftAccountId, this.productId, this.questionnaireId, this.questions)
+        uni.showToast({ title: '已暂存', icon: 'success' })
+      } catch (_) {
+        uni.showToast({ title: '暂存失败，请稍后重试', icon: 'none' })
+      }
     },
     async submitAnswer() {
+      if (!this.isQuestionnaireSessionCurrent()) return
+      if (this.questionnaireError || this.questions.some(q => q.questionType !== 1)) {
+        uni.showToast({ title: UNSUPPORTED_QUESTION_TYPE_MESSAGE, icon: 'none' })
+        return
+      }
       if (!this.productId) {
         uni.showToast({
           title: '缺少商品信息',
@@ -271,10 +328,19 @@ export default {
           questionnaireId: this.questionnaireId,
           answers
         })
+        if (!this.isQuestionnaireSessionCurrent()) return
         const result = response.data || response
+        if (this.draftAccountId) {
+          try {
+            clearQuestionnaireDraft(this.draftAccountId, this.productId, this.questionnaireId)
+          } catch (_) {
+            console.warn('event=questionnaire_draft stage=clear result=failed reason=storage_error')
+          }
+        }
 
         if (result.isMatch) {
           const detail = this.productDetail || await getProductDetail(this.productId)
+          if (!this.isQuestionnaireSessionCurrent()) return
           if (!(await this.ensureCartCompatible(detail))) {
             return
           }
@@ -322,6 +388,7 @@ export default {
           showCancel: false,
           confirmText: '知道了',
           success: () => {
+            if (!this.isQuestionnaireSessionCurrent()) return
             uni.navigateBack()
           }
         })

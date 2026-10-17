@@ -954,12 +954,12 @@ const getQuantityLimitMessage = (targetProduct = product.value) => {
   const limitInfo = targetProduct?.limitInfo || targetProduct?.limit_info || {}
   const limitEnabled = limitInfo.enabled === true || limitInfo.enabled === 1 || limitInfo.enabled === '1'
   const remainingQuantity = Number(limitInfo.remainingQuantity ?? limitInfo.remaining_quantity)
-  const stock = Number(targetProduct?.stock)
+  const stock = targetProduct?.stock == null ? null : Number(targetProduct.stock)
 
   if (limitEnabled && Number.isFinite(remainingQuantity) && remainingQuantity <= 0) {
     return '已达到该项目限购数量'
   }
-  if (Number.isFinite(stock) && stock <= 0) {
+  if (!isPurchaseAvailable(targetProduct) || (stock !== null && Number.isFinite(stock) && stock <= 0)) {
     return '该项目已售罄'
   }
   if (limitEnabled && Number.isFinite(remainingQuantity) && maxQuantity === Math.floor(remainingQuantity)) {

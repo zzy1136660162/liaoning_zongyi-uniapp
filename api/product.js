@@ -1,5 +1,6 @@
 import { get, post, getToken } from '@/utils/request.js'
 import { API_PATHS, getImageUrl } from '@/utils/config.js'
+import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
 
 export const getCategoryList = (bizType = null) => {
   const params = {}
@@ -136,7 +137,8 @@ export const mapProductListItem = (product = {}) => {
     isNewProduct: Number(pickField(product, 'isNewProduct', 'is_new_product') || 0),
     detailTitle: pickField(product, 'detailTitle', 'detail_title') || '',
     isStarProduct: Number(pickField(product, 'isStarProduct', 'is_star_product') || 0),
-    stock: Number(pickField(product, 'stock') || 0),
+    stock: inventoryStock(product.stock),
+    ...inventoryFields(product),
     isExternal: Number(pickField(product, 'isExternal', 'is_external') || 0),
     coldShippingType: Number(pickField(product, 'coldShippingType', 'cold_shipping_type') || 0),
     isSelfDeveloped: (() => {
@@ -193,14 +195,15 @@ const mapProductSku = (sku = {}) => {
     unit: pickField(sku, 'unit') || '',
     price: Number(pickField(sku, 'price') || 0),
     originalPrice: Number(pickField(sku, 'originalPrice', 'original_price') || 0),
-    stock: Number(pickField(sku, 'stock') || 0),
+    stock: inventoryStock(sku.stock),
+    ...inventoryFields(sku),
     stockWarn: Number(pickField(sku, 'stockWarn', 'stock_warn') || 0),
     salesVolume: Number(pickField(sku, 'salesVolume', 'sales_volume') || 0),
     imageUrl: image,
     image,
     defaultFlag: Number(pickField(sku, 'defaultFlag', 'default_flag') || 0),
     sort: Number(pickField(sku, 'sort') || 0),
-    status: Number(pickField(sku, 'status') || 1)
+    status: Number(sku.status ?? 1)
   }
 }
 

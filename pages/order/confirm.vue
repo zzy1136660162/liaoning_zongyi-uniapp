@@ -22,6 +22,50 @@
           </view>
         </view>
 
+        <view class="section">
+          <view class="section-title patient-section-title">
+            <text>就诊人</text>
+            <text
+              class="patient-manage"
+              @click="managePatients"
+            >
+              管理就诊人
+            </text>
+          </view>
+          <picker
+            :range="patients"
+            range-key="name"
+            :value="patientIndex"
+            :disabled="requiresConsultationPatient || loadingPatients"
+            @change="selectPatient"
+          >
+            <view class="patient-selector">
+              <text>{{ selectedPatient ? selectedPatient.name : (loadingPatients ? '加载中...' : '请选择就诊人') }}</text>
+              <uni-icons
+                v-if="!requiresConsultationPatient"
+                type="right"
+                size="20"
+                color="#999"
+              />
+            </view>
+          </picker>
+          <text class="patient-note">
+            {{ requiresConsultationPatient ? '使用本次复诊的就诊人' : '每笔订单仅用于一位就诊人，请核对后提交。' }}
+          </text>
+          <text
+            v-if="selectedPatient && patientHisSyncNotice(selectedPatient.hisBindingStatus)"
+            class="patient-note"
+          >
+            医院信息待同步，可先核对就诊人资料。
+          </text>
+          <text
+            v-if="!loadingPatients && !patients.length"
+            class="patient-note"
+          >
+            请先在“管理就诊人”中添加就诊人。
+          </text>
+        </view>
+
         <!-- 收货地址 -->
         <view
           v-if="requiresShipping"
@@ -229,6 +273,8 @@ import { getConsultationDetail } from '@/api/consultation.js'
 import { parseConsultationContext, requireConsultationPatient } from '@/utils/consultation-checkout.js'
 import { getSessionGeneration, assertCurrentSession, isCurrentSession } from '@/utils/session.js'
 import { getAddressList } from '@/api/address.js'
+import { getPatientList } from '@/api/patient.js'
+import { patientHisSyncNotice } from '@/utils/patient.js'
 import { wechatSinglePay } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
 import { ensureWeChatIdentity } from '@/api/auth.js'
@@ -269,11 +315,16 @@ const selectedProductIds = ref([])
 const selectedBizType = ref(1)
 const selectedRequiresConsultation = ref(true)
 const orderRemark = ref('')
+const patients = ref([])
+const selectedPatient = ref(null)
+const loadingPatients = ref(false)
 
 const requiresShipping = computed(() => !isTherapyOrder.value)
+const requiresConsultationPatient = computed(() => selectedRequiresConsultation.value && !isTherapyOrder.value)
+const patientIndex = computed(() => Math.max(0, patients.value.findIndex(patient => String(patient.id) === String(selectedPatient.value?.id))))
 
 const canSubmit = computed(() => {
-  if (submitting.value) return false
+  if (submitting.value || loadingPatients.value || !selectedPatient.value) return false
   if (!requiresShipping.value) {
     return orderInfo.value.items && orderInfo.value.items.length > 0
   }
@@ -344,7 +395,37 @@ onShow(async () => {
   // 重新加载产品数据并更新订单金额（购物车数据可能已更新）
   await loadProducts()
   loadOrderInfo()
+  await loadCheckoutPatients()
 })
+
+const loadCheckoutPatients = async () => {
+  if (!isCurrentSession(pageSession)) return
+  loadingPatients.value = true
+  try {
+    const result = await getPatientList()
+    assertCurrentSession(pageSession)
+    patients.value = Array.isArray(result) ? result : []
+    const patientId = requiresConsultationPatient.value
+      ? checkoutContext.value?.patientId
+      : selectedPatient.value?.id
+    selectedPatient.value = patients.value.find(patient => String(patient.id) === String(patientId))
+      || (!requiresConsultationPatient.value && patientId == null && patients.value.length === 1 ? patients.value[0] : null)
+  } catch (error) {
+    if (!isCurrentSession(pageSession)) return
+    patients.value = []
+    selectedPatient.value = null
+    uni.showToast({ title: error?.message || '就诊人加载失败，请重试', icon: 'none' })
+  } finally {
+    if (isCurrentSession(pageSession)) loadingPatients.value = false
+  }
+}
+
+const selectPatient = (event) => {
+  if (requiresConsultationPatient.value) return
+  selectedPatient.value = patients.value[Number(event.detail.value)] || null
+}
+
+const managePatients = () => uni.navigateTo({ url: '/pages/user/patient_list' })
 
 // 加载产品数据（只加载购物车中选中的商品）
 const loadProducts = async () => {
@@ -753,6 +834,11 @@ const submitOrder = async () => {
     }
     loadOrderInfo()
 
+    if (!selectedPatient.value?.id) {
+      uni.showToast({ title: '请选择就诊人', icon: 'none' })
+      return
+    }
+
     try {
       uni.showLoading({ title: '获取支付信息...' })
 
@@ -774,6 +860,7 @@ const submitOrder = async () => {
       // ✅ 调用后端API创建订单
       const orderData = {
         shippingFee: 0,
+        patientId: selectedPatient.value.id,
         items: orderInfo.value.items.map(item => ({
           productId: item.productId || item.id,
           skuId: item.skuId || null,
@@ -955,6 +1042,33 @@ const submitOrder = async () => {
   font-weight: 600;
   color: #333;
   margin-bottom: 20rpx;
+}
+
+.patient-section-title,
+.patient-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.patient-selector {
+  padding: 12rpx 0;
+  color: #333;
+  font-size: 28rpx;
+}
+
+.patient-manage {
+  color: #2a82e4;
+  font-size: 24rpx;
+  font-weight: 400;
+}
+
+.patient-note {
+  display: block;
+  margin-top: 12rpx;
+  color: #64748b;
+  font-size: 24rpx;
+  line-height: 1.6;
 }
 
 .remark-field {

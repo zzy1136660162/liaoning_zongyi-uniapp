@@ -36,6 +36,7 @@ export const clearToken = () => {
  * @param {Object} options.header 请求头
  * @param {Boolean} options.needAuth 是否需要认证，默认true
  * @param {Boolean} options.showLoading 是否显示加载提示，默认true
+ * @param {Boolean} options.returnResponse 是否保留分页等顶层响应字段，默认false
  * @returns {Promise}
  */
 export const request = (options = {}) => {
@@ -48,7 +49,9 @@ export const request = (options = {}) => {
       header = {},
       needAuth = true,
       showLoading = true,
-      authRedirect = true
+      authRedirect = true,
+      silent = false,
+      returnResponse = false
     } = options
 
     const startTime = Date.now()
@@ -111,7 +114,7 @@ export const request = (options = {}) => {
 
         // HTTP状态码检查
         if (statusCode !== 200) {
-          uni.showToast({
+          if (!silent) uni.showToast({
             title: `请求失败(${statusCode})`,
             icon: 'none',
             duration: 2000
@@ -123,9 +126,9 @@ export const request = (options = {}) => {
 
         // 业务状态码检查
         if (responseData.code === 200) {
-          // ✅ 统一返回 data 字段，页面层无需再取 .data
+          // 普通接口返回 data；分页接口可显式保留顶层元数据。
           logApiAccess(url, method, statusCode, durationMs)
-          resolve(responseData.data)
+          resolve(returnResponse ? responseData : responseData.data)
         } else {
           // 其他业务错误
           // uni.showToast({

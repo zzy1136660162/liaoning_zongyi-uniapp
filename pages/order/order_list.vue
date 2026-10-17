@@ -15,11 +15,17 @@
 
     <!-- 订单列表 -->
     <scroll-view
+      :key="activeTab"
       class="order-list"
       scroll-y
+      refresher-enabled
+      :refresher-triggered="refreshing"
+      :lower-threshold="120"
+      @refresherrefresh="refreshOrders"
+      @scrolltolower="loadMoreOrders"
     >
       <view
-        v-if="filteredOrders.length === 0"
+        v-if="hasLoaded && !loading && !loadError && orders.length === 0"
         class="empty"
       >
         <text class="empty-text">
@@ -28,7 +34,7 @@
       </view>
       
       <view 
-        v-for="order in filteredOrders"
+        v-for="order in orders"
         :key="order.id"
         class="order-item"
         hover-class="order-item--hover"
@@ -143,6 +149,28 @@
           </view>
         </view>
       </view>
+      <view class="list-status">
+        <text v-if="loading">
+          订单加载中...
+        </text>
+        <button
+          v-else-if="loadError"
+          class="list-retry"
+          @click="retryOrders"
+        >
+          {{ loadError }}，点击重试
+        </button>
+        <button
+          v-else-if="hasMore"
+          class="list-retry"
+          @click="loadMoreOrders"
+        >
+          加载更多
+        </button>
+        <text v-else-if="hasLoaded && orders.length > 0">
+          没有更多订单了
+        </text>
+      </view>
     </scroll-view>
 
     <TabBar
@@ -154,24 +182,36 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getMyOrders, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/order.js'
-import { checkCanApplyRefund, getRefundList } from '@/api/refund.js'
+import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/order.js'
+import { checkCanApplyRefund } from '@/api/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { isTherapyOrder } from '@/utils/therapy.js'
 import { getOrderStatusText } from '@/utils/order-status.js'
 import { getCartTotalQuantity } from '@/utils/cart.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
+import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
 const activeTab = ref('all')
 const orders = ref([])
+const pageNum = ref(0)
+const total = ref(0)
+const hasMore = ref(false)
+const hasLoaded = ref(false)
+const loading = ref(false)
+const refreshing = ref(false)
+const loadError = ref('')
 const navigatingOrderId = ref(null)
 const cartCount = ref(0)
 const ORDER_LIST_PREVIEW_LIMIT = 2
-const AFTER_SALE_ORDER_STATUSES = [5, 6, 7]
+const ORDER_PAGE_SIZE = 20
 let unsubscribeCartUpdated = null
+let unsubscribeSessionChanged = null
+let requestSequence = 0
+let disposed = false
+let reloadOnShow = false
 
 const tabs = ref([
   { key: 'all', label: '全部' },
@@ -229,12 +269,6 @@ const hasRedeemVouchers = (order = {}) => {
     (isTherapyOrder(order) && (order.redeemStatus !== null && order.redeemStatus !== undefined))
 }
 
-// 已支付的传统疗法订单：履约状态由核销状态表达（order_status 可能停留为 0），
-// 不应归入"待支付"分类。
-const isPaidTherapyLikeOrder = (order = {}) => {
-  return (isTherapyOrder(order) || hasRedeemVouchers(order)) && Number(order.payStatus) === 1
-}
-
 const redeemSummaryText = (order = {}) => {
   const vouchers = flattenRedeemVouchers(order)
   if (vouchers.length > 0) {
@@ -263,7 +297,7 @@ const mapOrderItem = (item = {}) => ({
   redeemVouchers: normalizeRedeemVouchers(item)
 })
 
-const mapOrderListItem = (order = {}, refundInfo = null) => ({
+const mapOrderListItem = (order = {}) => ({
   id: order.id,
   orderNo: order.orderNo || order.order_no || order.id,
   orderType: order.orderType ?? order.order_type,
@@ -288,13 +322,13 @@ const mapOrderListItem = (order = {}, refundInfo = null) => ({
   })(),
   shippingFee: Number(order.shippingFee) || 0,
   createTime: order.createTime || order.create_time || order.createdAt || order.created_at,
-  refundApplicationId: refundInfo ? refundInfo.id : null,
-  refundStatus: order.refundStatus ?? order.refund_status ?? refundInfo?.refundStatus ?? refundInfo?.status ?? null,
+  refundApplicationId: order.refundApplicationId ?? order.refund_application_id ?? null,
+  refundStatus: order.refundStatus ?? order.refund_status ?? null,
   items: resolveRawOrderItems(order).map(mapOrderItem)
 })
 
-const hydrateMissingOrderItems = async () => {
-  const missingOrders = orders.value.filter(order =>
+const hydrateMissingOrderItems = async (pageOrders, isCurrentRequest) => {
+  const missingOrders = pageOrders.filter(order =>
     order.id && (!order.items || order.items.length === 0)
   )
   if (missingOrders.length === 0) {
@@ -304,11 +338,12 @@ const hydrateMissingOrderItems = async () => {
   const detailResults = await Promise.all(missingOrders.map(order =>
     getOrderDetail(order.id, { showLoading: false })
       .then(detail => ({ orderId: order.id, detail }))
-      .catch(error => {
-        console.warn('event=ui_order_order_list stage=hydrate_missing_order_items result=warning reason=operation_incomplete')
+      .catch(() => {
+        if (isCurrentRequest()) console.warn('event=ui_order_order_list stage=hydrate_missing_order_items result=warning reason=operation_incomplete')
         return null
       })
   ))
+  if (!isCurrentRequest()) return
   const detailMap = new Map()
   detailResults
     .filter(Boolean)
@@ -338,65 +373,63 @@ const hydrateMissingOrderItems = async () => {
   })
 }
 
-// ✅ 从API加载订单列表
-const loadOrders = async () => {
+const fetchOrderPage = async (nextPage) => {
+  const sequence = ++requestSequence
+  const session = getSessionGeneration()
+  const tab = activeTab.value
+  const isCurrentRequest = () => !disposed && sequence === requestSequence &&
+    isCurrentSession(session) && activeTab.value === tab
+  loading.value = true
+  loadError.value = ''
   try {
-    uni.showLoading({ title: '加载中...' })
-    
-    // 并行加载订单列表和退货申请列表
-    const [orderList, refundList] = await Promise.all([
-      getMyOrders(),
-      getRefundList().catch(() => []) // 如果加载失败，返回空数组
-    ])
-    
-    console.debug('event=ui_order_order_list stage=orders result=received')
-    console.debug('event=ui_order_order_list stage=refunds result=received')
-    
-    // 创建订单ID到退货申请ID的映射（包含所有退货申请）
-    const refundMap = new Map()
-    if (refundList && refundList.length > 0) {
-      refundList.forEach(refund => {
-        const orderId = refund.orderId
-        // 如果已存在，保留最新的（按创建时间）
-        if (!refundMap.has(orderId) ||
-            (refund.createdAt && refundMap.get(orderId).createdAt < refund.createdAt)) {
-          refundMap.set(orderId, {
-            id: refund.id,
-            status: refund.status,
-            refundStatus: refund.refundStatus ?? refund.refund_status,
-            createdAt: refund.createdAt
-          })
-        }
-      })
-    }
-    
-    if (orderList && orderList.length > 0) {
-      orders.value = orderList.map(order => {
-        const refundInfo = refundMap.get(order.id)
-        return mapOrderListItem(order, refundInfo)
-      })
-      await hydrateMissingOrderItems()
-    } else {
-      orders.value = []
-    }
-    
-    uni.hideLoading()
+    const page = await getOrderPage({ tab, pageNum: nextPage, pageSize: ORDER_PAGE_SIZE })
+    if (!isCurrentRequest()) return
+    const rows = (page.rows || []).map(order => mapOrderListItem(order))
+    const merged = new Map((nextPage === 1 ? [] : orders.value).map(order => [String(order.id), order]))
+    rows.forEach(order => merged.set(String(order.id), order))
+    orders.value = [...merged.values()]
+    pageNum.value = page.pageNum
+    total.value = page.total
+    hasMore.value = page.hasMore
+    hasLoaded.value = true
+    await hydrateMissingOrderItems(rows, isCurrentRequest)
   } catch (error) {
+    if (!isCurrentRequest()) return
     console.error('event=ui_order_order_list stage=load_orders result=failed reason=operation_incomplete')
-    uni.hideLoading()
-    uni.showToast({
-      title: error.message || '加载失败',
-      icon: 'none'
-    })
+    loadError.value = error.message || '订单加载失败'
+  } finally {
+    if (isCurrentRequest()) {
+      loading.value = false
+      refreshing.value = false
+    }
   }
 }
 
-const isAfterSaleOrder = (order = {}) => {
-  const status = Number(order.status)
-  const refundStatus = Number(order.refundStatus)
-  return AFTER_SALE_ORDER_STATUSES.includes(status) ||
-    !!order.refundApplicationId ||
-    (Number.isFinite(refundStatus) && refundStatus > 0)
+// 取消、收货和下拉刷新都重新读取当前分类的第一页。
+const loadOrders = () => {
+  if (disposed) return
+  reloadOnShow = false
+  orders.value = []
+  pageNum.value = 0
+  total.value = 0
+  hasMore.value = false
+  hasLoaded.value = false
+  return fetchOrderPage(1)
+}
+
+const loadMoreOrders = () => {
+  if (disposed || loading.value || loadError.value || !hasMore.value) return
+  return fetchOrderPage(pageNum.value + 1)
+}
+
+const retryOrders = () => {
+  if (disposed || loading.value) return
+  return pageNum.value === 0 ? loadOrders() : fetchOrderPage(pageNum.value + 1)
+}
+
+const refreshOrders = () => {
+  refreshing.value = true
+  return loadOrders()
 }
 
 const canOrderApplyRefund = (order = {}) => {
@@ -417,40 +450,11 @@ const refundActionText = (order = {}) => {
   return isTherapyOrder(order) || hasRedeemVouchers(order) ? '申请退款' : '申请退货'
 }
 
-// 过滤订单
-const filteredOrders = computed(() => {
-  if (activeTab.value === 'all') {
-    return orders.value
-  }
-
-  if (activeTab.value === 'afterSale') {
-    return orders.value.filter(isAfterSaleOrder)
-  }
-
-  const statusMap = {
-    pending: 0,
-    shipping: 1,
-    received: 2,
-    completed: 3
-  }
-
-  const status = statusMap[activeTab.value]
-  if (status === undefined) {
-    return orders.value
-  }
-
-  // 已支付的传统疗法订单（order_status 可能仍为 0）不作为"待支付"展示，
-  // 保留未支付的订单；疗法订单仍在"全部"分类可见。
-  if (activeTab.value === 'pending') {
-    return orders.value.filter(o => o.status === 0 && !isPaidTherapyLikeOrder(o))
-  }
-
-  return orders.value.filter(o => o.status === status)
-})
-
 // 切换标签
 const switchTab = (key) => {
+  if (key === activeTab.value || !tabs.value.some(tab => tab.key === key)) return
   activeTab.value = key
+  return loadOrders()
 }
 
 // 获取状态文本
@@ -479,16 +483,19 @@ const getStatusColor = (status) => {
 
 // ✅ 取消订单
 const handleCancelOrder = async (orderId) => {
+  const session = getSessionGeneration()
   logButtonClick('取消订单', 'ORDER_LIST', orderId.toString())
   uni.showModal({
     title: '提示',
     content: '确定要取消此订单吗？',
     success: async (res) => {
+      if (disposed || !isCurrentSession(session)) return
       if (res.confirm) {
         try {
           uni.showLoading({ title: '取消中...' })
           
           await cancelOrder(orderId)
+          if (disposed || !isCurrentSession(session)) return
           
           uni.hideLoading()
           uni.showToast({
@@ -499,6 +506,7 @@ const handleCancelOrder = async (orderId) => {
           // 重新加载订单列表
           loadOrders()
         } catch (error) {
+          if (disposed || !isCurrentSession(session)) return
           console.error('event=ui_order_order_list stage=cancel_order result=failed reason=request_failed')
           uni.hideLoading()
           uni.showToast({
@@ -523,16 +531,19 @@ const handlePayOrder = (orderId) => {
 
 // ✅ 确认收货
 const handleConfirmReceipt = async (orderId) => {
+  const session = getSessionGeneration()
   logButtonClick('确认收货', 'ORDER_LIST', orderId.toString())
   uni.showModal({
     title: '提示',
     content: '确认已收到货物吗？',
     success: async (res) => {
+      if (disposed || !isCurrentSession(session)) return
       if (res.confirm) {
         try {
           uni.showLoading({ title: '确认中...' })
           
           await confirmReceipt(orderId)
+          if (disposed || !isCurrentSession(session)) return
           
           uni.hideLoading()
           uni.showToast({
@@ -543,6 +554,7 @@ const handleConfirmReceipt = async (orderId) => {
           // 重新加载订单列表
           loadOrders()
         } catch (error) {
+          if (disposed || !isCurrentSession(session)) return
           console.error('event=ui_order_order_list stage=confirm_receipt result=failed reason=request_failed')
           uni.hideLoading()
           uni.showToast({
@@ -643,21 +655,37 @@ onMounted(() => {
   const currentPage = pages[pages.length - 1]
   const status = currentPage?.options?.status
 
-  if (status) {
+  if (tabs.value.some(tab => tab.key === status)) {
     activeTab.value = status
   }
 
   logPageView('ORDER_LIST', activeTab.value)
   refreshCartCount()
   unsubscribeCartUpdated = subscribeCartUpdated(refreshCartCount)
+  unsubscribeSessionChanged = onSessionChanged(() => {
+    requestSequence += 1
+    orders.value = []
+    pageNum.value = 0
+    total.value = 0
+    hasMore.value = false
+    hasLoaded.value = false
+    loading.value = false
+    refreshing.value = false
+    loadError.value = '登录状态已变更'
+    reloadOnShow = true
+  })
   loadOrders()
 })
 
 onShow(() => {
   refreshCartCount()
+  if (reloadOnShow) loadOrders()
 })
 
 onUnmounted(() => {
+  disposed = true
+  requestSequence += 1
+  unsubscribeSessionChanged?.()
   if (unsubscribeCartUpdated) {
     unsubscribeCartUpdated()
     unsubscribeCartUpdated = null
@@ -679,7 +707,8 @@ $success: #10b981;
 $info: #3b82f6;
 
 .order-list-page {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: $order-bg;
   display: flex;
   flex-direction: column;
@@ -740,8 +769,27 @@ $info: #3b82f6;
 /* 列表容器：底部留安全区 */
 .order-list {
   flex: 1;
+  height: 0;
+  min-height: 0;
   padding: 20rpx 20rpx calc(140rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
+}
+
+.list-status {
+  padding: 24rpx 0;
+  text-align: center;
+  color: $muted;
+  font-size: 26rpx;
+}
+
+.list-retry {
+  font-size: 26rpx;
+  color: $primary;
+  background: transparent;
+}
+
+.list-retry::after {
+  border: none;
 }
 
 /* 空态：更干净 */

@@ -31,6 +31,7 @@
 </template>
 
 <script>
+import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail } from '@/api/product.js'
@@ -95,7 +96,8 @@ export default {
         specText: sku.specText || sku.skuName || detail.specText,
         price: Number(sku.price || 0),
         originalPrice: Number(sku.originalPrice || 0),
-        stock: Number(sku.stock ?? detail.stock ?? 0),
+        stock: inventoryStock(sku.stock, detail.stock),
+        ...inventoryFields(sku, detail),
         unit: sku.unit || detail.unit,
         image: sku.image || detail.image,
         coverImage: sku.image || detail.coverImage || detail.image

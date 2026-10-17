@@ -14,6 +14,8 @@ const isLimitEnabled = (limitInfo = {}) => {
 }
 
 export const resolvePurchaseQuantityLimit = (product = {}) => {
+  if (product.available === false || (product.inventoryMode === 'HIS_AVAILABILITY'
+    && (product.inventoryStatus !== 'AVAILABLE' || product.available !== true))) return 0
   const limits = []
   const stock = toQuantityLimit(product.stock)
   if (stock !== null) {

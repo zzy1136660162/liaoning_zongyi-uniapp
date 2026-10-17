@@ -10,6 +10,7 @@ import {
   resolveProductFlow,
   resolveProductTypeLabel
 } from './product-biz.js'
+import { inventoryFields } from './inventory.js'
 
 const CART_REMOTE_SYNC_EVENT = 'cartRemoteSync'
 
@@ -24,7 +25,8 @@ const toPositiveInt = (value, fallback = 1) => {
 }
 
 const toStockValue = (value, fallback = null) => {
-  if (value === undefined || value === null || value === '') {
+  if (value === null) return null
+  if (value === undefined || value === '') {
     return fallback
   }
   const parsed = parseInt(value, 10)
@@ -118,10 +120,11 @@ const resolveCartItemKey = (productOrId, options = {}) => {
 }
 
 const hasExplicitAvailable = (value = {}) => {
-  return value.available !== undefined || value.saleable !== undefined || value.onSale !== undefined
+  return value.inventoryMode === 'HIS_AVAILABILITY' || value.available !== undefined || value.saleable !== undefined || value.onSale !== undefined
 }
 
 const resolveAvailableFlag = (value = {}, fallback = true) => {
+  if (value.inventoryMode === 'HIS_AVAILABILITY') return inventoryFields(value).available
   if (value.available !== undefined) {
     return toFlag(value.available, fallback)
   }
@@ -148,6 +151,7 @@ const resolveStockValue = (value = {}, fallback = null) => {
 }
 
 const isCartEntryAvailable = (entry = {}) => {
+  if (entry.inventoryMode === 'HIS_AVAILABILITY' && !inventoryFields(entry).available) return false
   if (entry.available === false) {
     return false
   }
@@ -206,6 +210,7 @@ const buildCartEntry = (cartKeyOrProductId, partial = {}, legacyQuantities = {})
 
   return {
     productId,
+    ...inventoryFields(partial),
     skuId: skuId || null,
     skuCode: pickText(partial.skuCode, partial.sku_code),
     skuName: pickText(partial.skuName, partial.sku_name),
@@ -368,6 +373,7 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
     : null
 
   return {
+    ...inventoryFields(product, existing),
     bizType: options.bizType !== undefined && options.bizType !== null
       ? toNumber(options.bizType, productBizType || existing.bizType || null)
       : (productBizType !== null ? productBizType : (existing.bizType ?? null)),
@@ -490,6 +496,7 @@ const findProductById = (categories = [], cartKeyOrProductId) => {
     if (skuMatch) {
       return skuMatch
     }
+    return null
   }
   return products.find(item => {
     const itemProductId = normalizeId(item.productId ?? item.product_id ?? item.id)
@@ -567,6 +574,7 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
       quantity: clampQuantityToStock(quantity, meta.stock),
       available: meta.stock === 0 ? false : meta.available,
       stock: meta.stock,
+      ...inventoryFields(meta),
       bizType: meta.bizType,
       goodsMerchantType: meta.goodsMerchantType,
       productCategory: meta.productCategory,
@@ -841,7 +849,12 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         ? Number(product.price)
         : (entry.price ?? 0)
 
+      const nextInventory = inventoryFields(product, entry)
       if (
+        entry.inventoryMode !== nextInventory.inventoryMode ||
+        entry.inventoryStatus !== nextInventory.inventoryStatus ||
+        entry.inventoryReason !== nextInventory.inventoryReason ||
+        entry.inventoryCheckedAt !== nextInventory.inventoryCheckedAt ||
         entry.bizType !== nextBizType ||
         entry.goodsMerchantType !== nextGoodsMerchantType ||
         entry.productCategory !== nextProductCategory ||
@@ -865,8 +878,9 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
           skuSpecText,
           selected: nextSelected,
           quantity: nextQuantity,
-          available: nextAvailable,
           stock: nextStock,
+          ...nextInventory,
+          available: nextAvailable,
           bizType: nextBizType,
           goodsMerchantType: nextGoodsMerchantType,
           productCategory: nextProductCategory,
@@ -904,8 +918,9 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         quantity: nextQuantity,
         selected: nextSelected,
         verified: entry.verified !== false,
-        available: nextAvailable,
         stock: nextStock,
+        ...nextInventory,
+        available: nextAvailable,
         bizType: nextBizType,
         goodsMerchantType: nextGoodsMerchantType,
         productCategory: nextProductCategory,
@@ -961,8 +976,9 @@ export const mapServerCartItemToProduct = (item = {}) => {
     needQuestionnaire: toNumber(item.needQuestionnaire, 0),
     questionnaireId: item.questionnaireId ?? item.questionnaire_id ?? null,
     answerId: item.answerId ?? item.answer_id ?? null,
+    ...inventoryFields(item),
     stock: resolveStockValue(item, null),
-    available: resolveStockValue(item, null) === 0 ? false : item.available !== false
+    available: resolveStockValue(item, null) === 0 ? false : resolveAvailableFlag(item, true)
   }
 }
 

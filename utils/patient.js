@@ -39,3 +39,8 @@ export const deriveAgeFromId = (idNumber = '') => {
   return 0
 }
 
+export const patientHisSyncNotice = (status) => {
+  if (!status || status === 'SUCCESS' || status === 'DISABLED') return ''
+  return '资料已保存，医院信息待同步，可在就诊人管理核对。'
+}
+

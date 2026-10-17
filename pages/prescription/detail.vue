@@ -148,7 +148,7 @@ import {
 import { getPrescriptionDetail, getPrescriptionItems, getConsultationDetail } from '@/api/consultation.js'
 import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
 import { getProductDetail } from '@/api/product.js'
-import { getOrderByPrescriptionId, getMyOrders, getOrderDetail } from '@/api/order.js'
+import { getOrderByPrescriptionId, getOrderPage, getOrderDetail } from '@/api/order.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getOrderStatusText } from '@/utils/order-status.js'
 import { getDoctorDetail, getDoctorByOutpatientNo } from '@/api/hospital.js'
@@ -506,20 +506,12 @@ export default {
         console.error('获取订单状态失败:', error)
         // 如果API查询失败，尝试备用方案：从订单列表中查找
         try {
-          const orders = await getMyOrders()
+          const prescriptionId = this.pageOptions.prescriptionNo || (this.isValidPrescriptionId(this.detail.visitNo) ? this.detail.visitNo : null)
+          if (!this.isValidPrescriptionId(prescriptionId)) return
+          const { rows: orders } = await getOrderPage({ prescriptionId, pageNum: 1, pageSize: 1 })
 
           if (orders && orders.length > 0) {
-            // 查找包含此门诊号的订单
-            const prescriptionId = this.pageOptions.prescriptionNo || (this.isValidPrescriptionId(this.detail.visitNo) ? this.detail.visitNo : null)
-            if (!this.isValidPrescriptionId(prescriptionId)) {
-              return
-            }
-            const relatedOrder = orders.find(order =>
-              order.items && order.items.some(item =>
-                item.id === prescriptionId ||
-                (item.prescriptionId && item.prescriptionId === prescriptionId)
-              )
-            )
+            const relatedOrder = orders.find(order => String(order.prescriptionId) === String(prescriptionId))
 
             if (relatedOrder) {
               this.orderStatus.status = relatedOrder.orderStatus !== null && relatedOrder.orderStatus !== undefined

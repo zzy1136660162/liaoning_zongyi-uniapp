@@ -117,6 +117,7 @@ import { redirectToWithFallback } from '@/utils/navigate.js'
 import { logPageView } from '@/api/access-log.js'
 import { syncCartOnLogin } from '@/utils/cart-sync.js'
 import { assertCurrentSession, getSessionGeneration } from '@/utils/session.js'
+import { patientHisSyncNotice } from '@/utils/patient.js'
 
 export default {
 	data() {
@@ -355,9 +356,11 @@ export default {
 				this.saveFormData()
 				
 				uni.hideLoading()
+				const syncNotice = patientHisSyncNotice(result.hisBindingStatus)
 				uni.showToast({
-					title: '登录成功',
-					icon: 'success'
+					title: syncNotice || '登录成功',
+					icon: syncNotice ? 'none' : 'success',
+					duration: syncNotice ? 2500 : 1500
 				})
 				
 				// 8. 鐧诲綍鎴愬姛鍚庤烦杞?
@@ -367,7 +370,7 @@ export default {
 					const rawUrl = this.redirectUrl || '/pages/products/medicine_list'
 					const targetUrl = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`
 					redirectToWithFallback(targetUrl)
-				}, 1500)
+				}, syncNotice ? 2500 : 1500)
 				
 			} catch (error) {
 				if (error?.code === 'SESSION_CHANGED') return

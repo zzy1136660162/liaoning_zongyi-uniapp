@@ -215,7 +215,7 @@
           v-for="sku in skuList"
           :key="sku.id"
           class="sku-option"
-          :class="{ active: String(selectedSkuId) === String(sku.id), disabled: Number(sku.stock || 0) <= 0 }"
+          :class="{ active: String(selectedSkuId) === String(sku.id), disabled: !isPurchaseAvailable(sku) }"
           @click="selectSku(sku)"
         >
           <text class="sku-name">
@@ -801,15 +801,15 @@
       <view class="bottom-right">
         <view
           class="btn-add-cart"
-          :class="{ disabled: product.stock === 0 }"
-          @click="product.stock !== 0 && addCart()"
+          :class="{ disabled: !isPurchaseAvailable(withSelectedSku()) }"
+          @click="isPurchaseAvailable(withSelectedSku()) && addCart()"
         >
           加入购物车
         </view>
         <view
           class="btn-buy"
-          :class="{ disabled: product.stock === 0 }"
-          @click="product.stock !== 0 && buyNow()"
+          :class="{ disabled: !isPurchaseAvailable(withSelectedSku()) }"
+          @click="isPurchaseAvailable(withSelectedSku()) && buyNow()"
         >
           立即开方
         </view>
@@ -819,6 +819,8 @@
 </template>
 
 <script setup>
+import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
+import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
 import { computed, getCurrentInstance, onMounted, onUnmounted, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
@@ -1007,8 +1009,8 @@ const resolveDefaultSkuId = (skus = []) => {
   if (!Array.isArray(skus) || skus.length === 0) {
     return null
   }
-  const availableDefault = skus.find(item => Number(item.defaultFlag) === 1 && Number(item.stock ?? 0) > 0)
-  const available = skus.find(item => Number(item.stock ?? 0) > 0)
+  const availableDefault = skus.find(item => Number(item.defaultFlag) === 1 && isPurchaseAvailable(item))
+  const available = skus.find(item => isPurchaseAvailable(item))
   const fallback = skus.find(item => Number(item.defaultFlag) === 1) || skus[0]
   return (availableDefault || available || fallback)?.id || null
 }
@@ -1034,7 +1036,8 @@ const withSelectedSku = (targetProduct = product.value) => {
     skuSpecText: sku.specText || sku.skuName || '',
     price: Number(sku.price || 0),
     originalPrice: Number(sku.originalPrice || 0),
-    stock: Number(sku.stock ?? product.value.stock ?? 0),
+    stock: inventoryStock(sku.stock, product.value.stock),
+    ...inventoryFields(sku, product.value),
     unit: sku.unit || product.value.unit,
     specText: sku.specText || sku.skuName || product.value.specText,
     image: sku.image || product.value.image,
@@ -1046,7 +1049,7 @@ const selectSku = (sku) => {
   if (!sku?.id) {
     return
   }
-  if (Number(sku.stock || 0) <= 0) {
+  if (!isPurchaseAvailable(sku)) {
     uni.showToast({
       title: '该规格已售罄',
       icon: 'none'
