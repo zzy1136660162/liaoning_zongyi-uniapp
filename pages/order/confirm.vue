@@ -145,6 +145,10 @@
           </view>
         </view>
 
+        <view v-if="selectionIssue" class="section">
+          <text>{{ selectionIssue }}</text>
+          <button size="mini" @click="reloadSelection">重新加载商品</button>
+        </view>
         <!-- 订单商品 -->
         <view class="section">
           <view class="section-title">
@@ -264,7 +268,6 @@ import { ref, computed, onMounted } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import {
   STORAGE_KEY_CURRENT_ORDER,
-  STORAGE_KEY_SHIPPING_ADDRESSES,
   STORAGE_KEY_DEFAULT_ADDRESS_ID
 } from '@/utils/storage.js'
 import { buildOrderInfo, getCartEntries, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds, splitCartItemKey, validateCheckoutStock } from '@/utils/cart.js'
@@ -277,9 +280,10 @@ import { getPatientList } from '@/api/patient.js'
 import { patientHisSyncNotice } from '@/utils/patient.js'
 import { wechatSinglePay } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
+import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
+import { inventoryFields } from '@/utils/inventory.js'
 import { ensureWeChatIdentity } from '@/api/auth.js'
 import { queryFreight } from '@/api/express.js'
-import { getCachedProducts, setCachedProducts, isCacheValid } from '@/utils/cache.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
 import { resolveProductFlow } from '@/utils/product-biz.js'
 import { ORDER_TYPE_THERAPY } from '@/utils/therapy.js'
@@ -322,9 +326,15 @@ const loadingPatients = ref(false)
 const requiresShipping = computed(() => !isTherapyOrder.value)
 const requiresConsultationPatient = computed(() => selectedRequiresConsultation.value && !isTherapyOrder.value)
 const patientIndex = computed(() => Math.max(0, patients.value.findIndex(patient => String(patient.id) === String(selectedPatient.value?.id))))
+const selectionIssue = computed(() => {
+  const products = categories.value.flatMap(category => category.products || [])
+  if (products.some(product => product.selectionInvalid)) return '所选规格已失效或尚未选择，请返回商品页重新选择'
+  if (products.some(product => product.loadFailure)) return '暂时无法确认商品信息，请重新加载后再提交'
+  return ''
+})
 
 const canSubmit = computed(() => {
-  if (submitting.value || loadingPatients.value || !selectedPatient.value) return false
+  if (submitting.value || loadingPatients.value || !selectedPatient.value || selectionIssue.value) return false
   if (!requiresShipping.value) {
     return orderInfo.value.items && orderInfo.value.items.length > 0
   }
@@ -347,54 +357,16 @@ const resolveTherapyOrderFlag = (flow = {}) => {
   return therapyRouteRequested.value || !!flow.allTraditionalTherapy
 }
 
-onMounted(async () => {
+onMounted(() => {
   // 记录页面访问日志
   logPageView('下单页面', '用户进入下单页面')
 
-  await loadProducts()
-  loadOrderInfo()
-  if (requiresShipping.value) {
-    loadAddresses()
-  } else {
-    orderInfo.value.cost.shippingFee = 0
-    calculateTotal()
-  }
 })
 
 onShow(async () => {
-  // 先加载本地订单信息，避免后续覆盖已计算的运费
-  loadOrderInfo()
-
-  // 页面显示时检查是否有新选中的地址（从地址选择页面返回）
-  const tempAddress = uni.getStorageSync('temp_selected_address')
-  if (tempAddress) {
-    selectedAddress.value = tempAddress
-    uni.removeStorageSync('temp_selected_address')
-    // 地址变化后重新计算快递费
-    if (requiresShipping.value) {
-      await calculateShippingFee()
-    } else {
-      orderInfo.value.cost.shippingFee = 0
-      calculateTotal()
-    }
-  } else {
-    // 重新加载地址列表（可能地址被编辑或删除）
-    if (requiresShipping.value) {
-      loadAddresses()
-    }
-    // 如果有选中的地址，重新计算快递费
-    if (requiresShipping.value && selectedAddress.value) {
-      await calculateShippingFee()
-    } else if (!requiresShipping.value) {
-      selectedAddress.value = null
-      orderInfo.value.cost.shippingFee = 0
-      calculateTotal()
-    }
-  }
-
-  // 重新加载产品数据并更新订单金额（购物车数据可能已更新）
   await loadProducts()
   loadOrderInfo()
+  await loadAddresses()
   await loadCheckoutPatients()
 })
 
@@ -442,59 +414,6 @@ const loadProducts = async () => {
     }
     setCheckoutProductIds(currentSelectedIds)
 
-    // 先检查缓存
-    if (isCacheValid(currentSelectedIds)) {
-      const cached = getCachedProducts(currentSelectedIds)
-      // 汇总缓存中的所有商品（按 id 建立索引，便于按当前选中项精确取用）
-      const cachedProductMap = new Map()
-      const cachedCategories = cached?.categories || []
-      cachedCategories.forEach(cat => {
-        (cat?.products || []).forEach(p => {
-          if (p && p.id !== undefined && p.id !== null) {
-            cachedProductMap.set(String(p.id), p)
-          }
-        })
-      })
-
-      // 仅当缓存覆盖了当前选中的所有商品时才复用缓存
-      const hasAllProducts = currentSelectedIds.every(id => cachedProductMap.has(String(id)))
-      const selectedProducts = hasAllProducts
-        ? currentSelectedIds.map(id => cachedProductMap.get(String(id)))
-        : []
-      const hasFlowFields = selectedProducts.every(product =>
-        product &&
-        (
-          product.productCategory !== undefined ||
-          product.categoryCode ||
-          product.category_code ||
-          product.categoryId !== undefined ||
-          product.category_id !== undefined ||
-          Number(product.bizType) === 2
-        )
-      )
-      if (hasAllProducts && hasFlowFields) {
-        console.debug('event=ui_order_confirm stage=products result=loaded source=cache')
-        // 只取当前选中的商品，避免历史缓存中多余的商品混入本次订单
-        const cachedCategory = {
-          id: 'selected_items',
-          name: '订单商品',
-          products: selectedProducts
-        }
-        categories.value = [cachedCategory]
-        const flow = resolveProductFlow(selectedProducts)
-        if (flow.valid) {
-          selectedBizType.value = flow.bizType
-          selectedRequiresConsultation.value = flow.requiresConsultation
-          isTherapyOrder.value = resolveTherapyOrderFlag(flow)
-        } else {
-          uni.showToast({ title: flow.message, icon: 'none' })
-          setTimeout(() => uni.navigateBack(), 1500)
-          return []
-        }
-        return [cachedCategory]
-      }
-    }
-
     console.debug('event=ui_order_confirm stage=products result=started source=server')
     uni.showLoading({ title: '加载商品...' })
 
@@ -516,21 +435,20 @@ const loadProducts = async () => {
         assertCurrentSession(pageSession)
         const productDetail = await getProductDetail(productId)
         if (productDetail) {
-          const skus = Array.isArray(productDetail.skus) ? productDetail.skus : []
-          const sku = skuId
-            ? skus.find(item => String(item.id) === String(skuId))
-            : null
-          const displayPrice = sku ? Number(sku.price || 0) : Number(productDetail.price || 0)
-          const displayStock = sku
-            ? (sku.stock ?? productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
-            : (productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
+          if (!skuId && Array.isArray(productDetail.skus) && productDetail.skus.length > 1) {
+            throw Object.assign(new Error('请重新选择商品规格'), { code: 'SKU_SELECTION_INVALID' })
+          }
+          const sku = resolveProductSku(productDetail, skuId)
+          const saleProduct = withProductSku(productDetail, sku)
+          const displayPrice = Number(saleProduct.price || 0)
+          const displayStock = saleProduct.stock
           const displayImage = sku?.image || sku?.imageUrl || productDetail.coverImage || productDetail.image
           const displaySpec = sku?.specText || sku?.skuName || productDetail.specText || productDetail.specDesc
           cartCategory.products.push({
             id: itemKey,
             cartKey: itemKey,
             productId: productDetail.id,
-            skuId,
+            skuId: sku ? sku.id : null,
             skuCode: sku?.skuCode || entry.skuCode || '',
             skuName: sku?.skuName || entry.skuName || '',
             skuSpecText: displaySpec || entry.skuSpecText || '',
@@ -545,24 +463,26 @@ const loadProducts = async () => {
             categoryCode: productDetail.categoryCode || productDetail.category_code || '',
             goodsMerchantType: productDetail.goodsMerchantType,
             stock: displayStock,
-            available: productDetail.available ?? productDetail.saleable ?? productDetail.onSale,
+            ...inventoryFields(saleProduct),
             unit: sku?.unit || productDetail.unit || '件',
             specText: displaySpec,
             notice: productDetail.usageDesc || productDetail.notice,
-            needQuestionnaire: productDetail.needQuestionnaire || 0
+            needQuestionnaire: productDetail.needQuestionnaire || 0,
+            questionnaireId: productDetail.questionnaireId
           })
         }
       } catch (err) {
         if (err.code === 'SESSION_CHANGED') return []
         console.error('event=ui_order_confirm stage=product_detail result=failed reason=request_failed')
+        const entry = cartEntries[itemKey] || {}
+        const split = splitCartItemKey(itemKey)
+        cartCategory.products.push({ ...entry, id: itemKey, cartKey: itemKey, productId: entry.productId || split.productId,
+          skuId: entry.skuId || split.skuId || null, stock: 0, available: false, inventoryStatus: 'UNAVAILABLE',
+          selectionInvalid: err.code === 'SKU_SELECTION_INVALID', loadFailure: true })
       }
     }
 
     assertCurrentSession(pageSession)
-    // 缓存数据
-    const productsData = { selected_items: cartCategory.products }
-    setCachedProducts([cartCategory], productsData, currentSelectedIds)
-
     categories.value = [cartCategory]
     const flow = resolveProductFlow(cartCategory.products)
     if (!flow.valid) {
@@ -583,6 +503,8 @@ const loadProducts = async () => {
   }
 }
 
+const reloadSelection = async () => { await loadProducts(); loadOrderInfo() }
+
 const loadOrderInfo = () => {
   if (!isCurrentSession(pageSession)) return
   try {
@@ -596,11 +518,12 @@ const loadOrderInfo = () => {
       ? buildOrderInfo(cartItems, currentSelectedIds, distributor)
       : null
 
-    orderInfo.value = saved && saved.items ? saved : (rebuiltOrder || orderInfo.value)
+    orderInfo.value = rebuiltOrder || { ...orderInfo.value, prescriptions: [], items: [], total: 0 }
 
     if (!orderInfo.value.cost) {
       orderInfo.value.cost = { medicineCost: 0, isDecocted: false, shippingFee: 0 }
     }
+    orderInfo.value.cost.isDecocted = !!saved?.cost?.isDecocted
 
     if (rebuiltOrder) {
       orderInfo.value.bizType = selectedBizType.value
@@ -642,35 +565,27 @@ const loadOrderInfo = () => {
 
 const loadAddresses = async () => {
   if (!isCurrentSession(pageSession)) return
+  const addressSelection = uni.getStorageSync('temp_selected_address')
+  const selectedId = addressSelection?.id || addressSelection || selectedAddress.value?.id
+  uni.removeStorageSync('temp_selected_address')
   if (!requiresShipping.value) {
     selectedAddress.value = null
     return
   }
 
   try {
-    // 先从后端获取最新地址列表
-    try {
-      const remoteAddresses = await getAddressList()
-      if (remoteAddresses && Array.isArray(remoteAddresses)) {
-        addresses.value = remoteAddresses
-        // 同步到本地存储
-        uni.setStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES, remoteAddresses)
-      }
-    } catch (apiError) {
-      if (apiError.code === 'SESSION_CHANGED') return
-      console.warn('event=ui_order_confirm stage=addresses result=fallback reason=request_failed source=cache')
-      // 如果API调用失败，使用本地缓存
-      const saved = uni.getStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES) || []
-      addresses.value = saved
-    }
+    const remoteAddresses = await getAddressList()
+    assertCurrentSession(pageSession)
+    addresses.value = Array.isArray(remoteAddresses) ? remoteAddresses : []
+    selectedAddress.value = null
 
     // 加载默认地址
-    const defaultId = uni.getStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID)
+    const defaultId = selectedId || uni.getStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID)
     let defaultAddr = null
 
     // 优先使用存储的默认地址ID
     if (defaultId) {
-      defaultAddr = addresses.value.find(a => a.id === defaultId)
+      defaultAddr = addresses.value.find(a => String(a.id) === String(defaultId))
     }
 
     // 如果没有找到默认地址，尝试从地址列表中找标记为默认的地址
@@ -694,7 +609,10 @@ const loadAddresses = async () => {
       await calculateShippingFee()
     }
   } catch (e) {
-    console.error('event=ui_order_confirm stage=addresses result=failed reason=cache_read_failed')
+    if (!isCurrentSession(pageSession)) return
+    addresses.value = []
+    selectedAddress.value = null
+    uni.showToast({ title: '地址加载失败，请重试', icon: 'none' })
   }
 }
 
@@ -802,6 +720,11 @@ const submitOrder = async () => {
     console.debug('event=ui_order_confirm stage=submit_order result=observed');
     console.debug('event=ui_order_confirm stage=submit_order result=observed');
 
+    await loadProducts()
+    loadOrderInfo()
+    await loadAddresses()
+    await loadCheckoutPatients()
+    assertCurrentSession(pageSession)
     if (requiresShipping.value) {
       if ((!orderInfo.value.cost || orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null)
           && selectedAddress.value) {
@@ -820,7 +743,6 @@ const submitOrder = async () => {
       return
     }
 
-    await loadProducts()
     const stockCheck = validateCheckoutStock(selectedProductIds.value, categories.value)
     if (!stockCheck.valid) {
       console.warn('category=CHECKOUT_STOCK_GUARD action=submit_order result=blocked reason=%s productId=%s quantity=%s latestStock=%s',

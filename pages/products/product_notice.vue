@@ -31,7 +31,7 @@
 </template>
 
 <script>
-import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
+import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail } from '@/api/product.js'
@@ -58,6 +58,7 @@ export default {
       suitableCrowd: '',
       usageDesc: '',
       productDetail: null,
+      productRequestSeq: 0,
       requestedQuantity: 1,
       action: 'cart'
     }
@@ -72,36 +73,18 @@ export default {
       console.warn('missing productId on notice page')
       return
     }
-    this.loadProductDetail(this.productId)
     logPageView('PRODUCT_NOTICE', this.productId)
+  },
+  onShow() {
+    if (this.productId) this.loadProductDetail(this.productId)
+  },
+  onUnload() {
+    this.productRequestSeq += 1
   },
   methods: {
     getImageUrl,
     resolveSelectedProduct(detail = this.productDetail) {
-      if (!detail || !this.skuId) {
-        return detail
-      }
-      const skus = Array.isArray(detail.skus) ? detail.skus : []
-      const sku = skus.find(item => String(item.id) === String(this.skuId))
-      if (!sku) {
-        return detail
-      }
-      return {
-        ...detail,
-        productId: detail.id,
-        skuId: sku.id,
-        skuCode: sku.skuCode || '',
-        skuName: sku.skuName || '',
-        skuSpecText: sku.specText || sku.skuName || '',
-        specText: sku.specText || sku.skuName || detail.specText,
-        price: Number(sku.price || 0),
-        originalPrice: Number(sku.originalPrice || 0),
-        stock: inventoryStock(sku.stock, detail.stock),
-        ...inventoryFields(sku, detail),
-        unit: sku.unit || detail.unit,
-        image: sku.image || detail.image,
-        coverImage: sku.image || detail.coverImage || detail.image
-      }
+      return detail ? withProductSku(detail, resolveProductSku(detail, this.skuId)) : null
     },
     getCartKey(detail = this.productDetail) {
       return buildCartItemKey(detail?.productId || detail?.id || this.productId, detail?.skuId || this.skuId || null)
@@ -110,18 +93,21 @@ export default {
       return Math.max(1, Number(this.requestedQuantity) || getCartProductQuantity(this.productId, 1, this.skuId) || 1)
     },
     async loadProductDetail(productId) {
+      const requestSeq = ++this.productRequestSeq
+      this.productDetail = null
       try {
         const detail = await getProductDetail(productId)
+        if (!isCurrentSession(this.sessionGeneration) || requestSeq !== this.productRequestSeq) return
         if (detail) {
           this.productDetail = detail
           this.productName = detail.productName || detail.name || this.productName
-          this.noticeText = detail.contraindication || detail.noticeText || this.noticeText
+          this.noticeText = detail.contraindication || detail.noticeText || ''
           this.suitableCrowd = detail.suitableCrowd || ''
           this.usageDesc = detail.usageDesc || ''
           return
         }
       } catch (error) {
-        if (!isCurrentSession(this.sessionGeneration)) return
+        if (!isCurrentSession(this.sessionGeneration) || requestSeq !== this.productRequestSeq) return
         console.warn('loadProductDetail failed:', error)
       }
       if (!this.noticeText) {
@@ -194,7 +180,7 @@ export default {
 
       uni.showLoading({ title: '校验中...' })
       try {
-        const detail = this.productDetail || await getProductDetail(this.productId)
+        const detail = await getProductDetail(this.productId)
         if (!(await this.ensureCartCompatible(detail))) {
           return
         }

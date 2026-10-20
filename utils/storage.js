@@ -148,26 +148,6 @@ export const STORAGE_KEY_AI_CHAT_MESSAGES = 'ai_chat_messages'
 
 // ==================== 订单相关 ====================
 /**
- * 处方订单列表
- * 存储格式: Array<{
- *   id: string,                    // 订单ID
- *   doctorName: string,            // 医生姓名
- *   department: string,            // 科室
- *   consultationTime: string,      // 就诊时间
- *   diagnosis: string,             // 诊断
- *   doses: number,                 // 帖数
- *   details: string,               // 明细
- *   status: string,                // 状态: 'pending_review' | 'pending_payment' | 'collecting' | 'finished'
- *   tags: string[],                // 标签: ['在线复诊', '中药方', '密', '便捷配药']
- *   timeLimit: string,             // 时间限制: '1分钟内' | '1分钟前'
- *   hospital: string,              // 医院名称
- *   createdAt: string              // 创建时间
- * }>
- * 说明: 存储用户的处方订单列表
- */
-export const STORAGE_KEY_PRESCRIPTION_ORDERS = 'prescription_orders'
-
-/**
  * 当前选中的处方订单ID列表
  * 存储格式: string[]
  * 说明: 存储用户在订单缴费页面选中的处方订单ID列表
@@ -203,50 +183,8 @@ export const STORAGE_KEY_CURRENT_ORDER = 'current_order'
 
 // ==================== 地址相关 ====================
 /**
- * 收货地址列表
- * 存储格式: Array<{
- *   id: string,                    // 地址ID
- *   name: string,                  // 收货人姓名
- *   phone: string,                 // 手机号
- *   province: string,              // 省份
- *   city: string,                  // 城市
- *   district: string,              // 区县
- *   street: string,                // 街道
- *   detail: string,                // 详细地址
- *   isDefault: boolean,            // 是否默认地址
- *   createdAt: string              // 创建时间
- * }>
- * 说明: 存储用户的收货地址列表
- */
-export const STORAGE_KEY_SHIPPING_ADDRESSES = 'shipping_addresses'
-
-/**
  * 默认收货地址ID
  * 存储格式: string | null
  * 说明: 存储当前默认收货地址的ID，如果为null则表示没有默认地址
  */
 export const STORAGE_KEY_DEFAULT_ADDRESS_ID = 'default_address_id'
-
-// ==================== 缓存相关 ====================
-/**
- * 商品分类和产品缓存
- * 存储格式: {
- *   categories: Array,           // 分类列表
- *   products: Object,            // 按分类ID组织的商品数据
- *   timestamp: number,           // 缓存时间戳
- *   expireTime: number           // 过期时间（毫秒）
- * }
- * 说明: 缓存商品分类和产品数据，避免重复请求
- */
-export const STORAGE_KEY_PRODUCTS_CACHE = 'products_cache'
-
-/**
- * 缓存过期时间（毫秒）
- * 下单确认页商品缓存：5 分钟
- */
-export const CHECKOUT_CACHE_EXPIRE_TIME = 5 * 60 * 1000
-
-/**
- * @deprecated 请使用 CHECKOUT_CACHE_EXPIRE_TIME
- */
-export const CACHE_EXPIRE_TIME = CHECKOUT_CACHE_EXPIRE_TIME

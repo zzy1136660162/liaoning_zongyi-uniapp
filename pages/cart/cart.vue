@@ -219,7 +219,6 @@ import {
 import { applyServerCartToLocal } from '@/utils/cart-sync.js'
 import {
   shouldReloadCartFromServer,
-  shouldSkipRecentCartRefresh,
   subscribeCartUpdated
 } from '@/utils/cart-events.js'
 import { getImageUrl } from '@/utils/config.js'
@@ -228,8 +227,6 @@ import TabBar from '@/components/TabBar/TabBar.vue'
 import { BASE_URL } from '@/utils/config.js'
 import { logPageView } from '@/utils/accessLog.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
-
-const CART_SERVER_REFRESH_MIN_INTERVAL_MS = 1500
 
 const parseCartLoadError = (error) => {
   const statusCode = error?.statusCode
@@ -271,7 +268,6 @@ export default {
       loading: false,
       pendingServerRefresh: false,
       suppressNextServerCartEvent: false,
-      lastServerCartLoadAt: 0,
       unsubscribeCartUpdated: null
     }
   },
@@ -310,7 +306,7 @@ export default {
     })
   },
   onShow() {
-    this.loadCartPageData()
+    this.loadCartPageData({ queueIfLoading: true })
     logPageView('CART')
   },
   onUnload() {
@@ -349,23 +345,12 @@ export default {
       }
 
       const hasToken = Boolean(getToken())
-      if (
-        hasToken &&
-        !options.force &&
-        shouldSkipRecentCartRefresh(Date.now(), this.lastServerCartLoadAt, CART_SERVER_REFRESH_MIN_INTERVAL_MS)
-      ) {
-        console.log('[cart] loadCartPageData skipped: recent server refresh')
-        this.loadCartData()
-        return
-      }
-
       this.loading = true
       console.log('[cart] loadCartPageData start', { hasToken, baseUrl: BASE_URL })
 
       try {
         if (hasToken) {
           await this.loadCartFromServer()
-          this.lastServerCartLoadAt = Date.now()
           console.log('[cart] loadCartPageData done (server)', {
             itemCount: this.cartItems.length,
             cartCount: this.cartCount

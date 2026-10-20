@@ -10,20 +10,6 @@ export const shouldReloadCartFromServer = (event = {}) => {
   return event?.reload === true || event?.source === CART_RELOAD_SOURCE
 }
 
-export const shouldSkipRecentCartRefresh = (now, lastRefreshAt, minIntervalMs) => {
-  const current = Number(now)
-  const last = Number(lastRefreshAt)
-  const interval = Number(minIntervalMs)
-
-  if (!Number.isFinite(current) || !Number.isFinite(last) || !Number.isFinite(interval)) {
-    return false
-  }
-  if (last <= 0 || interval <= 0) {
-    return false
-  }
-  return current - last < interval
-}
-
 /**
  * 订阅购物车变更事件
  * @param {Function} handler

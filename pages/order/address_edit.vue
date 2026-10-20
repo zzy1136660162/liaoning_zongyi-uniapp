@@ -83,10 +83,6 @@
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 const pageSession = getSessionGeneration()
 import { ref, reactive, onMounted } from 'vue'
-import { 
-  STORAGE_KEY_SHIPPING_ADDRESSES,
-  STORAGE_KEY_DEFAULT_ADDRESS_ID
-} from '@/utils/storage.js'
 import { getAddressDetail, addAddress, updateAddress } from '@/api/address.js'
 import { logPageView } from '@/api/access-log.js'
 import { getImageUrl } from '@/utils/config.js'

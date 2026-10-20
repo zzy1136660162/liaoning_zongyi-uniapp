@@ -19,8 +19,9 @@
         >
           <image
             class="banner-img"
-            :src="img"
+            :src="getProductImageUrl(img)"
             mode="aspectFill"
+            @error="handleProductImageError(img)"
           />
         </swiper-item>
       </swiper>
@@ -525,8 +526,9 @@
           >
             <image
               class="recommend-img"
-              :src="getImageUrl(item.image)"
+              :src="getProductImageUrl(item.image)"
               mode="aspectFit"
+              @error="handleProductImageError(item.image)"
             />
             <view class="recommend-info">
               <text class="recommend-name">
@@ -571,8 +573,9 @@
           >
             <image
               class="recommend-img"
-              :src="getImageUrl(item.image)"
+              :src="getProductImageUrl(item.image)"
               mode="aspectFit"
+              @error="handleProductImageError(item.image)"
             />
             <view class="recommend-info">
               <text class="recommend-name">
@@ -605,6 +608,13 @@
           暂无其他推荐
         </view>
       </view>
+      <navigator
+        v-if="recommendTab === 'star'"
+        class="recommend-more"
+        url="/pages/products/medicine_list"
+      >
+        查看更多商品 ›
+      </navigator>
       <view
         v-if="recommendTab === 'combo'"
         class="combo-disclaimer"
@@ -664,9 +674,10 @@
         <image
           v-for="(img, idx) in productImages"
           :key="idx"
-          :src="img"
+          :src="getProductImageUrl(img)"
           mode="widthFix"
           class="detail-img"
+          @error="handleProductImageError(img)"
         />
       </view>
       <view
@@ -819,13 +830,15 @@
 </template>
 
 <script setup>
-import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
-import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
+import { isPurchaseAvailable, normalizePurchaseQuantity } from '@/utils/purchase-quantity.js'
+import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { computed, getCurrentInstance, onMounted, onUnmounted, ref } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
+import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
 import { getImageUrl } from '@/utils/config.js'
+import { useProductImages } from '@/utils/product-image.js'
 import {
   addCartItem,
   buildCartItemKey,
@@ -847,13 +860,15 @@ import {
   shouldShowSfLogo
 } from '@/utils/product-display.js'
 
+const { getProductImageUrl, handleProductImageError } = useProductImages()
+
 const createEmptyProduct = () => ({
   id: '',
   name: '',
   subtitle: '',
   description: '',
   price: 0,
-  image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png'),
+  image: '',
   images: [],
   intro: '',
   unit: '',
@@ -897,6 +912,10 @@ const createEmptyProduct = () => ({
 const product = ref(createEmptyProduct())
 const quantity = ref(1)
 const selectedSkuId = ref(null)
+const routeProductId = ref('')
+let productRequestSequence = 0
+let loadedSession = null
+let unsubscribeSession = null
 const showManual = ref(false)
 const showPolicy = ref(false)
 const detailTab = ref('desc')
@@ -917,7 +936,7 @@ const productImages = computed(() => {
   if (product.value.images && product.value.images.length > 0) {
     return product.value.images
   }
-  return product.value.image ? [product.value.image] : [getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')]
+  return [product.value.image]
 })
 
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
@@ -925,15 +944,11 @@ const usageText = computed(() => product.value.commonUsage || product.value.usag
 const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
 const skuList = computed(() => Array.isArray(product.value.skus) ? product.value.skus : [])
 const selectedSku = computed(() => {
-  if (!skuList.value.length) {
-    return null
-  }
-  return skuList.value.find(item => String(item.id) === String(selectedSkuId.value)) ||
-    skuList.value.find(item => Number(item.defaultFlag) === 1) ||
-    skuList.value[0]
+  try { return resolveProductSku(product.value, selectedSkuId.value) } catch (_) { return null }
 })
 const selectedSpec = computed(() => {
   const sku = selectedSku.value
+  if (skuList.value.length && !sku) return '所选规格已失效，请重新选择'
   return sku?.specText || sku?.skuName || product.value.specText || product.value.packageSpec || product.value.unit || '默认规格'
 })
 const displayPrice = computed(() => {
@@ -1022,34 +1037,16 @@ const getSelectedCartKey = (targetProduct = product.value) => {
 }
 
 const withSelectedSku = (targetProduct = product.value) => {
-  const sku = String(targetProduct?.id) === String(product.value.id) ? selectedSku.value : null
-  if (!sku) {
-    return targetProduct
-  }
-  return {
-    ...targetProduct,
-    id: product.value.id,
-    productId: product.value.id,
-    skuId: sku.id,
-    skuCode: sku.skuCode || '',
-    skuName: sku.skuName || '',
-    skuSpecText: sku.specText || sku.skuName || '',
-    price: Number(sku.price || 0),
-    originalPrice: Number(sku.originalPrice || 0),
-    stock: inventoryStock(sku.stock, product.value.stock),
-    ...inventoryFields(sku, product.value),
-    unit: sku.unit || product.value.unit,
-    specText: sku.specText || sku.skuName || product.value.specText,
-    image: sku.image || product.value.image,
-    coverImage: sku.image || product.value.coverImage || product.value.image
-  }
+  if (String(targetProduct?.id) !== String(product.value.id)) return targetProduct
+  try { return withProductSku(targetProduct, resolveProductSku(targetProduct, selectedSkuId.value)) }
+  catch (_) { return { ...targetProduct, available: false, stock: 0, inventoryStatus: 'UNAVAILABLE' } }
 }
 
 const selectSku = (sku) => {
   if (!sku?.id) {
     return
   }
-  if (!isPurchaseAvailable(sku)) {
+  if (!isPurchaseAvailable(withProductSku(product.value, sku))) {
     uni.showToast({
       title: '该规格已售罄',
       icon: 'none'
@@ -1079,7 +1076,7 @@ const loadRecommendCartQuantities = () => {
   cartQuantities.value = nextQuantities
 }
 
-const applyProduct = (source) => {
+const applyProduct = (source, { preserveQuantity = false } = {}) => {
   const mapped = mapProductDetail(source)
   product.value = {
     ...createEmptyProduct(),
@@ -1089,24 +1086,33 @@ const applyProduct = (source) => {
   comboProducts.value = Array.isArray(mapped.relatedProducts) ? mapped.relatedProducts : []
   starProducts.value = Array.isArray(mapped.starProducts) ? mapped.starProducts : []
   recommendTab.value = resolveRecommendTab()
-  selectedSkuId.value = resolveDefaultSkuId(mapped.skus)
-  loadQuantityFromStorage()
+  selectedSkuId.value = selectedSkuId.value || resolveDefaultSkuId(mapped.skus)
+  if (preserveQuantity) quantity.value = normalizePurchaseQuantity(withSelectedSku(), quantity.value)
+  else loadQuantityFromStorage()
   loadRecommendCartQuantities()
 }
 
 const loadProduct = async (id) => {
+  if (!id) return
+  const sequence = ++productRequestSequence
+  const session = getSessionGeneration()
+  const preserveQuantity = loadedSession === session && String(product.value.id) === String(id)
+  product.value = { ...product.value, available: false }
   try {
     uni.showLoading({ title: '加载中...' })
     const response = await getProductDetail(id)
-    applyProduct(response)
+    if (sequence !== productRequestSequence || !isCurrentSession(session)) return
+    applyProduct(response, { preserveQuantity })
+    loadedSession = session
   } catch (error) {
+    if (sequence !== productRequestSequence || !isCurrentSession(session)) return
     console.error('loadProduct failed:', error)
     uni.showToast({
       title: error.message || '加载失败',
       icon: 'none'
     })
   } finally {
-    uni.hideLoading()
+    if (sequence === productRequestSequence && isCurrentSession(session)) uni.hideLoading()
   }
 }
 
@@ -1369,24 +1375,37 @@ const flyToCart = async (event, item) => {
 }
 
 onLoad((options) => {
+  productRequestSequence++
+  loadedSession = null
+  unsubscribeSession?.()
   logPageView('MEDICINE_DETAIL', options?.id || '')
   product.value = createEmptyProduct()
-
-  if (options.id) {
-    loadProduct(options.id)
-  } else if (options.product) {
+  selectedSkuId.value = options.skuId || null
+  routeProductId.value = options.id || ''
+  if (!routeProductId.value && options.product) {
     try {
       const parsed = JSON.parse(decodeURIComponent(options.product))
-      applyProduct(parsed)
-      if (parsed.id) {
-        loadProduct(parsed.id)
-      }
+      routeProductId.value = parsed.id || ''
     } catch (error) {
       console.error('parse product failed:', error)
     }
   }
-
+  unsubscribeSession = onSessionChanged(() => {
+    productRequestSequence++
+    loadedSession = null
+    product.value = createEmptyProduct()
+    selectedSkuId.value = null
+    quantity.value = 1
+    uni.hideLoading()
+  })
   loadCartCount()
+})
+
+onUnload(() => {
+  productRequestSequence++
+  unsubscribeSession?.()
+  unsubscribeSession = null
+  uni.hideLoading()
 })
 
 let unsubscribeCartUpdated = null
@@ -1406,10 +1425,9 @@ onUnmounted(() => {
   }
 })
 
-onShow(() => {
+onShow(async () => {
   loadCartCount()
-  loadQuantityFromStorage()
-  loadRecommendCartQuantities()
+  await loadProduct(routeProductId.value)
 })
 </script>
 
@@ -2063,6 +2081,13 @@ onShow(() => {
   height: 4rpx;
   background: #e63939;
   border-radius: 2rpx;
+}
+
+.recommend-more {
+  padding: 0 30rpx 24rpx;
+  text-align: right;
+  font-size: 26rpx;
+  color: #e63939;
 }
 
 .combo-disclaimer {

@@ -43,7 +43,6 @@ const pageSession = getSessionGeneration()
 import { ref, onMounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { 
-  STORAGE_KEY_SHIPPING_ADDRESSES,
   STORAGE_KEY_DEFAULT_ADDRESS_ID
 } from '@/utils/storage.js'
 import { getAddressList, deleteAddress as delAddressApi, setDefaultAddress as setDefaultApi } from '@/api/address.js'
@@ -60,7 +59,6 @@ onMounted(() => {
     isSelectMode.value = currentPage.options.select === 'true'
   }
   
-  loadAddresses()
 })
 
 onShow(() => {
@@ -79,14 +77,11 @@ const loadAddresses = async () => {
     if (!isCurrentSession(pageSession)) return
     addresses.value = list
     
-    // 同步到本地存储（作为缓存）
-    uni.setStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES, list)
   } catch (e) {
     if (!isCurrentSession(pageSession)) return
     console.error('加载地址列表失败:', e)
-    // 失败时从本地存储读取
-    const saved = uni.getStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES) || []
-    addresses.value = saved
+    addresses.value = []
+    uni.showToast({ title: '地址加载失败，请重试', icon: 'none' })
   }
 }
 
@@ -99,7 +94,7 @@ const selectAddress = (address) => {
       const prevPage = pages[pages.length - 2]
       // 通过事件总线或全局状态传递选中的地址
       // 这里使用 storage 临时存储
-      uni.setStorageSync('temp_selected_address', address)
+      uni.setStorageSync('temp_selected_address', address.id)
       uni.navigateBack()
     }
   } else {
@@ -119,7 +114,6 @@ const setDefaultAddress = async (addressId) => {
     addresses.value.forEach(addr => {
       addr.isDefault = addr.id === addressId
     })
-    uni.setStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES, addresses.value)
     uni.setStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID, addressId)
     uni.showToast({ title: '已设为默认地址', icon: 'success' })
     

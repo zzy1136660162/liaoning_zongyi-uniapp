@@ -49,8 +49,9 @@
             <view v-for="product in filteredProducts" :key="product.id" class="product-item">
               <image
                 class="product-image"
-                :src="getImageUrl(product.image)"
+                :src="getProductImageUrl(product.image)"
                 mode="aspectFill"
+                @error="handleProductImageError(product.image)"
                 @click="goToDetail(product)"
               ></image>
               <view class="product-info">
@@ -68,7 +69,7 @@
                       <button class="quantity-btn" @click="increaseQuantity(product)">+</button>
                     </view>
                     <template v-else>
-                      <text class="product-price">￥{{ Number(product.price || 0).toFixed(2) }}</text>
+                      <text class="product-price">￥{{ Number(product.price || 0).toFixed(2) }}起</text>
                       <button class="select-btn" :id="`select-btn-${product.id}`" @click="goToNotice(product)">选择</button>
                     </template>
                   </view>
@@ -128,6 +129,7 @@ import {
   setCartItemQuantity
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
+import { useProductImages } from '@/utils/product-image.js'
 import { getToken } from '@/utils/request.js'
 import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
@@ -136,9 +138,9 @@ import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 
 const HEALTH_BIZ_TYPE = 2
 const PRODUCT_PAGE_SIZE = 20
-const PRODUCT_LIST_TTL = 5 * 60 * 1000
 
 export default {
+  setup: useProductImages,
   components: { TabBar },
   data() {
     return {
@@ -154,7 +156,6 @@ export default {
       },
       verifiedProducts: {},
       currentTab: 'home',
-      loadedCategories: {},
       productPageState: {},
       categoryList: [],
       unsubscribeCartUpdated: null,
@@ -182,9 +183,9 @@ export default {
     this.unsubscribeCartUpdated = subscribeCartUpdated(() => {
       this.loadVerifiedProductsFromStorage()
     })
-    this.loadProducts()
   },
   onShow() {
+    this.loadProducts()
     this.loadVerifiedProductsFromStorage()
   },
   onUnload() {
@@ -219,29 +220,11 @@ export default {
           pageNum: 0,
           hasMore: true,
           loading: false,
-          loadedAt: 0,
           total: 0,
           records: []
         })
       }
       return this.productPageState[key]
-    },
-    syncCategoryProductsFromState(categoryId) {
-      const categoryKey = this.getCategoryKey(categoryId)
-      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
-      if (category) {
-        category.products = [...(this.getPageState(categoryId).records || [])]
-      }
-    },
-    isCategoryStale(categoryId) {
-      const state = this.getPageState(categoryId)
-      if (!state.loadedAt) {
-        return true
-      }
-      return Date.now() - state.loadedAt > PRODUCT_LIST_TTL
-    },
-    isCategoryFullyLoaded(categoryId) {
-      return this.loadedCategories[this.getPageStateKey(categoryId)] === true
     },
     resetCategoryProducts(categoryId) {
       const categoryKey = this.getCategoryKey(categoryId)
@@ -254,25 +237,26 @@ export default {
         pageNum: 0,
         hasMore: true,
         loading: false,
-        loadedAt: 0,
         total: 0,
         records: []
       })
-      delete this.loadedCategories[stateKey]
     },
     async loadProducts() {
+      const requestSeq = ++this.requestSeq
       try {
         uni.showLoading({ title: '加载中...' })
         const categoryList = await getCategoryList(HEALTH_BIZ_TYPE)
+        if (requestSeq !== this.requestSeq) return
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categories = [
           { id: 'all', name: '全部分类', products: [] },
           ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
         ]
         this.productPageState = {}
-        this.loadedCategories = {}
-        this.requestSeq += 1
-        await this.loadAllProducts(true)
+        if (!this.categories.some(category => this.getCategoryKey(category.id) === this.getCategoryKey(this.currentCategoryId))) {
+          this.currentCategoryId = 'all'
+        }
+        await this.fetchProductPage(this.currentCategoryId, { reset: true })
         this.loadVerifiedProductsFromStorage()
       } catch (error) {
         console.error('loadProducts failed:', error)
@@ -284,7 +268,7 @@ export default {
     async fetchProductPage(categoryId, { reset = false } = {}) {
       const categoryKey = this.getCategoryKey(categoryId)
       let state = this.getPageState(categoryId)
-      if (state.loading || (!reset && !state.hasMore)) {
+      if (!reset && (state.loading || !state.hasMore)) {
         return
       }
       if (reset) {
@@ -329,10 +313,6 @@ export default {
         state.total = total
         const loadedCount = state.records.length
         state.hasMore = total > 0 ? loadedCount < total : mapped.length >= PRODUCT_PAGE_SIZE
-        state.loadedAt = Date.now()
-        if (!state.hasMore) {
-          this.$set(this.loadedCategories, this.getPageStateKey(categoryId), true)
-        }
       } catch (error) {
         console.error('fetchProductPage failed:', error)
         throw error
@@ -352,19 +332,11 @@ export default {
         console.error('handleLoadMore failed:', error)
       }
     },
-    async loadAllProducts(reset = false) {
-      if (!reset && this.getPageState('all').loadedAt && !this.isCategoryStale('all')) {
-        this.syncCategoryProductsFromState('all')
-        return
-      }
-      await this.fetchProductPage('all', { reset: reset || this.isCategoryStale('all') })
+    async loadAllProducts() {
+      await this.fetchProductPage('all', { reset: true })
     },
-    async loadCategoryProducts(categoryId, reset = false) {
-      if (!reset && this.getPageState(categoryId).loadedAt && !this.isCategoryStale(categoryId)) {
-        this.syncCategoryProductsFromState(categoryId)
-        return
-      }
-      await this.fetchProductPage(categoryId, { reset: reset || this.isCategoryStale(categoryId) })
+    async loadCategoryProducts(categoryId) {
+      await this.fetchProductPage(categoryId, { reset: true })
     },
     loadVerifiedProductsFromStorage() {
       try {
@@ -377,7 +349,7 @@ export default {
     async switchCategory(categoryId) {
       this.currentCategoryId = categoryId
       if (categoryId === 'all') {
-        await this.loadAllProducts(false)
+        await this.loadAllProducts()
         this.loadVerifiedProductsFromStorage()
         return
       }
@@ -392,9 +364,9 @@ export default {
         this.searchTimer = null
         try {
           if (this.currentCategoryId === 'all') {
-            await this.loadAllProducts(true)
+            await this.loadAllProducts()
           } else {
-            await this.loadCategoryProducts(this.currentCategoryId, true)
+            await this.loadCategoryProducts(this.currentCategoryId)
           }
           this.loadVerifiedProductsFromStorage()
         } catch (error) {

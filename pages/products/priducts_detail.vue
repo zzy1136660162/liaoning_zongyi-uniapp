@@ -3,8 +3,9 @@
     <!-- 商品大图 -->
     <image
       class="banner"
-      :src="getImageUrl(product.image)"
+      :src="getProductImageUrl(product.image)"
       mode="widthFix"
+      @error="handleProductImageError(product.image)"
     />
 
     <!-- 标题 + 价格 + 数量 -->
@@ -166,25 +167,32 @@
   
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
+import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import { STORAGE_KEY_PRODUCT_QUANTITIES } from '@/utils/storage.js'
 import { getProductDetail } from '@/api/product.js'
-import { getImageUrl } from '@/utils/config.js'
+import { useProductImages } from '@/utils/product-image.js'
 import { logPageView } from '@/api/access-log.js'
 
-const product = ref({
+const { getProductImageUrl, handleProductImageError } = useProductImages()
+
+const createEmptyProduct = () => ({
   id: '',
-  name: '辽派膏滋',
-  price: 4.51,
-  image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png'),
+  name: '',
+  price: 0,
+  image: '',
   description: '',
   intro: '',
   unit: ''
 })
+const product = ref(createEmptyProduct())
 
 const count = ref(1)
 const isInitializing = ref(false) // 标记是否正在初始化
 const productId = ref(null) // 商品ID
+let productRequestSequence = 0
+let loadedSession = null
+let unsubscribeSession = null
 
 // 从存储中加载数量
 const loadQuantityFromStorage = () => {
@@ -247,34 +255,38 @@ const dec = () => {
 
 // ✅ 从API加载商品详情
 const loadProductDetail = async (id) => {
+  if (!id) return
+  const sequence = ++productRequestSequence
+  const session = getSessionGeneration()
+  const preserveQuantity = loadedSession === session && String(product.value.id) === String(id)
   try {
     uni.showLoading({ title: '加载中...' })
     
     const productData = await getProductDetail(id)
-    
-    console.log('商品详情:', productData)
+    if (sequence !== productRequestSequence || !isCurrentSession(session)) return
     
     product.value = {
       id: productData.id,
       name: productData.productName || productData.name,
       price: productData.price || 0,
-      image: getImageUrl(productData.coverImage || productData.image || productData.productImage || '/profile/liaoning_zongyi/zhongyi_gaoyao1.png'),
+      image: productData.coverImage || productData.image || productData.productImage || '',
       description: productData.description || '',
       intro: productData.intro || '',
       unit: productData.unit || ''
     }
 
     // 加载数量
-    loadQuantityFromStorage()
-    
-    uni.hideLoading()
+    if (!preserveQuantity) loadQuantityFromStorage()
+    loadedSession = session
   } catch (error) {
+    if (sequence !== productRequestSequence || !isCurrentSession(session)) return
     console.error('加载商品详情失败:', error)
-    uni.hideLoading()
     uni.showToast({
       title: error.message || '加载失败',
       icon: 'none'
     })
+  } finally {
+    if (sequence === productRequestSequence && isCurrentSession(session)) uni.hideLoading()
   }
 }
 
@@ -301,6 +313,9 @@ const formatRichText = (htmlContent) => {
 
 // 接收页面参数
 onLoad((options) => {
+  productRequestSequence++
+  loadedSession = null
+  unsubscribeSession?.()
   // 记录页面访问日志
   if (options.id) {
     logPageView('产品详情', '用户进入产品详情页面', options.id)
@@ -310,53 +325,34 @@ onLoad((options) => {
     logPageView('产品详情', '用户进入产品详情页面')
   }
 
-  // 每次进入页面时清除现有数据，确保显示最新内容
-  product.value = {
-    id: '',
-    name: '辽派膏滋',
-    price: 4.51,
-    image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png'),
-    description: '',
-    intro: '',
-    unit: ''
-  }
-
-  // 优先使用商品ID从API加载
-  if (options.id) {
-    productId.value = options.id
-    loadProductDetail(options.id)
-  }
-  // 兼容旧的传参方式：如果传递了product参数，也尝试从其中获取ID并调用API
-  else if (options.product) {
+  product.value = createEmptyProduct()
+  productId.value = options.id || null
+  if (!productId.value && options.product) {
     try {
       const productData = JSON.parse(decodeURIComponent(options.product))
-      // 如果传递的数据中有ID，优先使用API获取完整数据
-      if (productData.id) {
-        productId.value = productData.id
-        loadProductDetail(productData.id)
-      } else {
-        // 如果没有ID，则使用传递的数据作为后备
-        product.value = {
-          id: productData.id || '',
-          name: productData.name || '辽派膏滋',
-          price: productData.price || 4.51,
-          image: getImageUrl(productData.coverImage || productData.image || productData.productImage || '/profile/liaoning_zongyi/zhongyi_gaoyao1.png'),
-          description: productData.description || '',
-          intro: productData.intro || '',
-          unit: productData.unit || ''
-        }
-        // 加载数量
-        loadQuantityFromStorage()
-      }
+      productId.value = productData.id || null
     } catch (e) {
       console.error('解析产品数据失败:', e)
     }
   }
+  unsubscribeSession = onSessionChanged(() => {
+    productRequestSequence++
+    loadedSession = null
+    product.value = createEmptyProduct()
+    count.value = 1
+    uni.hideLoading()
+  })
 })
 
-// 页面显示时重新加载数量（从列表页返回时）
-onShow(() => {
-  loadQuantityFromStorage()
+onUnload(() => {
+  productRequestSequence++
+  unsubscribeSession?.()
+  unsubscribeSession = null
+  uni.hideLoading()
+})
+
+onShow(async () => {
+  await loadProductDetail(productId.value)
 })
 
 // 客服按钮点击事件

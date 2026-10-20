@@ -3,7 +3,6 @@
  */
 
 import { get, post } from '@/utils/request.js'
-import { API_PATHS } from '@/utils/config.js'
 
 /**
  * 申请退货
@@ -19,12 +18,30 @@ export const applyRefund = (data) => {
 /**
  * 获取用户退货申请列表
  */
-export const getRefundList = () => {
-  return get('/api/refund/list', {}, {
+export const getRefundList = (params = {}) => getRefundPage(params).then(page => page.rows)
+
+/** 获取一页退款记录及总数，旧调用方仍可使用数组返回结构。 */
+export const getRefundPage = (params = {}) => {
+  return get('/api/refund/list', params, {
     needAuth: true,
-    showLoading: true
+    showLoading: false,
+    returnResponse: true
+  }).then(response => {
+    const rows = Array.isArray(response.data) ? response.data : []
+    return {
+      rows,
+      total: response.total ?? rows.length,
+      pageNum: response.pageNum ?? 1,
+      pageSize: response.pageSize ?? rows.length,
+      hasMore: response.hasMore === true
+    }
   })
 }
+
+export const getRefundStats = () => get('/api/refund/stats', {}, {
+  needAuth: true,
+  showLoading: false
+})
 
 /**
  * 获取退货申请详情

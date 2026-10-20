@@ -141,7 +141,6 @@
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import {
   STORAGE_KEY_CURRENT_ORDER,
-  STORAGE_KEY_PRESCRIPTION_ORDERS,
   STORAGE_KEY_VERIFIED_PRODUCTS,
   STORAGE_KEY_PRODUCT_QUANTITIES, STORAGE_KEY_SELECTED_PRODUCTS
 } from '@/utils/storage.js'
@@ -258,60 +257,28 @@ export default {
       return this.orderStatus.status === 0
     }
   },
-  async onLoad(options) {
+  onLoad(options) {
     this.pageOptions.prescriptionNo = this.isValidPrescriptionId(options.prescriptionNo) ? options.prescriptionNo : null
     this.pageOptions.orderId = this.isUsableId(options.orderId) ? options.orderId : null
-
-    if (this.pageOptions.prescriptionNo) {
-      await this.loadPrescriptionById(this.pageOptions.prescriptionNo)
-    } else if (this.pageOptions.orderId) {
-      await this.loadOrderFromOrderId(this.pageOptions.orderId)
-    }
-
-    // 接收处方数据参数（与复诊详情页保持一致）
-    if (options.prescription) {
+    if (!this.pageOptions.prescriptionNo && options.prescription) {
       try {
         const prescriptionData = JSON.parse(decodeURIComponent(options.prescription))
-        console.log('接收到的处方数据:', prescriptionData)
-
-        // 更新处方信息
-        this.detail.visitNo = prescriptionData.id || prescriptionData.visitNo || this.detail.visitNo
-        this.detail.formulaName = prescriptionData.details || prescriptionData.medicineName || prescriptionData.formulaName || prescriptionData.name || this.detail.formulaName
-        this.detail.packCount = prescriptionData.doses || prescriptionData.quantity || prescriptionData.packCount || this.detail.packCount
-        this.detail.productPrice = prescriptionData.productPrice || this.detail.productPrice
-        this.applyPatientSnapshot(prescriptionData)
-        this.detail.diagnosis = prescriptionData.diagnosis || this.detail.diagnosis
-        this.detail.department = prescriptionData.department || this.detail.department
-        const doctorName = this.resolvePrescriptionDoctorName(prescriptionData)
-        if (doctorName) {
-          this.detail.doctorName = doctorName
-        }
-        const rawDate = this.resolvePrescriptionDate(prescriptionData) || this.detail.date
-        this.detail.date = this.formatDate(rawDate) || this.detail.date
-
-            // 如果传入数据中包含医生ID，尝试用医生表的 outpatient_no 覆盖 visitNo
-            await (async () => {
-              try {
-                const doctorId = prescriptionData.doctorId || prescriptionData.doctor_id || prescriptionData.doctor || null
-                if (doctorId) {
-                  const doc = await getDoctorDetail(doctorId)
-                  if (doc) {
-                    this.detail.visitNo = doc.outpatientNo || doc.outpatient_no || this.detail.visitNo
-                    console.log('从医生表获取门诊号并设置 visitNo:', this.detail.visitNo)
-                  }
-                }
-              } catch (e) {
-                console.warn('通过 doctorId 获取医生门诊号失败', e)
-              }
-            })()
+        const id = prescriptionData.id || prescriptionData.visitNo
+        if (this.isValidPrescriptionId(id)) this.pageOptions.prescriptionNo = id
       } catch (e) {
         console.error('解析处方数据失败:', e)
       }
     }
-
-    await this.loadOrderStatus()
-
     logPageView('处方详情', '用户进入处方详情页面')
+  },
+  async onShow() {
+    if (!isCurrentSession(this.sessionGeneration)) return
+    if (this.pageOptions.prescriptionNo) {
+      await this.loadPrescriptionById(this.pageOptions.prescriptionNo)
+      await this.loadOrderStatus()
+    } else if (this.pageOptions.orderId) {
+      await this.loadOrderFromOrderId(this.pageOptions.orderId)
+    }
   },
   methods: {
     // 图片URL处理函数
@@ -460,17 +427,8 @@ export default {
 
     // 获取订单状态信息
     async loadOrderStatus() {
+      this.orderStatus = { status: null, orderNo: '', logisticsNo: '', logisticsCompany: '', order: null }
       try {
-        // 首先尝试从存储的订单信息中获取（处理正在创建的订单）
-        const currentOrder = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
-        if (currentOrder && currentOrder.prescriptions && currentOrder.prescriptions.includes(this.detail.visitNo)) {
-          // 如果当前订单包含此门诊号，说明这是一个正在处理的订单
-          this.orderStatus.status = 0 // 待支付
-          this.orderStatus.orderNo = currentOrder.orderNo || ''
-          console.log('从本地存储获取订单状态（待支付）:', this.orderStatus)
-          return
-        }
-
         // 通过处方ID查询订单信息
         // 优先使用原始的 prescriptionNo 参数，其次使用 detail.visitNo
         const prescriptionId = this.pageOptions.prescriptionNo || (this.isValidPrescriptionId(this.detail.visitNo) ? this.detail.visitNo : null)
@@ -500,7 +458,7 @@ export default {
           console.log('通过处方ID查询到订单状态:', this.orderStatus)
           console.log('从订单更新处方详情:', this.detail)
         } else {
-          console.log('未找到对应的订单信息，保持默认状态')
+          this.orderStatus.status = 0
         }
       } catch (error) {
         console.error('获取订单状态失败:', error)
@@ -532,6 +490,8 @@ export default {
               console.log('备用方案：从订单列表中找到订单状态:', this.orderStatus)
               console.log('从订单更新处方详情:', this.detail)
             }
+          } else {
+            this.orderStatus.status = 0
           }
         } catch (backupError) {
           console.error('备用方案也失败:', backupError)
@@ -611,8 +571,7 @@ export default {
         ''
     },
 
-    // 根据处方ID从 storage 加载处方信息
-    // ✅ 从API加载处方详情
+    // 从API加载处方详情
     async loadPrescriptionById(id) {
       if (!this.isValidPrescriptionId(id)) {
         console.warn('处方ID无效，跳过处方详情加载:', id)
@@ -784,14 +743,6 @@ export default {
             console.warn('处理首项商品关联医师/药师信息失败', e)
           }
 
-          // 缓存到本地
-          const prescriptions = uni.getStorageSync(STORAGE_KEY_PRESCRIPTION_ORDERS) || []
-          const index = prescriptions.findIndex(p => p.id === id)
-          if (index > -1) {
-            prescriptions[index] = { ...prescriptions[index], ...prescriptionData }
-            if (!isCurrentSession(this.sessionGeneration)) return
-            uni.setStorageSync(STORAGE_KEY_PRESCRIPTION_ORDERS, prescriptions)
-          }
         }
 
         uni.hideLoading()
@@ -817,29 +768,7 @@ export default {
           duration: 3000
         })
 
-        // API失败时从本地加载
-        const prescriptions = uni.getStorageSync(STORAGE_KEY_PRESCRIPTION_ORDERS) || []
-        const prescription = prescriptions.find(p => p.id === id || p.visitNo === id)
-
-        if (prescription) {
-          this.detail.visitNo = prescription.id || prescription.visitNo || this.detail.visitNo
-          this.detail.formulaName = prescription.details || prescription.medicineName || prescription.formulaName || prescription.name || this.detail.formulaName
-          this.detail.packCount = prescription.doses || prescription.quantity || prescription.packCount || this.detail.packCount
-          this.detail.productPrice = prescription.productPrice || this.detail.productPrice
-          this.detail.diagnosis = prescription.diagnosis || this.detail.diagnosis
-          this.detail.department = prescription.department || this.detail.department
-          const doctorName = this.resolvePrescriptionDoctorName(prescription)
-          if (doctorName) {
-            this.detail.doctorName = doctorName
-          }
-          const rawDate = this.resolvePrescriptionDate(prescription) || this.detail.date
-          this.detail.date = this.formatDate(rawDate) || this.detail.date
-          this.applyPatientSnapshot(prescription)
-        } else {
-          // 如果 storage 中没有找到，使用 prescriptionNo 作为 visitNo
-          this.detail.visitNo = id
-          console.warn('未在 storage 中找到处方信息，使用默认值')
-        }
+        this.detail.visitNo = id
       }
     },
 

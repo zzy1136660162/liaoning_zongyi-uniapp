@@ -116,13 +116,13 @@
             >
               取消订单
             </button>
-            <!-- <button
-              v-if="order.status === 0" 
+            <button
+              v-if="canPayOrder(order)"
               class="action-btn pay-btn" 
-              @click.stop="goToOrderDetail(order.id)"
+              @click.stop="handlePayOrder(order)"
             >
-              查看订单
-            </button> -->
+              去支付
+            </button>
             <button
               v-if="order.status === 2"
               class="action-btn confirm-btn"
@@ -188,7 +188,7 @@ import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt } from '@/api
 import { checkCanApplyRefund } from '@/api/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { isTherapyOrder } from '@/utils/therapy.js'
-import { getOrderStatusText } from '@/utils/order-status.js'
+import { canPayOrder, getOrderStatusText } from '@/utils/order-status.js'
 import { getCartTotalQuantity } from '@/utils/cart.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
@@ -211,7 +211,6 @@ let unsubscribeCartUpdated = null
 let unsubscribeSessionChanged = null
 let requestSequence = 0
 let disposed = false
-let reloadOnShow = false
 
 const tabs = ref([
   { key: 'all', label: '全部' },
@@ -408,7 +407,6 @@ const fetchOrderPage = async (nextPage) => {
 // 取消、收货和下拉刷新都重新读取当前分类的第一页。
 const loadOrders = () => {
   if (disposed) return
-  reloadOnShow = false
   orders.value = []
   pageNum.value = 0
   total.value = 0
@@ -520,13 +518,10 @@ const handleCancelOrder = async (orderId) => {
 }
 
 // 去支付
-const handlePayOrder = (orderId) => {
-  logButtonClick('去支付', 'ORDER_LIST', orderId.toString())
-  uni.showToast({
-    title: '跳转支付页面',
-    icon: 'none'
-  })
-  // TODO: 跳转到支付页面
+const handlePayOrder = (order) => {
+  if (!canPayOrder(order)) return
+  logButtonClick('去支付', 'ORDER_LIST', String(order.id))
+  goToOrderDetail(order.id)
 }
 
 // ✅ 确认收货
@@ -672,14 +667,12 @@ onMounted(() => {
     loading.value = false
     refreshing.value = false
     loadError.value = '登录状态已变更'
-    reloadOnShow = true
   })
-  loadOrders()
 })
 
 onShow(() => {
   refreshCartCount()
-  if (reloadOnShow) loadOrders()
+  loadOrders()
 })
 
 onUnmounted(() => {

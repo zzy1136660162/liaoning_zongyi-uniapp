@@ -194,7 +194,6 @@ const mapProductSku = (sku = {}) => {
     specText: pickField(sku, 'specText', 'spec_text') || '',
     unit: pickField(sku, 'unit') || '',
     price: Number(pickField(sku, 'price') || 0),
-    originalPrice: Number(pickField(sku, 'originalPrice', 'original_price') || 0),
     stock: inventoryStock(sku.stock),
     ...inventoryFields(sku),
     stockWarn: Number(pickField(sku, 'stockWarn', 'stock_warn') || 0),

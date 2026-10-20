@@ -47,6 +47,17 @@ const getVoucherList = (order = {}) => {
 
 export const isAfterSaleOrderStatus = status => AFTER_SALE_ORDER_STATUSES.includes(toNumber(status))
 
+// 续付必须以接口明确返回的未付款状态为准，缺失字段不视为 0。
+export const canPayOrder = (order = {}) => {
+  const status = toNumber(order.orderStatus ?? order.order_status ?? order.status)
+  const payStatus = toNumber(order.payStatus ?? order.pay_status)
+  const fulfillment = order.paymentFulfillmentStatus ?? order.payment_fulfillment_status
+  const refundStatus = toNumber(order.refundStatus ?? order.refund_status)
+  return Boolean(order.id) && status === 0 && payStatus === 0 &&
+    !fulfillment && (refundStatus === null || refundStatus === 0) &&
+    !(order.refundApplicationId ?? order.refund_application_id)
+}
+
 export const isTherapyLikeOrder = (order = {}) => {
   const redeemStatus = toNumber(order.redeemStatus ?? order.redeem_status)
   // 包含有核销券的混合订单，不能用来决定整单履约主状态。

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { loadSetup } from './sfc-harness.mjs'
 
 let patientRows = []
+let therapy = false
 const orders = []
 const toasts = []
 const page = loadSetup('pages/order/confirm.vue', {
@@ -12,16 +13,26 @@ const page = loadSetup('pages/order/confirm.vue', {
   isCurrentSession: () => true,
   assertCurrentSession: () => {},
   getPatientList: async () => patientRows,
-  getCurrentCheckoutProductIds: () => [],
+  getCurrentCheckoutProductIds: () => ['100'],
+  setCheckoutProductIds: () => {},
+  getCartEntries: () => ({ 100: { productId: 100, quantity: 1 } }),
+  splitCartItemKey: () => ({ productId: 100 }),
+  getProductDetail: async () => ({ id: 100, productName: 'mock goods', price: 12, available: true }),
+  resolveProductFlow: () => ({ valid: true, bizType: 2, requiresConsultation: false, allTraditionalTherapy: therapy }),
+  loadCartItems: categories => categories.flatMap(category => category.products.map(product => ({ ...product, quantity: 1 }))),
+  buildOrderInfo: items => ({ items, prescriptions: [], deliveryInfo: {}, cost: { medicineCost: 12, shippingFee: 0 }, total: 12 }),
+  getAddressList: async () => [{ id: 10, isDefault: true }],
+  queryFreight: async () => ({}),
   validateCheckoutStock: () => ({ valid: true }),
   ensureWeChatIdentity: async () => ({ openid: 'mock-openid' }),
   createOrder: async order => { orders.push(order); return { id: 1 } },
   wechatSinglePay: async () => ({}),
   logButtonClick: () => {},
   STORAGE_KEY_CURRENT_ORDER: 'mock-current-order',
+  STORAGE_KEY_DEFAULT_ADDRESS_ID: 'mock-address-id',
   ORDER_TYPE_THERAPY: 4,
   uni: {
-    getStorageSync: () => null, setStorageSync: () => {},
+    getStorageSync: () => null, setStorageSync: () => {}, removeStorageSync: () => {},
     showToast: toast => toasts.push(toast),
     showLoading: () => {}, hideLoading: () => {}, redirectTo: () => {}
   }
@@ -64,6 +75,7 @@ await page.loadCheckoutPatients()
 assert.equal(page.selectedPatient.value, null, '不能用其他患者替代已删除的复诊患者')
 
 page.isTherapyOrder.value = true
+therapy = true
 page.selectedAddress.value = null
 await page.loadCheckoutPatients()
 await page.submitOrder()

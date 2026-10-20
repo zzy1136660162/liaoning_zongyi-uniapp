@@ -35,6 +35,7 @@ const createList = () => {
   const list = { state, pageCalls, detailCalls, unmount, show }
   lists.push(list)
   mount()
+  show()
   return list
 }
 
@@ -70,6 +71,16 @@ test('第一页加载期间不显示空态，触底按页追加并去重，到�
   assert.match(source, /@refresherrefresh="refreshOrders"/)
   assert.match(source, /@click="retryOrders"/)
   assert.doesNotMatch(source, /filteredOrders|getRefundList/)
+})
+
+test('每次返回订单列表都重新请求当前分类第一页', async () => {
+  const list = createList()
+  list.pageCalls[0].resolve(page([row(1)])); await flush()
+  list.show()
+  assert.equal(list.pageCalls.length, 2)
+  assert.deepEqual(list.pageCalls[1].params, { tab: 'all', pageNum: 1, pageSize: 20 })
+  list.pageCalls[1].resolve(page([row(2)])); await flush()
+  assert.deepEqual(list.state.orders.value.map(order => order.id), [2])
 })
 
 test('切换分类重新请求第一页，旧分类成功和失败均不能覆盖当前状态', async () => {
@@ -265,6 +276,6 @@ test('处方订单主查询失败后按处方ID请求一条订单，匹配数字
 
   response = { id: 99, prescriptionId: 999, orderStatus: 3 }
   await prescription.loadOrderStatus()
-  assert.equal(prescription.orderStatus.order.id, 42)
+  assert.equal(prescription.orderStatus.order, null, '不沿用上次加载的订单状态')
   assert.equal(applied.length, 1)
 })

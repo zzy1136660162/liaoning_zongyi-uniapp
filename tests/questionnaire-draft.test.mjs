@@ -122,6 +122,7 @@ test('账号切换清空旧页面，旧加载响应不会恢复或显示上一�
   let finish
   const { definition, page } = createPage({ getQuestionnaireByProductId: () => new Promise(resolve => { finish = resolve }) })
   definition.onLoad.call(page, { id: '6' })
+  definition.onShow.call(page)
   signIn('B')
   finish(questionnaire())
   await flush()
@@ -135,7 +136,7 @@ test('账号切换清空旧页面，旧加载响应不会恢复或显示上一�
 test('旧提交异步返回不清除新账号草稿，不弹窗或跳转', async () => {
   let finish
   const { definition, page } = createPage({ submitQuestionnaire: () => new Promise(resolve => { finish = resolve }) })
-  definition.onLoad.call(page, { id: '6' }); await flush()
+  definition.onLoad.call(page, { id: '6' }); definition.onShow.call(page); await flush()
   page.selectAnswer(0, 10); page.saveDraft()
   const submitting = page.submitAnswer()
   signIn('B')
@@ -162,5 +163,24 @@ test('本地存储失败不会显示已暂存，没有确认账号时也不保�
   const { page: unknown } = createPage()
   await unknown.loadQuestionnaire(); unknown.selectAnswer(0, 10); unknown.saveDraft()
   assert.equal(toasts.at(-1).title, '暂存失败，请稍后重试')
+  assert.equal(draftEntries().length, 0)
+})
+
+test('重新展示刷新问卷，保留未提交且仍有效的答案，清除已删除选项的答案', async () => {
+  let current = questionnaire(), calls = 0
+  const { definition, page } = createPage({ getQuestionnaireByProductId: async () => { calls++; return current } })
+  definition.onLoad.call(page, { id: '6' })
+  assert.equal(calls, 0)
+  definition.onShow.call(page); await flush()
+  page.selectAnswer(0, 10); page.selectAnswer(1, 20)
+  current = questionnaire()
+  current.questions[0].options[0].valueKey = 'new-value'
+  current.questions[1].options = []
+  definition.onShow.call(page); await flush()
+  assert.equal(calls, 2)
+  assert.equal(page.questions[0].selectedOptionId, 10)
+  assert.equal(page.questions[0].answer, 'new-value')
+  assert.equal(page.questions[1].selectedOptionId, null)
+  assert.equal(page.questions[1].answer, null)
   assert.equal(draftEntries().length, 0)
 })

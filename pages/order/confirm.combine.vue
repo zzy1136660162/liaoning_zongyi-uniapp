@@ -95,11 +95,10 @@
 <script setup>
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 const pageSession = getSessionGeneration()
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { 
   STORAGE_KEY_CURRENT_ORDER,
-  STORAGE_KEY_SHIPPING_ADDRESSES,
   STORAGE_KEY_DEFAULT_ADDRESS_ID,
   STORAGE_KEY_VERIFIED_PRODUCTS,
   STORAGE_KEY_PRODUCT_QUANTITIES
@@ -132,26 +131,10 @@ const addresses = ref([])
 const selectedAddress = ref(null)
 const categories = ref([])
 
-onMounted(async () => {
-  await loadProducts()
-  loadOrderInfo()
-  loadAddresses()
-})
-
 onShow(async () => {
-  // 页面显示时检查是否有新选中的地址（从地址选择页面返回）
-  const tempAddress = uni.getStorageSync('temp_selected_address')
-  if (tempAddress) {
-    selectedAddress.value = tempAddress
-    uni.removeStorageSync('temp_selected_address')
-  } else {
-    // 重新加载地址列表（可能地址被编辑或删除）
-    loadAddresses()
-  }
-  
-  // 重新加载产品数据并更新订单金额（购物车数据可能已更新）
   await loadProducts()
   loadOrderInfo()
+  await loadAddresses()
 })
 
 // 加载产品数据（只加载购物车中的商品）
@@ -212,8 +195,10 @@ const loadOrderInfo = () => {
   if (!isCurrentSession(pageSession)) return
   try {
     const saved = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
-    if (saved) {
-      orderInfo.value = saved
+    {
+      orderInfo.value.cost.isDecocted = !!saved?.cost?.isDecocted
+      orderInfo.value.items = []
+      orderInfo.value.cost.medicineCost = 0
       
       // 从购物车数据重新计算商品合计
       if (categories.value.length > 0) {
@@ -249,16 +234,21 @@ const loadOrderInfo = () => {
   }
 }
 
-const loadAddresses = () => {
+const loadAddresses = async () => {
   if (!isCurrentSession(pageSession)) return
   try {
-    const saved = uni.getStorageSync(STORAGE_KEY_SHIPPING_ADDRESSES) || []
-    addresses.value = saved
+    const selection = uni.getStorageSync('temp_selected_address')
+    const selectedId = selection?.id || selection || selectedAddress.value?.id
+    uni.removeStorageSync('temp_selected_address')
+    const result = await getAddressList()
+    if (!isCurrentSession(pageSession)) return
+    addresses.value = Array.isArray(result) ? result : []
+    selectedAddress.value = null
     
     // 加载默认地址
-    const defaultId = uni.getStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID)
+    const defaultId = selectedId || uni.getStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID)
     if (defaultId) {
-      const defaultAddr = addresses.value.find(a => a.id === defaultId)
+      const defaultAddr = addresses.value.find(a => String(a.id) === String(defaultId))
       if (defaultAddr) {
         selectedAddress.value = defaultAddr
       }
@@ -268,7 +258,10 @@ const loadAddresses = () => {
     }
   } catch (e) {
     if (!isCurrentSession(pageSession)) return
+    addresses.value = []
+    selectedAddress.value = null
     console.error('加载地址列表失败:', e)
+    uni.showToast({ title: '地址加载失败，请重试', icon: 'none' })
   }
 }
 
@@ -297,6 +290,10 @@ const selectAddress = () => {
 }
 
 const submitOrder = async () => {
+  if (!isCurrentSession(pageSession)) return
+  await loadProducts()
+  loadOrderInfo()
+  await loadAddresses()
   if (!isCurrentSession(pageSession)) return
   if (!selectedAddress.value) {
     uni.showToast({ title: '请选择收货地址', icon: 'none' })

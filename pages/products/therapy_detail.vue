@@ -19,8 +19,9 @@
         >
           <image
             class="banner-img"
-            :src="img"
+            :src="getProductImageUrl(img)"
             mode="aspectFill"
+            @error="handleProductImageError(img)"
           />
         </swiper-item>
       </swiper>
@@ -169,6 +170,23 @@
       </view>
     </view>
 
+    <view
+      v-if="skuList.length"
+      class="sku-options"
+    >
+      <view
+        v-for="sku in skuList"
+        :key="sku.id"
+        class="sku-option"
+        :class="{ active: String(selectedSkuId) === String(sku.id), disabled: !isPurchaseAvailable(withProductSku(product, sku)) }"
+        @click="selectSku(sku)"
+      >
+        {{ sku.skuName || sku.specText }}
+        <text v-if="!isPurchaseAvailable(withProductSku(product, sku))">
+          （无货）
+        </text>
+      </view>
+    </view>
     <view class="select-section">
       <view class="select-label">
         已选
@@ -458,8 +476,9 @@
           >
             <image
               class="recommend-img"
-              :src="getImageUrl(item.image)"
+              :src="getProductImageUrl(item.image)"
               mode="aspectFit"
+              @error="handleProductImageError(item.image)"
             />
             <view class="recommend-info">
               <text class="recommend-name" selectable="true">
@@ -504,8 +523,9 @@
           >
             <image
               class="recommend-img"
-              :src="getImageUrl(item.image)"
+              :src="getProductImageUrl(item.image)"
               mode="aspectFit"
+              @error="handleProductImageError(item.image)"
             />
             <view class="recommend-info">
               <text class="recommend-name" selectable="true">
@@ -538,6 +558,13 @@
           暂无其他推荐
         </view>
       </view>
+      <navigator
+        v-if="recommendTab === 'star'"
+        class="recommend-more"
+        url="/pages/products/medicine_list"
+      >
+        查看更多商品 ›
+      </navigator>
       <view
         v-if="recommendTab === 'combo'"
         class="combo-disclaimer"
@@ -596,9 +623,10 @@
         <image
           v-for="(img, idx) in productImages"
           :key="idx"
-          :src="img"
+          :src="getProductImageUrl(img)"
           mode="widthFix"
           class="detail-img"
+          @error="handleProductImageError(img)"
         />
       </view>
 
@@ -763,13 +791,17 @@
 
 <script setup>
 import { computed, getCurrentInstance, ref } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
+import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
+import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { getImageUrl } from '@/utils/config.js'
+import { useProductImages } from '@/utils/product-image.js'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import {
   addCartItem,
+  buildCartItemKey,
   getCartProductInfo,
   getCartProductQuantity,
   getCartTotalQuantity,
@@ -792,13 +824,15 @@ import {
   shouldShowSfLogo
 } from '@/utils/product-display.js'
 
+const { getProductImageUrl, handleProductImageError } = useProductImages()
+
 const createEmptyProduct = () => ({
   id: '',
   name: '',
   subtitle: '',
   description: '',
   price: 0,
-  image: getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png'),
+  image: '',
   images: [],
   intro: '',
   unit: '',
@@ -839,6 +873,15 @@ const createEmptyProduct = () => ({
 })
 
 const product = ref(createEmptyProduct())
+const selectedSkuId = ref(null)
+const routeProductId = ref('')
+let productRequestSequence = 0
+let loadedSession = null
+let unsubscribeSession = null
+const skuList = computed(() => Array.isArray(product.value.skus) ? product.value.skus : [])
+const saleProduct = computed(() => {
+  try { return withSelectedSku() } catch (_) { return { ...product.value, available: false, stock: 0, inventoryStatus: 'UNAVAILABLE' } }
+})
 const quantity = ref(1)
 const showManual = ref(false)
 const showPolicy = ref(false)
@@ -857,15 +900,15 @@ const productImages = computed(() => {
   if (product.value.images && product.value.images.length > 0) {
     return product.value.images
   }
-  return product.value.image ? [product.value.image] : [getImageUrl('/profile/liaoning_zongyi/zhongyi_gaoyao1.png')]
+  return [product.value.image]
 })
 
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
 const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
-const selectedSpec = computed(() => product.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
-const maxPurchaseQuantity = computed(() => resolvePurchaseQuantityLimit(product.value))
-const canPurchase = computed(() => isPurchaseAvailable(product.value))
+const selectedSpec = computed(() => saleProduct.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
+const maxPurchaseQuantity = computed(() => resolvePurchaseQuantityLimit(saleProduct.value))
+const canPurchase = computed(() => isPurchaseAvailable(saleProduct.value))
 const canDecreaseQuantity = computed(() => canPurchase.value && quantity.value > 1)
 const canIncreaseQuantity = computed(() => {
   if (!canPurchase.value) {
@@ -874,11 +917,11 @@ const canIncreaseQuantity = computed(() => {
   return maxPurchaseQuantity.value === null || quantity.value < maxPurchaseQuantity.value
 })
 const priceInteger = computed(() => {
-  const [integer = '0'] = Number(product.value.price || 0).toFixed(2).split('.')
+  const [integer = '0'] = Number(saleProduct.value.price || 0).toFixed(2).split('.')
   return integer
 })
 const priceDecimal = computed(() => {
-  const [, decimal = '00'] = Number(product.value.price || 0).toFixed(2).split('.')
+  const [, decimal = '00'] = Number(saleProduct.value.price || 0).toFixed(2).split('.')
   return decimal
 })
 const originTypeText = computed(() => {
@@ -938,18 +981,29 @@ const resolveRecommendTab = () => {
   return 'combo'
 }
 
+const withSelectedSku = (targetProduct = product.value) => {
+  const id = targetProduct.skuId || (String(targetProduct.id) === String(product.value.id) ? selectedSkuId.value : null)
+  return withProductSku(targetProduct, resolveProductSku(targetProduct, id))
+}
+
+const selectSku = (sku) => {
+  if (!isPurchaseAvailable(withProductSku(product.value, sku))) return uni.showToast({ title: '该规格已售罄', icon: 'none' })
+  selectedSkuId.value = sku.id
+  loadQuantityFromStorage()
+}
+
 const loadQuantityFromStorage = () => {
   if (!product.value.id) {
     quantity.value = 1
     return
   }
   quantity.value = normalizePurchaseQuantity(
-    product.value,
-    getCartProductQuantity(product.value.id, 1)
+    saleProduct.value,
+    getCartProductQuantity(product.value.id, 1, selectedSkuId.value)
   )
 }
 
-const getQuantityLimitMessage = (targetProduct = product.value) => {
+const getQuantityLimitMessage = (targetProduct = saleProduct.value) => {
   const maxQuantity = resolvePurchaseQuantityLimit(targetProduct)
   const limitInfo = targetProduct?.limitInfo || targetProduct?.limit_info || {}
   const limitEnabled = limitInfo.enabled === true || limitInfo.enabled === 1 || limitInfo.enabled === '1'
@@ -968,7 +1022,7 @@ const getQuantityLimitMessage = (targetProduct = product.value) => {
   return maxQuantity === null ? '当前数量不可购买' : `库存最多可购买${maxQuantity}件`
 }
 
-const showQuantityLimit = (targetProduct = product.value) => {
+const showQuantityLimit = (targetProduct = saleProduct.value) => {
   uni.showToast({
     title: getQuantityLimitMessage(targetProduct),
     icon: 'none'
@@ -979,15 +1033,15 @@ const decreaseQuantity = () => {
   if (!canDecreaseQuantity.value) {
     return
   }
-  quantity.value = normalizePurchaseQuantity(product.value, quantity.value - 1)
+  quantity.value = normalizePurchaseQuantity(saleProduct.value, quantity.value - 1)
 }
 
 const increaseQuantity = () => {
   if (!canIncreaseQuantity.value) {
-    showQuantityLimit(product.value)
+    showQuantityLimit(saleProduct.value)
     return
   }
-  quantity.value = normalizePurchaseQuantity(product.value, quantity.value + 1)
+  quantity.value = normalizePurchaseQuantity(saleProduct.value, quantity.value + 1)
 }
 
 const loadRecommendCartQuantities = () => {
@@ -1001,33 +1055,44 @@ const loadRecommendCartQuantities = () => {
   cartQuantities.value = nextQuantities
 }
 
-const applyProduct = (source) => {
+const applyProduct = (source, { preserveQuantity = false } = {}) => {
   const mapped = mapProductDetail(source)
   product.value = {
     ...createEmptyProduct(),
     ...mapped
   }
+  try { selectedSkuId.value = resolveProductSku(product.value, selectedSkuId.value)?.id || null }
+  catch (error) { uni.showToast({ title: error.message, icon: 'none' }) }
   currentIndex.value = 1
   comboProducts.value = Array.isArray(mapped.relatedProducts) ? mapped.relatedProducts : []
   starProducts.value = Array.isArray(mapped.starProducts) ? mapped.starProducts : []
   recommendTab.value = resolveRecommendTab()
-  loadQuantityFromStorage()
+  if (preserveQuantity) quantity.value = normalizePurchaseQuantity(saleProduct.value, quantity.value)
+  else loadQuantityFromStorage()
   loadRecommendCartQuantities()
 }
 
 const loadProduct = async (id) => {
+  if (!id) return
+  const sequence = ++productRequestSequence
+  const session = getSessionGeneration()
+  const preserveQuantity = loadedSession === session && String(product.value.id) === String(id)
+  product.value = { ...product.value, available: false }
   try {
     uni.showLoading({ title: '加载中...' })
     const response = await getProductDetail(id)
-    applyProduct(response)
+    if (sequence !== productRequestSequence || !isCurrentSession(session)) return
+    applyProduct(response, { preserveQuantity })
+    loadedSession = session
   } catch (error) {
+    if (sequence !== productRequestSequence || !isCurrentSession(session)) return
     console.error('loadProduct failed:', error)
     uni.showToast({
       title: error.message || '加载失败',
       icon: 'none'
     })
   } finally {
-    uni.hideLoading()
+    if (sequence === productRequestSequence && isCurrentSession(session)) uni.hideLoading()
   }
 }
 
@@ -1085,20 +1150,20 @@ const ensureCartCompatible = (targetProduct) => {
   return true
 }
 
-const hasQuestionnairePassed = (productId) => {
-  const entry = getCartProductInfo(productId)
+const hasQuestionnairePassed = (targetProduct) => {
+  const entry = getCartProductInfo(targetProduct.id, targetProduct.skuId || null)
   return !!(entry && entry.questionnairePassed)
 }
 
 const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart') => {
   uni.navigateTo({
-    url: `/pages/products/product_notice?id=${targetProduct.id}&quantity=${selectedQuantity}&action=${action}`
+    url: `/pages/products/product_notice?id=${targetProduct.id}&quantity=${selectedQuantity}&action=${action}${targetProduct.skuId ? '&skuId=' + encodeURIComponent(targetProduct.skuId) : ''}`
   })
   return false
 }
 
 const goCheckout = (targetProduct) => {
-  const checkout = prepareCheckout([String(targetProduct.id)], [{
+  const checkout = prepareCheckout([buildCartItemKey(targetProduct.id, targetProduct.skuId)], [{
     id: 'detail_checkout',
     products: [targetProduct]
   }])
@@ -1123,6 +1188,8 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
   if (!targetProduct?.id) {
     return false
   }
+  try { targetProduct = withSelectedSku(targetProduct) }
+  catch (error) { uni.showToast({ title: error.message, icon: 'none' }); return false }
 
   if (!ensureLogin()) {
     return false
@@ -1147,7 +1214,7 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
     return false
   }
 
-  const alreadyPassed = hasQuestionnairePassed(targetProduct.id)
+  const alreadyPassed = hasQuestionnairePassed(targetProduct)
   if (Number(targetProduct.needQuestionnaire) === 1 && !alreadyPassed) {
     return navigateToNotice(targetProduct, requestedQuantity, mode)
   }
@@ -1289,34 +1356,50 @@ const flyToCart = async (event, item) => {
 }
 
 onLoad((options) => {
+  productRequestSequence++
+  loadedSession = null
+  unsubscribeSession?.()
   logPageView('MEDICINE_DETAIL', options?.id || '')
   product.value = createEmptyProduct()
-
-  if (options.id) {
-    loadProduct(options.id)
-  } else if (options.product) {
+  selectedSkuId.value = options.skuId || null
+  routeProductId.value = options.id || ''
+  if (!routeProductId.value && options.product) {
     try {
       const parsed = JSON.parse(decodeURIComponent(options.product))
-      applyProduct(parsed)
-      if (parsed.id) {
-        loadProduct(parsed.id)
-      }
+      routeProductId.value = parsed.id || ''
     } catch (error) {
       console.error('parse product failed:', error)
     }
   }
-
+  unsubscribeSession = onSessionChanged(() => {
+    productRequestSequence++
+    loadedSession = null
+    product.value = createEmptyProduct()
+    selectedSkuId.value = null
+    quantity.value = 1
+    uni.hideLoading()
+  })
   loadCartCount()
 })
 
-onShow(() => {
+onUnload(() => {
+  productRequestSequence++
+  unsubscribeSession?.()
+  unsubscribeSession = null
+  uni.hideLoading()
+})
+
+onShow(async () => {
   loadCartCount()
-  loadQuantityFromStorage()
-  loadRecommendCartQuantities()
+  await loadProduct(routeProductId.value)
 })
 </script>
 
 <style lang="scss" scoped>
+.sku-options { display: flex; flex-wrap: wrap; gap: 16rpx; margin: 24rpx; }
+.sku-option { padding: 16rpx 24rpx; border: 2rpx solid #ddd; border-radius: 12rpx; }
+.sku-option.active { border-color: #8b4934; color: #8b4934; }
+.sku-option.disabled { color: #999; background: #f4f4f4; }
 .page {
   background: #fff;
   min-height: 100vh;
@@ -1940,6 +2023,13 @@ onShow(() => {
   height: 4rpx;
   background: #e63939;
   border-radius: 2rpx;
+}
+
+.recommend-more {
+  padding: 0 30rpx 24rpx;
+  text-align: right;
+  font-size: 26rpx;
+  color: #e63939;
 }
 
 .combo-disclaimer {

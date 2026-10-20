@@ -75,7 +75,7 @@
           class="product-card"
           @click="goDetail(item)"
         >
-          <image class="product-image" :src="getImageUrl(item.image)" mode="aspectFill" />
+          <image class="product-image" :src="getProductImageUrl(item.image)" mode="aspectFill" @error="handleProductImageError(item.image)" />
           <view class="product-body">
             <view class="product-tags">
               <text class="tag primary" v-if="item.bizType === 1">本院产品</text>
@@ -85,7 +85,7 @@
             <text class="product-name">{{ item.name }}</text>
             <text class="product-desc">{{ item.description || '院内推荐商品' }}</text>
             <view class="product-bottom">
-              <text class="product-price">￥{{ Number(item.price || 0).toFixed(2) }}</text>
+              <text class="product-price">￥{{ Number(item.price || 0).toFixed(2) }}起</text>
               <text class="product-sales">已售 {{ item.salesVolume || 0 }}</text>
             </view>
           </view>
@@ -100,32 +100,33 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onShow } from '@dcloudio/uni-app'
 import { getCategoryProducts, mapProductListItem } from '@/api/product.js'
-import { getImageUrl } from '@/utils/config.js'
+import { useProductImages } from '@/utils/product-image.js'
 import { getCartTotalQuantity } from '@/utils/cart.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
 const HOSPITAL_BIZ_TYPE = 1
+const { getProductImageUrl, handleProductImageError } = useProductImages()
 
 const featuredProducts = ref([])
 const cartCount = ref(0)
 const loading = ref(false)
 const loadError = ref(false)
+let productRequestSeq = 0
 
 const loadFeaturedProducts = async () => {
-  if (loading.value) {
-    return
-  }
-
+  const requestSeq = ++productRequestSeq
   loadError.value = false
   loading.value = true
   try {
     const productPage = await getCategoryProducts(null, 1, 8, HOSPITAL_BIZ_TYPE)
+    if (requestSeq !== productRequestSeq) return
     const productList = productPage.records || productPage.list || []
     featuredProducts.value = productList.map(item => mapProductListItem(item))
   } catch (error) {
+    if (requestSeq !== productRequestSeq) return
     loadError.value = true
     console.error('loadFeaturedProducts failed:', error)
     uni.showToast({
@@ -133,7 +134,7 @@ const loadFeaturedProducts = async () => {
       icon: 'none'
     })
   } finally {
-    loading.value = false
+    if (requestSeq === productRequestSeq) loading.value = false
   }
 }
 
@@ -184,11 +185,8 @@ onUnmounted(() => {
   }
 })
 
-onLoad(() => {
-  loadFeaturedProducts()
-})
-
 onShow(() => {
+  loadFeaturedProducts()
   loadCartCount()
 })
 </script>

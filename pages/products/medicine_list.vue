@@ -8,375 +8,386 @@
       />
     </view>
     <view
-      class="hospital-intro"
-      :class="{ collapsed: imageCollapsed }"
-      :style="{ marginTop: imageCollapsed ? '-400rpx' : hospitalIntroMarginTop }"
-      @touchstart="onPullStart"
-      @touchmove="onPullMove"
-      @touchend="onPullEnd"
+      id="mall-content"
+      class="mall-content"
+      :class="{
+        'intro-collapsing': introMotion === 'collapse',
+        'intro-expanding': introMotion === 'expand'
+      }"
+      :style="{ marginTop: imageCollapsed ? '-400rpx' : '-40rpx' }"
+      @animationend="onIntroAnimationEnd"
     >
-      <view class="logo-wrap">
-        <image
-          class="hospital-logo"
-          src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png"
-          mode="aspectFit"
-        />
-        <view class="logo-badge">
-          互联网医院
-        </view>
-      </view>
-      <view class="hospital-info">
-        <view class="hospital-name-row">
-          <text class="hospital-name">
-            辽宁中医药大学附属医院互联网医院
-          </text>
-          <!-- <text class="verify-icon">✓</text> -->
-        </view>
-        <view class="hospital-desc">
-          便捷配方 · 权威认证 · 品质保障 · 放心开方
-        </view>
-        <view
-          class="internet-hospital-toggle"
-          @click="showInternetHospital = !showInternetHospital"
-        >
-          <text class="toggle-text flow-text-animate">
-            便捷配方操作流程
-          </text>
-          <uni-icons
-            :type="showInternetHospital ? 'up' : 'down'"
-            size="12"
-            color="#ff6b35"
+      <view
+        class="hospital-intro"
+        @touchstart="onPullStart"
+        @touchmove="onPullMove"
+        @touchend="onPullEnd"
+        @touchcancel="onPullEnd"
+      >
+        <view class="logo-wrap">
+          <image
+            class="hospital-logo"
+            src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png"
+            mode="aspectFit"
           />
+          <view class="logo-badge">
+            互联网医院
+          </view>
         </view>
-      </view>
-    </view>
-    <view
-      v-show="showInternetHospital"
-      class="flow-wrapper"
-    >
-      <view class="flow-steps">
-        <view class="flow-card">
-          <view class="flow-header">
-            <uni-icons
-              type="info"
-              size="14"
-              color="#4A90E2"
-            />
-            <text class="flow-title">
+        <view class="hospital-info">
+          <view class="hospital-name-row">
+            <text class="hospital-name">
+              辽宁中医药大学附属医院互联网医院
+            </text>
+            <!-- <text class="verify-icon">✓</text> -->
+          </view>
+          <view class="hospital-desc">
+            便捷配方 · 权威认证 · 品质保障 · 放心开方
+          </view>
+          <view
+            class="internet-hospital-toggle"
+            @click="showInternetHospital = !showInternetHospital"
+          >
+            <text class="toggle-text flow-text-animate">
               便捷配方操作流程
             </text>
-          </view>
-          <view class="flow-content">
-            <view class="flow-step">
-              <view class="step-num">
-                1
-              </view>
-              <text class="step-text">
-                选择制剂
-              </text>
-            </view>
-            <view class="flow-line" />
-            <view class="flow-step">
-              <view class="step-num">
-                2
-              </view>
-              <text class="step-text">
-                完善信息
-              </text>
-            </view>
-            <view class="flow-line" />
-            <view class="flow-step">
-              <view class="step-num">
-                3
-              </view>
-              <text class="step-text">
-                医生开方
-              </text>
-            </view>
-            <view class="flow-line" />
-            <view class="flow-step">
-              <view class="step-num">
-                4
-              </view>
-              <text class="step-text">
-                购买制剂
-              </text>
-            </view>
+            <uni-icons
+              :type="showInternetHospital ? 'up' : 'down'"
+              size="12"
+              color="#ff6b35"
+            />
           </view>
         </view>
       </view>
-    </view>
-    <view class="intro-divider" />
-    <view class="search-section">
-      <view class="search-bar">
-        <uni-icons
-          type="search"
-          size="18"
-          color="#999999"
-        />
-        <input
-          v-model="searchKeyword"
-          class="search-input"
-          placeholder="搜索院内制剂"
-          @input="handleSearch"
-        >
-        <button
-          class="search-btn"
-          @click="handleSearch"
-        >
-          搜索
-        </button>
-      </view>
-    </view>
-
-    <view class="main-content">
-      <scroll-view
-        class="category-nav"
-        scroll-y
+      <view
+        v-show="showInternetHospital"
+        class="flow-wrapper"
       >
-        <view
-          v-for="category in categories"
-          :key="category.id"
-          class="category-group"
-        >
-          <view
-            class="category-item"
-            :class="{ active: currentCategoryId === category.id }"
-            @click="switchCategory(category.id)"
-          >
-            <text class="category-name">
-              {{ category.name }}
-            </text>
-          </view>
-          <view
-            v-if="currentCategoryId === category.id && category.children && category.children.length > 0 && !isCategoryCollapsed(category.id)"
-            class="sub-category-inline"
-          >
-            <view
-              v-for="subCategory in getInlineSubCategories(category)"
-              :key="subCategory.id"
-              class="sub-category-inline-item"
-              :class="{ active: currentSubCategoryId === subCategory.id }"
-              @click.stop="switchSubCategory(subCategory.id)"
-            >
-              <text class="sub-category-inline-name">
-                {{ subCategory.name }}
+        <view class="flow-steps">
+          <view class="flow-card">
+            <view class="flow-header">
+              <uni-icons
+                type="info"
+                size="14"
+                color="#4A90E2"
+              />
+              <text class="flow-title">
+                便捷配方操作流程
               </text>
+            </view>
+            <view class="flow-content">
+              <view class="flow-step">
+                <view class="step-num">
+                  1
+                </view>
+                <text class="step-text">
+                  选择制剂
+                </text>
+              </view>
+              <view class="flow-line" />
+              <view class="flow-step">
+                <view class="step-num">
+                  2
+                </view>
+                <text class="step-text">
+                  完善信息
+                </text>
+              </view>
+              <view class="flow-line" />
+              <view class="flow-step">
+                <view class="step-num">
+                  3
+                </view>
+                <text class="step-text">
+                  医生开方
+                </text>
+              </view>
+              <view class="flow-line" />
+              <view class="flow-step">
+                <view class="step-num">
+                  4
+                </view>
+                <text class="step-text">
+                  购买制剂
+                </text>
+              </view>
             </view>
           </view>
         </view>
-      </scroll-view>
-
-      <view class="product-list-wrapper">
-        <view class="product-list-header">
-          <view class="header-left">
-            <view
-              class="prescription-title"
-              @click="switchToHorizontalLayout"
-            >
-              <text class="prescription-text">
-                制剂方
-              </text>
-            </view>
-            <view class="sort-section">
-              <view
-                class="sort-btn"
-                :class="{ active: sortType === '' }"
-                @click="toggleSort('')"
-              >
-                <text class="sort-text">
-                  综合
-                </text>
-              </view>
-              <view
-                class="sort-btn"
-                :class="{ active: sortType === 'sales' }"
-                @click="toggleSort('sales')"
-              >
-                <text class="sort-text">
-                  销量
-                </text>
-                <text
-                  class="sort-arrow"
-                  :class="{ desc: sortType === 'sales' && sortOrder === 'desc' }"
-                >
-                  ↓
-                </text>
-              </view>
-              <view
-                class="sort-btn"
-                :class="{ active: sortType === 'price' }"
-                @click="toggleSort('price')"
-              >
-                <text class="sort-text">
-                  价格
-                </text>
-                <text
-                  class="sort-arrow"
-                  :class="{ desc: sortType === 'price' && sortOrder === 'desc' }"
-                >
-                  ↓
-                </text>
-              </view>
-              <!-- <view
-                class="sort-btn"
-                :class="{ active: sortType === 'stock' }"
-                @click="toggleSort('stock')"
-              >
-                <text class="sort-text">
-                  库存
-                </text>
-                <text
-                  class="sort-arrow"
-                  :class="{ desc: sortType === 'stock' && sortOrder === 'desc' }"
-                >
-                  ↓
-                </text>
-              </view> -->
-            </view>
-          </view>
-          <!-- <view class="history-order" @click="goToHistory">
-            <uni-icons type="list" size="18" color="#666666"></uni-icons>
-            <text class="history-text">历史订单</text>
-          </view> -->
+      </view>
+      <view class="intro-divider" />
+      <view class="search-section">
+        <view class="search-bar">
+          <uni-icons
+            type="search"
+            size="18"
+            color="#999999"
+          />
+          <input
+            v-model="searchKeyword"
+            class="search-input"
+            placeholder="搜索院内制剂"
+            @input="handleSearch"
+          >
+          <button
+            class="search-btn"
+            @click="handleSearch"
+          >
+            搜索
+          </button>
         </view>
+      </view>
 
+      <view class="main-content">
         <scroll-view
-          class="product-list"
+          class="category-nav"
           scroll-y
-          lower-threshold="120"
-          @scrolltolower="handleLoadMore"
         >
-          <view class="product-items">
+          <view
+            v-for="category in categories"
+            :key="category.id"
+            class="category-group"
+          >
             <view
-              v-for="product in filteredProducts"
-              :key="product.id"
-              class="product-item"
+              class="category-item"
+              :class="{ active: currentCategoryId === category.id }"
+              @click="switchCategory(category.id)"
             >
-              <view class="image-wrapper">
-                <image
-                  class="product-image"
-                  :src="getImageUrl(product.image)"
-                  mode="aspectFill"
-                  @click="goToDetail(product)"
-                />
-                <view
-                  v-if="product.isNewProduct === 1"
-                  class="hot-badge"
-                >
-                  新
-                </view>
-              </view>
-              <view class="product-info">
-                <text
-                  class="product-name"
-                  @click="goToDetail(product)"
-                >
-                  <text
-                    v-if="product.categoryId === 34"
-                    class="therapy-tag"
-                  >
-                    传统疗法
-                  </text>
-                  <text
-                    v-if="product.isSelfDeveloped === 1"
-                    class="self-tag"
-                  >
-                    自研
-                  </text>
-                  <text
-                    v-if="product.isHospitalStarFormula === 1"
-                    class="self-tag2"
-                  >
-                    院藏王牌制剂
-                  </text>
-                  <text
-                    v-if="product.isNewProduct === 1"
-                    class="self-tag3"
-                  >
-                    重磅新品
-                  </text>
-                  {{ product.name }}
+              <text class="category-name">
+                {{ category.name }}
+              </text>
+            </view>
+            <view
+              v-if="currentCategoryId === category.id && category.children && category.children.length > 0 && !isCategoryCollapsed(category.id)"
+              class="sub-category-inline"
+            >
+              <view
+                v-for="subCategory in getInlineSubCategories(category)"
+                :key="subCategory.id"
+                class="sub-category-inline-item"
+                :class="{ active: currentSubCategoryId === subCategory.id }"
+                @click.stop="switchSubCategory(subCategory.id)"
+              >
+                <text class="sub-category-inline-name">
+                  {{ subCategory.name }}
                 </text>
-                <text
-                  v-if="product.description"
-                  class="product-desc"
-                >
-                  {{ product.description }}
-                </text>
-                <!-- <view class="product-meta-tags">
-                  <text class="meta-tag">
-                    {{ getExternalUseLabel(product.isExternal) }}
-                  </text>
-                  <text class="meta-tag">
-                    {{ getColdShippingLabel(product.coldShippingType) }}
-                  </text>
-                </view> -->
-                <view class="product-footer">
-                  <view class="product-summary">
-                    <text
-                      v-if="product.specText || product.unit"
-                      class="product-unit"
-                    >
-                      {{ product.specText || product.unit }}
-                    </text>
-                    <text class="product-sales">已售 {{ product.salesVolume ?? 0 }}</text>
-                  </view>
-                  <view class="product-price-row">
-                    <!-- 售罄状态 -->
-                    <view
-                      v-if="product.stock === 0"
-                      class="sold-out-tag"
-                    >
-                      售罄
-                    </view>
-                    <!-- 有库存且已添加数量 -->
-                    <view
-                      v-else-if="getProductQuantity(product.id) > 0"
-                      class="quantity-selector"
-                    >
-                      <uni-number-box
-                        :value="getProductQuantity(product.id)"
-                        :min="0"
-                        :max="999"
-                        :step="1"
-                        @change="(val) => onNumberBoxChange(product, val)"
-                      />
-                    </view>
-                    <!-- 有库存且未添加 -->
-                    <template v-else>
-                      <text class="product-price">
-                        ￥{{ Number(product.price || 0).toFixed(2) }}
-                      </text>
-                      <view
-                        class="add-btn"
-                        @click.stop="handleAddToCart(product)"
-                      >
-                        +
-                      </view>
-                    </template>
-                  </view>
-                </view>
               </view>
             </view>
           </view>
         </scroll-view>
-      </view>
-    </view>
 
-    <!-- <view class="cart-bar">
-      <view class="cart-icon-wrapper" @click="showCart" id="cart-icon-target">
-        <view class="cart-icon">
-          <uni-icons type="cart" size="30" color="#ffffff"></uni-icons>
+        <view class="product-list-wrapper">
+          <view class="product-list-header">
+            <view class="header-left">
+              <view
+                class="prescription-title"
+                @click="switchToHorizontalLayout"
+              >
+                <text class="prescription-text">
+                  制剂方
+                </text>
+              </view>
+              <view class="sort-section">
+                <view
+                  class="sort-btn"
+                  :class="{ active: sortType === '' }"
+                  @click="toggleSort('')"
+                >
+                  <text class="sort-text">
+                    综合
+                  </text>
+                </view>
+                <view
+                  class="sort-btn"
+                  :class="{ active: sortType === 'sales' }"
+                  @click="toggleSort('sales')"
+                >
+                  <text class="sort-text">
+                    销量
+                  </text>
+                  <text
+                    class="sort-arrow"
+                    :class="{ desc: sortType === 'sales' && sortOrder === 'desc' }"
+                  >
+                    ↓
+                  </text>
+                </view>
+                <view
+                  class="sort-btn"
+                  :class="{ active: sortType === 'price' }"
+                  @click="toggleSort('price')"
+                >
+                  <text class="sort-text">
+                    价格
+                  </text>
+                  <text
+                    class="sort-arrow"
+                    :class="{ desc: sortType === 'price' && sortOrder === 'desc' }"
+                  >
+                    ↓
+                  </text>
+                </view>
+                <!-- <view
+                  class="sort-btn"
+                  :class="{ active: sortType === 'stock' }"
+                  @click="toggleSort('stock')"
+                >
+                  <text class="sort-text">
+                    库存
+                  </text>
+                  <text
+                    class="sort-arrow"
+                    :class="{ desc: sortType === 'stock' && sortOrder === 'desc' }"
+                  >
+                    ↓
+                  </text>
+                </view> -->
+              </view>
+            </view>
+            <!-- <view class="history-order" @click="goToHistory">
+              <uni-icons type="list" size="18" color="#666666"></uni-icons>
+              <text class="history-text">历史订单</text>
+            </view> -->
+          </view>
+
+          <scroll-view
+            class="product-list"
+            scroll-y
+            lower-threshold="120"
+            @scrolltolower="handleLoadMore"
+          >
+            <view class="product-items">
+              <view
+                v-for="product in filteredProducts"
+                :key="product.id"
+                class="product-item"
+              >
+                <view class="image-wrapper">
+                  <image
+                    class="product-image"
+                    :src="getProductImageUrl(product.image)"
+                    mode="aspectFill"
+                    @error="handleProductImageError(product.image)"
+                    @click="goToDetail(product)"
+                  />
+                  <view
+                    v-if="product.isNewProduct === 1"
+                    class="hot-badge"
+                  >
+                    新
+                  </view>
+                </view>
+                <view class="product-info">
+                  <text
+                    class="product-name"
+                    @click="goToDetail(product)"
+                  >
+                    <text
+                      v-if="product.categoryId === 34"
+                      class="therapy-tag"
+                    >
+                      传统疗法
+                    </text>
+                    <text
+                      v-if="product.isSelfDeveloped === 1"
+                      class="self-tag"
+                    >
+                      自研
+                    </text>
+                    <text
+                      v-if="product.isHospitalStarFormula === 1"
+                      class="self-tag2"
+                    >
+                      院藏王牌制剂
+                    </text>
+                    <text
+                      v-if="product.isNewProduct === 1"
+                      class="self-tag3"
+                    >
+                      重磅新品
+                    </text>
+                    {{ product.name }}
+                  </text>
+                  <text
+                    v-if="product.description"
+                    class="product-desc"
+                  >
+                    {{ product.description }}
+                  </text>
+                  <!-- <view class="product-meta-tags">
+                    <text class="meta-tag">
+                      {{ getExternalUseLabel(product.isExternal) }}
+                    </text>
+                    <text class="meta-tag">
+                      {{ getColdShippingLabel(product.coldShippingType) }}
+                    </text>
+                  </view> -->
+                  <view class="product-footer">
+                    <view class="product-summary">
+                      <text
+                        v-if="product.specText || product.unit"
+                        class="product-unit"
+                      >
+                        {{ product.specText || product.unit }}
+                      </text>
+                      <text class="product-sales">已售 {{ product.salesVolume ?? 0 }}</text>
+                    </view>
+                    <view class="product-price-row">
+                      <!-- 售罄状态 -->
+                      <view
+                        v-if="product.stock === 0"
+                        class="sold-out-tag"
+                      >
+                        售罄
+                      </view>
+                      <!-- 有库存且已添加数量 -->
+                      <view
+                        v-else-if="getProductQuantity(product.id) > 0"
+                        class="quantity-selector"
+                      >
+                        <uni-number-box
+                          :value="getProductQuantity(product.id)"
+                          :min="0"
+                          :max="999"
+                          :step="1"
+                          @change="(val) => onNumberBoxChange(product, val)"
+                        />
+                      </view>
+                      <!-- 有库存且未添加 -->
+                      <template v-else>
+                        <text class="product-price">
+                          ￥{{ Number(product.price || 0).toFixed(2) }}起
+                        </text>
+                        <view
+                          class="add-btn"
+                          @click.stop="handleAddToCart(product)"
+                        >
+                          +
+                        </view>
+                      </template>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </scroll-view>
         </view>
-        <view class="cart-badge" v-if="cartCount > 0">{{ cartCount }}</view>
       </view>
-      <view class="cart-info">
-        <text class="cart-total">￥ {{ totalPrice.toFixed(2) }}</text>
-        <text class="cart-tip">不含复诊费，实际金额以结算为准</text>
-      </view>
-      <button class="submit-btn" @click="handleSubmit">提交</button>
-    </view> -->
+
+      <!-- <view class="cart-bar">
+        <view class="cart-icon-wrapper" @click="showCart" id="cart-icon-target">
+          <view class="cart-icon">
+            <uni-icons type="cart" size="30" color="#ffffff"></uni-icons>
+          </view>
+          <view class="cart-badge" v-if="cartCount > 0">{{ cartCount }}</view>
+        </view>
+        <view class="cart-info">
+          <text class="cart-total">￥ {{ totalPrice.toFixed(2) }}</text>
+          <text class="cart-tip">不含复诊费，实际金额以结算为准</text>
+        </view>
+        <button class="submit-btn" @click="handleSubmit">提交</button>
+      </view> -->
+    </view>
 
     <TabBar
       :current="currentTab"
@@ -413,6 +424,7 @@ import {
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
+import { useProductImages } from '@/utils/product-image.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { buildCategoryTree, normalizeCategoryId } from '@/utils/category-tree.js'
@@ -425,11 +437,12 @@ import {
 
 const PRODUCT_BIZ_TYPE_FILTER = null // null=全部, 1=医院制剂, 2=健康产品
 const PRODUCT_PAGE_SIZE = 20
-const PRODUCT_LIST_TTL = 5 * 60 * 1000
 
 export default {
+  setup: useProductImages,
   components: { TabBar },
   data() {
+    const shouldPlayIntro = !getApp().globalData.mallIntroPlayed
     return {
       showInternetHospital: false,
       searchKeyword: '',
@@ -448,21 +461,19 @@ export default {
       verifiedProducts: {},
       zeroQuantityProducts: {},
       currentTab: 'home',
-      loadedCategories: {},
       productPageState: {},
       categoryList: [],
       isScrolled: false,
       sortType: '',
       sortOrder: 'desc',
-      imageCollapsed: false,
-      hospitalIntroMarginTop: '-40rpx',
+      shouldPlayIntro,
+      imageCollapsed: !shouldPlayIntro,
+      introMotion: '',
       unsubscribeCartUpdated: null,
       searchTimer: null,
       requestSeq: 0,
-      pullStartY: 0,
-      pullOffset: 0,
+      pullStartY: null,
       isPullingIntro: false,
-      pullTimer: null,
       collapseTimer: null
     }
   },
@@ -492,21 +503,31 @@ export default {
     }
   },
   onLoad() {
+    // 首次进入即消费标记，动画中途离开也不重播。
+    getApp().globalData.mallIntroPlayed = true
     this.currentTab = 'home'
     uni.$on('refreshProductsList', this.loadVerifiedProductsFromStorage)
     this.unsubscribeCartUpdated = subscribeCartUpdated(() => {
       this.loadVerifiedProductsFromStorage('cartUpdated')
     })
-    this.loadProducts()
-    this.scheduleImageCollapse(2000)
+  },
+  onReady() {
+    if (this.shouldPlayIntro) {
+      this.scheduleImageCollapse()
+    }
   },
   onShow() {
+    this.loadProducts()
     this.loadVerifiedProductsFromStorage()
   },
   onPullDownRefresh() {
     this.handleRefreshProducts()
   },
+  onHide() {
+    this.finishIntro()
+  },
   onUnload() {
+    this.finishIntro()
     uni.$off('refreshProductsList', this.loadVerifiedProductsFromStorage)
     if (this.unsubscribeCartUpdated) {
       this.unsubscribeCartUpdated()
@@ -516,27 +537,40 @@ export default {
       clearTimeout(this.searchTimer)
       this.searchTimer = null
     }
-    if (this.collapseTimer) {
-      clearTimeout(this.collapseTimer)
-      this.collapseTimer = null
-    }
   },
   methods: {
     getImageUrl,
     getExternalUseLabel,
     getColdShippingLabel,
     isSelfDevelopedProduct,
-    scheduleImageCollapse(delay = 2000) {
-      if (this.collapseTimer) {
-        clearTimeout(this.collapseTimer)
-        this.collapseTimer = null
-      }
+    scheduleImageCollapse(delay = 800) {
+      clearTimeout(this.collapseTimer)
       this.collapseTimer = setTimeout(() => {
-        this.imageCollapsed = true
+        if (!this.imageCollapsed) {
+          this.introMotion = 'collapse'
+          this.imageCollapsed = true
+        }
         this.collapseTimer = null
       }, delay)
     },
+    finishIntro() {
+      clearTimeout(this.collapseTimer)
+      this.collapseTimer = null
+      this.shouldPlayIntro = false
+      this.introMotion = ''
+      this.imageCollapsed = true
+      this.pullStartY = null
+      this.isPullingIntro = false
+    },
+    onIntroAnimationEnd(e) {
+      if (e.target.id === 'mall-content') {
+        this.introMotion = ''
+      }
+    },
     onPullStart(e) {
+      this.pullStartY = null
+      this.isPullingIntro = false
+      if (this.introMotion) return
       // 如果触摸目标是 .internet-hospital-toggle 或其子元素，不启动下拉
       const target = e.target || e.currentTarget
       if (target) {
@@ -551,60 +585,23 @@ export default {
         }
       }
       this.pullStartY = e.touches[0].clientY
-      this.isPullingIntro = false
-      this.hasPullMoved = false
     },
     onPullMove(e) {
-      if (this.isPullingIntro === null || this.isPullingIntro === undefined) {
-        // touchstart 没执行，直接 return
-        return
-      }
-      const currentY = e.touches[0].clientY
-      const deltaY = currentY - this.pullStartY
-      // 下拉阈值 15rpx（约 7.5px），只有超过阈值才认为是下拉
-      const threshold = 7.5
-      if (!this.hasPullMoved) {
-        if (deltaY > threshold) {
-          this.hasPullMoved = true
-          this.isPullingIntro = true
-          // 首次确认是下拉时才清除定时器、展开图片
-          if (this.collapseTimer) {
-            clearTimeout(this.collapseTimer)
-            this.collapseTimer = null
-          }
-          if (this.pullTimer) {
-            clearTimeout(this.pullTimer)
-            this.pullTimer = null
-          }
-          if (this.imageCollapsed) {
-            this.imageCollapsed = false
-            this.hospitalIntroMarginTop = '-40rpx'
-          }
-        } else {
-          return
-        }
-      }
-      if (deltaY > 0) {
-        const pullPx = Math.min(deltaY, 50)
-        this.hospitalIntroMarginTop = `${-40 + pullPx}rpx`
+      if (this.pullStartY === null || this.isPullingIntro) return
+      if (e.touches[0].clientY - this.pullStartY <= 7.5) return
+      this.isPullingIntro = true
+      clearTimeout(this.collapseTimer)
+      this.collapseTimer = null
+      if (this.imageCollapsed) {
+        this.introMotion = 'expand'
+        this.imageCollapsed = false
       }
     },
     onPullEnd() {
-      if (!this.isPullingIntro) {
-        return
-      }
+      this.pullStartY = null
+      if (!this.isPullingIntro) return
       this.isPullingIntro = false
-      this.hasPullMoved = false
-      if (this.pullTimer) {
-        clearTimeout(this.pullTimer)
-      }
-      // 立即恢复下拉位置到原位
-      this.hospitalIntroMarginTop = '-40rpx'
-      // 2秒后自动盖住图片
-      this.pullTimer = setTimeout(() => {
-        this.imageCollapsed = true
-        this.pullTimer = null
-      }, 2000)
+      this.scheduleImageCollapse(2000)
     },
     removeZeroQuantityMarker(productId) {
       const normalizedId = String(productId)
@@ -713,29 +710,11 @@ export default {
           pageNum: 0,
           hasMore: true,
           loading: false,
-          loadedAt: 0,
           total: 0,
           records: []
         })
       }
       return this.productPageState[key]
-    },
-    syncCategoryProductsFromState(categoryId) {
-      const categoryKey = this.getCategoryKey(categoryId)
-      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
-      if (category) {
-        category.products = [...(this.getPageState(categoryId).records || [])]
-      }
-    },
-    isCategoryStale(categoryId) {
-      const state = this.getPageState(categoryId)
-      if (!state.loadedAt) {
-        return true
-      }
-      return Date.now() - state.loadedAt > PRODUCT_LIST_TTL
-    },
-    isCategoryFullyLoaded(categoryId) {
-      return this.loadedCategories[this.getPageStateKey(categoryId)] === true
     },
     mapSortField() {
       if (this.sortType === 'sales') return 'sales'
@@ -754,19 +733,14 @@ export default {
         pageNum: 0,
         hasMore: true,
         loading: false,
-        loadedAt: 0,
         total: 0,
         records: []
       })
-      delete this.loadedCategories[stateKey]
     },
     async fetchProductPage(categoryId, { reset = false } = {}) {
       const categoryKey = this.getCategoryKey(categoryId)
       let state = this.getPageState(categoryId)
-      if (state.loading) {
-        return
-      }
-      if (!reset && !state.hasMore) {
+      if (!reset && (state.loading || !state.hasMore)) {
         return
       }
 
@@ -814,10 +788,6 @@ export default {
         state.total = total
         const loadedCount = state.records.length
         state.hasMore = total > 0 ? loadedCount < total : mapped.length >= PRODUCT_PAGE_SIZE
-        state.loadedAt = Date.now()
-        if (!state.hasMore) {
-          this.$set(this.loadedCategories, this.getPageStateKey(categoryId), true)
-        }
       } catch (error) {
         console.error('fetchProductPage failed:', error)
         throw error
@@ -856,9 +826,11 @@ export default {
       }
     },
     async loadProducts() {
+      const requestSeq = ++this.requestSeq
       try {
         uni.showLoading({ title: '加载中...' })
         const categoryList = await getCategoryList(PRODUCT_BIZ_TYPE_FILTER)
+        if (requestSeq !== this.requestSeq) return
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categoryTree = buildCategoryTree(this.categoryList)
         this.categories = [
@@ -876,10 +848,11 @@ export default {
           }))
         ]
         this.productPageState = {}
-        this.loadedCategories = {}
-        this.requestSeq += 1
-        await this.loadAllProducts(true)
+        if (!this.categories.some(category => this.getCategoryKey(category.id) === this.getCategoryKey(this.currentCategoryId))) {
+          this.currentCategoryId = 'all'
+        }
         this.syncCurrentSubCategory()
+        await this.fetchProductPage(this.currentCategoryId, { reset: true })
         this.loadVerifiedProductsFromStorage('loadProducts')
       } catch (error) {
         console.error('loadProducts failed:', error)
@@ -888,19 +861,11 @@ export default {
         uni.hideLoading()
       }
     },
-    async loadAllProducts(reset = false) {
-      if (!reset && this.getPageState('all').loadedAt && !this.isCategoryStale('all')) {
-        this.syncCategoryProductsFromState('all')
-        return
-      }
-      await this.fetchProductPage('all', { reset: reset || this.isCategoryStale('all') })
+    async loadAllProducts() {
+      await this.fetchProductPage('all', { reset: true })
     },
-    async loadCategoryProducts(categoryId, reset = false) {
-      if (!reset && this.getPageState(categoryId).loadedAt && !this.isCategoryStale(categoryId)) {
-        this.syncCategoryProductsFromState(categoryId)
-        return
-      }
-      await this.fetchProductPage(categoryId, { reset: reset || this.isCategoryStale(categoryId) })
+    async loadCategoryProducts(categoryId) {
+      await this.fetchProductPage(categoryId, { reset: true })
     },
     loadVerifiedProductsFromStorage(source = 'unknown', focusProductId = '') {
       try {
@@ -942,7 +907,7 @@ export default {
       this.currentSubCategoryId = ''
       this.expandCategory(normalizedCategoryId)
       if (categoryId === 'all') {
-        await this.loadAllProducts(false)
+        await this.loadAllProducts()
         this.syncCurrentSubCategory()
         this.loadVerifiedProductsFromStorage('switchCategory:all')
         return
@@ -1819,6 +1784,32 @@ scroll-view ::-webkit-scrollbar {
   display: block;
 }
 
+/* 布局一次到位，再用反向位移衔接首帧，避免逐帧重排商品区域。 */
+.intro-collapsing {
+  animation: intro-collapse 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.intro-expanding {
+  animation: intro-expand 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes intro-collapse {
+  from { transform: translateY(360rpx); }
+  to { transform: translateY(0); }
+}
+
+@keyframes intro-expand {
+  from { transform: translateY(-360rpx); }
+  to { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-collapsing,
+  .intro-expanding {
+    animation-duration: 1ms;
+  }
+}
+
 .hospital-intro {
   border-top-left-radius: 36rpx;
   border-top-right-radius: 36rpx;
@@ -1828,13 +1819,7 @@ scroll-view ::-webkit-scrollbar {
   background: linear-gradient(135deg, #fafafa, #fff);
   padding: 30rpx 30rpx 15rpx 30rpx;
   position: relative;
-  margin-top: -40rpx;
   z-index: 10;
-  transition: margin-top 1.1s cubic-bezier(0.25, 0.1, 0.25, 1);
-}
-
-.hospital-intro.collapsed {
-  margin-top: -400rpx;
 }
 
 .logo-wrap {

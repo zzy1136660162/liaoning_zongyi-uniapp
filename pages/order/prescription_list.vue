@@ -215,7 +215,7 @@
 // Vue 3 响应式 API
 import { ref, computed, onMounted } from 'vue'
 // uni-app 生命周期钩子
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 // 时间处理库
 import dayjs from 'dayjs'
 
@@ -339,17 +339,18 @@ const syncSelectedCartState = () => {
     }
 
     checkoutContext.value = parseConsultationContext(options)
-    if (checkoutContext.value) loadSingleConsultation(checkoutContext.value.consultationId)
-    else uni.showToast({ title: '缺少本次复诊信息，请返回重新申请', icon: 'none' })
+    if (!checkoutContext.value) uni.showToast({ title: '缺少本次复诊信息，请返回重新申请', icon: 'none' })
   })
 
   /**
    * 页面挂载时初始化数据
    */
-  onMounted(async () => {
+  onShow(async () => {
+    if (checkoutContext.value) await loadSingleConsultation(checkoutContext.value.consultationId)
     await loadProducts()
     loadSelectedProducts()
-
+  })
+  onMounted(() => {
     logPageView('处方列表', '用户进入处方列表页面')
   })
   

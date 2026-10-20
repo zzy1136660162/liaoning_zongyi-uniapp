@@ -24,16 +24,35 @@
     </view>
 
     <!-- 申请列表 -->
-    <view class="list-container">
-      <view v-if="filteredList.length === 0" class="empty-state">
+    <scroll-view
+      :key="activeTab"
+      class="list-container"
+      scroll-y
+      refresher-enabled
+      :refresher-triggered="refreshing"
+      :lower-threshold="120"
+      @refresherrefresh="refreshRefunds"
+      @scrolltolower="loadMoreRefunds"
+    >
+      <view
+        v-if="statsError"
+        class="list-status"
+        @tap="loadRefundStats"
+      >
+        退款数量加载失败，点击重试
+      </view>
+      <view
+        v-if="hasLoaded && !loading && !loadError && refundList.length === 0"
+        class="empty-state"
+      >
         <uni-icons type="list" size="80" color="#ddd"></uni-icons>
         <text class="empty-text">暂无退货申请</text>
       </view>
 
-      <view v-else class="refund-list">
+      <view class="refund-list">
         <view
           class="refund-item"
-          v-for="item in filteredList"
+          v-for="item in refundList"
           :key="item.id"
           @tap="goToDetail(item.id)"
         >
@@ -61,19 +80,48 @@
           </view>
 
           <view class="item-footer" v-if="item.status === 0">
-            <button class="action-btn cancel-btn" @tap.stop="cancelRefund(item.id)">
+            <button
+              class="action-btn cancel-btn"
+              :disabled="cancellingRefundId === item.id"
+              @tap.stop="cancelRefund(item.id)"
+            >
               取消申请
             </button>
           </view>
         </view>
       </view>
-    </view>
+      <view class="list-status">
+        <text v-if="loading">
+          退款记录加载中...
+        </text>
+        <button
+          v-else-if="loadError"
+          class="list-retry"
+          @tap="retryRefunds"
+        >
+          {{ loadError }}，点击重试
+        </button>
+        <button
+          v-else-if="hasMore"
+          class="list-retry"
+          @tap="loadMoreRefunds"
+        >
+          加载更多
+        </button>
+        <text v-else-if="hasLoaded && refundList.length > 0">
+          没有更多退款记录了
+        </text>
+      </view>
+    </scroll-view>
   </view>
 </template>
 
 <script>
-import { getRefundList, cancelRefund } from '@/api/refund.js'
+import { getRefundPage, getRefundStats, cancelRefund } from '@/api/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
+
+const REFUND_PAGE_SIZE = 20
 
 export default {
   name: 'RefundList',
@@ -86,76 +134,128 @@ export default {
         { key: 'processing', label: '处理中', count: 0 },
         { key: 'completed', label: '已完成', count: 0 }
       ],
-      refundList: []
-    }
-  },
-
-  computed: {
-    filteredList() {
-      if (this.activeTab === 'all') {
-        return this.refundList
-      }
-
-      const statusMap = {
-        pending: [0, 1],      // 待审核、审核通过
-        processing: [3],      // 退货中
-        completed: [4, 5]     // 已退货、退货失败
-      }
-
-      return this.refundList.filter(item =>
-        statusMap[this.activeTab]?.includes(item.status)
-      )
+      refundList: [],
+      pageNum: 0,
+      total: 0,
+      hasMore: false,
+      hasLoaded: false,
+      loading: false,
+      refreshing: false,
+      loadError: '',
+      statsLoading: false,
+      statsError: false,
+      requestSequence: 0,
+      statsRequestSequence: 0,
+      cancellingRefundId: null,
+      disposed: false,
+      unsubscribeSessionChanged: null
     }
   },
 
   onLoad() {
-    this.loadRefundList()
+    this.unsubscribeSessionChanged = onSessionChanged(() => {
+      this.requestSequence += 1
+      this.statsRequestSequence += 1
+      this.resetRefundList()
+      this.loading = false
+      this.refreshing = false
+      this.statsLoading = false
+      this.statsError = false
+      this.cancellingRefundId = null
+      this.loadError = '登录状态已变更'
+      this.tabs.forEach(tab => { tab.count = 0 })
+    })
     logPageView('退货申请列表', 'REFUND_LIST')
   },
 
   onShow() {
     // 页面显示时刷新数据
-    this.loadRefundList()
+    this.refreshRefunds()
+  },
+
+  onUnload() {
+    this.disposed = true
+    this.requestSequence += 1
+    this.statsRequestSequence += 1
+    this.unsubscribeSessionChanged?.()
+    this.unsubscribeSessionChanged = null
   },
 
   methods: {
-    async loadRefundList() {
+    resetRefundList() {
+      this.refundList = []
+      this.pageNum = 0
+      this.total = 0
+      this.hasMore = false
+      this.hasLoaded = false
+    },
+    async fetchRefundPage(nextPage) {
+      const sequence = ++this.requestSequence
+      const session = getSessionGeneration()
+      const tab = this.activeTab
+      const isCurrentRequest = () => !this.disposed && sequence === this.requestSequence &&
+        isCurrentSession(session) && tab === this.activeTab
+      this.loading = true
+      this.loadError = ''
       try {
-        const result = await getRefundList()
-        this.refundList = result || []
-
-        // 更新标签数量
-        this.updateTabCounts()
-
+        const page = await getRefundPage({ tab, pageNum: nextPage, pageSize: REFUND_PAGE_SIZE })
+        if (!isCurrentRequest()) return
+        const merged = new Map((nextPage === 1 ? [] : this.refundList).map(item => [String(item.id), item]))
+        page.rows.forEach(item => merged.set(String(item.id), item))
+        this.refundList = [...merged.values()]
+        this.pageNum = page.pageNum
+        this.total = page.total
+        this.hasMore = page.hasMore
+        this.hasLoaded = true
       } catch (error) {
-        console.error('加载退货申请列表失败:', error)
-        uni.showToast({
-          title: error.message || '加载失败',
-          icon: 'none'
-        })
+        if (!isCurrentRequest()) return
+        this.loadError = error.message || '退款记录加载失败'
+      } finally {
+        if (isCurrentRequest()) {
+          this.loading = false
+          this.refreshing = false
+        }
       }
     },
-
-    updateTabCounts() {
-      // 重置计数
-      this.tabs.forEach(tab => tab.count = 0)
-
-      // 统计各状态数量
-      this.refundList.forEach(item => {
-        this.tabs[0].count++ // 全部
-
-        if ([0, 1].includes(item.status)) {
-          this.tabs[1].count++ // 待审核
-        } else if (item.status === 3) {
-          this.tabs[2].count++ // 处理中
-        } else if ([4, 5].includes(item.status)) {
-          this.tabs[3].count++ // 已完成
-        }
-      })
+    loadRefundList() {
+      if (this.disposed) return
+      this.resetRefundList()
+      return this.fetchRefundPage(1)
     },
-
+    loadMoreRefunds() {
+      if (this.disposed || this.loading || this.loadError || !this.hasMore) return
+      return this.fetchRefundPage(this.pageNum + 1)
+    },
+    retryRefunds() {
+      if (this.disposed || this.loading) return
+      return this.pageNum === 0 ? this.loadRefundList() : this.fetchRefundPage(this.pageNum + 1)
+    },
+    async loadRefundStats() {
+      if (this.disposed) return
+      const sequence = ++this.statsRequestSequence
+      const session = getSessionGeneration()
+      const isCurrentRequest = () => !this.disposed && sequence === this.statsRequestSequence && isCurrentSession(session)
+      this.statsLoading = true
+      this.statsError = false
+      try {
+        const stats = await getRefundStats() || {}
+        if (!isCurrentRequest()) return
+        this.tabs.forEach(tab => { tab.count = Number(stats[tab.key]) || 0 })
+      } catch (_) {
+        if (isCurrentRequest()) this.statsError = true
+      } finally {
+        if (isCurrentRequest()) this.statsLoading = false
+      }
+    },
+    refreshRefunds() {
+      if (this.disposed) return
+      this.refreshing = true
+      return Promise.all([this.loadRefundList(), this.loadRefundStats()])
+    },
     switchTab(tabKey) {
+      if (tabKey === this.activeTab || !this.tabs.some(tab => tab.key === tabKey)) return
       this.activeTab = tabKey
+      return this.loadRefundList()
     },
 
     getStatusText(status) {
@@ -186,15 +286,19 @@ export default {
     },
 
     async cancelRefund(refundApplicationId) {
+      if (this.disposed || this.cancellingRefundId !== null) return
+      const session = getSessionGeneration()
+      this.cancellingRefundId = refundApplicationId
       try {
         logButtonClick('取消退货申请', 'REFUND_LIST', refundApplicationId.toString())
 
         const confirm = await this.showConfirm('确定要取消此退货申请吗？')
-        if (!confirm) return
+        if (!confirm || this.disposed || !isCurrentSession(session)) return
 
         uni.showLoading({ title: '取消中...' })
 
         await cancelRefund(refundApplicationId)
+        if (this.disposed || !isCurrentSession(session)) return
 
         uni.hideLoading()
         uni.showToast({
@@ -203,15 +307,18 @@ export default {
         })
 
         // 重新加载列表
-        this.loadRefundList()
+        await this.refreshRefunds()
 
       } catch (error) {
+        if (this.disposed || !isCurrentSession(session)) return
         console.error('取消退货申请失败:', error)
         uni.hideLoading()
         uni.showToast({
           title: error.message || '取消失败',
           icon: 'none'
         })
+      } finally {
+        if (!this.disposed && isCurrentSession(session)) this.cancellingRefundId = null
       }
     },
 
@@ -248,7 +355,10 @@ export default {
 
 <style lang="scss" scoped>
 .page {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: #f5f5f5;
 }
 
@@ -283,6 +393,7 @@ export default {
 
 // 标签页
 .tab-bar {
+  flex-shrink: 0;
   display: flex;
   background: #fff;
   border-bottom: 1rpx solid #e5e5e5;
@@ -325,6 +436,10 @@ export default {
 
 // 列表容器
 .list-container {
+  flex: 1;
+  height: 0;
+  min-height: 0;
+  box-sizing: border-box;
   padding: 20rpx;
 
   .empty-state {
@@ -436,5 +551,22 @@ export default {
       }
     }
   }
+}
+
+.list-status {
+  padding: 24rpx 0;
+  text-align: center;
+  color: #999;
+  font-size: 26rpx;
+}
+
+.list-retry {
+  font-size: 26rpx;
+  color: #007aff;
+  background: transparent;
+}
+
+.list-retry::after {
+  border: none;
 }
 </style>

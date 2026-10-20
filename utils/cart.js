@@ -340,8 +340,12 @@ export const replaceCartData = (cartData) => {
 
 const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) => {
   const hasProductObject = product && typeof product === 'object'
-  const productBizType = hasProductObject ? resolveProductBizType(product) : null
-  const productGoodsMerchantType = hasProductObject ? resolveGoodsMerchantType(product) : null
+  const productBizType = hasProductObject && product.bizType !== undefined
+    ? (product.bizType === null ? resolveProductBizType(product) : toNumber(product.bizType, null))
+    : null
+  const productGoodsMerchantType = hasProductObject && product.goodsMerchantType !== undefined
+    ? (product.goodsMerchantType === null ? resolveGoodsMerchantType(product) : toNumber(product.goodsMerchantType, null))
+    : null
   const productCategory = hasProductObject && product.productCategory !== undefined && product.productCategory !== null && product.productCategory !== ''
     ? toNumber(product.productCategory, null)
     : null
@@ -354,32 +358,32 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
   const categoryCode = hasProductObject
     ? (product.categoryCode || product.category_code || existing.categoryCode || '')
     : (existing.categoryCode || '')
-  const resolvedNeedQuestionnaire = options.needQuestionnaire !== undefined
-    ? toNumber(options.needQuestionnaire, 0)
-    : (hasProductObject && product.needQuestionnaire !== undefined
-      ? toNumber(product.needQuestionnaire, 0)
-      : toNumber(existing.needQuestionnaire, 0))
-
-  const questionnairePassed = options.questionnairePassed !== undefined
-    ? toFlag(options.questionnairePassed, false)
-    : (existing.questionnairePassed !== undefined
-      ? toFlag(existing.questionnairePassed, resolvedNeedQuestionnaire !== 1)
-      : resolvedNeedQuestionnaire !== 1)
+  const resolvedNeedQuestionnaire = hasProductObject && product.needQuestionnaire !== undefined
+    ? toNumber(product.needQuestionnaire, 0)
+    : toNumber(pickValue(options.needQuestionnaire, existing.needQuestionnaire, 0), 0)
+  const hasProductQuestionnaireId = hasProductObject && (product.questionnaireId !== undefined || product.questionnaire_id !== undefined)
+  const productQuestionnaireId = product.questionnaireId !== undefined ? product.questionnaireId : product.questionnaire_id
   const questionnaireId = resolvedNeedQuestionnaire === 1
-    ? pickValue(options.questionnaireId, product.questionnaireId, product.questionnaire_id, existing.questionnaireId)
+    ? (hasProductQuestionnaireId ? productQuestionnaireId : pickValue(options.questionnaireId, existing.questionnaireId))
     : null
-  const answerId = resolvedNeedQuestionnaire === 1
-    ? pickValue(options.answerId, product.answerId, product.answer_id, existing.answerId)
+  const questionnaireChanged = resolvedNeedQuestionnaire === 1 && (
+    toNumber(existing.needQuestionnaire, 0) !== 1 || normalizeId(questionnaireId) !== normalizeId(existing.questionnaireId)
+  )
+  const matchingSubmission = normalizeId(options.questionnaireId) !== '' && normalizeId(options.questionnaireId) === normalizeId(questionnaireId)
+  const questionnairePassed = resolvedNeedQuestionnaire !== 1 || questionnaireId !== null && (
+    options.questionnairePassed !== undefined && (!questionnaireChanged || matchingSubmission)
+      ? toFlag(options.questionnairePassed, false)
+      : !questionnaireChanged && toFlag(existing.questionnairePassed, false)
+  )
+  const answerId = resolvedNeedQuestionnaire === 1 && questionnaireId !== null
+    ? pickValue(matchingSubmission || !questionnaireChanged ? options.answerId : null,
+      product.answerId, product.answer_id, questionnaireChanged ? null : existing.answerId)
     : null
 
   return {
     ...inventoryFields(product, existing),
-    bizType: options.bizType !== undefined && options.bizType !== null
-      ? toNumber(options.bizType, productBizType || existing.bizType || null)
-      : (productBizType !== null ? productBizType : (existing.bizType ?? null)),
-    goodsMerchantType: options.goodsMerchantType !== undefined && options.goodsMerchantType !== null
-      ? toNumber(options.goodsMerchantType, productGoodsMerchantType || existing.goodsMerchantType || null)
-      : (productGoodsMerchantType !== null ? productGoodsMerchantType : (existing.goodsMerchantType ?? null)),
+    bizType: toNumber(pickValue(productBizType, options.bizType, existing.bizType, resolveProductBizType(product)), null),
+    goodsMerchantType: toNumber(pickValue(productGoodsMerchantType, options.goodsMerchantType, existing.goodsMerchantType, resolveGoodsMerchantType(product)), null),
     productCategory: options.productCategory !== undefined && options.productCategory !== null
       ? toNumber(options.productCategory, productCategory || existing.productCategory || null)
       : (productCategory !== null ? productCategory : (existing.productCategory ?? null)),
@@ -823,18 +827,13 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         : (entry.isPrescription ?? null)
       const nextCategoryId = product.categoryId ?? product.category_id ?? entry.categoryId ?? null
       const nextCategoryCode = product.categoryCode || product.category_code || entry.categoryCode || ''
-      const nextBizType = entry.bizType ?? resolveProductBizType(product)
-      const nextGoodsMerchantType = entry.goodsMerchantType ?? resolveGoodsMerchantType(product)
-      const nextNeedQuestionnaire = entry.needQuestionnaire ?? toNumber(product.needQuestionnaire, 0)
-      const nextQuestionnaireId = nextNeedQuestionnaire === 1
-        ? pickValue(entry.questionnaireId, product.questionnaireId, product.questionnaire_id)
-        : null
-      const nextAnswerId = nextNeedQuestionnaire === 1
-        ? pickValue(entry.answerId, product.answerId, product.answer_id)
-        : null
-      const nextQuestionnairePassed = entry.questionnairePassed !== undefined
-        ? entry.questionnairePassed
-        : nextNeedQuestionnaire !== 1
+      const currentMeta = resolveCartMetaFromProduct(product, entry)
+      const nextBizType = currentMeta.bizType
+      const nextGoodsMerchantType = currentMeta.goodsMerchantType
+      const nextNeedQuestionnaire = currentMeta.needQuestionnaire
+      const nextQuestionnaireId = currentMeta.questionnaireId
+      const nextAnswerId = currentMeta.answerId
+      const nextQuestionnairePassed = currentMeta.questionnairePassed
       const nextStock = resolveStockValue(product, entry.stock ?? null)
       const nextAvailable = nextStock === 0
         ? false

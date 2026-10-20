@@ -46,7 +46,7 @@
 </template>
 
 <script>
-import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
+import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import {
   getQuestionnaireDraftAccountId,
@@ -78,6 +78,7 @@ export default {
       skuId: '',
       questionnaireId: null,
       questionnaireError: '',
+      questionnaireRequestSeq: 0,
       loading: false,
       questions: [],
       requestedQuantity: 1,
@@ -96,12 +97,13 @@ export default {
     this.skuId = options.skuId || ''
     this.requestedQuantity = Math.max(1, Number(options.quantity) || 1)
     this.action = options.action || 'cart'
-    if (this.productId) {
-      this.loadQuestionnaire()
-    }
-  logPageView('PRODUCT_QUESTIONNAIRE', this.productId)
+    logPageView('PRODUCT_QUESTIONNAIRE', this.productId)
+  },
+  onShow() {
+    if (this.productId) this.loadQuestionnaire()
   },
   onUnload() {
+    this.questionnaireRequestSeq += 1
     this.stopSessionListener?.()
   },
   methods: {
@@ -109,30 +111,7 @@ export default {
       return isCurrentSession(this.sessionGeneration) && this.draftAccountId === getQuestionnaireDraftAccountId()
     },
     resolveSelectedProduct(detail = this.productDetail) {
-      if (!detail || !this.skuId) {
-        return detail
-      }
-      const skus = Array.isArray(detail.skus) ? detail.skus : []
-      const sku = skus.find(item => String(item.id) === String(this.skuId))
-      if (!sku) {
-        return detail
-      }
-      return {
-        ...detail,
-        productId: detail.id,
-        skuId: sku.id,
-        skuCode: sku.skuCode || '',
-        skuName: sku.skuName || '',
-        skuSpecText: sku.specText || sku.skuName || '',
-        specText: sku.specText || sku.skuName || detail.specText,
-        price: Number(sku.price || 0),
-        originalPrice: Number(sku.originalPrice || 0),
-        stock: inventoryStock(sku.stock, detail.stock),
-        ...inventoryFields(sku, detail),
-        unit: sku.unit || detail.unit,
-        image: sku.image || detail.image,
-        coverImage: sku.image || detail.coverImage || detail.image
-      }
+      return detail ? withProductSku(detail, resolveProductSku(detail, this.skuId)) : null
     },
     getCartKey(detail = this.productDetail) {
       return buildCartItemKey(detail?.productId || detail?.id || this.productId, detail?.skuId || this.skuId || null)
@@ -161,6 +140,7 @@ export default {
     },
     async loadQuestionnaire() {
       if (!isCurrentSession(this.sessionGeneration)) return
+      const requestSeq = ++this.questionnaireRequestSeq
       this.draftAccountId = getQuestionnaireDraftAccountId()
       if (!this.productId) {
         uni.showToast({
@@ -173,14 +153,17 @@ export default {
       try {
         this.loading = true
         this.questionnaireError = ''
-        this.questionnaireId = null
-        this.questions = []
         uni.showLoading({ title: '问卷加载中...' })
         const response = await getQuestionnaireByProductId(this.productId)
-        if (!this.isQuestionnaireSessionCurrent()) return
+        if (!this.isQuestionnaireSessionCurrent() || requestSeq !== this.questionnaireRequestSeq) return
         const questionnaire = response.data || response
+        const previousAnswers = String(this.questionnaireId) === String(questionnaire.questionnaireId)
+          ? new Map(this.questions.map(question => [String(question.questionId), question.selectedOptionId]))
+          : new Map()
 
         if ((questionnaire.questions || []).some(q => q.questionType !== 1)) {
+          this.questions = []
+          this.questionnaireId = null
           this.questionnaireError = UNSUPPORTED_QUESTION_TYPE_MESSAGE
           return
         }
@@ -209,20 +192,31 @@ export default {
             uni.showToast({ title: '草稿读取失败，请重新作答', icon: 'none' })
           }
         }
+        this.questions.forEach(question => {
+          if (!previousAnswers.has(String(question.questionId))) return
+          const optionId = previousAnswers.get(String(question.questionId))
+          const option = optionId == null ? null : question.options.find(item => String(item.optionId) === String(optionId))
+          question.selectedOptionId = option ? option.optionId : null
+          question.answer = option ? option.value : null
+        })
       } catch (error) {
-        if (!isCurrentSession(this.sessionGeneration)) return
+        if (!isCurrentSession(this.sessionGeneration) || requestSeq !== this.questionnaireRequestSeq) return
+        this.questions = []
+        this.questionnaireId = null
         console.error('loadQuestionnaire failed:', error)
         uni.showToast({
           title: error.message || 'Failed to load questionnaire',
           icon: 'none'
         })
         setTimeout(() => {
-          if (!isCurrentSession(this.sessionGeneration)) return
+          if (!isCurrentSession(this.sessionGeneration) || requestSeq !== this.questionnaireRequestSeq) return
           uni.navigateBack()
         }, 1200)
       } finally {
-        this.loading = false
-        if (isCurrentSession(this.sessionGeneration)) uni.hideLoading()
+        if (requestSeq === this.questionnaireRequestSeq) {
+          this.loading = false
+          if (isCurrentSession(this.sessionGeneration)) uni.hideLoading()
+        }
       }
     },
     goCheckout(detail) {
@@ -339,7 +333,7 @@ export default {
         }
 
         if (result.isMatch) {
-          const detail = this.productDetail || await getProductDetail(this.productId)
+          const detail = await getProductDetail(this.productId)
           if (!this.isQuestionnaireSessionCurrent()) return
           if (!(await this.ensureCartCompatible(detail))) {
             return

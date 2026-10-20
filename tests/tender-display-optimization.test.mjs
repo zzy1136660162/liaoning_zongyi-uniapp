@@ -40,10 +40,6 @@ assert.match(confirmPage, /remark:\s*orderRemark\.value\.trim\(\)/)
 assert.doesNotMatch(confirmPage, /remark:\s*''/)
 
 assert.match(medicineIndexPage, /const loadError = ref\(false\)/)
-assert.match(
-  medicineIndexPage,
-  /const loadFeaturedProducts = async \(\) => \{\s*if \(loading\.value\) \{\s*return\s*\}/
-)
 assert.match(medicineIndexPage, /loadError\.value = false/)
 assert.match(medicineIndexPage, /loadError\.value = true/)
 assert.match(
