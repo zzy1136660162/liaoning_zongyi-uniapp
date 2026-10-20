@@ -23,8 +23,6 @@ assert.match(apply, /patientId=\$\{encodeURIComponent\(selectedPatient\.value\.i
 assert.match(consultation, /patientId:\s*patientId\.value/)
 
 const detailPages = [
-  'pages/order/consultation_detail.vue',
-  'pages/order/prescription_detail.vue',
   'pages/order/order-detail.vue',
   'pages/order/prescription_list.vue',
   'pages/prescription/detail.vue'

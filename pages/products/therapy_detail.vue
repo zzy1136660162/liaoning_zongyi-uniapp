@@ -797,19 +797,21 @@ import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { getImageUrl } from '@/utils/config.js'
+import { getProductCartLines } from '@/utils/product-list-cart.js'
+import { formatRichText } from '@/utils/product-rich-text.js'
 import { useProductImages } from '@/utils/product-image.js'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import {
   addCartItem,
   buildCartItemKey,
   getCartProductInfo,
+  getCartEntries,
   getCartProductQuantity,
   getCartTotalQuantity,
   prepareCheckout,
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
-import { BIZ_TYPE_HEALTH_GOODS } from '@/utils/product-biz.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 import {
   isPurchaseAvailable,
@@ -837,7 +839,6 @@ const createEmptyProduct = () => ({
   intro: '',
   unit: '',
   salesVolume: 0,
-  bizType: 1,
   goodsMerchantType: 1,
   isPrescription: 0,
   needQuestionnaire: 0,
@@ -1005,9 +1006,9 @@ const loadQuantityFromStorage = () => {
 
 const getQuantityLimitMessage = (targetProduct = saleProduct.value) => {
   const maxQuantity = resolvePurchaseQuantityLimit(targetProduct)
-  const limitInfo = targetProduct?.limitInfo || targetProduct?.limit_info || {}
-  const limitEnabled = limitInfo.enabled === true || limitInfo.enabled === 1 || limitInfo.enabled === '1'
-  const remainingQuantity = Number(limitInfo.remainingQuantity ?? limitInfo.remaining_quantity)
+  const limitInfo = targetProduct?.limitInfo || {}
+  const limitEnabled = limitInfo.enabled === true
+  const remainingQuantity = Number(limitInfo.remainingQuantity)
   const stock = targetProduct?.stock == null ? null : Number(targetProduct.stock)
 
   if (limitEnabled && Number.isFinite(remainingQuantity) && remainingQuantity <= 0) {
@@ -1076,6 +1077,7 @@ const loadProduct = async (id) => {
   if (!id) return
   const sequence = ++productRequestSequence
   const session = getSessionGeneration()
+  // 回到详情时重读库存和限购；同账号、同商品保留本次选择的数量。
   const preserveQuantity = loadedSession === session && String(product.value.id) === String(id)
   product.value = { ...product.value, available: false }
   try {
@@ -1096,31 +1098,6 @@ const loadProduct = async (id) => {
   }
 }
 
-const formatRichText = (htmlContent) => {
-  if (!htmlContent) return ''
-  const normalizeRichText = (content) => content
-    .replace(/<img([^>]*)style=(['"])(.*?)\2([^>]*)>/gi, (match, before, quote, styleContent, after) => {
-      const sanitizedStyle = styleContent
-        .replace(/(?:^|;)\s*width\s*:[^;]*/gi, '')
-        .replace(/(?:^|;)\s*height\s*:[^;]*/gi, '')
-        .trim()
-      const nextStyle = `max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;${sanitizedStyle ? ` ${sanitizedStyle}` : ''}`.trim()
-      return `<img${before}style="${nextStyle}"${after}>`
-    })
-    .replace(/<img((?:(?!style=)[^>])*)>/gi, '<img$1 style="max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;">')
-
-  if (typeof htmlContent === 'string') {
-    return normalizeRichText(
-      htmlContent
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-    )
-  }
-  return normalizeRichText(String(htmlContent))
-}
 
 const buildDetailRedirect = () => {
   return product.value.id ? `/pages/products/therapy_detail?id=${product.value.id}` : '/pages/products/therapy_detail'
@@ -1163,9 +1140,10 @@ const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart') => {
 }
 
 const goCheckout = (targetProduct) => {
-  const checkout = prepareCheckout([buildCartItemKey(targetProduct.id, targetProduct.skuId)], [{
+  const cartKey = buildCartItemKey(targetProduct.id, targetProduct.skuId)
+  const checkout = prepareCheckout([cartKey], [{
     id: 'detail_checkout',
-    products: [targetProduct]
+    products: [{ ...targetProduct, id: cartKey, cartKey, productId: targetProduct.id }]
   }])
 
   if (!checkout.valid) {
@@ -1177,9 +1155,11 @@ const goCheckout = (targetProduct) => {
   }
 
   const selectedItems = checkout.productIds.join(',')
-  uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
+  if (!checkout.requiresConsultation) uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
   uni.navigateTo({
-    url: `/pages/order/confirm?therapy=1&selectedItems=${selectedItems}`
+    url: checkout.requiresConsultation
+      ? `/pages/dispense/apply?selectedItems=${selectedItems}`
+      : `/pages/order/confirm?selectedItems=${selectedItems}`
   })
   return true
 }
@@ -1318,7 +1298,7 @@ const goToDetail = (item) => {
   const page = isTraditionalTherapyProduct(item) ? 'therapy_detail' : 'medicine_detail'
   console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=THERAPY_DETAIL targetPage=%s productId=%s', page, item.id)
   uni.navigateTo({
-    url: `/pages/products/${page}?id=${item.id}&product=${encodeURIComponent(JSON.stringify(item))}`
+    url: `/pages/products/${page}?id=${item.id}`
   })
 }
 
@@ -1348,10 +1328,25 @@ const animateFlyToCart = () => {
 }
 
 const flyToCart = async (event, item) => {
-  const nextQuantity = getCartProductQuantity(item.id, 0) + 1
-  const added = await handlePurchaseAction('cart', item, nextQuantity)
-  if (added) {
-    animateFlyToCart()
+  if (!ensureLogin()) return
+  let lines = getProductCartLines(getCartEntries(), item.id)
+  if (lines.length > 1) return goCart()
+  if (lines[0] && !lines[0].skuId) return goToDetail(item)
+  const session = getSessionGeneration()
+  try {
+    // 推荐卡片只有商品汇总数据；重新读真实规格，已有单规格时只增加该行。
+    const detail = mapProductDetail(await getProductDetail(item.id))
+    if (!isCurrentSession(session)) return
+    // 等待期间可能连续加购或新增规格，按最新行和数量落车，不能重放点击时的旧数量。
+    lines = getProductCartLines(getCartEntries(), item.id)
+    if (lines.length > 1) return goCart()
+    if (lines[0] && !lines[0].skuId) return goToDetail(item)
+    const saleProduct = withProductSku(detail, resolveProductSku(detail, lines[0]?.skuId))
+    const nextQuantity = (lines[0]?.quantity || 0) + 1
+    const added = await handlePurchaseAction('cart', saleProduct, nextQuantity)
+    if (added) animateFlyToCart()
+  } catch (error) {
+    if (isCurrentSession(session)) uni.showToast({ title: error.message || '加入购物车失败', icon: 'none' })
   }
 }
 
@@ -1363,14 +1358,6 @@ onLoad((options) => {
   product.value = createEmptyProduct()
   selectedSkuId.value = options.skuId || null
   routeProductId.value = options.id || ''
-  if (!routeProductId.value && options.product) {
-    try {
-      const parsed = JSON.parse(decodeURIComponent(options.product))
-      routeProductId.value = parsed.id || ''
-    } catch (error) {
-      console.error('parse product failed:', error)
-    }
-  }
   unsubscribeSession = onSessionChanged(() => {
     productRequestSequence++
     loadedSession = null

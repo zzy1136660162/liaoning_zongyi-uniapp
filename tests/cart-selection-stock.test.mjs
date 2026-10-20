@@ -1,247 +1,65 @@
 import assert from 'node:assert/strict'
+import { test, beforeEach } from 'node:test'
+import * as cart from '../utils/cart.js'
 
-const storage = new Map()
-const emitted = []
+const storage = new Map(), emitted = []
+globalThis.uni = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value),
+  removeStorageSync: key => storage.delete(key), $emit: (event, payload) => emitted.push({ event, payload }) }
+beforeEach(() => { storage.clear(); emitted.length = 0 })
+const product = (id, extra = {}) => ({ id, productId: id, skuId: 1, name: `商品${id}`, price: 10, goodsMerchantType: 1, productCategory: 2, isPrescription: 0, stock: 8, available: true, ...extra })
+const categories = products => [{ products: products.map(value => ({ ...value, id: `${value.productId}:${value.skuId}` })) }]
 
-globalThis.uni = {
-  getStorageSync(key) {
-    return storage.get(key)
-  },
-  setStorageSync(key, value) {
-    storage.set(key, value)
-  },
-  removeStorageSync(key) {
-    storage.delete(key)
-  },
-  $emit(eventName, payload) {
-    emitted.push({ eventName, payload })
-  }
-}
+test('购物车按真实商品规格保存，缺失规格拒绝，旧布尔条目和数量副本不再构造商品', () => {
+  assert.equal(cart.addCartItem({ id: 10, stock: 8 }, 1), false)
+  storage.set('cart_items', { 10: true })
+  storage.set('verifiedProducts', { '30:1': { productId: 30, skuId: 1, quantity: 2 } })
+  storage.set('productQuantities', { 20: 9 })
+  assert.deepEqual(cart.getCartEntries(), {})
+  assert.equal(cart.addCartItem(product(10), 2), true)
+  assert.equal(cart.getCartProductInfo(10, 1).quantity, 2)
+  assert.equal(storage.get('productQuantities')[20], 9, '不再读写旧数量副本')
+  assert.equal(emitted.filter(value => value.event === 'cartUpdated').length, 1)
+})
 
-const resetState = () => {
-  storage.clear()
-  emitted.length = 0
-}
+test('缺货取消选择，全选不会选中缺货；数量不超过库存，金额只计已选商品', () => {
+  cart.addCartItem(product(10), 2)
+  cart.addCartItem(product(20, { available: false, stock: 0 }), 1)
+  cart.updateMultipleSelections({ '10:1': true, '20:1': true })
+  const values = categories([product(10), product(20, { available: false, stock: 0 })])
+  let items = cart.loadCartItems(values)
+  assert.deepEqual(cart.getSelectedProductIds(), ['10:1'])
+  assert.equal(items.find(item => item.id === '20:1').selected, false)
+  assert.equal(cart.calculateTotalPrice(items), 20)
+  cart.setCartItemQuantity('10:1', 99)
+  items = cart.loadCartItems(values)
+  assert.equal(items.find(item => item.id === '10:1').quantity, 8)
+  assert.equal(cart.calculateTotalPrice(items), 80)
+})
 
-const lastCartUpdated = () => {
-  return emitted.filter(event => event.eventName === 'cartUpdated').at(-1)
-}
+test('同商品不同规格独立计价和选择，增减不改变加入顺序', () => {
+  cart.addCartItem(product(10), 2)
+  cart.addCartItem(product(10, { skuId: 2, price: 18 }), 3)
+  const values = categories([product(10), product(10, { skuId: 2, price: 18 })])
+  assert.equal(cart.calculateTotalPrice(cart.loadCartItems(values)), 74)
+  cart.updateProductSelection('10:1', false)
+  cart.setCartItemQuantity('10:2', 2)
+  const items = cart.loadCartItems(values)
+  assert.deepEqual(items.map(item => item.id), ['10:1', '10:2'])
+  assert.equal(cart.calculateTotalPrice(items), 36)
+})
 
-const categories = [{
-  id: 'cart_items',
-  name: 'cart',
-  products: [
-    {
-      id: '101',
-      name: 'in stock',
-      price: 12.5,
-      stock: 8,
-      available: true
-    },
-    {
-      id: '102',
-      name: 'sold out',
-      price: 99,
-      stock: 0,
-      available: false
-    },
-    {
-      id: '103',
-      name: 'later in stock',
-      price: 18,
-      stock: 8,
-      available: true
-    }
-  ]
-}]
+test('问卷通过态只属于当前问卷，换绑清除答案而保留所选数量', () => {
+  cart.addCartItem(product(10, { needQuestionnaire: 1, questionnaireId: 90 }), 2,
+    { questionnaireId: 90, answerId: 91, questionnairePassed: true })
+  assert.equal(cart.getCartProductInfo(10, 1).questionnairePassed, true)
+  const [item] = cart.loadCartItems(categories([product(10, { needQuestionnaire: 1, questionnaireId: 92 })]))
+  assert.equal(item.questionnairePassed, false)
+  assert.equal(item.answerId, null)
+  assert.equal(item.quantity, 2)
+})
 
-const main = async () => {
-  const cart = await import('../utils/cart.js')
-
-  resetState()
-  cart.replaceCartData({
-    101: { verified: true, selected: true, quantity: 2, available: true, stock: 8 },
-    102: { verified: true, selected: true, quantity: 1, available: false, stock: 0 }
-  })
-  const eventsAfterServerReplace = emitted.length
-
-  let items = cart.loadCartItems(categories)
-  assert.equal(emitted.length, eventsAfterServerReplace)
-  assert.equal(items.find(item => item.id === '101').selected, true)
-  assert.equal(items.find(item => item.id === '101').stock, 8)
-  assert.equal(items.find(item => item.id === '102').selected, false)
-  assert.equal(items.find(item => item.id === '102').available, false)
-  assert.equal(items.find(item => item.id === '102').stock, 0)
-  assert.deepEqual(cart.getSelectedProductIds(), ['101'])
-  assert.equal(cart.calculateTotalPrice(items), 25)
-
-  cart.updateMultipleSelections({ 101: false, 102: true })
-  items = cart.loadCartItems(categories)
-  assert.deepEqual(cart.getSelectedProductIds(), [])
-  assert.equal(cart.calculateTotalPrice(items), 0)
-  assert.equal(items.find(item => item.id === '102').selected, false)
-
-  cart.updateMultipleSelections({ 101: true, 102: true })
-  items = cart.loadCartItems(categories)
-  assert.deepEqual(cart.getSelectedProductIds(), ['101'])
-  assert.equal(items.find(item => item.id === '102').selected, false)
-
-  cart.setCartItemQuantity('101', 99)
-  items = cart.loadCartItems(categories)
-  assert.equal(items.find(item => item.id === '101').quantity, 8)
-
-  resetState()
-  const originalDateNow = Date.now
-  Date.now = () => 3000
-  try {
-    cart.replaceCartData({
-      101: { verified: true, selected: true, quantity: 1, available: true, stock: 8, timestamp: 1000 },
-      103: { verified: true, selected: true, quantity: 1, available: true, stock: 8, timestamp: 2000 }
-    })
-    assert.deepEqual(cart.loadCartItems(categories).map(item => item.id), ['101', '103'])
-
-    cart.setCartItemQuantity('101', 2)
-    assert.deepEqual(cart.loadCartItems(categories).map(item => item.id), ['101', '103'])
-
-    cart.replaceCartData({
-      101: { verified: true, selected: true, quantity: 1, available: true, stock: 8, timestamp: 1000 },
-      103: { verified: true, selected: true, quantity: 1, available: true, stock: 8, timestamp: 2000 }
-    })
-    cart.updateProductSelection('101', false)
-    assert.deepEqual(cart.loadCartItems(categories).map(item => item.id), ['101', '103'])
-  } finally {
-    Date.now = originalDateNow
-  }
-
-  resetState()
-  cart.addCartItem({ id: '101', stock: 8, available: true }, 1)
-  assert.equal(lastCartUpdated().payload.source, 'local')
-
-  resetState()
-  cart.addCartItem({
-    id: '401',
-    productId: '401',
-    name: 'questionnaire product',
-    needQuestionnaire: 1,
-    stock: 8,
-    available: true
-  }, 1, {
-    questionnairePassed: true,
-    questionnaireId: 901,
-    answerId: 902
-  })
-  const questionnaireEntry = cart.getCartProductInfo('401')
-  assert.equal(questionnaireEntry.questionnairePassed, true)
-  assert.equal(questionnaireEntry.questionnaireId, 901)
-  assert.equal(questionnaireEntry.answerId, 902)
-
-  resetState()
-  cart.addCartItem({
-    id: '501',
-    productId: '501',
-    skuId: 'sku-a',
-    skuName: 'small',
-    specText: '5g',
-    price: 10,
-    stock: 8,
-    available: true
-  }, 1)
-  cart.addCartItem({
-    id: '501',
-    productId: '501',
-    skuId: 'sku-b',
-    skuName: 'large',
-    specText: '10g',
-    price: 18,
-    stock: 8,
-    available: true
-  }, 2)
-  const skuCategories = [{
-    id: 'cart_items',
-    name: 'cart',
-    products: [
-      { id: '501:sku-a', productId: '501', skuId: 'sku-a', name: 'sku product', specText: '5g', price: 10, stock: 8, available: true },
-      { id: '501:sku-b', productId: '501', skuId: 'sku-b', name: 'sku product', specText: '10g', price: 18, stock: 8, available: true }
-    ]
-  }]
-  const skuItems = cart.loadCartItems(skuCategories)
-  assert.deepEqual(skuItems.map(item => item.id), ['501:sku-a', '501:sku-b'])
-  assert.equal(cart.calculateTotalPrice(skuItems), 46)
-
-  cart.replaceCartData({
-    101: { verified: true, selected: true, quantity: 1, available: true, stock: 8 }
-  })
-  assert.equal(lastCartUpdated().payload.source, 'server')
-
-  resetState()
-  cart.addCartItem({
-    id: '201',
-    name: 'direct goods',
-    productCategory: 2,
-    bizType: 1,
-    stock: 8,
-    available: true
-  }, 1)
-  const therapyCompatibility = cart.resolveCartCompatibility({
-    id: '202',
-    name: 'traditional therapy',
-    categoryCode: '传统疗法',
-    bizType: 1,
-    stock: 8,
-    available: true
-  })
-  assert.equal(therapyCompatibility.valid, true)
-
-  resetState()
-  const serverCartCategories = cart.buildCategoriesFromServerCart([
-    {
-      productId: '301',
-      productName: 'normal direct goods',
-      productCategory: 2,
-      bizType: 1,
-      quantity: 1,
-      stock: 8,
-      available: true
-    },
-    {
-      productId: '302',
-      productName: 'traditional therapy from server cart',
-      categoryId: 34,
-      bizType: 1,
-      quantity: 1,
-      stock: 8,
-      available: true
-    }
-  ])
-  cart.replaceCartData({
-    301: { verified: true, selected: true, quantity: 1, available: true, stock: 8 },
-    302: { verified: true, selected: true, quantity: 1, available: true, stock: 8 }
-  })
-  const serverCartCheckout = cart.prepareCheckout(['301', '302'], serverCartCategories)
-  assert.equal(serverCartCheckout.valid, true)
-  assert.equal(serverCartCheckout.flowType, 'direct')
-  assert.equal(serverCartCheckout.requiresConsultation, false)
-  assert.equal(serverCartCheckout.hasTraditionalTherapy, true)
-  assert.equal(serverCartCheckout.allTraditionalTherapy, false)
-
-  resetState()
-  cart.replaceCartData({
-    101: { verified: true, selected: true, quantity: 5, available: true, stock: 8 }
-  })
-  const staleStockCheckout = cart.prepareCheckout(['101'], [{
-    id: 'cart_items',
-    products: [{
-      id: '101',
-      name: 'in stock',
-      price: 12.5,
-      stock: 2,
-      available: true,
-      productCategory: 2,
-      bizType: 1
-    }]
-  }])
-  assert.equal(staleStockCheckout.valid, false)
-  assert.match(staleStockCheckout.message, /库存不足/)
-}
-
-main()
+test('提交前库存校验拒绝超量及失效规格，不静默替换成同商品其他规格', () => {
+  cart.addCartItem(product(10), 5)
+  assert.equal(cart.validateCheckoutStock(['10:1'], categories([product(10, { stock: 2 })])).reason, 'stock_shortage')
+  assert.equal(cart.validateCheckoutStock(['10:1'], categories([product(10, { skuId: 2 })])).reason, 'product_missing')
+})

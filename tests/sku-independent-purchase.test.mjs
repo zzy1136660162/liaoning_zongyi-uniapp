@@ -9,7 +9,7 @@ const storage = new Map(), navigation = [], messages = []
 globalThis.uni = { getStorageSync: k => storage.get(k), setStorageSync: (k, v) => storage.set(k, v), removeStorageSync: k => storage.delete(k),
   $emit() {}, navigateTo: value => navigation.push(value), showToast: value => messages.push(value), showLoading() {}, hideLoading() {} }
 const cart = await import('../utils/cart.js')
-const base = () => ({ id: '101', name: '传统疗法服务', categoryCode: '传统疗法', bizType: 1, status: 1,
+const base = () => ({ id: '101', productName: '传统疗法服务', name: '传统疗法服务', categoryCode: '仅展示目录', goodsMerchantType: 1, productCategory: 3, status: 1,
   inventoryMode: 'HIS_AVAILABILITY', inventoryStatus: 'AVAILABLE', available: true, stock: null, price: 10, needQuestionnaire: 0,
   skus: [
     { id: '10', skuName: '基础款', price: 10, status: 1, defaultFlag: 1, stock: null, inventoryMode: 'HIS_AVAILABILITY', inventoryStatus: 'AVAILABLE', available: true },
@@ -21,7 +21,7 @@ function therapy() {
     ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }), getCurrentInstance: () => ({}), onLoad() {}, onShow() {},
     getImageUrl: value => value, mapProductDetail: value => value, getToken: () => 'fixture', logPageView() {},
     ...cart, isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit,
-    BIZ_TYPE_HEALTH_GOODS: 2, STORAGE_KEY_CURRENT_CONSULTATION_ID: 'consultation'
+     STORAGE_KEY_CURRENT_CONSULTATION_ID: 'consultation'
   }, ['product', 'applyProduct', 'quantity', 'selectedSkuId', 'saleProduct', 'selectSku', 'addCart', 'buyNow', 'canPurchase', 'priceInteger'])
 }
 
@@ -61,7 +61,7 @@ test('questionnaire route and direct checkout retain the actual SKU', async () =
   assert.match(navigation.at(-1).url, /product_notice.*skuId=11/)
   assert.match(navigation.at(-1).url, /quantity=2/)
   product.needQuestionnaire = 0; page.applyProduct(product); await page.buyNow()
-  assert.match(navigation.at(-1).url, /confirm\?therapy=1&selectedItems=101:11/)
+  assert.match(navigation.at(-1).url, /confirm\?selectedItems=101:11/)
   const entries = cart.loadCartItems([{ products: [page.saleProduct.value] }])
   assert.equal(cart.buildOrderItems(entries, ['101:11'])[0].skuId, '11')
 })
@@ -98,7 +98,7 @@ function confirmation(product, selected = ['101:11']) {
     ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }), onLoad() {}, onShow() {}, onMounted() {},
     getSessionGeneration: () => 1, isCurrentSession: () => true, assertCurrentSession() {}, ...cart,
     getProductDetail: async () => { requests++; return product },
-    resolveProductFlow: () => ({ valid: true, bizType: 1, requiresConsultation: false, allTraditionalTherapy: true }),
+    resolveProductFlow: () => ({ valid: true, requiresConsultation: false, allTraditionalTherapy: true }),
     ORDER_TYPE_THERAPY: 4
   }, ['loadProducts', 'categories', 'selectedProductIds', 'selectionIssue'])
   page.selectedProductIds.value = selected
@@ -127,28 +127,29 @@ test('confirmation retains an invalid selected SKU as unavailable, preventing pa
   assert.equal(cart.validateCheckoutStock(['101:11'], page.categories.value).valid, false)
 })
 
-test('legacy cart without SKU cannot silently choose another option from a multi-SKU product', async () => {
-  const product = base(); cart.addCartItem(product, 1)
+test('购物车缺失真实 SKU 时不能静默选择多规格中的任一项', async () => {
+  const product = base()
+  cart.replaceCartData({ 101: { productId: '101', quantity: 1, available: true, stock: null } })
   const page = confirmation(product, ['101']); await page.loadProducts(true)
   assert.match(page.selectionIssue.value, /重新选择/)
   assert.equal(cart.validateCheckoutStock(['101'], page.categories.value).valid, false)
 })
 
-test('legacy cart with a single actual SKU still uses its price and identity', async () => {
-  const product = base(); product.skus = [product.skus[0]]; cart.addCartItem(product, 2)
+test('商品仅有一条真实 SKU 时也不为缺少 skuId 的购物车条目猜配', async () => {
+  const product = base(); product.skus = [product.skus[0]]
+  assert.equal(cart.addCartItem(product, 2), false)
+  cart.replaceCartData({ 101: { productId: '101', quantity: 2, available: true, stock: null } })
   const page = confirmation(product, ['101']); await page.loadProducts(true)
-  assert.equal(page.selectionIssue.value, '')
-  assert.equal(cart.validateCheckoutStock(['101'], page.categories.value).valid, true)
-  const items = cart.loadCartItems(page.categories.value)
-  const order = cart.buildOrderItems(items, ['101'])
-  assert.equal(String(order[0].skuId), '10')
+  assert.match(page.selectionIssue.value, /重新选择/)
+  assert.equal(cart.validateCheckoutStock(['101'], page.categories.value).valid, false)
+  assert.equal(page.categories.value[0].products[0].skuId, null)
 })
 
 test('medicine detail retains explicit SKU through refresh and does not substitute a removed selection', () => {
   const page = loadSetup('pages/products/medicine_detail.vue', {
     ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }), getCurrentInstance: () => ({}),
     onLoad() {}, onShow() {}, onMounted() {}, onUnmounted() {}, getImageUrl: value => value, mapProductDetail: value => value,
-    ...cart, isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit, BIZ_TYPE_HEALTH_GOODS: 2
+    ...cart, isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit
   }, ['applyProduct', 'selectedSkuId', 'selectedSku', 'withSelectedSku', 'product'])
   page.selectedSkuId.value = '11'; page.applyProduct(base())
   assert.equal(page.withSelectedSku().skuId, '11'); assert.equal(page.withSelectedSku().price, 20)

@@ -223,18 +223,18 @@ export default {
           price: parseFloat(item.price || 0), // 商品价格
           quantity: item.quantity || 1, // 购买数量
           purchasedQuantity: item.quantity || 1,
-          refundedQuantity: Number(item.refundedQuantity || item.refunded_quantity || 0),
-          refundableQuantity: Number(item.refundableQuantity || item.refundable_quantity || 0),
-          selectedQuantity: Number(item.refundableQuantity || item.refundable_quantity || 0),
+          refundedQuantity: Number(item.refundedQuantity || 0),
+          refundableQuantity: Number(item.refundableQuantity || 0),
+          selectedQuantity: Number(item.refundableQuantity || 0),
           refundable: Boolean(item.refundable),
-          refundBlockedReason: item.refundBlockedReason || item.refund_blocked_reason || '',
+          refundBlockedReason: item.refundBlockedReason || '',
           image: getImageUrl(item.productImage || item.coverImage || item.image || ''), // 商品图片
-          skuId: item.skuId || item.sku_id || null,
-          skuCode: item.skuCode || item.sku_code || '',
-          skuName: item.skuName || item.sku_name || '',
-          specText: item.skuSpecText || item.sku_spec_text || item.specText || item.spec_text || '',
+          skuId: item.skuId || null,
+          skuCode: item.skuCode || '',
+          skuName: item.skuName || '',
+          specText: item.skuSpecText || item.specText || '',
           unit: item.unit,
-          redeemVouchers: item.redeemVouchers || item.redeem_vouchers || []
+          redeemVouchers: item.redeemVouchers || []
         }))
         this.selectedProducts = this.allProducts
           .filter(item => Number(item.selectedQuantity || 0) > 0)

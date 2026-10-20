@@ -304,13 +304,6 @@ export default {
       const date = dayjs(dateTime)
       return date.isValid() ? date.format('YYYY-MM-DD HH:mm:ss') : dateTime
     }
-  },
-
-  // 页面显示时刷新数据
-  onShow() {
-    if (this.refundApplicationId) {
-      this.loadDetail()
-    }
   }
 }
 </script>

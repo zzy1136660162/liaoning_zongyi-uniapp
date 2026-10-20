@@ -72,9 +72,12 @@ globalThis.uni = {
 const cart = await import('../utils/cart.js')
 const therapyProduct = {
   id: '8801',
+  productId: '8801',
+  skuId: '1',
   name: '传统疗法数量测试',
   categoryCode: '传统疗法',
-  bizType: 1,
+  goodsMerchantType: 1,
+  productCategory: 3,
   price: 20,
   stock: 5,
   available: true
@@ -82,13 +85,13 @@ const therapyProduct = {
 const selectedQuantity = normalizePurchaseQuantity(therapyProduct, 3)
 
 assert.equal(cart.addCartItem(therapyProduct, selectedQuantity), true)
-assert.equal(cart.getCartProductInfo(therapyProduct.id).quantity, 3)
+assert.equal(cart.getCartProductInfo(therapyProduct.id, therapyProduct.skuId).quantity, 3)
 
 const categories = [{
   id: 'therapy_checkout',
-  products: [therapyProduct]
+  products: [{ ...therapyProduct, id: '8801:1' }]
 }]
-const checkout = cart.prepareCheckout([therapyProduct.id], categories)
+const checkout = cart.prepareCheckout(['8801:1'], categories)
 assert.equal(checkout.valid, true)
 assert.equal(checkout.allTraditionalTherapy, true)
 

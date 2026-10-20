@@ -69,7 +69,8 @@ export const request = (options = {}) => {
     const requestHeader = {
       'Content-Type': 'application/json',
       ...header,
-      'X-Request-Id': traceId
+      'X-Request-Id': traceId,
+      'X-Product-Contract': 'category-v1'
     }
 
     // 如果需要认证，添加Token
@@ -154,7 +155,7 @@ export const request = (options = {}) => {
           uni.hideLoading()
         }
 
-        
+
         let errorMessage = '网络请求失败'
         if (err.errMsg) {
           if (err.errMsg.includes('timeout')) {
@@ -168,7 +169,7 @@ export const request = (options = {}) => {
         //   icon: 'none',
         //   duration: 2000
         // })
-        
+
         logApiAccess(url, method, 0, durationMs)
         reject(err)
       }

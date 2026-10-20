@@ -11,8 +11,8 @@
 **文件路径：** `components/TabBar/TabBar.vue`
 
 **功能特性：**
-- 包含3个导航项：首页、购物车、我的
-- 支持购物车数量角标显示
+- 包含4个导航项：首页、购物车、订单、我的
+- 组件统一维护购物车数量角标，页面无需传入数量
 - 支持当前选中状态高亮
 - 响应式设计，适配不同屏幕
 - 统一的样式和动画效果
@@ -22,8 +22,7 @@
 ```javascript
 // Props
 {
-  current: String,    // 当前激活的标签 ('home' | 'cart' | 'mine')
-  cartCount: Number   // 购物车数量
+  current: String    // 当前激活的标签 ('home' | 'cart' | 'order' | 'mine')
 }
 
 // Events
@@ -34,7 +33,17 @@
 
 ### 2. 更新页面集成组件
 
-已在以下3个页面中集成 TabBar 组件：
+已在以下7个页面中集成 TabBar 组件，统一使用组件内部的购物车角标：
+
+- `pages/products/medicine_list.vue`
+- `pages/products/medicine_index.vue`
+- `pages/products/priducts_list.vue`
+- `pages/products/priducts_list2.vue`
+- `pages/cart/cart.vue`
+- `pages/order/order_list.vue`
+- `pages/user/profile.vue`
+
+商品列表和购物车页面仍保留刷新商品列表、数量控件与结算栏的业务订阅；仅供 TabBar 使用的数量状态和重复订阅已从页面移除。
 
 #### 2.1 购物车页面
 **文件：** `pages/cart/cart.vue`
@@ -100,7 +109,7 @@ switchTab(tab) {
 
 ```vue
 <!-- 模板部分 -->
-<TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
+<TabBar :current="currentTab" @change="handleTabChange" />
 
 <!-- 脚本部分 -->
 import TabBar from '@/components/TabBar/TabBar.vue'
@@ -146,7 +155,6 @@ export default {
     <!-- 引入 TabBar 组件 -->
     <TabBar 
       :current="currentTab" 
-      :cartCount="cartCount" 
       @change="handleTabChange" 
     />
   </view>
@@ -161,8 +169,7 @@ export default {
   },
   data() {
     return {
-      currentTab: 'home',  // 当前页面对应的 tab
-      cartCount: 0         // 购物车数量
+      currentTab: 'home'  // 当前页面对应的 tab
     }
   },
   methods: {
@@ -184,11 +191,14 @@ export default {
    }
    ```
 
-2. **购物车数量：** 需要在页面中维护 `cartCount` 数据，组件会自动显示角标
+2. **购物车数量：** 公共组件通过 `getCartTotalQuantity()` 读取全部本地购物车商品的数量总和；不依赖当前分类、分页或勾选状态。加购、增减、删除、清空及服务端同步写入购物车后，统一通过 `cartUpdated` 事件刷新。数量为 0 时隐藏，超过 99 时显示 `99+`。页面不再传 `cartCount`，也不需要额外请求接口刷新角标。
+
+   组件初始化和挂载时读取数量，通过 `onPageShow` 在返回页面时补充刷新，卸载时取消自己的事件订阅。商品资料更新时，只有库存修正导致数量实际变化才补发本地刷新事件，元数据更新仍保持静默。
 
 3. **当前 Tab 标识：** 根据页面类型设置正确的 `currentTab` 值
    - 商品列表页：`'home'`
    - 购物车页：`'cart'`
+   - 订单页：`'order'`
    - 个人中心页：`'mine'`
 
 ## 后续优化建议

@@ -57,7 +57,7 @@
             </view>
             <view class="product-info">
               <text class="product-name" @click="goToDetail(product)">
-                <text class="self-tag" v-if="product.bizType === 2">健康</text>
+                <text class="self-tag" v-if="product.productCategory === 2">健康</text>
                 <text class="self-tag2" v-if="product.isHospitalStarFormula === 1">院藏推荐</text>
                 <text class="self-tag3" v-if="product.isPrescription === 1">处方</text>
                 {{ product.name }}
@@ -98,7 +98,7 @@
       <button class="submit-btn" @click="handleSubmit">去结算</button>
     </view>
 
-    <TabBar :current="currentTab" :cartCount="cartCount" @change="handleTabChange" />
+    <TabBar :current="currentTab" @change="handleTabChange" />
 
     <view
       v-if="showFlyBall"
@@ -117,7 +117,8 @@ import {
   STORAGE_KEY_CURRENT_CONSULTATION_ID,
   STORAGE_KEY_USER_REGISTER
 } from '@/utils/storage.js'
-import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
+import { createHealthProductListMethods } from '@/utils/health-product-list.js'
+import { getCategoryList, getCategoryProducts, getProductDetail, mapProductDetail, mapProductListItem } from '@/api/product.js'
 import {
   addCartItem,
   calculateTotalPrice,
@@ -132,14 +133,15 @@ import {
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
 import { useProductImages } from '@/utils/product-image.js'
+import { buildListCartCategories, getProductCartLines } from '@/utils/product-list-cart.js'
+import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
+import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { getToken } from '@/utils/request.js'
 import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 
-const HEALTH_BIZ_TYPE = 2
-const PRODUCT_PAGE_SIZE = 20
 
 export default {
   setup: useProductImages,
@@ -204,103 +206,8 @@ export default {
     }
   },
   methods: {
+    ...createHealthProductListMethods({ getCategoryList, getCategoryProducts, mapProductListItem }),
     getImageUrl,
-    getSearchKeyword() {
-      return (this.searchKeyword || '').trim()
-    },
-    getCategoryKey(categoryId) {
-      return String(categoryId || 'all')
-    },
-    getProductQuerySignature() {
-      return this.getSearchKeyword()
-    },
-    getPageStateKey(categoryId) {
-      return `${this.getCategoryKey(categoryId)}:${this.getProductQuerySignature()}`
-    },
-    getPageState(categoryId) {
-      const key = this.getPageStateKey(categoryId)
-      if (!this.productPageState[key]) {
-        this.$set(this.productPageState, key, {
-          pageNum: 0,
-          hasMore: true,
-          loading: false,
-          total: 0,
-          records: []
-        })
-      }
-      return this.productPageState[key]
-    },
-    resetCategoryProducts(categoryId) {
-      const categoryKey = this.getCategoryKey(categoryId)
-      const stateKey = this.getPageStateKey(categoryId)
-      const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
-      if (category) {
-        category.products = []
-      }
-      this.$set(this.productPageState, stateKey, {
-        pageNum: 0,
-        hasMore: true,
-        loading: false,
-        total: 0,
-        records: []
-      })
-    },
-    async fetchProductPage(categoryId, { reset = false } = {}) {
-      const categoryKey = this.getCategoryKey(categoryId)
-      let state = this.getPageState(categoryId)
-      if (!reset && (state.loading || !state.hasMore)) {
-        return
-      }
-      if (reset) {
-        this.resetCategoryProducts(categoryId)
-        state = this.getPageState(categoryId)
-      }
-
-      const requestSeq = ++this.requestSeq
-      const nextPage = reset ? 1 : state.pageNum + 1
-      const apiCategoryId = categoryKey === 'all' ? null : categoryId
-      state.loading = true
-
-      try {
-        const productPage = await getCategoryProducts(
-          apiCategoryId,
-          nextPage,
-          PRODUCT_PAGE_SIZE,
-          HEALTH_BIZ_TYPE,
-          null,
-          null,
-          this.getSearchKeyword()
-        )
-        if (requestSeq !== this.requestSeq) {
-          return
-        }
-        const productList = productPage.records || productPage.list || []
-        const mapped = productList.map(item => mapProductListItem(item))
-        const total = Number(productPage.total || 0)
-        const currentRecords = reset ? [] : (state.records || [])
-        const existingIds = new Set(currentRecords.map(product => String(product.id)))
-        const nextRecords = reset
-          ? mapped
-          : [
-            ...currentRecords,
-            ...mapped.filter(product => !existingIds.has(String(product.id)))
-          ]
-        const category = this.categories.find(cat => this.getCategoryKey(cat.id) === categoryKey)
-        if (category) {
-          category.products = nextRecords
-        }
-        state.records = nextRecords
-        state.pageNum = nextPage
-        state.total = total
-        const loadedCount = state.records.length
-        state.hasMore = total > 0 ? loadedCount < total : mapped.length >= PRODUCT_PAGE_SIZE
-      } catch (error) {
-        console.error('fetchProductPage failed:', error)
-        throw error
-      } finally {
-        state.loading = false
-      }
-    },
     async handleRefreshProducts() {
       try {
         await this.fetchProductPage(this.currentCategoryId, { reset: true })
@@ -311,52 +218,10 @@ export default {
         uni.stopPullDownRefresh()
       }
     },
-    async handleLoadMore() {
-      const state = this.getPageState(this.currentCategoryId)
-      if (!state.hasMore || state.loading) {
-        return
-      }
-      try {
-        await this.fetchProductPage(this.currentCategoryId, { reset: false })
-        this.loadVerifiedProductsFromStorage()
-      } catch (error) {
-        console.error('handleLoadMore failed:', error)
-      }
-    },
-    async loadProducts() {
-      const requestSeq = ++this.requestSeq
-      try {
-        uni.showLoading({ title: '加载中...' })
-        const categoryList = await getCategoryList(HEALTH_BIZ_TYPE)
-        if (requestSeq !== this.requestSeq) return
-        this.categoryList = Array.isArray(categoryList) ? categoryList : []
-        this.categories = [
-          { id: 'all', name: '全部分类', products: [] },
-          ...this.categoryList.map(cat => ({ id: cat.id, name: cat.name, products: [] }))
-        ]
-        this.productPageState = {}
-        if (!this.categories.some(category => this.getCategoryKey(category.id) === this.getCategoryKey(this.currentCategoryId))) {
-          this.currentCategoryId = 'all'
-        }
-        await this.fetchProductPage(this.currentCategoryId, { reset: true })
-        this.loadVerifiedProductsFromStorage()
-      } catch (error) {
-        console.error('loadProducts failed:', error)
-        uni.showToast({ title: '加载商品失败', icon: 'none' })
-      } finally {
-        uni.hideLoading()
-      }
-    },
-    async loadAllProducts() {
-      await this.fetchProductPage('all', { reset: true })
-    },
-    async loadCategoryProducts(categoryId) {
-      await this.fetchProductPage(categoryId, { reset: true })
-    },
     loadVerifiedProductsFromStorage() {
       try {
         this.verifiedProducts = getCartEntries()
-        this.cartItems = loadCartItems(this.categories)
+        this.cartItems = loadCartItems(buildListCartCategories(this.categories, this.verifiedProducts))
       } catch (error) {
         console.error('loadVerifiedProductsFromStorage failed:', error)
       }
@@ -402,66 +267,66 @@ export default {
         url: `/pages/products/${page}?id=${product.id}`
       })
     },
-    goToNotice(product) {
+    async goToNotice(product) {
       if (!getToken()) {
-        uni.navigateTo({
-          url: '/pages/register/register?redirect=/pages/products/priducts_list'
-        })
+        uni.navigateTo({ url: '/pages/register/register?redirect=/pages/products/priducts_list' })
         return
       }
-
-      const flow = resolveCartCompatibility(product, {
-        ignoreProductId: product?.id
-      })
-      if (!flow.valid) {
-        uni.showToast({
-          title: flow.message,
-          icon: 'none'
-        })
-        return
-      }
-
-      if (!hasBoundQuestionnaire(product)) {
-        const success = addCartItem(product, 1, {
-          questionnairePassed: true
-        })
-        if (!success) {
-          uni.showToast({
-            title: '加入购物车失败',
-            icon: 'none'
+      try {
+        // 快捷加购和详情页使用同一真实 SKU 选择规则，问卷也绑定本次规格。
+        const detail = mapProductDetail(await getProductDetail(product.id))
+        product = withProductSku(detail, resolveProductSku(detail))
+        if (!isPurchaseAvailable(product)) throw new Error('商品已售罄或限购额度已用完')
+        const flow = resolveCartCompatibility(product, { ignoreProductId: product.id })
+        if (!flow.valid) {
+          uni.showToast({ title: flow.message, icon: 'none' })
+          return
+        }
+        if (hasBoundQuestionnaire(product)) {
+          uni.navigateTo({
+            url: `/pages/products/product_notice?id=${product.id}&skuId=${product.skuId}&quantity=1&action=cart`
           })
           return
         }
+        if (!addCartItem(product, 1, { questionnairePassed: true })) throw new Error('加入购物车失败')
         this.loadVerifiedProductsFromStorage()
-        uni.showToast({
-          title: '已加入购物车',
-          icon: 'success'
-        })
-        return
+        uni.showToast({ title: '已加入购物车', icon: 'success' })
+      } catch (error) {
+        uni.showToast({ title: error.message || '加入购物车失败', icon: 'none' })
       }
-
-      uni.navigateTo({
-        url: `/pages/products/product_notice?id=${product.id}&quantity=1&action=cart`
-      })
     },
     isProductVerified(productId) {
-      return !!this.verifiedProducts[String(productId)]
+      return getProductCartLines(this.verifiedProducts, productId).length > 0
     },
     getProductQuantity(productId) {
       return getCartProductQuantity(productId, 0)
     },
+    getQuantityCartLine(product) {
+      const lines = getProductCartLines(getCartEntries(), product.id)
+      // 列表展示商品总量，多规格必须到购物车逐行调整，避免误改其他规格。
+      if (lines.length > 1) {
+        this.showCart()
+        return null
+      }
+      if (lines[0] && !lines[0].skuId) {
+        this.goToDetail(product)
+        return null
+      }
+      return lines[0] || null
+    },
     increaseQuantity(product) {
-      const nextQuantity = this.getProductQuantity(product.id) + 1
-      setCartItemQuantity(product.id, nextQuantity)
+      const lines = getProductCartLines(getCartEntries(), product.id)
+      if (!lines.length) return this.goToNotice(product)
+      const line = this.getQuantityCartLine(product)
+      if (!line) return
+      setCartItemQuantity(line.cartKey, line.quantity + 1)
       this.loadVerifiedProductsFromStorage()
     },
     decreaseQuantity(product) {
-      const current = this.getProductQuantity(product.id)
-      if (current <= 1) {
-        removeFromCart(product.id)
-      } else {
-        setCartItemQuantity(product.id, current - 1)
-      }
+      const line = this.getQuantityCartLine(product)
+      if (!line) return
+      if (line.quantity <= 1) removeFromCart(line.cartKey)
+      else setCartItemQuantity(line.cartKey, line.quantity - 1)
       this.loadVerifiedProductsFromStorage()
     },
     showCart() {
@@ -489,7 +354,7 @@ export default {
         }
 
         const selectedIds = this.cartItems.map(item => String(item.id))
-        const checkout = prepareCheckout(selectedIds, this.categories)
+        const checkout = prepareCheckout(selectedIds, buildListCartCategories(this.categories, getCartEntries()))
         if (!checkout.valid) {
           uni.showToast({
             title: checkout.message,
@@ -500,9 +365,8 @@ export default {
 
         if (!checkout.requiresConsultation) {
           uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-          const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
           uni.navigateTo({
-            url: `/pages/order/confirm?selectedItems=${checkout.productIds.join(',')}${therapyParam}`
+            url: `/pages/order/confirm?selectedItems=${checkout.productIds.join(',')}`
           })
           return
         }
@@ -536,7 +400,7 @@ export default {
 	background-color: #f5f5f5;
 	padding-bottom: calc( env(safe-area-inset-bottom));
   }
-  
+
   .nav-bar {
 	display: flex;
 	align-items: center;
@@ -546,7 +410,7 @@ export default {
 	background-color: #ffffff;
 	border-bottom: 1rpx solid #e5e5e5;
   }
-  
+
   .nav-left,
   .nav-right {
 	width: 60rpx;
@@ -555,40 +419,40 @@ export default {
 	align-items: center;
 	justify-content: center;
   }
-  
+
   .nav-icon {
 	font-size: 36rpx;
 	color: #333333;
   }
-  
+
   .nav-title {
 	font-size: 36rpx;
 	font-weight: 500;
 	color: #333333;
   }
-  
+
   .banner-section {
 	width: 100%;
 	margin-bottom: 20rpx;
 	overflow: hidden;
   }
-  
+
   .banner-image {
 	width: 100%;
 	height: auto;
 	display: block;
   }
-  
+
   .banner-content {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
   }
-  
+
   .hospital-info {
 	flex: 1;
   }
-  
+
   .hospital-name {
 	display: block;
 	font-size: 32rpx;
@@ -596,29 +460,29 @@ export default {
 	color: #333333;
 	margin-bottom: 10rpx;
   }
-  
+
   .hospital-subtitle {
 	display: block;
 	font-size: 28rpx;
 	color: #666666;
   }
-  
+
   .banner-right {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-end;
   }
-  
+
   .doctor-illustration {
 	position: relative;
 	margin-bottom: 20rpx;
   }
-  
+
   .doctor-img {
 	width: 120rpx;
 	height: 120rpx;
   }
-  
+
   .recommend-tag {
 	position: absolute;
 	top: -20rpx;
@@ -630,7 +494,7 @@ export default {
 	border-radius: 20rpx;
 	white-space: nowrap;
   }
-  
+
   .consult-btn {
 	background-color: #4A90E2;
 	color: #ffffff;
@@ -639,12 +503,12 @@ export default {
 	border-radius: 30rpx;
 	border: none;
   }
-  
+
   .search-section {
 	padding: 20rpx 30rpx;
 	background-color: #ffffff;
   }
-  
+
   .search-bar {
 	display: flex;
 	align-items: center;
@@ -653,18 +517,18 @@ export default {
 	padding: 10rpx 10rpx 10rpx 30rpx;
 	position: relative;
   }
-  
+
   .search-bar uni-icons {
 	margin-right: 20rpx;
   }
-  
+
   .search-input {
 	flex: 1;
 	font-size: 28rpx;
 	color: #333333;
 	padding-right: 10rpx;
   }
-  
+
   .search-btn {
 	background-color: #4A90E2;
 	color: #ffffff;
@@ -675,23 +539,23 @@ export default {
 	margin-left: 10rpx;
 	flex-shrink: 0;
   }
-  
+
   /* 妯悜鍒嗙被Tabs */
   .category-tabs-wrapper {
 	background-color: #ffffff;
 	border-bottom: 1rpx solid #e5e5e5;
   }
-  
+
   .category-tabs {
 	white-space: nowrap;
 	width: 100%;
   }
-  
+
   .category-tabs-content {
 	display: flex;
 	padding: 0 20rpx;
   }
-  
+
   .category-tab-item {
 	padding: 24rpx 32rpx;
 	margin-right: 20rpx;
@@ -699,11 +563,11 @@ export default {
 	transition: all 0.3s;
 	flex-shrink: 0;
   }
-  
+
   .category-tab-item.active {
 	color: #4A90E2;
   }
-  
+
   .category-tab-item.active::after {
 	content: '';
 	position: absolute;
@@ -715,18 +579,18 @@ export default {
 	background-color: #4A90E2;
 	border-radius: 2rpx;
   }
-  
+
   .category-tab-name {
 	font-size: 28rpx;
 	color: #666666;
 	transition: all 0.3s;
   }
-  
+
   .category-tab-item.active .category-tab-name {
 	color: #4A90E2;
 	font-weight: 600;
   }
-  
+
   .product-list-wrapper {
 	padding: 20rpx;
 	padding-bottom: calc(240rpx + env(safe-area-inset-bottom));
@@ -736,7 +600,7 @@ export default {
 	flex-direction: column;
 	min-height: calc(100vh - 500rpx);
   }
-  
+
   .product-list-header {
 	display: flex;
 	justify-content: space-between;
@@ -744,7 +608,7 @@ export default {
 	padding: 20rpx 20rpx 16rpx 20rpx;
 	border-bottom: 1rpx solid #f0f0f0;
   }
-  
+
   .prescription-title {
 	display: flex;
 	align-items: center;
@@ -756,7 +620,7 @@ export default {
 	margin-left: 8rpx;
 	flex-shrink: 0;
   }
-  
+
   .prescription-text {
 	font-size: 32rpx;
 	font-weight: 600;
@@ -768,7 +632,7 @@ export default {
 	position: relative;
 	padding-left: 12rpx;
   }
-  
+
   .prescription-text::before {
 	content: '';
 	position: absolute;
@@ -781,7 +645,7 @@ export default {
 	border-radius: 3rpx;
 	box-shadow: 0 2rpx 8rpx rgba(74, 144, 226, 0.3);
   }
-  
+
   .history-order {
 	display: flex;
 	align-items: center;
@@ -790,26 +654,26 @@ export default {
 	border-radius: 30rpx;
 	transition: all 0.3s;
   }
-  
+
   .history-order:active {
 	background-color: #f5f5f5;
   }
-  
+
   .history-text {
 	font-size: 26rpx;
 	color: #666666;
   }
-  
+
   .product-list {
 	flex: 1;
   }
-  
+
   .product-header {
 	display: flex;
 	justify-content: flex-end;
 	margin-bottom: 20rpx;
   }
-  
+
   .history-btn {
 	background-color: #ffffff;
 	color: #666666;
@@ -818,13 +682,13 @@ export default {
 	border: 1rpx solid #e5e5e5;
 	border-radius: 20rpx;
   }
-  
+
   .product-items {
 	display: flex;
 	flex-direction: column;
 	gap: 16rpx;
   }
-  
+
   .product-item {
 	width: 100%;
 	background-color: #ffffff;
@@ -842,7 +706,7 @@ export default {
 	position: relative;
 	flex-shrink: 0;
   }
-  
+
   .product-image {
 	width: 200rpx;
 	height: 200rpx;
@@ -863,7 +727,7 @@ export default {
 	padding: 4rpx 10rpx;
 	border-radius: 0 12rpx 0 12rpx;
   }
-  
+
   .product-info {
 	flex: 1;
 	display: flex;
@@ -872,7 +736,7 @@ export default {
 	min-height: 200rpx;
 	min-width: 0;
   }
-  
+
   .product-name {
 	font-size: 28rpx;
 	font-weight: 500;
@@ -912,7 +776,7 @@ export default {
   .self-tag3 {
 	background: #00a884;
   }
-  
+
   .product-desc {
 	font-size: 22rpx;
 	color: #999999;
@@ -925,32 +789,32 @@ export default {
 	line-clamp: 2;
 	-webkit-box-orient: vertical;
   }
-  
+
   .product-footer {
 	display: flex;
 	flex-direction: column;
 	gap: 8rpx;
 	margin-top: auto;
   }
-  
+
   .product-unit {
 	font-size: 22rpx;
 	color: #999999;
   }
-  
+
   .product-price-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 10rpx;
   }
-  
+
   .product-price {
 	font-size: 30rpx;
 	font-weight: bold;
 	color: #ff6b6b;
   }
-  
+
   .add-btn {
 	width: 44rpx;
 	height: 44rpx;
@@ -965,7 +829,7 @@ export default {
 	line-height: 1;
 	flex-shrink: 0;
   }
-  
+
   .quantity-selector {
 	display: flex;
 	align-items: center;
@@ -973,7 +837,7 @@ export default {
 	justify-content: flex-end;
 	flex: 1;
   }
-  
+
   .quantity-btn {
 	width: 44rpx;
 	height: 44rpx;
@@ -988,14 +852,14 @@ export default {
 	padding: 0;
 	flex-shrink: 0;
   }
-  
+
   .quantity-text {
 	font-size: 26rpx;
 	color: #333333;
 	min-width: 36rpx;
 	text-align: center;
   }
-  
+
   .cart-bar {
 	position: fixed;
 	bottom: calc(100rpx + env(safe-area-inset-bottom));
@@ -1011,14 +875,14 @@ export default {
 	box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
 	box-sizing: border-box;
   }
-  
+
   .cart-icon-wrapper {
 	position: relative;
 	width: 80rpx;
 	height: 80rpx;
 	margin-right: 20rpx;
   }
-  
+
   .cart-icon {
 	width: 80rpx;
 	height: 80rpx;
@@ -1031,7 +895,7 @@ export default {
 	justify-content: center;
 	font-weight: bold;
   }
-  
+
   .cart-badge {
 	position: absolute;
 	top: -10rpx;
@@ -1047,25 +911,25 @@ export default {
 	justify-content: center;
 	padding: 0 8rpx;
   }
-  
+
   .cart-info {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
   }
-  
+
   .cart-total {
 	font-size: 36rpx;
 	font-weight: bold;
 	color: #333333;
 	margin-bottom: 4rpx;
   }
-  
+
   .cart-tip {
 	font-size: 20rpx;
 	color: #999999;
   }
-  
+
   .submit-btn {
 	background-color: #4A90E2;
 	color: #ffffff;
@@ -1075,7 +939,7 @@ export default {
 	border: none;
 	font-weight: 500;
   }
-  
+
   .fly-ball {
 	position: fixed;
 	width: 30rpx;

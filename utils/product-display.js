@@ -30,10 +30,5 @@ export const getExternalUseLabel = (isExternal) => {
 }
 
 export const isSelfDevelopedProduct = (product) => {
-  if (!product) return false
-  const flag = product.isSelfDeveloped ?? product.is_self_developed
-  if (flag === undefined || flag === null || flag === '') {
-    return Number(product.bizType) === 1
-  }
-  return Number(flag) === 1
+  return Number(product?.isSelfDeveloped) === 1
 }

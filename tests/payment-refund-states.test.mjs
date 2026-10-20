@@ -1,3 +1,4 @@
+import { isTherapyOrder } from '../utils/therapy.js'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { getPaymentOutcome, getOrderStatusText, getRedeemStatusText, canShowRedeemCode } from '../utils/order-status.js'
@@ -33,7 +34,7 @@ test('支付页面只在服务端确认可履约后清理当前已付订单商�
   const removed = []
   const mocks = {
     ref: value => ({ value }), onLoad() {}, onUnload() {}, getSessionGeneration: () => 0, assertCurrentSession() {},
-    getPaymentOutcome, ORDER_TYPE_THERAPY: 4,
+    getPaymentOutcome, isTherapyOrder,
     dayjs: value => ({ format: () => String(value) }),
     buildCartItemKey: (id, sku) => sku ? `${id}:${sku}` : String(id),
     removeFromCart: ids => { removed.push(ids); return true }, uni: { $emit() {} }
@@ -87,4 +88,26 @@ test('同一退款表单在网络失败重试时沿用requestId，成功后阻�
   assert.equal(page.submitted, true)
   await page.submitRefund()
   assert.equal(submitted.length, 2)
+})
+
+
+test('支付成功页按订单快照展示配送，历史纯疗法保留原履约且混合快照优先', () => {
+  const page = loadSetup('pages/order/payment_success.vue', {
+    ref: value => ({ value }), onLoad() {}, onUnload() {}, getSessionGeneration: () => 0,
+    getPaymentOutcome, isTherapyOrder
+  }, ['resolveShippingFeeText', 'applyTips', 'paymentInfo', 'paymentOutcome'])
+  page.paymentOutcome.value = { state: 'success' }
+  for (const [order, therapyOnly] of [
+    [{ orderType: 4, items: [{ productCategorySnapshot: null }] }, true],
+    [{ orderType: 4, items: [{ productCategorySnapshot: 3 }, { productCategorySnapshot: 2 }] }, false],
+    [{ orderType: 1, items: [{ productCategorySnapshot: 2, productCategory: 3 }] }, false],
+    [{ orderType: 1, items: [{ productCategorySnapshot: 3, productCategory: 2 }] }, true]
+  ]) {
+    const fee = page.resolveShippingFeeText(order)
+    page.paymentInfo.value.shippingFeeText = fee
+    page.applyTips(order)
+    assert.equal(fee.includes('无需快递费'), therapyOnly)
+    assert.equal(page.paymentInfo.value.secondaryTip.includes('无需物流'), therapyOnly)
+    if (!therapyOnly) assert.match(page.paymentInfo.value.secondaryTip, /到付/)
+  }
 })

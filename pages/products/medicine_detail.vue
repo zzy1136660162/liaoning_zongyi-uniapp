@@ -31,12 +31,12 @@
     </view>
     <view
       class="price-box"
-      :style="{ backgroundImage: product.categoryId === 35 ? 'url(https://smf.lntcm.com/static/shop/vph_2.jpg)' : 'url(https://smf.lntcm.com/static/shop/vph_1.png)' }"
+      :style="{ backgroundImage: product.productCategory === 2 ? 'url(https://smf.lntcm.com/static/shop/vph_2.jpg)' : 'url(https://smf.lntcm.com/static/shop/vph_1.png)' }"
     >
       <view class="price-main">
         <view class="price-left">
           <view class="price-tag">
-            制剂价格
+            商品价格
           </view>
           <view class="price-info">
             <text class="price-unit">
@@ -216,7 +216,7 @@
           v-for="sku in skuList"
           :key="sku.id"
           class="sku-option"
-          :class="{ active: String(selectedSkuId) === String(sku.id), disabled: !isPurchaseAvailable(sku) }"
+          :class="{ active: String(selectedSkuId) === String(sku.id), disabled: !isPurchaseAvailable(withProductSku(product, sku)) }"
           @click="selectSku(sku)"
         >
           <text class="sku-name">
@@ -838,11 +838,14 @@ import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/util
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
 import { getImageUrl } from '@/utils/config.js'
+import { getProductCartLines } from '@/utils/product-list-cart.js'
+import { formatRichText } from '@/utils/product-rich-text.js'
 import { useProductImages } from '@/utils/product-image.js'
 import {
   addCartItem,
   buildCartItemKey,
   getCartProductInfo,
+  getCartEntries,
   getCartProductQuantity,
   getCartTotalQuantity,
   prepareCheckout,
@@ -873,7 +876,6 @@ const createEmptyProduct = () => ({
   intro: '',
   unit: '',
   salesVolume: 0,
-  bizType: 1,
   goodsMerchantType: 1,
   isPrescription: 0,
   needQuestionnaire: 0,
@@ -1020,15 +1022,6 @@ const resolveRecommendTab = () => {
   return 'combo'
 }
 
-const resolveDefaultSkuId = (skus = []) => {
-  if (!Array.isArray(skus) || skus.length === 0) {
-    return null
-  }
-  const availableDefault = skus.find(item => Number(item.defaultFlag) === 1 && isPurchaseAvailable(item))
-  const available = skus.find(item => isPurchaseAvailable(item))
-  const fallback = skus.find(item => Number(item.defaultFlag) === 1) || skus[0]
-  return (availableDefault || available || fallback)?.id || null
-}
 
 const getSelectedCartKey = (targetProduct = product.value) => {
   const productId = targetProduct?.productId || targetProduct?.id
@@ -1086,7 +1079,9 @@ const applyProduct = (source, { preserveQuantity = false } = {}) => {
   comboProducts.value = Array.isArray(mapped.relatedProducts) ? mapped.relatedProducts : []
   starProducts.value = Array.isArray(mapped.starProducts) ? mapped.starProducts : []
   recommendTab.value = resolveRecommendTab()
-  selectedSkuId.value = selectedSkuId.value || resolveDefaultSkuId(mapped.skus)
+  // 保留已选规格；规格失效时提示重选，不能自动替换成另一规格。
+  try { selectedSkuId.value = resolveProductSku(product.value, selectedSkuId.value)?.id || null }
+  catch (error) { uni.showToast({ title: error.message, icon: 'none' }) }
   if (preserveQuantity) quantity.value = normalizePurchaseQuantity(withSelectedSku(), quantity.value)
   else loadQuantityFromStorage()
   loadRecommendCartQuantities()
@@ -1096,6 +1091,7 @@ const loadProduct = async (id) => {
   if (!id) return
   const sequence = ++productRequestSequence
   const session = getSessionGeneration()
+  // 回到详情时重读库存和限购；同账号、同商品保留本次选择的数量。
   const preserveQuantity = loadedSession === session && String(product.value.id) === String(id)
   product.value = { ...product.value, available: false }
   try {
@@ -1116,31 +1112,6 @@ const loadProduct = async (id) => {
   }
 }
 
-const formatRichText = (htmlContent) => {
-  if (!htmlContent) return ''
-  const normalizeRichText = (content) => content
-    .replace(/<img([^>]*)style=(['"])(.*?)\2([^>]*)>/gi, (match, before, quote, styleContent, after) => {
-      const sanitizedStyle = styleContent
-        .replace(/(?:^|;)\s*width\s*:[^;]*/gi, '')
-        .replace(/(?:^|;)\s*height\s*:[^;]*/gi, '')
-        .trim()
-      const nextStyle = `max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;${sanitizedStyle ? ` ${sanitizedStyle}` : ''}`.trim()
-      return `<img${before}style="${nextStyle}"${after}>`
-    })
-    .replace(/<img((?:(?!style=)[^>])*)>/gi, '<img$1 style="max-width:100%;width:100%;height:auto;display:block;box-sizing:border-box;">')
-
-  if (typeof htmlContent === 'string') {
-    return normalizeRichText(
-      htmlContent
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-    )
-  }
-  return normalizeRichText(String(htmlContent))
-}
 
 const buildDetailRedirect = () => {
   return product.value.id ? `/pages/products/medicine_detail?id=${product.value.id}` : '/pages/products/medicine_detail'
@@ -1207,9 +1178,8 @@ const goCheckout = (targetProduct) => {
   const selectedItems = checkout.productIds.join(',')
   if (!checkout.requiresConsultation) {
     uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-    const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
     uni.navigateTo({
-      url: `/pages/order/confirm?selectedItems=${selectedItems}${therapyParam}`
+      url: `/pages/order/confirm?selectedItems=${selectedItems}`
     })
     return true
   }
@@ -1234,6 +1204,10 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
     return false
   }
 
+  if (!isPurchaseAvailable(saleProduct)) {
+    uni.showToast({ title: '商品已售罄或限购额度已用完', icon: 'none' })
+    return false
+  }
   const nextQuantity = Math.max(1, Number(selectedQuantity) || 1)
   const alreadyPassed = hasQuestionnairePassed(saleProduct)
   if (Number(saleProduct.needQuestionnaire) === 1 && !alreadyPassed) {
@@ -1337,7 +1311,7 @@ const goToDetail = (item) => {
   const page = isTraditionalTherapyProduct(item) ? 'therapy_detail' : 'medicine_detail'
   console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=MEDICINE_DETAIL targetPage=%s productId=%s', page, item.id)
   uni.navigateTo({
-    url: `/pages/products/${page}?id=${item.id}&product=${encodeURIComponent(JSON.stringify(item))}`
+    url: `/pages/products/${page}?id=${item.id}`
   })
 }
 
@@ -1367,10 +1341,25 @@ const animateFlyToCart = () => {
 }
 
 const flyToCart = async (event, item) => {
-  const nextQuantity = getCartProductQuantity(item.id, 0) + 1
-  const added = await handlePurchaseAction('cart', item, nextQuantity)
-  if (added) {
-    animateFlyToCart()
+  if (!ensureLogin()) return
+  let lines = getProductCartLines(getCartEntries(), item.id)
+  if (lines.length > 1) return goCart()
+  if (lines[0] && !lines[0].skuId) return goToDetail(item)
+  const session = getSessionGeneration()
+  try {
+    // 推荐卡片只有商品汇总数据；重新读真实规格，已有单规格时只增加该行。
+    const detail = mapProductDetail(await getProductDetail(item.id))
+    if (!isCurrentSession(session)) return
+    // 等待期间可能连续加购或新增规格，按最新行和数量落车，不能重放点击时的旧数量。
+    lines = getProductCartLines(getCartEntries(), item.id)
+    if (lines.length > 1) return goCart()
+    if (lines[0] && !lines[0].skuId) return goToDetail(item)
+    const saleProduct = withProductSku(detail, resolveProductSku(detail, lines[0]?.skuId))
+    const nextQuantity = (lines[0]?.quantity || 0) + 1
+    const added = await handlePurchaseAction('cart', saleProduct, nextQuantity)
+    if (added) animateFlyToCart()
+  } catch (error) {
+    if (isCurrentSession(session)) uni.showToast({ title: error.message || '加入购物车失败', icon: 'none' })
   }
 }
 
@@ -1382,14 +1371,6 @@ onLoad((options) => {
   product.value = createEmptyProduct()
   selectedSkuId.value = options.skuId || null
   routeProductId.value = options.id || ''
-  if (!routeProductId.value && options.product) {
-    try {
-      const parsed = JSON.parse(decodeURIComponent(options.product))
-      routeProductId.value = parsed.id || ''
-    } catch (error) {
-      console.error('parse product failed:', error)
-    }
-  }
   unsubscribeSession = onSessionChanged(() => {
     productRequestSequence++
     loadedSession = null

@@ -1,8 +1,8 @@
+import { trackCurrentPageVisit } from '@/utils/page-tracker.js'
 
 // #ifndef VUE3
 import Vue from 'vue'
 import AppVue2 from './App'
-import { trackCurrentPageVisit } from '@/utils/page-tracker.js'
 
 Vue.config.productionTip = false
 
@@ -23,7 +23,6 @@ app.$mount()
 // #ifdef VUE3
 import { createSSRApp } from 'vue'
 import AppVue3 from './App.vue'
-import { trackCurrentPageVisit } from '@/utils/page-tracker.js'
 
 export function createApp() {
   const app = createSSRApp(AppVue3)

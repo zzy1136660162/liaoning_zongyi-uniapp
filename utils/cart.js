@@ -1,12 +1,10 @@
+import { normalizeCartId as normalizeId, splitCartItemKey, buildCartItemKey } from './cart-key.js'
 import {
-  STORAGE_KEY_VERIFIED_PRODUCTS,
-  STORAGE_KEY_PRODUCT_QUANTITIES,
+  STORAGE_KEY_CART_ITEMS,
   STORAGE_KEY_CHECKOUT_PRODUCT_IDS
 } from './storage.js'
 import {
-  BIZ_TYPE_HOSPITAL_MEDICAL,
   resolveGoodsMerchantType,
-  resolveProductBizType,
   resolveProductFlow,
   resolveProductTypeLabel
 } from './product-biz.js'
@@ -43,44 +41,13 @@ const toFlag = (value, fallback = false) => {
   return Boolean(value)
 }
 
-const normalizeId = (value) => {
-  if (value === undefined || value === null || value === '') {
-    return ''
-  }
-  return String(value).trim()
-}
+const uniqueIds = (ids = []) => [...new Set((Array.isArray(ids) ? ids : [ids]).map(normalizeId).filter(Boolean))]
 
-const uniqueIds = (ids = []) => {
-  return [...new Set((Array.isArray(ids) ? ids : [ids]).map(normalizeId).filter(Boolean))]
-}
-
-export const splitCartItemKey = (cartKey) => {
-  const key = normalizeId(cartKey)
-  if (!key) {
-    return { productId: '', skuId: '' }
-  }
-  const separatorIndex = key.indexOf(':')
-  if (separatorIndex < 0) {
-    return { productId: key, skuId: '' }
-  }
-  return {
-    productId: key.slice(0, separatorIndex),
-    skuId: key.slice(separatorIndex + 1)
-  }
-}
-
-export const buildCartItemKey = (productId, skuId = null) => {
-  const normalizedProductId = normalizeId(productId)
-  const normalizedSkuId = normalizeId(skuId)
-  if (!normalizedProductId) {
-    return ''
-  }
-  return normalizedSkuId ? `${normalizedProductId}:${normalizedSkuId}` : normalizedProductId
-}
+export { splitCartItemKey, buildCartItemKey }
 
 const resolveProductId = (productOrId) => {
   if (productOrId && typeof productOrId === 'object') {
-    const directProductId = normalizeId(productOrId.productId ?? productOrId.product_id)
+    const directProductId = normalizeId(productOrId.productId)
     if (directProductId) {
       return directProductId
     }
@@ -90,14 +57,13 @@ const resolveProductId = (productOrId) => {
 }
 
 const resolveSkuId = (productOrId, options = {}) => {
-  const optionSkuId = normalizeId(options.skuId ?? options.sku_id)
+  const optionSkuId = normalizeId(options.skuId)
   if (optionSkuId) {
     return optionSkuId
   }
   if (productOrId && typeof productOrId === 'object') {
     const productSkuId = normalizeId(
       productOrId.skuId ??
-      productOrId.sku_id ??
       productOrId.selectedSkuId ??
       productOrId.selectedSku?.id
     )
@@ -120,7 +86,7 @@ const resolveCartItemKey = (productOrId, options = {}) => {
 }
 
 const hasExplicitAvailable = (value = {}) => {
-  return value.inventoryMode === 'HIS_AVAILABILITY' || value.available !== undefined || value.saleable !== undefined || value.onSale !== undefined
+  return value.inventoryMode === 'HIS_AVAILABILITY' || value.available !== undefined
 }
 
 const resolveAvailableFlag = (value = {}, fallback = true) => {
@@ -128,12 +94,7 @@ const resolveAvailableFlag = (value = {}, fallback = true) => {
   if (value.available !== undefined) {
     return toFlag(value.available, fallback)
   }
-  if (value.saleable !== undefined) {
-    return toFlag(value.saleable, fallback)
-  }
-  if (value.onSale !== undefined) {
-    return toFlag(value.onSale, fallback)
-  }
+
   return fallback
 }
 
@@ -141,12 +102,7 @@ const resolveStockValue = (value = {}, fallback = null) => {
   if (value.stock !== undefined) {
     return toStockValue(value.stock, fallback)
   }
-  if (value.stockQuantity !== undefined) {
-    return toStockValue(value.stockQuantity, fallback)
-  }
-  if (value.inventory !== undefined) {
-    return toStockValue(value.inventory, fallback)
-  }
+
   return fallback
 }
 
@@ -170,19 +126,7 @@ const clampQuantityToStock = (quantity, stock) => {
   return normalizedQuantity
 }
 
-const readLegacyQuantities = () => {
-  const quantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
-  return typeof quantities === 'object' && quantities !== null ? quantities : {}
-}
-
-const pickText = (...values) => {
-  for (const value of values) {
-    if (value !== undefined && value !== null && value !== '') {
-      return value
-    }
-  }
-  return ''
-}
+const pickText = (...values) => pickValue(...values) ?? ''
 
 const pickValue = (...values) => {
   for (const value of values) {
@@ -193,7 +137,7 @@ const pickValue = (...values) => {
   return null
 }
 
-const buildCartEntry = (cartKeyOrProductId, partial = {}, legacyQuantities = {}) => {
+const buildCartEntry = (cartKeyOrProductId, partial = {}) => {
   const productId = resolveProductId({ id: cartKeyOrProductId, ...partial })
   const skuId = resolveSkuId({ id: cartKeyOrProductId, ...partial })
   const cartKey = buildCartItemKey(productId, skuId)
@@ -201,10 +145,9 @@ const buildCartEntry = (cartKeyOrProductId, partial = {}, legacyQuantities = {})
     return null
   }
 
-  const legacyQuantity = legacyQuantities[cartKey] ?? legacyQuantities[productId]
   const stock = resolveStockValue(partial, null)
-  const available = stock === 0 ? false : resolveAvailableFlag(partial, true)
-  const quantity = clampQuantityToStock(toPositiveInt(partial.quantity, toPositiveInt(legacyQuantity, 1)), stock)
+  const available = !skuId || stock === 0 ? false : resolveAvailableFlag(partial, true)
+  const quantity = clampQuantityToStock(toPositiveInt(partial.quantity, 1), stock)
   const needQuestionnaire = toNumber(partial.needQuestionnaire, 0)
   const defaultQuestionnairePassed = needQuestionnaire === 1 ? false : true
 
@@ -212,23 +155,17 @@ const buildCartEntry = (cartKeyOrProductId, partial = {}, legacyQuantities = {})
     productId,
     ...inventoryFields(partial),
     skuId: skuId || null,
-    skuCode: pickText(partial.skuCode, partial.sku_code),
-    skuName: pickText(partial.skuName, partial.sku_name),
-    skuSpecText: pickText(partial.skuSpecText, partial.sku_spec_text, partial.specText, partial.spec_text),
-    productName: pickText(partial.productName, partial.product_name, partial.name),
-    name: pickText(partial.name, partial.productName, partial.product_name),
-    coverImage: pickText(partial.coverImage, partial.cover_image, partial.image),
-    image: pickText(partial.image, partial.coverImage, partial.cover_image),
+    skuCode: pickText(partial.skuCode),
+    skuName: pickText(partial.skuName),
+    skuSpecText: pickText(partial.skuSpecText, partial.specText),
+    productName: pickText(partial.productName, partial.name),
+    coverImage: pickText(partial.coverImage, partial.image),
     price: partial.price !== undefined && partial.price !== null && partial.price !== '' ? Number(partial.price) : null,
     unit: pickText(partial.unit),
-    verified: toFlag(partial.verified, true),
     selected: available ? toFlag(partial.selected, true) : false,
     quantity,
     available,
     stock,
-    bizType: partial.bizType !== undefined && partial.bizType !== null && partial.bizType !== ''
-      ? toNumber(partial.bizType, null)
-      : null,
     goodsMerchantType: partial.goodsMerchantType !== undefined && partial.goodsMerchantType !== null && partial.goodsMerchantType !== ''
       ? toNumber(partial.goodsMerchantType, null)
       : null,
@@ -238,60 +175,33 @@ const buildCartEntry = (cartKeyOrProductId, partial = {}, legacyQuantities = {})
     isPrescription: partial.isPrescription !== undefined && partial.isPrescription !== null && partial.isPrescription !== ''
       ? toNumber(partial.isPrescription, null)
       : null,
-    categoryId: partial.categoryId ?? partial.category_id ?? null,
-    categoryCode: partial.categoryCode || partial.category_code || '',
+    categoryId: partial.categoryId ?? null,
+    categoryCode: partial.categoryCode || '',
     needQuestionnaire,
-    questionnaireId: needQuestionnaire === 1 ? pickValue(partial.questionnaireId, partial.questionnaire_id) : null,
-    answerId: needQuestionnaire === 1 ? pickValue(partial.answerId, partial.answer_id) : null,
+    questionnaireId: needQuestionnaire === 1 ? pickValue(partial.questionnaireId) : null,
+    answerId: needQuestionnaire === 1 ? pickValue(partial.answerId) : null,
     questionnairePassed: toFlag(partial.questionnairePassed, defaultQuestionnairePassed),
     timestamp: partial.timestamp ? toNumber(partial.timestamp, Date.now()) : Date.now()
   }
 }
 
-const normalizeCartData = (rawData, options = {}) => {
-  const { includeLegacyIds = true } = options
-  const legacyQuantities = readLegacyQuantities()
+// 购物车只保存规范条目；详情页数量草稿和处方编号不能成为购物车商品。
+const normalizeCartData = (rawData) => {
   const normalized = {}
-  const source = rawData && typeof rawData === 'object' ? rawData : {}
-  const sourceKeys = Object.keys(source)
-  const ids = includeLegacyIds
-    ? uniqueIds([...sourceKeys, ...Object.keys(legacyQuantities)])
-    : uniqueIds(sourceKeys)
-
-  ids.forEach((rawKey) => {
-    const value = source[rawKey]
-    if (typeof value === 'boolean') {
-      const entry = buildCartEntry(rawKey, { verified: value }, legacyQuantities)
-      if (entry && entry.verified) {
-        normalized[buildCartItemKey(entry.productId, entry.skuId)] = entry
-      }
-      return
-    }
-
-    if (value && typeof value === 'object') {
-      const entry = buildCartEntry(rawKey, value, legacyQuantities)
-      if (entry && entry.verified) {
-        normalized[buildCartItemKey(entry.productId, entry.skuId)] = entry
-      }
-      return
-    }
-
-    if (legacyQuantities[rawKey] !== undefined) {
-      const entry = buildCartEntry(rawKey, { verified: true }, legacyQuantities)
-      if (entry) {
-        normalized[buildCartItemKey(entry.productId, entry.skuId)] = entry
-      }
-    }
+  Object.entries(rawData && typeof rawData === 'object' ? rawData : {}).forEach(([cartKey, value]) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return
+    const entry = buildCartEntry(cartKey, value)
+    if (entry) normalized[buildCartItemKey(entry.productId, entry.skuId)] = entry
   })
-
   return normalized
 }
 
 const readCartData = () => {
-  const raw = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
+  const raw = uni.getStorageSync(STORAGE_KEY_CART_ITEMS) || {}
   return normalizeCartData(raw)
 }
 
+// 本地写入立即通知页面/角标；后台推送独立防抖，不能阻塞用户增减数量。
 const emitCartUpdated = (source = 'local') => {
   uni.$emit('cartUpdated', { source })
 }
@@ -305,17 +215,8 @@ const triggerRemoteSync = (action, payload) => {
 }
 
 const writeCartData = (cartData, options = {}) => {
-  const normalized = normalizeCartData(cartData, { includeLegacyIds: false })
-  const legacyQuantities = {}
-
-  Object.entries(normalized).forEach(([cartKey, entry]) => {
-    if (entry.verified) {
-      legacyQuantities[cartKey] = toPositiveInt(entry.quantity, 1)
-    }
-  })
-
-  uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, normalized)
-  uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, legacyQuantities)
+  const normalized = normalizeCartData(cartData)
+  uni.setStorageSync(STORAGE_KEY_CART_ITEMS, normalized)
 
   if (!options.silent) {
     emitCartUpdated(options.eventSource || 'local')
@@ -329,7 +230,7 @@ const writeCartData = (cartData, options = {}) => {
       triggerRemoteSync('remove', options.syncRemoveIds)
     }
     if (options.syncClear) {
-      triggerRemoteSync('clear')
+      triggerRemoteSync('clear', options.syncClear)
     }
   }
 }
@@ -340,9 +241,6 @@ export const replaceCartData = (cartData) => {
 
 const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) => {
   const hasProductObject = product && typeof product === 'object'
-  const productBizType = hasProductObject && product.bizType !== undefined
-    ? (product.bizType === null ? resolveProductBizType(product) : toNumber(product.bizType, null))
-    : null
   const productGoodsMerchantType = hasProductObject && product.goodsMerchantType !== undefined
     ? (product.goodsMerchantType === null ? resolveGoodsMerchantType(product) : toNumber(product.goodsMerchantType, null))
     : null
@@ -353,16 +251,16 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
     ? toNumber(product.isPrescription, null)
     : null
   const categoryId = hasProductObject
-    ? (product.categoryId ?? product.category_id ?? existing.categoryId ?? null)
+    ? (product.categoryId ?? existing.categoryId ?? null)
     : (existing.categoryId ?? null)
   const categoryCode = hasProductObject
-    ? (product.categoryCode || product.category_code || existing.categoryCode || '')
+    ? (product.categoryCode || existing.categoryCode || '')
     : (existing.categoryCode || '')
   const resolvedNeedQuestionnaire = hasProductObject && product.needQuestionnaire !== undefined
     ? toNumber(product.needQuestionnaire, 0)
     : toNumber(pickValue(options.needQuestionnaire, existing.needQuestionnaire, 0), 0)
-  const hasProductQuestionnaireId = hasProductObject && (product.questionnaireId !== undefined || product.questionnaire_id !== undefined)
-  const productQuestionnaireId = product.questionnaireId !== undefined ? product.questionnaireId : product.questionnaire_id
+  const hasProductQuestionnaireId = hasProductObject && product.questionnaireId !== undefined
+  const productQuestionnaireId = product.questionnaireId
   const questionnaireId = resolvedNeedQuestionnaire === 1
     ? (hasProductQuestionnaireId ? productQuestionnaireId : pickValue(options.questionnaireId, existing.questionnaireId))
     : null
@@ -377,16 +275,16 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
   )
   const answerId = resolvedNeedQuestionnaire === 1 && questionnaireId !== null
     ? pickValue(matchingSubmission || !questionnaireChanged ? options.answerId : null,
-      product.answerId, product.answer_id, questionnaireChanged ? null : existing.answerId)
+      product.answerId, questionnaireChanged ? null : existing.answerId)
     : null
 
   return {
     ...inventoryFields(product, existing),
-    bizType: toNumber(pickValue(productBizType, options.bizType, existing.bizType, resolveProductBizType(product)), null),
     goodsMerchantType: toNumber(pickValue(productGoodsMerchantType, options.goodsMerchantType, existing.goodsMerchantType, resolveGoodsMerchantType(product)), null),
-    productCategory: options.productCategory !== undefined && options.productCategory !== null
-      ? toNumber(options.productCategory, productCategory || existing.productCategory || null)
-      : (productCategory !== null ? productCategory : (existing.productCategory ?? null)),
+    // 最新商品配置优先于页面参数和持久化元数据，避免改类后仍走旧购买流程。
+    productCategory: hasProductObject && product.productCategory !== undefined
+      ? productCategory
+      : toNumber(pickValue(options.productCategory, existing.productCategory), null),
     isPrescription: options.isPrescription !== undefined && options.isPrescription !== null
       ? toNumber(options.isPrescription, isPrescription || existing.isPrescription || null)
       : (isPrescription !== null ? isPrescription : (existing.isPrescription ?? null)),
@@ -494,8 +392,8 @@ const findProductById = (categories = [], cartKeyOrProductId) => {
   }
   if (skuId) {
     const skuMatch = products.find(item => {
-      return normalizeId(item.productId ?? item.product_id) === productId &&
-        normalizeId(item.skuId ?? item.sku_id) === skuId
+      return normalizeId(item.productId) === productId &&
+        normalizeId(item.skuId) === skuId
     })
     if (skuMatch) {
       return skuMatch
@@ -503,8 +401,8 @@ const findProductById = (categories = [], cartKeyOrProductId) => {
     return null
   }
   return products.find(item => {
-    const itemProductId = normalizeId(item.productId ?? item.product_id ?? item.id)
-    const itemSkuId = normalizeId(item.skuId ?? item.sku_id)
+    const itemProductId = normalizeId(item.productId ?? item.id)
+    const itemSkuId = normalizeId(item.skuId)
     return itemProductId === productId && (!skuId || !itemSkuId)
   }) || null
 }
@@ -551,6 +449,7 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
 
     const productId = resolveProductId(productOrId)
     const skuId = resolveSkuId(productOrId, options)
+    if (!skuId) return false
     const cartData = readCartData()
     const existing = cartData[cartKey] || {}
     const meta = resolveCartMetaFromProduct(productOrId, existing, options)
@@ -560,18 +459,15 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
       ...existing,
       productId,
       skuId: skuId || null,
-      skuCode: pickText(options.skuCode, product.skuCode, product.sku_code, existing.skuCode),
-      skuName: pickText(options.skuName, product.skuName, product.sku_name, existing.skuName),
-      skuSpecText: pickText(options.skuSpecText, product.skuSpecText, product.sku_spec_text, product.specText, existing.skuSpecText),
-      productName: pickText(product.productName, product.product_name, product.name, existing.productName),
-      name: pickText(product.name, product.productName, product.product_name, existing.name),
-      coverImage: pickText(product.coverImage, product.cover_image, product.image, existing.coverImage),
-      image: pickText(product.image, product.coverImage, product.cover_image, existing.image),
+      skuCode: pickText(options.skuCode, product.skuCode, existing.skuCode),
+      skuName: pickText(options.skuName, product.skuName, existing.skuName),
+      skuSpecText: pickText(options.skuSpecText, product.skuSpecText, product.specText, existing.skuSpecText),
+      productName: pickText(product.productName, product.name, existing.productName),
+      coverImage: pickText(product.coverImage, product.image, existing.coverImage),
       price: product.price !== undefined && product.price !== null && product.price !== ''
         ? Number(product.price)
         : (existing.price ?? null),
       unit: pickText(product.unit, existing.unit),
-      verified: options.verified !== undefined ? toFlag(options.verified, true) : true,
       selected: meta.available !== false && meta.stock !== 0
         ? (options.selected !== undefined ? toFlag(options.selected, true) : (existing.selected !== undefined ? toFlag(existing.selected, true) : true))
         : false,
@@ -579,7 +475,6 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
       available: meta.stock === 0 ? false : meta.available,
       stock: meta.stock,
       ...inventoryFields(meta),
-      bizType: meta.bizType,
       goodsMerchantType: meta.goodsMerchantType,
       productCategory: meta.productCategory,
       isPrescription: meta.isPrescription,
@@ -600,12 +495,6 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
   }
 }
 
-export const saveToCart = (productId, quantity = 1, selected = true) => {
-  const existing = getCartProductInfo(productId)
-  return addCartItem(existing ? { id: productId, ...existing } : { id: productId }, quantity, {
-    selected
-  })
-}
 
 export const setCartItemQuantity = (productId, quantity) => {
   try {
@@ -619,7 +508,8 @@ export const setCartItemQuantity = (productId, quantity) => {
     }
 
     const cartData = readCartData()
-    const existing = cartData[cartKey] || {}
+    const existing = cartData[cartKey]
+    if (!existing?.skuId) return false
     const entry = buildCartEntry(cartKey, existing)
     if (!entry) {
       return false
@@ -673,7 +563,8 @@ export const removeFromCart = (productIds) => {
 
 export const clearCart = () => {
   try {
-    writeCartData({}, { syncClear: true })
+    const removedKeys = Object.keys(readCartData())
+    writeCartData({}, { syncClear: removedKeys })
     clearCheckoutProductIds()
     return true
   } catch (error) {
@@ -724,7 +615,7 @@ export const updateMultipleSelections = (selectionMap = {}) => {
 
 export const getSelectedProductIds = () => {
   return Object.entries(readCartData())
-    .filter(([, entry]) => entry.verified && entry.selected && isCartEntryAvailable(entry))
+    .filter(([, entry]) => entry.selected && isCartEntryAvailable(entry))
     .map(([cartKey]) => cartKey)
 }
 
@@ -805,11 +696,9 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
     const cartData = readCartData()
     const cartItems = []
     let needsSave = false
+    let quantityChanged = false
 
     Object.entries(cartData).forEach(([cartKey, entry]) => {
-      if (!entry.verified) {
-        return
-      }
       if (onlySelected && !entry.selected) {
         return
       }
@@ -819,31 +708,29 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         return
       }
 
-      const nextProductCategory = product.productCategory !== undefined && product.productCategory !== null && product.productCategory !== ''
-        ? toNumber(product.productCategory, null)
+      const nextProductCategory = product.productCategory !== undefined
+        ? (product.productCategory === null || product.productCategory === '' ? null : toNumber(product.productCategory, null))
         : (entry.productCategory ?? null)
       const nextIsPrescription = product.isPrescription !== undefined && product.isPrescription !== null && product.isPrescription !== ''
         ? toNumber(product.isPrescription, null)
         : (entry.isPrescription ?? null)
-      const nextCategoryId = product.categoryId ?? product.category_id ?? entry.categoryId ?? null
-      const nextCategoryCode = product.categoryCode || product.category_code || entry.categoryCode || ''
+      const nextCategoryId = product.categoryId ?? entry.categoryId ?? null
+      const nextCategoryCode = product.categoryCode || entry.categoryCode || ''
       const currentMeta = resolveCartMetaFromProduct(product, entry)
-      const nextBizType = currentMeta.bizType
       const nextGoodsMerchantType = currentMeta.goodsMerchantType
       const nextNeedQuestionnaire = currentMeta.needQuestionnaire
       const nextQuestionnaireId = currentMeta.questionnaireId
       const nextAnswerId = currentMeta.answerId
       const nextQuestionnairePassed = currentMeta.questionnairePassed
-      const nextStock = resolveStockValue(product, entry.stock ?? null)
-      const nextAvailable = nextStock === 0
-        ? false
-        : (hasExplicitAvailable(product) ? resolveAvailableFlag(product, true) : resolveAvailableFlag(entry, true))
+      const nextStock = currentMeta.stock
+      const nextAvailable = nextStock === 0 ? false : currentMeta.available
       const nextSelected = nextAvailable ? entry.selected !== false : false
       const nextQuantity = clampQuantityToStock(entry.quantity, nextStock)
-      const productSkuId = normalizeId(product.skuId ?? product.sku_id ?? entry.skuId)
-      const productId = normalizeId(product.productId ?? product.product_id ?? entry.productId ?? splitCartItemKey(cartKey).productId)
-      const skuSpecText = pickText(product.skuSpecText, product.sku_spec_text, product.specText, entry.skuSpecText)
-      const skuName = pickText(product.skuName, product.sku_name, entry.skuName)
+      quantityChanged = quantityChanged || entry.quantity !== nextQuantity
+      const productSkuId = normalizeId(product.skuId ?? entry.skuId)
+      const productId = normalizeId(product.productId ?? entry.productId ?? splitCartItemKey(cartKey).productId)
+      const skuSpecText = pickText(product.skuSpecText, product.specText, entry.skuSpecText)
+      const skuName = pickText(product.skuName, entry.skuName)
       const price = product.price !== undefined && product.price !== null && product.price !== ''
         ? Number(product.price)
         : (entry.price ?? 0)
@@ -854,7 +741,6 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         entry.inventoryStatus !== nextInventory.inventoryStatus ||
         entry.inventoryReason !== nextInventory.inventoryReason ||
         entry.inventoryCheckedAt !== nextInventory.inventoryCheckedAt ||
-        entry.bizType !== nextBizType ||
         entry.goodsMerchantType !== nextGoodsMerchantType ||
         entry.productCategory !== nextProductCategory ||
         entry.isPrescription !== nextIsPrescription ||
@@ -880,7 +766,6 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
           stock: nextStock,
           ...nextInventory,
           available: nextAvailable,
-          bizType: nextBizType,
           goodsMerchantType: nextGoodsMerchantType,
           productCategory: nextProductCategory,
           isPrescription: nextIsPrescription,
@@ -904,7 +789,7 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         cartKey,
         productId,
         skuId: productSkuId || null,
-        skuCode: pickText(product.skuCode, product.sku_code, entry.skuCode),
+        skuCode: pickText(product.skuCode, entry.skuCode),
         skuName,
         skuSpecText,
         specText: skuSpecText || product.specText || entry.skuSpecText || '',
@@ -916,11 +801,9 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
         unit: product.unit || entry.unit || '',
         quantity: nextQuantity,
         selected: nextSelected,
-        verified: entry.verified !== false,
         stock: nextStock,
         ...nextInventory,
         available: nextAvailable,
-        bizType: nextBizType,
         goodsMerchantType: nextGoodsMerchantType,
         productCategory: nextProductCategory,
         isPrescription: nextIsPrescription,
@@ -935,7 +818,7 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
     })
 
     if (needsSave) {
-      writeCartData(cartData, { suppressSync: true, silent: true })
+      writeCartData(cartData, { suppressSync: true, silent: !quantityChanged })
     }
 
     return cartItems.sort((a, b) => toNumber(a.timestamp, 0) - toNumber(b.timestamp, 0))
@@ -946,38 +829,38 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
 }
 
 export const mapServerCartItemToProduct = (item = {}) => {
-  const productId = normalizeId(item.productId ?? item.product_id ?? item.id)
-  const skuId = normalizeId(item.skuId ?? item.sku_id)
+  const productId = normalizeId(item.productId ?? item.id)
+  const skuId = normalizeId(item.skuId)
   const cartKey = buildCartItemKey(productId, skuId)
-  const specText = pickText(item.skuSpecText, item.sku_spec_text, item.specText, item.spec_text, item.subTitle, item.sub_title)
+  const specText = pickText(item.skuSpecText, item.specText, item.subTitle)
+  const stock = resolveStockValue(item, null)
   return {
     id: cartKey,
     cartKey,
     productId,
     skuId: skuId || null,
-    skuCode: pickText(item.skuCode, item.sku_code),
-    skuName: pickText(item.skuName, item.sku_name),
+    skuCode: pickText(item.skuCode),
+    skuName: pickText(item.skuName),
     skuSpecText: specText,
-    name: item.productName || item.product_name || item.name || '',
-    productName: item.productName || item.product_name || item.name || '',
-    description: item.subTitle || item.sub_title || '',
-    image: item.coverImage || item.cover_image || item.image || '',
-    coverImage: item.coverImage || item.cover_image || item.image || '',
+    name: item.productName || item.name || '',
+    productName: item.productName || item.name || '',
+    description: item.subTitle || '',
+    image: item.coverImage || item.image || '',
+    coverImage: item.coverImage || item.image || '',
     price: Number(item.price || 0),
     unit: item.unit || '件',
     specText,
-    bizType: item.bizType,
     goodsMerchantType: item.goodsMerchantType,
     productCategory: item.productCategory,
     isPrescription: item.isPrescription,
-    categoryId: item.categoryId ?? item.category_id,
-    categoryCode: item.categoryCode || item.category_code || '',
+    categoryId: item.categoryId,
+    categoryCode: item.categoryCode || '',
     needQuestionnaire: toNumber(item.needQuestionnaire, 0),
-    questionnaireId: item.questionnaireId ?? item.questionnaire_id ?? null,
-    answerId: item.answerId ?? item.answer_id ?? null,
+    questionnaireId: item.questionnaireId ?? null,
+    answerId: item.answerId ?? null,
     ...inventoryFields(item),
-    stock: resolveStockValue(item, null),
-    available: resolveStockValue(item, null) === 0 ? false : resolveAvailableFlag(item, true)
+    stock,
+    available: stock === 0 ? false : resolveAvailableFlag(item, true)
   }
 }
 
@@ -1050,16 +933,14 @@ export const buildOrderInfo = (
   const orderItems = buildOrderItems(selectedItems)
   const medicineCost = Number(orderItems.reduce((sum, item) => sum + item.price, 0).toFixed(2))
   const flow = resolveProductFlow(selectedItems)
-  const bizType = flow.valid ? flow.bizType : BIZ_TYPE_HOSPITAL_MEDICAL
 
   return {
     prescriptions: orderItems.map(item => item.productId),
-    bizType,
     items: orderItems,
     deliveryInfo: {
       distributor,
       logistics: '顺丰快递',
-      purchaseMethod: bizType === 2 ? '健康产品-在线支付' : '药品配送-在线支付',
+      purchaseMethod: flow.requiresConsultation ? '制剂复诊及商品购买' : '商品在线支付',
       shippingPaymentMethod: '在线支付'
     },
     cost: {
@@ -1071,66 +952,14 @@ export const buildOrderInfo = (
   }
 }
 
-export const resolveCartCompatibility = (productOrMeta, options = {}) => {
-  const ignoreCartKey = normalizeId(options.ignoreProductId ?? options.ignoreCartKey)
-  const ignoreProductId = splitCartItemKey(ignoreCartKey).productId
-  const currentEntries = Object.entries(readCartData())
-    .filter(([cartKey, entry]) => {
-      if (!entry.verified) {
-        return false
-      }
-      if (!ignoreCartKey) {
-        return true
-      }
-      return normalizeId(cartKey) !== ignoreCartKey && normalizeId(entry.productId) !== ignoreProductId
-    })
-    .map(([cartKey, entry]) => ({
-      id: cartKey,
-      cartKey,
-      ...entry
-    }))
-
-  if (!currentEntries.length) {
-    const flow = resolveProductFlow(productOrMeta ? [productOrMeta] : [])
-    return {
-      valid: true,
-      bizType: flow.bizType,
-      goodsMerchantType: flow.goodsMerchantType,
-      flowType: flow.flowType,
-      requiresConsultation: flow.requiresConsultation,
-      message: ''
-    }
-  }
-
-  const targetProduct = productOrMeta || currentEntries[0]
-  const flow = resolveProductFlow([...currentEntries, targetProduct])
-  if (!flow.valid) {
-    return {
-      valid: false,
-      bizType: null,
-      goodsMerchantType: null,
-      flowType: flow.flowType,
-      requiresConsultation: flow.requiresConsultation,
-      message: flow.message
-    }
-  }
-
-  return {
-    valid: true,
-    bizType: flow.bizType,
-    goodsMerchantType: flow.goodsMerchantType,
-    flowType: flow.flowType,
-    requiresConsultation: flow.requiresConsultation,
-    message: ''
-  }
-}
+// 加购只验证购买分类有效性，不按分类、商户或后续是否复诊互相排斥。
+export const resolveCartCompatibility = product => resolveProductFlow(product ? [product] : [])
 
 export const resolveCheckoutFlow = (productIds = [], categories = []) => {
   const ids = uniqueIds(productIds.length > 0 ? productIds : getCurrentCheckoutProductIds())
   if (!ids.length) {
     return {
       valid: true,
-      bizType: BIZ_TYPE_HOSPITAL_MEDICAL,
       message: '',
       items: [],
       productIds: []
@@ -1153,10 +982,9 @@ export const prepareCheckout = (productIds = [], categories = []) => {
   if (!stockCheck.valid) {
     return {
       valid: false,
-      bizType: null,
       goodsMerchantType: null,
       flowType: null,
-      requiresConsultation: true,
+      requiresConsultation: false,
       message: stockCheck.message,
       stockCheck,
       items: [],

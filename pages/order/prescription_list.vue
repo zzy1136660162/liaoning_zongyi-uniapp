@@ -12,7 +12,7 @@
           {{ currentUserName }}
         </view>
       </view>-->
-      
+
     <!-- 日期选择区域（目前用于占位，后续可扩展筛选功能） -->
     <!--      <view class="date-section">
         <view class="date-label">日期选择</view>
@@ -20,11 +20,11 @@
         选择时间范围
         </view>
       </view>-->
-      
+
     <!-- 标签筛选区域（保留布局结构，后续可扩展） -->
     <view class="filter-tabs">
       <view class="tab-item active">
-        全部处方
+        结算商品
       </view>
     </view>
     <!-- 主要内容区域 -->
@@ -47,7 +47,7 @@
                 class="checkbox"
                 :class="{ checked: isCartAllSelected }"
               />
-              <text>全选处方</text>
+              <text>全选商品</text>
             </view>
           </view>
           <!-- 就诊时间显示：仅在有处方信息时显示 -->
@@ -65,7 +65,7 @@
             <text v-else>历史记录未关联就诊人</text>
           </view>
         </view>
-        
+
         <!-- 购物车商品列表：每个商品以处方卡片形式展示 -->
         <template
           v-for="cartItem in cartItemsList"
@@ -101,10 +101,10 @@
                   中药
                 </view> -->
                 <view class="tag tag-online">
-                  {{ cartItem.categoryCode ? cartItem.categoryCode : '在线复诊' }}
+                  {{ resolveProductTypeLabel(cartItem) }}
                 </view>
                 <view
-                  v-if="!cartItem.categoryCode"
+                  v-if="cartItem.productCategory === 1"
                   class="tag tag-convenient"
                 >
                   便捷配制剂
@@ -114,8 +114,11 @@
                 </view> -->
               </view>
 
-              <!-- 诊断信息 -->
-              <view class="prescription-info">
+              <!-- 仅制剂展示本次复诊诊断；健康产品和疗法仍保留在同一结算清单。 -->
+              <view
+                v-if="cartItem.productCategory === 1"
+                class="prescription-info"
+              >
                 <text class="info-label">
                   诊断:
                 </text>
@@ -124,8 +127,11 @@
                 </text>
               </view>
 
-              <!-- 医师信息 -->
-              <view class="prescription-info">
+              <!-- 健康产品和疗法不附加处方医师要求。 -->
+              <view
+                v-if="cartItem.productCategory === 1"
+                class="prescription-info"
+              >
                 <text class="info-label">
                   医师:
                 </text>
@@ -190,7 +196,7 @@
         <view>
           已选择 <text class="selected-count">
             {{ selectedCartCount }}
-          </text> 张处方
+          </text> 种商品
         </view>
         <!-- 显示选中的商品总金额 -->
         <view class="total-amount">
@@ -209,7 +215,7 @@
     </view>
   </view>
 </template>
-  
+
   <script setup>
 // ==================== 导入依赖 ====================
 // Vue 3 响应式 API
@@ -220,9 +226,8 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 
 // ==================== 存储键常量 ====================
-import { 
+import {
   STORAGE_KEY_CURRENT_ORDER,
-  STORAGE_KEY_VERIFIED_PRODUCTS
 } from '@/utils/storage.js'
 
 // ==================== 工具函数 ====================
@@ -236,19 +241,20 @@ import {
   updateMultipleSelections,
   getSelectedProductIds,
   setCheckoutProductIds,
-  splitCartItemKey
 } from '@/utils/cart.js'
 
 // ==================== API 接口 ====================
 import { getConsultationDetail } from '@/api/consultation.js'
 import { parseConsultationContext, requireConsultationPatient } from '@/utils/consultation-checkout.js'
 import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
+import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
 import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
 
 // ==================== 其他 ====================
 import { logPageView } from '@/api/access-log.js'
-  
+import { resolveProductTypeLabel } from '@/utils/product-biz.js'
+
 // ==================== 响应式数据 ====================
 /**
  * 医院名称 - 显示在页面顶部
@@ -324,7 +330,7 @@ const syncSelectedCartState = () => {
   selectedCartIds.value = matchedSelectedIds
   setCheckoutProductIds(matchedSelectedIds)
 }
-  
+
   // ==================== 生命周期钩子 ====================
   /**
    * 页面加载时处理
@@ -353,7 +359,7 @@ const syncSelectedCartState = () => {
   onMounted(() => {
     logPageView('处方列表', '用户进入处方列表页面')
   })
-  
+
   /**
    * 加载用户之前选中的产品状态
    */
@@ -430,7 +436,7 @@ const syncSelectedCartState = () => {
       uni.hideLoading()
     }
   }
-  
+
   /**
    * 加载购物车产品数据
    * 从本地存储中获取已验证的商品ID，然后批量获取商品详情
@@ -439,12 +445,11 @@ const syncSelectedCartState = () => {
   const loadProducts = async () => {
     try {
       const checkoutIds = getCurrentCheckoutProductIds()
-      const verifiedProducts = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
       const productIds = checkoutIds.length > 0
         ? checkoutIds
-        : Object.keys(verifiedProducts).filter(id => verifiedProducts[id])
+        : getSelectedProductIds()
       const cartEntries = getCartEntries()
-      
+
       // 如果购物车为空，不需要加载商品数据
       if (productIds.length === 0) {
         categories.value = []
@@ -453,57 +458,21 @@ const syncSelectedCartState = () => {
 
       console.debug('event=ui_order_prescription_list stage=load_products result=observed')
       uni.showLoading({ title: '加载商品...' })
-      
+
       // 创建购物车商品分类结构
       const cartCategory = {
         id: 'cart_items',
         name: '购物车商品',
         products: []
       }
-      
-      // 逐个获取购物车中每个商品的详细信息
-      for (const itemKey of productIds) {
-        try {
-          if (typeof getProductDetail === 'function') {
-            const entry = cartEntries[itemKey] || {}
-            const { productId, skuId } = splitCartItemKey(itemKey)
-            assertCurrentSession(pageSession)
-            const productDetail = await getProductDetail(productId)
-            if (productDetail) {
-              const skus = Array.isArray(productDetail.skus) ? productDetail.skus : []
-              const sku = skuId ? skus.find(item => String(item.id) === String(skuId)) : null
-              const displaySpec = sku?.specText || entry.skuSpecText || productDetail.specText || ''
-              const displayPrice = sku?.price ?? entry.price ?? productDetail.price
-              const displayImage = sku?.imageUrl || entry.image || entry.coverImage || productDetail.coverImage || productDetail.image
-              // 将API返回的数据转换为页面所需的格式
-              cartCategory.products.push({
-                id: itemKey,
-                cartKey: itemKey,
-                productId: productDetail.id,
-                skuId: sku ? sku.id : (entry.skuId || null),
-                skuName: sku?.skuName || entry.skuName || '',
-                skuSpecText: displaySpec,
-                name: productDetail.productName || productDetail.name,
-                description: productDetail.subTitle || productDetail.description,
-                image: displayImage,
-                price: displayPrice,
-                quantity: getCartProductQuantity(productId, 1, skuId || null),
-                unit: sku?.unit || productDetail.unit || '份',
-                notice: productDetail.usageDesc || productDetail.notice,
-                doctorName: currentPrescriptionDoctorName.value
-              })
-            }
-          } else {
-            console.warn('event=ui_order_prescription_list stage=product_detail result=skipped reason=api_unavailable')
-          }
-        } catch (err) {
-          console.error('event=ui_order_prescription_list stage=load_products result=failed reason=operation_incomplete')
-        }
-      }
-      
+
+      cartCategory.products = (await loadCartProducts(productIds, cartEntries, getProductDetail))
+        .map(product => ({ ...product, doctorName: currentPrescriptionDoctorName.value }))
+      assertCurrentSession(pageSession)
+
       // 更新分类数据，每次都重新计算确保数据准确
       categories.value = [cartCategory]
-      
+
     } catch (error) {
       console.error('event=ui_order_prescription_list stage=load_products result=failed reason=operation_incomplete')
       categories.value = []
@@ -511,9 +480,9 @@ const syncSelectedCartState = () => {
       uni.hideLoading()
     }
   }
-  
-  
-  
+
+
+
 /**
  * 获取最新的就诊时间 - 用于显示在页面顶部
  */
@@ -560,8 +529,8 @@ const syncSelectedCartState = () => {
       total + (item.price * item.quantity), 0
     )
   })
-  
-  
+
+
   /**
    * 购物车商品列表
    * 从分类数据中提取所有商品，并包含数量信息
@@ -570,12 +539,12 @@ const syncSelectedCartState = () => {
     if (categories.value.length === 0) {
       return []
     }
-    
+
     // 使用工具函数加载购物车数据（包含数量信息）
     return loadCartItems(categories.value)
   })
-  
-  
+
+
   // ==================== 购物车选择相关方法 ====================
 
   /**
@@ -604,7 +573,7 @@ const syncSelectedCartState = () => {
     updateProductSelection(normalizedId, newSelectedState)
     setCheckoutProductIds(selectedCartIds.value)
   }
-  
+
   /**
    * 切换全选/取消全选状态
    * 如果当前已全选，则取消全选；否则全选所有商品
@@ -628,22 +597,22 @@ const syncSelectedCartState = () => {
     updateMultipleSelections(selectionMap)
     setCheckoutProductIds(selectedCartIds.value)
   }
-  
+
 /**
  * 用户信息点击处理 - 目前显示提示信息
  */
   const onSelectUser = () => {
   uni.showToast({ title: '用户信息', icon: 'none' })
   }
-  
+
 /**
  * 日期选择处理 - 目前显示提示信息
  */
   const onSelectDate = () => {
   uni.showToast({ title: '日期选择', icon: 'none' })
   }
-  
-  
+
+
   /**
    * 购物车商品点击处理
    * 用户点击商品卡片时的响应函数
@@ -659,7 +628,7 @@ const syncSelectedCartState = () => {
           icon: 'none'
     })
   }
-  
+
   /**
    * 跳转到订单确认页面
    * 收集用户选中的商品，构建订单信息并跳转到确认页面
@@ -678,20 +647,20 @@ const syncSelectedCartState = () => {
       })
       return
     }
-    
+
     try {
       // 获取完整的购物车数据（包含数量等信息）
       const cartItems = loadCartItems(categories.value)
-      
+
       // 获取用户选中的商品ID列表
       const selectedProductIds = selectedCartIds.value
-      
+
       // 使用工具函数构建订单信息
       const orderInfo = buildOrderInfo(cartItems, selectedProductIds, hospitalName.value)
-      
+
       // 将订单信息保存到本地存储，供确认页面使用
       uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo)
-      
+
       // 跳转到订单确认页面
       setCheckoutProductIds(selectedProductIds)
       uni.navigateTo({
@@ -706,7 +675,7 @@ const syncSelectedCartState = () => {
     }
   }
   </script>
-  
+
   <style scoped>
   /* ==================== 页面布局样式 ==================== */
   .page {
@@ -717,7 +686,7 @@ const syncSelectedCartState = () => {
   /* 底部预留空间给固定定位的底部栏 */
     padding-bottom: 200rpx;
   }
-  
+
   .header-info {
     background: #fff;
     padding: 20rpx;
@@ -726,17 +695,17 @@ const syncSelectedCartState = () => {
     align-items: center;
     border-bottom: 1rpx solid #eee;
   }
-  
+
   .hospital {
     font-size: 28rpx;
     color: #333;
   }
-  
+
   .user-info {
     font-size: 28rpx;
     color: #333;
   }
-  
+
   .date-section {
     background: #fff;
     padding: 20rpx;
@@ -745,24 +714,24 @@ const syncSelectedCartState = () => {
     align-items: center;
     border-bottom: 1rpx solid #eee;
   }
-  
+
   .date-label {
     font-size: 28rpx;
     color: #333;
   }
-  
+
   .date-range {
     font-size: 28rpx;
     color: #666;
   }
-  
+
   .filter-tabs {
     background: #fff;
     display: flex;
     padding: 20rpx 0;
     border-bottom: 1rpx solid #eee;
   }
-  
+
   .tab-item {
     flex: 1;
     text-align: center;
@@ -771,12 +740,12 @@ const syncSelectedCartState = () => {
     position: relative;
     padding: 10rpx 0;
   }
-  
+
   .tab-item.active {
     color: #2a82e4;
     font-weight: 600;
   }
-  
+
   .tab-badge {
     position: absolute;
     top: -20rpx;
@@ -789,12 +758,12 @@ const syncSelectedCartState = () => {
     min-width: 32rpx;
     text-align: center;
   }
-  
+
 /* 处方列表滚动容器 */
   .prescription-list {
     flex: 1;
   }
-  
+
 /* 全选控制栏样式 */
   .select-all-bar {
     background: #fff;
@@ -813,7 +782,7 @@ const syncSelectedCartState = () => {
   display: flex;
   gap: 40rpx;
   }
-  
+
   .select-all {
     display: flex;
     align-items: center;
@@ -821,7 +790,7 @@ const syncSelectedCartState = () => {
     font-size: 28rpx;
     color: #333;
   }
-  
+
   .checkbox {
     width: 36rpx;
     height: 36rpx;
@@ -829,12 +798,12 @@ const syncSelectedCartState = () => {
     border-radius: 50%;
     position: relative;
   }
-  
+
   .checkbox.checked {
     background: #2a82e4;
     border-color: #2a82e4;
   }
-  
+
   .checkbox.checked::after {
     content: '✓';
     position: absolute;
@@ -844,7 +813,7 @@ const syncSelectedCartState = () => {
     color: #fff;
     font-size: 24rpx;
   }
-  
+
   .consultation-time {
     font-size: 24rpx;
     color: #999;
@@ -868,7 +837,7 @@ const syncSelectedCartState = () => {
   /* 过渡动画 */
   transition: all 0.3s ease;
   }
-  
+
 /* 处方选择框容器 */
   .prescription-checkbox {
     display: flex;
@@ -877,29 +846,29 @@ const syncSelectedCartState = () => {
   /* 防止选择框被压缩 */
   flex-shrink: 0;
   }
-  
+
   .prescription-content {
     flex: 1;
     cursor: pointer;
   }
-  
+
   .prescription-header {
     margin-bottom: 12rpx;
   }
-  
+
   .doctor-name {
     font-size: 30rpx;
     font-weight: 600;
     color: #333;
   }
-  
+
   .prescription-tags {
     display: flex;
     gap: 12rpx;
     margin-bottom: 16rpx;
     flex-wrap: wrap;
   }
-  
+
   .tag {
     padding: 4rpx 12rpx;
     background: #f0f6ff;
@@ -907,39 +876,39 @@ const syncSelectedCartState = () => {
     font-size: 22rpx;
     border-radius: 4rpx;
   }
-  
+
   /* 蓝底白字标签样式 */
   .tag-online,
   .tag-convenient {
     background: #2a82e4;
     color: #ffffff;
   }
-  
-  
+
+
   .prescription-info {
     margin-bottom: 8rpx;
     font-size: 26rpx;
   }
-  
+
   .prescription-info-inline {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
   }
-  
+
   .info-label {
     color: #666;
     margin-right: 8rpx;
   }
-  
+
   .info-label-spaced {
     margin-left: 20rpx;
   }
-  
+
   .info-value {
     color: #333;
   }
-  
+
   .prescription-footer {
     padding-right: 30rpx;
     display: flex;
@@ -949,26 +918,26 @@ const syncSelectedCartState = () => {
     padding-top: 16rpx;
     border-top: 1rpx solid #eee;
   }
-  
+
   .prescription-status {
     display: flex;
     flex-direction: column;
     gap: 4rpx;
   }
-  
+
   .status-text {
     font-size: 30rpx;
     color: #ff4d4f;
     font-weight: bold;
   }
-  
+
   .status-time {
     font-size: 24rpx;
     color: #999;
   }
-  
-  
-  
+
+
+
 /* ==================== 底部操作栏样式 ==================== */
 /* 固定在底部的操作栏 */
   .footer {
@@ -988,7 +957,7 @@ const syncSelectedCartState = () => {
   /* 右侧额外内边距 */
     padding-right: 30rpx;
   }
-  
+
 /* 底部栏左侧信息区域 */
   .footer-left {
     display: flex;
@@ -997,18 +966,18 @@ const syncSelectedCartState = () => {
     font-size: 28rpx;
     color: #333;
   }
-  
+
   .total-amount {
     font-size: 24rpx;
     color: #666;
   }
-  
+
   .amount-value {
     font-size: 32rpx;
     font-weight: 600;
     color: #ff4d4f;
   }
-  
+
   .order-btn {
     margin: 0;
     background: #2a82e4;

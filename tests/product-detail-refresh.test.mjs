@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { loadSetup } from './sfc-harness.mjs'
 import { isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit } from '../utils/purchase-quantity.js'
 
-const paths = ['medicine_detail', 'therapy_detail', 'priducts_detail']
+const paths = ['medicine_detail', 'therapy_detail']
 const product = price => ({ id: '101', name: '后台商品', price, status: 1, stock: 20, available: true,
   unit: '盒', skus: [{ id: '11', skuName: '一盒', price, stock: 20, status: 1, defaultFlag: 1 },
     { id: '12', skuName: '两盒', price: price * 2, stock: 20, status: 1 }] })
@@ -14,7 +14,7 @@ function detail(name) {
   let session = 1
   const state = { response: product(20), transport: null }
   globalThis.uni = { getStorageSync: () => ({}), setStorageSync() {}, showLoading() {}, hideLoading() {}, showToast() {} }
-  const quantityName = name === 'priducts_detail' ? 'count' : 'quantity'
+  const quantityName = 'quantity'
   const page = loadSetup(`pages/products/${name}.vue`, {
     ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }), watch() {}, getCurrentInstance: () => ({}),
     onLoad: callback => { hooks.load = callback }, onShow: callback => { hooks.show = callback }, onUnload: callback => { hooks.unload = callback },
@@ -23,9 +23,8 @@ function detail(name) {
     onSessionChanged: callback => { listeners.add(callback); return () => listeners.delete(callback) },
     getProductDetail: async id => { requests.push(id); return state.transport ? state.transport(id) : state.response },
     getCartProductQuantity: () => 1, getCartTotalQuantity: () => 0,
-    isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit, BIZ_TYPE_HEALTH_GOODS: 2,
-    STORAGE_KEY_PRODUCT_QUANTITIES: 'quantities'
-  }, ['product', quantityName, ...(name === 'priducts_detail' ? [] : ['selectedSkuId'])])
+    isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit,
+  }, ['product', quantityName, 'selectedSkuId'])
   return { ...page, quantity: page[quantityName], hooks, state, requests, listeners,
     switchAccount() { session++; listeners.forEach(callback => callback()) } }
 }
@@ -33,7 +32,7 @@ function detail(name) {
 for (const name of paths) {
   test(`${name}: 首次只请求一次，每次返回重新加载，忽略路由商品快照并保留数量`, async () => {
     const page = detail(name)
-    page.hooks.load({ skuId: '11', product: encodeURIComponent(JSON.stringify({ id: '101', price: 999, name: '旧快照' })) })
+    page.hooks.load({ id: '101', skuId: '11', product: encodeURIComponent(JSON.stringify({ id: '101', price: 999, name: '旧快照' })) })
     assert.equal(page.requests.length, 0)
     assert.notEqual(page.product.value.price, 999)
     await page.hooks.show()

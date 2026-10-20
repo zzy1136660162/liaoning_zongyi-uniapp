@@ -1,5 +1,12 @@
+import { resolveProductFlow } from '../utils/product-biz.js'
+import { getSessionGeneration, isCurrentSession } from '../utils/session.js'
+import { loadCartProducts } from '../utils/cart-products.js'
 import { readFileSync } from 'node:fs'
 import { resolveProductSku, withProductSku } from '../utils/product-sku.js'
+import { buildListCartCategories, getProductCartLines } from '../utils/product-list-cart.js'
+import { isPurchaseAvailable } from '../utils/purchase-quantity.js'
+import { createHealthProductListMethods } from '../utils/health-product-list.js'
+import { formatRichText } from '../utils/product-rich-text.js'
 import { inventoryFields } from '../utils/inventory.js'
 import { getImageUrl } from '../utils/config.js'
 
@@ -12,7 +19,7 @@ export const { PRODUCT_PLACEHOLDER, useProductImages } = Function('ref', 'getIma
 
 // 执行页面本身的业务代码，仅替换生命周期、响应式和网络边界。
 export const loadSetup = (path, mocks, exports) => {
-  mocks = { onUnload() {}, resolveProductSku, withProductSku, inventoryFields, useProductImages, ...mocks }
+  mocks = { resolveProductFlow, getSessionGeneration, isCurrentSession, getProductCartLines, loadCartProducts, formatRichText, onUnload() {}, resolveProductSku, withProductSku, inventoryFields, useProductImages, ...mocks }
   const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
   const script = source.match(/<script\s+setup[^>]*>([\s\S]*?)<\/script>/)[1]
     .replace(/^[ \t]*import\s[\s\S]*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
@@ -20,7 +27,11 @@ export const loadSetup = (path, mocks, exports) => {
 }
 
 export const loadOptions = (path, mocks) => {
-  mocks = { resolveProductSku, withProductSku, useProductImages, ...mocks }
+  const missingProductRequest = () => { throw new Error('测试未提供商品请求') }
+  mocks = { resolveProductFlow, getSessionGeneration, isCurrentSession, buildListCartCategories, isPurchaseAvailable, getProductCartLines, loadCartProducts, createHealthProductListMethods, getCategoryList: missingProductRequest,
+    getCategoryProducts: missingProductRequest, getProductDetail: missingProductRequest,
+    mapProductDetail: missingProductRequest, mapProductListItem: missingProductRequest,
+    resolveProductSku, withProductSku, useProductImages, ...mocks }
   const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/^[ \t]*import\s[\s\S]*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')

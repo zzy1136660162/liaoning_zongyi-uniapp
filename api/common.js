@@ -32,7 +32,8 @@ export const uploadFile = (filePath, options = {}) => {
     const required = options.needAuth !== false
     const token = required ? getSessionToken() : ''
     const header = {
-      ...(options.header || {})
+      ...(options.header || {}),
+      'X-Product-Contract': 'category-v1'
     }
     if (token) {
       header.Authorization = `Bearer ${token}`
@@ -55,9 +56,11 @@ export const uploadFile = (filePath, options = {}) => {
           console.info('event=common_upload stage=response result=success durationMs=%s', durationMs)
           resolve(data)
         } catch (error) {
-          if (Number(error.code) === 401) error = handleAuthenticationFailure({ generation: session, token: sentToken, required, redirect: options.authRedirect !== false })
+          const uploadError = Number(error.code) === 401
+            ? handleAuthenticationFailure({ generation: session, token: sentToken, required, redirect: options.authRedirect !== false })
+            : error
           console.warn('event=common_upload stage=response result=failed reason=parse_error durationMs=%s', durationMs)
-          reject(error)
+          reject(uploadError)
         }
       },
       fail: (error) => {

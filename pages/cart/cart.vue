@@ -189,7 +189,6 @@
 
     <TabBar
       :current="currentTab"
-      :cart-count="cartCount"
       @change="handleTabChange"
     />
   </view>
@@ -203,7 +202,6 @@ import {
   STORAGE_KEY_USER_REGISTER
 } from '@/utils/storage.js'
 import {
-  buildCartItemKey,
   getCartEntries,
   getCartTotalQuantity,
   buildCategoriesFromServerCart,
@@ -216,7 +214,9 @@ import {
   updateProductSelection,
   updateMultipleSelections
 } from '@/utils/cart.js'
-import { applyServerCartToLocal } from '@/utils/cart-sync.js'
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+import { loadCartProducts } from '@/utils/cart-products.js'
+import { applyServerCartToLocal, captureCartSyncSnapshot } from '@/utils/cart-sync.js'
 import {
   shouldReloadCartFromServer,
   subscribeCartUpdated
@@ -266,6 +266,7 @@ export default {
       isEditMode: false,
       currentTab: 'cart',
       loading: false,
+      // 加载期间再次进入页面，只排队一次后续查询，避免丢掉最新后台状态。
       pendingServerRefresh: false,
       suppressNextServerCartEvent: false,
       unsubscribeCartUpdated: null
@@ -299,7 +300,7 @@ export default {
         return
       }
       if (shouldReloadCartFromServer(event)) {
-        this.loadCartPageData({ queueIfLoading: true, force: true })
+        this.loadCartPageData({ queueIfLoading: true })
         return
       }
       this.loadCartData()
@@ -344,6 +345,7 @@ export default {
         return
       }
 
+      const requestSession = getSessionGeneration()
       const hasToken = Boolean(getToken())
       this.loading = true
       console.log('[cart] loadCartPageData start', { hasToken, baseUrl: BASE_URL })
@@ -365,6 +367,7 @@ export default {
           cartCount: this.cartCount
         })
       } catch (error) {
+        if (!isCurrentSession(requestSession) || error.code === 'SESSION_CHANGED') return
         const { reason, hint } = parseCartLoadError(error)
         console.warn('[cart] loadCartPageData server path failed, fallback to local', {
           reason,
@@ -390,13 +393,16 @@ export default {
         this.loading = false
         if (this.pendingServerRefresh) {
           this.pendingServerRefresh = false
-          this.loadCartPageData({ force: true })
+          this.loadCartPageData()
         }
       }
     },
     async loadCartFromServer() {
+      const requestSession = getSessionGeneration()
       const startedAt = Date.now()
+      const requestSnapshot = captureCartSyncSnapshot()
       const serverItems = await getCartList()
+      if (!isCurrentSession(requestSession)) return
       const normalizedItems = Array.isArray(serverItems) ? serverItems : []
 
       if (!Array.isArray(serverItems)) {
@@ -408,28 +414,17 @@ export default {
         count: normalizedItems.length
       })
 
+      // 本次结果还需先更新商品快照，忽略自身发出的 server 事件，最后统一投影一次。
       this.suppressNextServerCartEvent = true
-      applyServerCartToLocal(normalizedItems)
+      const cartData = applyServerCartToLocal(normalizedItems, false, requestSnapshot)
       if (this.suppressNextServerCartEvent) {
         this.suppressNextServerCartEvent = false
       }
-      this.categories = buildCategoriesFromServerCart(normalizedItems)
-      const serverMetaById = new Map(normalizedItems.map(item => [
-        buildCartItemKey(item.productId ?? item.id, item.skuId),
-        item
-      ]))
-      this.categories.forEach(category => {
-        (category.products || []).forEach(product => {
-          const meta = serverMetaById.get(String(product.id))
-          if (meta) {
-            product.productCategory = meta.productCategory
-            product.isPrescription = meta.isPrescription
-          }
-        })
-      })
+      this.categories = buildCategoriesFromServerCart(Object.values(cartData))
       this.loadCartData()
     },
     async loadLocalCartFallback() {
+      const requestSession = getSessionGeneration()
       try {
         const cartEntries = getCartEntries()
         const itemKeys = Object.keys(cartEntries)
@@ -447,56 +442,13 @@ export default {
           products: []
         }
 
-        for (const itemKey of itemKeys) {
-          try {
-            const entry = cartEntries[itemKey] || {}
-            const split = splitCartItemKey(itemKey)
-            const productId = entry.productId || split.productId || itemKey
-            const skuId = entry.skuId || split.skuId || null
-            const productDetail = await getProductDetail(productId)
-            if (productDetail) {
-              const skus = Array.isArray(productDetail.skus) ? productDetail.skus : []
-              const sku = skuId
-                ? skus.find(item => String(item.id) === String(skuId))
-                : null
-              const displayPrice = sku ? Number(sku.price || 0) : Number(productDetail.price || 0)
-              const displayStock = sku
-                ? (sku.stock ?? productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
-                : (productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
-              const displayImage = sku?.image || sku?.imageUrl || productDetail.coverImage || productDetail.image
-              const displaySpec = sku?.specText || sku?.skuName || productDetail.specText || productDetail.specDesc
-              cartCategory.products.push({
-                id: itemKey,
-                cartKey: itemKey,
-                productId: productDetail.id,
-                skuId,
-                skuCode: sku?.skuCode || entry.skuCode || '',
-                skuName: sku?.skuName || entry.skuName || '',
-                skuSpecText: displaySpec || entry.skuSpecText || '',
-                name: productDetail.productName || productDetail.name,
-                description: productDetail.subTitle || productDetail.description,
-                image: displayImage,
-                price: displayPrice,
-                bizType: productDetail.bizType,
-                productCategory: productDetail.productCategory,
-                isPrescription: productDetail.isPrescription,
-                goodsMerchantType: productDetail.goodsMerchantType,
-                stock: displayStock,
-                available: productDetail.available ?? productDetail.saleable ?? productDetail.onSale,
-                unit: sku?.unit || productDetail.unit || '件',
-                notice: productDetail.usageDesc || productDetail.notice,
-                specText: displaySpec,
-                needQuestionnaire: productDetail.needQuestionnaire || 0
-              })
-            }
-          } catch (error) {
-            console.error('load cart product detail failed: ' + itemKey, error)
-          }
-        }
+        cartCategory.products = await loadCartProducts(itemKeys, cartEntries, getProductDetail)
+        if (!isCurrentSession(requestSession)) return
 
         this.categories = [cartCategory]
         this.loadCartData()
       } catch (error) {
+        if (!isCurrentSession(requestSession) || error.code === 'SESSION_CHANGED') return
         console.error('loadLocalCartFallback failed:', error)
         this.categories = []
         this.loadCartData()
@@ -519,7 +471,6 @@ export default {
         return
       }
       updateProductSelection(normalizedId, !this.selectedItems.includes(normalizedId))
-      this.loadCartData()
     },
     toggleSelectAll() {
       const nextSelected = !this.isAllSelected
@@ -528,7 +479,6 @@ export default {
         selectionMap[item.id] = this.isItemSelectable(item) ? nextSelected : false
       })
       updateMultipleSelections(selectionMap)
-      this.loadCartData()
     },
     increaseQuantity(item) {
       if (!this.isItemSelectable(item)) {
@@ -539,17 +489,14 @@ export default {
         return
       }
       setCartItemQuantity(item.id, Number(item.quantity || 1) + 1)
-      this.loadCartData()
     },
     decreaseQuantity(item) {
       const nextQuantity = Number(item.quantity || 1) - 1
       if (nextQuantity <= 0) {
         removeFromCart(item.id)
-        this.loadCartData()
         return
       }
       setCartItemQuantity(item.id, nextQuantity)
-      this.loadCartData()
     },
     removeItem(itemId) {
       uni.showModal({
@@ -564,7 +511,6 @@ export default {
             uni.showToast({ title: '删除失败', icon: 'none' })
             return
           }
-          this.loadCartData()
           uni.showToast({ title: '删除成功', icon: 'success' })
         }
       })
@@ -601,7 +547,6 @@ export default {
               return
             }
             this.isEditMode = false
-            this.loadCartData()
             uni.showToast({ title: '删除成功', icon: 'success' })
           }
         })
@@ -640,9 +585,8 @@ export default {
         const selectedItemsParam = checkout.productIds.join(',')
         if (!checkout.requiresConsultation) {
           uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-          const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
           uni.navigateTo({
-            url: '/pages/order/confirm?selectedItems=' + selectedItemsParam + therapyParam
+            url: '/pages/order/confirm?selectedItems=' + selectedItemsParam
           })
           return
         }

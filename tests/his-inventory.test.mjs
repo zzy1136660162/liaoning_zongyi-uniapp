@@ -1,3 +1,4 @@
+import { normalizeCartId as normalizeId } from '../utils/cart-key.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
@@ -7,7 +8,7 @@ import { isPurchaseAvailable, resolvePurchaseQuantityLimit } from '../utils/purc
 const storage = new Map()
 globalThis.uni = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key), $emit() {} }
 const cart = await import('../utils/cart.js')
-const available = { id: 1, inventoryMode: 'HIS_AVAILABILITY', inventoryStatus: 'AVAILABLE', available: true, stock: null, inventoryCheckedAt: '2020-01-01T00:00:00', name: 'fixture', price: 10 }
+const available = { id: 1, productCategory: 2, inventoryMode: 'HIS_AVAILABILITY', inventoryStatus: 'AVAILABLE', available: true, stock: null, inventoryCheckedAt: '2020-01-01T00:00:00', name: 'fixture', price: 10 }
 const moduleCode = (path, mocks, names) => {
   const code = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
     .replace(/^import\s[\s\S]*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
@@ -68,12 +69,29 @@ test('successful order response is independent of slow or failed HIS hint in bot
 test('login merge preserves rejected local SKU as unselected unavailable without affecting ordinary replacement', async () => {
   let entries = { '1:12': { productId: '1', skuId: '12', quantity: 2, verified: true, selected: true, stock: 7 } }
   const { syncCartOnLogin, applyServerCartToLocal } = moduleCode('utils/cart-sync.js', {
-    inventoryFields, onSessionChanged() {}, getSessionGeneration: () => 1, isCurrentSession: () => true,
+    inventoryFields, normalizeId, onSessionChanged() {}, getSessionGeneration: () => 1, isCurrentSession: () => true,
     getToken: () => 'fixture', getCartEntries: () => entries, replaceCartData: value => { entries = value },
-    buildCartItemKey: cart.buildCartItemKey, buildCartSyncPayload: () => ({}), syncCart: async () => [{ ...available, productId: 1, skuId: 11, quantity: 1, checked: 1 }]
+    mapServerCartItemToProduct: cart.mapServerCartItemToProduct, buildCartSyncPayload: () => ({}), syncCart: async () => [{ ...available, productId: 1, skuId: 11, quantity: 1, checked: 1 }]
   }, ['syncCartOnLogin', 'applyServerCartToLocal'])
   await syncCartOnLogin()
   assert.equal(entries['1:12'].selected, false); assert.equal(entries['1:12'].available, false)
   assert.equal(entries['1:11'].stock, null); assert.equal(entries['1:11'].available, true)
   applyServerCartToLocal([]); assert.deepEqual(entries, {})
+})
+
+test('登录同步不发送缺真实规格的旧条目，不能借后台默认规格自动迁移', async () => {
+  let entries = { '1': { productId: '1', skuId: null, quantity: 2, selected: true } }
+  let payload
+  const { syncCartOnLogin } = moduleCode('utils/cart-sync.js', {
+    onSessionChanged() {}, getSessionGeneration: () => 1, isCurrentSession: () => true,
+    getToken: () => 'fixture', getCartEntries: () => entries, replaceCartData: value => { entries = value },
+    mapServerCartItemToProduct: cart.mapServerCartItemToProduct,
+    buildCartSyncPayload: () => { throw new Error('缺SKU条目不能构建上传数据') },
+    syncCart: async items => { payload = items; return [] }
+  }, ['syncCartOnLogin'])
+  await syncCartOnLogin()
+  assert.deepEqual(payload, [])
+  assert.equal(entries['1'].quantity, 2)
+  assert.equal(entries['1'].selected, false)
+  assert.equal(entries['1'].available, false)
 })

@@ -270,9 +270,9 @@ import {
   STORAGE_KEY_CURRENT_ORDER,
   STORAGE_KEY_DEFAULT_ADDRESS_ID
 } from '@/utils/storage.js'
-import { buildOrderInfo, getCartEntries, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds, splitCartItemKey, validateCheckoutStock } from '@/utils/cart.js'
-import { createOrder } from '@/api/order.js'
-import { getConsultationDetail } from '@/api/consultation.js'
+import { buildOrderInfo, getCartEntries, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds, validateCheckoutStock } from '@/utils/cart.js'
+import { createOrder, createOrderFromPrescription, getOrderByPrescriptionId } from '@/api/order.js'
+import { getConsultationDetail, getPrescriptionDetail, getPrescriptionItems } from '@/api/consultation.js'
 import { parseConsultationContext, requireConsultationPatient } from '@/utils/consultation-checkout.js'
 import { getSessionGeneration, assertCurrentSession, isCurrentSession } from '@/utils/session.js'
 import { getAddressList } from '@/api/address.js'
@@ -280,19 +280,20 @@ import { getPatientList } from '@/api/patient.js'
 import { patientHisSyncNotice } from '@/utils/patient.js'
 import { wechatSinglePay } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
+import { loadCartProducts } from '@/utils/cart-products.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
-import { inventoryFields } from '@/utils/inventory.js'
 import { ensureWeChatIdentity } from '@/api/auth.js'
 import { queryFreight } from '@/api/express.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
 import { resolveProductFlow } from '@/utils/product-biz.js'
-import { ORDER_TYPE_THERAPY } from '@/utils/therapy.js'
 
 const isTherapyOrder = ref(false)
 const checkoutContext = ref(null)
+const prescriptionId = ref(null)
+const prescription = ref(null)
+const prescriptionLoadError = ref('')
 const submitting = ref(false)
 const pageSession = getSessionGeneration()
-const therapyRouteRequested = ref(false)
 
 const orderInfo = ref({
   prescriptions: [],
@@ -316,25 +317,28 @@ const selectedAddress = ref(null)
 const categories = ref([])
 const calculatingFreight = ref(false)
 const selectedProductIds = ref([])
-const selectedBizType = ref(1)
-const selectedRequiresConsultation = ref(true)
+const selectedRequiresConsultation = ref(false)
+const selectedRequiresShipping = ref(false)
 const orderRemark = ref('')
 const patients = ref([])
 const selectedPatient = ref(null)
 const loadingPatients = ref(false)
 
-const requiresShipping = computed(() => !isTherapyOrder.value)
-const requiresConsultationPatient = computed(() => selectedRequiresConsultation.value && !isTherapyOrder.value)
+const requiresShipping = computed(() => selectedRequiresShipping.value)
+const requiresConsultationPatient = computed(() => selectedRequiresConsultation.value)
 const patientIndex = computed(() => Math.max(0, patients.value.findIndex(patient => String(patient.id) === String(selectedPatient.value?.id))))
 const selectionIssue = computed(() => {
+  if (prescriptionLoadError.value) return prescriptionLoadError.value
   const products = categories.value.flatMap(category => category.products || [])
   if (products.some(product => product.selectionInvalid)) return '所选规格已失效或尚未选择，请返回商品页重新选择'
   if (products.some(product => product.loadFailure)) return '暂时无法确认商品信息，请重新加载后再提交'
+  const flow = resolveProductFlow(products)
+  if (!flow.valid) return flow.message
   return ''
 })
 
 const canSubmit = computed(() => {
-  if (submitting.value || loadingPatients.value || !selectedPatient.value || selectionIssue.value) return false
+  if (submitting.value || loadingPatients.value || !selectedPatient.value || selectionIssue.value || !orderInfo.value.items.length) return false
   if (!requiresShipping.value) {
     return orderInfo.value.items && orderInfo.value.items.length > 0
   }
@@ -342,20 +346,15 @@ const canSubmit = computed(() => {
 })
 
 onLoad((options) => {
+  prescriptionId.value = /^[1-9]\d*$/.test(String(options?.prescriptionId || '')) ? Number(options.prescriptionId) : null
   checkoutContext.value = parseConsultationContext(options)
-  therapyRouteRequested.value = options?.therapy === '1' || options?.therapy === 1 || options?.therapy === true
-  isTherapyOrder.value = therapyRouteRequested.value
   if (options?.selectedItems) {
     selectedProductIds.value = options.selectedItems.split(',').filter(id => id.trim())
     setCheckoutProductIds(selectedProductIds.value)
-  } else {
+  } else if (!prescriptionId.value) {
     selectedProductIds.value = getCurrentCheckoutProductIds()
   }
 })
-
-const resolveTherapyOrderFlag = (flow = {}) => {
-  return therapyRouteRequested.value || !!flow.allTraditionalTherapy
-}
 
 onMounted(() => {
   // 记录页面访问日志
@@ -402,6 +401,7 @@ const managePatients = () => uni.navigateTo({ url: '/pages/user/patient_list' })
 // 加载产品数据（只加载购物车中选中的商品）
 const loadProducts = async () => {
   if (!isCurrentSession(pageSession)) return []
+  if (prescriptionId.value) return loadPrescriptionProducts()
   try {
     const currentSelectedIds = selectedProductIds.value.length > 0
       ? selectedProductIds.value
@@ -425,62 +425,7 @@ const loadProducts = async () => {
     }
     const cartEntries = getCartEntries()
 
-    // 逐个获取选中商品的详细信息
-    for (const itemKey of currentSelectedIds) {
-      try {
-        const entry = cartEntries[itemKey] || {}
-        const split = splitCartItemKey(itemKey)
-        const productId = entry.productId || split.productId || itemKey
-        const skuId = entry.skuId || split.skuId || null
-        assertCurrentSession(pageSession)
-        const productDetail = await getProductDetail(productId)
-        if (productDetail) {
-          if (!skuId && Array.isArray(productDetail.skus) && productDetail.skus.length > 1) {
-            throw Object.assign(new Error('请重新选择商品规格'), { code: 'SKU_SELECTION_INVALID' })
-          }
-          const sku = resolveProductSku(productDetail, skuId)
-          const saleProduct = withProductSku(productDetail, sku)
-          const displayPrice = Number(saleProduct.price || 0)
-          const displayStock = saleProduct.stock
-          const displayImage = sku?.image || sku?.imageUrl || productDetail.coverImage || productDetail.image
-          const displaySpec = sku?.specText || sku?.skuName || productDetail.specText || productDetail.specDesc
-          cartCategory.products.push({
-            id: itemKey,
-            cartKey: itemKey,
-            productId: productDetail.id,
-            skuId: sku ? sku.id : null,
-            skuCode: sku?.skuCode || entry.skuCode || '',
-            skuName: sku?.skuName || entry.skuName || '',
-            skuSpecText: displaySpec || entry.skuSpecText || '',
-            name: productDetail.productName || productDetail.name,
-            description: productDetail.subTitle || productDetail.description,
-            image: displayImage,
-            price: displayPrice,
-            bizType: productDetail.bizType,
-            productCategory: productDetail.productCategory,
-            isPrescription: productDetail.isPrescription,
-            categoryId: productDetail.categoryId || productDetail.category_id,
-            categoryCode: productDetail.categoryCode || productDetail.category_code || '',
-            goodsMerchantType: productDetail.goodsMerchantType,
-            stock: displayStock,
-            ...inventoryFields(saleProduct),
-            unit: sku?.unit || productDetail.unit || '件',
-            specText: displaySpec,
-            notice: productDetail.usageDesc || productDetail.notice,
-            needQuestionnaire: productDetail.needQuestionnaire || 0,
-            questionnaireId: productDetail.questionnaireId
-          })
-        }
-      } catch (err) {
-        if (err.code === 'SESSION_CHANGED') return []
-        console.error('event=ui_order_confirm stage=product_detail result=failed reason=request_failed')
-        const entry = cartEntries[itemKey] || {}
-        const split = splitCartItemKey(itemKey)
-        cartCategory.products.push({ ...entry, id: itemKey, cartKey: itemKey, productId: entry.productId || split.productId,
-          skuId: entry.skuId || split.skuId || null, stock: 0, available: false, inventoryStatus: 'UNAVAILABLE',
-          selectionInvalid: err.code === 'SKU_SELECTION_INVALID', loadFailure: true })
-      }
-    }
+    cartCategory.products = await loadCartProducts(currentSelectedIds, cartEntries, getProductDetail)
 
     assertCurrentSession(pageSession)
     categories.value = [cartCategory]
@@ -490,9 +435,9 @@ const loadProducts = async () => {
       setTimeout(() => uni.navigateBack(), 1500)
       return []
     }
-    selectedBizType.value = flow.bizType
     selectedRequiresConsultation.value = flow.requiresConsultation
-    isTherapyOrder.value = resolveTherapyOrderFlag(flow)
+    selectedRequiresShipping.value = flow.requiresShipping
+    isTherapyOrder.value = flow.allTraditionalTherapy
     return [cartCategory]
   } catch (error) {
     console.error('event=ui_order_confirm stage=products result=failed reason=load_failed')
@@ -503,13 +448,63 @@ const loadProducts = async () => {
   }
 }
 
+// 处方下单遵循当前后端契约：每条处方明细一件，规格按默认标记、排序和ID选择；days是疗程天数。
+const loadPrescriptionProducts = async () => {
+  prescription.value = null
+  prescriptionLoadError.value = ''
+  try {
+    const detail = await getPrescriptionDetail(prescriptionId.value)
+    assertCurrentSession(pageSession)
+    if (Number(detail?.id) !== prescriptionId.value || detail.status !== 1 || !detail.patientId || !detail.consultationId) {
+      throw new Error('处方尚未审核通过或就诊信息不完整')
+    }
+    const context = { consultationId: Number(detail.consultationId), patientId: Number(detail.patientId) }
+    requireConsultationPatient(await getConsultationDetail(context.consultationId), context)
+    assertCurrentSession(pageSession)
+    const items = await getPrescriptionItems(detail.id)
+    assertCurrentSession(pageSession)
+    if (!Array.isArray(items) || !items.length || items.some(item => !item.productId)) throw new Error('处方无有效商品明细')
+    const productRequests = new Map(), products = new Map()
+    for (const item of items) {
+      if (!productRequests.has(item.productId)) productRequests.set(item.productId, getProductDetail(item.productId))
+      const product = await productRequests.get(item.productId)
+      assertCurrentSession(pageSession)
+      if (Number(product.productCategory) !== 1) throw new Error('处方商品不属于制剂，请联系医生重新确认')
+      const skus = (product.skus || []).filter(sku => sku.status === 1 && sku.delSign === 0)
+        .sort((a, b) => Number(b.defaultFlag === 1) - Number(a.defaultFlag === 1) ||
+          (a.sort ?? Number.MAX_SAFE_INTEGER) - (b.sort ?? Number.MAX_SAFE_INTEGER) || Number(a.id) - Number(b.id))
+      if (!skus.length) throw new Error('处方商品规格已下架')
+      const saleProduct = withProductSku(product, resolveProductSku(product, skus[0].id))
+      const key = `${product.id}:${skus[0].id}`
+      const quantity = (products.get(key)?.quantity || 0) + 1
+      if (saleProduct.available === false || saleProduct.stock !== null && quantity > saleProduct.stock) throw new Error('处方商品已下架或库存不足')
+      products.set(key, { ...saleProduct, id: key, productId: product.id, name: product.productName,
+        image: saleProduct.coverImage, quantity, selected: true })
+    }
+    prescription.value = detail
+    checkoutContext.value = context
+    selectedRequiresConsultation.value = true
+    isTherapyOrder.value = false
+    selectedRequiresShipping.value = true
+    categories.value = [{ id: 'prescription_items', products: [...products.values()] }]
+    return categories.value
+  } catch (error) {
+    if (!isCurrentSession(pageSession)) return []
+    prescriptionLoadError.value = error.message || '处方商品加载失败，请重试'
+    categories.value = []
+    return []
+  }
+}
+
 const reloadSelection = async () => { await loadProducts(); loadOrderInfo() }
 
 const loadOrderInfo = () => {
   if (!isCurrentSession(pageSession)) return
   try {
     const saved = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
-    const cartItems = categories.value.length > 0 ? loadCartItems(categories.value) : []
+    const cartItems = prescriptionId.value
+      ? categories.value.flatMap(category => category.products || [])
+      : categories.value.length > 0 ? loadCartItems(categories.value) : []
     const currentSelectedIds = cartItems.map(item => String(item.id))
     const distributor = !selectedRequiresConsultation.value
       ? '健康产品服务'
@@ -526,7 +521,6 @@ const loadOrderInfo = () => {
     orderInfo.value.cost.isDecocted = !!saved?.cost?.isDecocted
 
     if (rebuiltOrder) {
-      orderInfo.value.bizType = selectedBizType.value
       orderInfo.value.prescriptions = rebuiltOrder.prescriptions
       orderInfo.value.items = rebuiltOrder.items
       orderInfo.value.deliveryInfo = {
@@ -717,8 +711,7 @@ const submitOrder = async () => {
     // 记录按钮点击日志
     logButtonClick('下单页面', '用户点击下单按钮')
 
-    console.debug('event=ui_order_confirm stage=submit_order result=observed');
-    console.debug('event=ui_order_confirm stage=submit_order result=observed');
+    console.debug('event=ui_order_confirm stage=submit_order result=started')
 
     await loadProducts()
     loadOrderInfo()
@@ -743,7 +736,9 @@ const submitOrder = async () => {
       return
     }
 
-    const stockCheck = validateCheckoutStock(selectedProductIds.value, categories.value)
+    const stockCheck = prescriptionId.value
+      ? { valid: !!prescription.value && !selectionIssue.value, message: selectionIssue.value }
+      : validateCheckoutStock(selectedProductIds.value, categories.value)
     if (!stockCheck.valid) {
       console.warn('category=CHECKOUT_STOCK_GUARD action=submit_order result=blocked reason=%s productId=%s quantity=%s latestStock=%s',
         stockCheck.reason,
@@ -762,9 +757,20 @@ const submitOrder = async () => {
     }
 
     try {
+      // 从旧链接进入确认页也先核实已有订单；待付续付原单，已付款不重复创建。
+      if (prescriptionId.value) {
+        const existing = await getOrderByPrescriptionId(prescriptionId.value)
+        assertCurrentSession(pageSession)
+        if (existing?.id) {
+          if (Number(existing.payStatus) === 0 && Number(existing.orderStatus) === 0) {
+            uni.redirectTo({ url: `/pages/order/order-detail?orderId=${existing.id}` })
+          } else uni.showToast({ title: '此处方已有订单，请到订单列表查看', icon: 'none' })
+          return
+        }
+      }
       uni.showLoading({ title: '获取支付信息...' })
 
-      if (selectedRequiresConsultation.value && !isTherapyOrder.value) {
+      if (selectedRequiresConsultation.value) {
         if (!checkoutContext.value) throw new Error('缺少本次复诊和就诊人信息，请返回重新申请')
         const consultation = await getConsultationDetail(checkoutContext.value.consultationId)
         requireConsultationPatient(consultation, checkoutContext.value)
@@ -784,33 +790,33 @@ const submitOrder = async () => {
         shippingFee: 0,
         patientId: selectedPatient.value.id,
         items: orderInfo.value.items.map(item => ({
-          productId: item.productId || item.id,
+          productId: item.productId,
           skuId: item.skuId || null,
           quantity: item.quantity || 1,
           price: item.price
         })),
         remark: orderRemark.value.trim(),
-        totalAmount: orderInfo.value.total
       }
-      if (isTherapyOrder.value) {
-        orderData.orderType = ORDER_TYPE_THERAPY
-      } else {
-        orderData.addressId = selectedAddress.value.id
-        orderData.consultationId = !selectedRequiresConsultation.value
-          ? null
-          : checkoutContext.value.consultationId
-        if (selectedRequiresConsultation.value) orderData.patientId = checkoutContext.value.patientId
+      // 实物与疗法同单时仍配送；复诊只约束其中的制剂，其他商品随同结算。
+      if (requiresShipping.value) orderData.addressId = selectedAddress.value.id
+      if (selectedRequiresConsultation.value) {
+        orderData.consultationId = checkoutContext.value.consultationId
+        orderData.patientId = checkoutContext.value.patientId
       }
       console.debug('event=ui_order_confirm stage=order_create_request result=prepared')
       assertCurrentSession(pageSession)
-      const order = await createOrder(orderData)
+      const order = prescriptionId.value
+        ? await createOrderFromPrescription({ prescriptionId: prescriptionId.value, addressId: selectedAddress.value.id, remark: orderRemark.value.trim() })
+        : await createOrder(orderData)
       assertCurrentSession(pageSession)
 
       console.debug('event=ui_order_confirm stage=order_create_response result=received')
 
       uni.hideLoading()
 
-      const orderId = order.id || order.orderId
+      const orderId = order.id
+      // 创建成功后的应付金额以后台成交金额为准，支付页仍需确认服务端支付状态。
+      orderInfo.value.total = Number(order.payableAmount ?? orderInfo.value.total)
 
       if (!orderId) {
         console.error('event=ui_order_confirm stage=payment_prepare result=rejected reason=missing_order_id')
@@ -833,15 +839,14 @@ const submitOrder = async () => {
           const quantity = Number(item.quantity || 1)
           return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
         }, 0)
+        // 支付成功页重新查询订单快照，不使用路由标记决定配送或核销。
         const paymentSuccessParams = {
           orderId,
           amount: orderInfo.value.total,
           outTradeNo: payResult.outTradeNo || '',
           paymentType: 'single',
           orderNo: order.orderNo || '',
-          itemCount,
-          orderType: isTherapyOrder.value ? ORDER_TYPE_THERAPY : '',
-          therapy: isTherapyOrder.value ? '1' : '0'
+          itemCount
         }
         const paymentSuccessUrl = '/pages/order/payment_success?' + Object.entries(paymentSuccessParams)
           .filter(([, value]) => value !== undefined && value !== null && value !== '')

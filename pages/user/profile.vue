@@ -200,22 +200,18 @@
 
     <TabBar
       :current="currentTab"
-      :cart-count="cartCount"
       @change="handleTabChange"
     />
   </view>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { computed, onMounted, ref } from 'vue'
 import { getUserProfile, logout } from '@/api/auth.js'
 import { endSession, getSessionToken, getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { getOrderStats } from '@/api/order.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { logButtonClick, logPageView } from '@/utils/accessLog.js'
-import { getCartTotalQuantity } from '@/utils/cart.js'
-import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { getImageUrl } from '@/utils/config.js'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import {
@@ -232,8 +228,6 @@ const avatarSrc = computed(() => getImageUrl('/profile/liaoning_zongyi/zaixian_m
 const successIcon = computed(() => getImageUrl('/profile/liaoning_zongyi/success.png'))
 
 const currentTab = ref('mine')
-const cartCount = ref(0)
-let unsubscribeCartUpdated = null
 
 const orderStats = ref({
   pending: 0,
@@ -402,27 +396,10 @@ const handleTabChange = (tab) => {
   currentTab.value = tab
 }
 
-const refreshCartCount = () => {
-  cartCount.value = getCartTotalQuantity()
-}
-
 onMounted(() => {
   logPageView('USER_PROFILE')
   loadUserProfile()
   loadOrderStats()
-  refreshCartCount()
-  unsubscribeCartUpdated = subscribeCartUpdated(refreshCartCount)
-})
-
-onShow(() => {
-  refreshCartCount()
-})
-
-onUnmounted(() => {
-  if (unsubscribeCartUpdated) {
-    unsubscribeCartUpdated()
-    unsubscribeCartUpdated = null
-  }
 })
 
 const getCurrentRoute = () => {

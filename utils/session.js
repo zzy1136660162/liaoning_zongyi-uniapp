@@ -10,12 +10,11 @@ export const getSessionToken = () => {
   catch (_) { return '' }
 }
 
-// Only account-owned data crosses this boundary. Public caches and consent are device preferences.
+// 切换账号只清理账号归属数据；协议同意等设备偏好不跨账号清除。
 export const ACCOUNT_STORAGE_KEYS = [
   storage.STORAGE_KEY_USER_REGISTER, storage.STORAGE_KEY_USER_LOGIN_STATUS, storage.STORAGE_KEY_TOKEN,
   storage.STORAGE_KEY_USER_INFO, storage.STORAGE_KEY_WECHAT_OPENID, storage.STORAGE_KEY_WECHAT_UNIONID,
-  storage.STORAGE_KEY_WECHAT_SESSION_KEY, storage.STORAGE_KEY_VERIFIED_PRODUCTS,
-  storage.STORAGE_KEY_PRODUCT_QUANTITIES, storage.STORAGE_KEY_SELECTED_PRODUCTS,
+  storage.STORAGE_KEY_WECHAT_SESSION_KEY, storage.STORAGE_KEY_CART_ITEMS,
   storage.STORAGE_KEY_CURRENT_CONSULTATION_ID, storage.STORAGE_KEY_CHECKOUT_PRODUCT_IDS,
   storage.STORAGE_KEY_AI_CHAT_ID, storage.STORAGE_KEY_AI_CHAT_MESSAGES,
   'prescription_orders', storage.STORAGE_KEY_SELECTED_PRESCRIPTIONS,

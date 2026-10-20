@@ -6,7 +6,7 @@ import { beginSession, endSession, getSessionGeneration, isCurrentSession, onSes
 import { get } from '../utils/request.js'
 
 const values = new Map()
-let lists, requests, modals, stoppedCartListeners, cancelled, confirmed
+let lists, requests, modals, stoppedSessionListeners, cancelled, confirmed
 globalThis.uni = {
   getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, value),
   removeStorageSync: key => values.delete(key), request: options => requests.push(options),
@@ -22,12 +22,15 @@ const createList = () => {
   const state = loadSetup('pages/order/order_list.vue', {
     ref: value => ({ value }), onMounted: callback => { mount = callback },
     onUnmounted: callback => { unmount = callback }, onShow: callback => { show = callback },
-    getSessionGeneration, isCurrentSession, onSessionChanged, getCurrentPages: () => [],
+    getSessionGeneration, isCurrentSession,
+    onSessionChanged: handler => {
+      const unsubscribe = onSessionChanged(handler)
+      return () => { stoppedSessionListeners++; unsubscribe() }
+    },
+    getCurrentPages: () => [],
     getOrderPage: params => new Promise((resolve, reject) => pageCalls.push({ params, resolve, reject })),
     getOrderDetail: id => new Promise((resolve, reject) => detailCalls.push({ id, resolve, reject })),
     cancelOrder: async () => { cancelled++ }, confirmReceipt: async () => { confirmed++ },
-    getCartTotalQuantity: () => 0,
-    subscribeCartUpdated: () => () => { stoppedCartListeners++ },
     logPageView() {}, logButtonClick() {}, isTherapyOrder: () => false,
     getOrderStatusText: () => ''
   }, ['activeTab', 'orders', 'pageNum', 'total', 'hasMore', 'hasLoaded', 'loading', 'refreshing', 'loadError',
@@ -40,7 +43,7 @@ const createList = () => {
 }
 
 beforeEach(() => {
-  values.clear(); lists = []; requests = []; modals = []; stoppedCartListeners = 0; cancelled = 0; confirmed = 0
+  values.clear(); lists = []; requests = []; modals = []; stoppedSessionListeners = 0; cancelled = 0; confirmed = 0
   beginSession('fixture-A')
 })
 afterEach(() => {
@@ -178,7 +181,7 @@ test('页面卸载释放订阅并拒绝迟到响应，旧账号确认弹窗不�
   await modals[1].success({ confirm: true })
   assert.equal(cancelled, 0); assert.equal(confirmed, 0)
   list.unmount()
-  assert.equal(stoppedCartListeners, 1)
+  assert.equal(stoppedSessionListeners, 1)
   list.pageCalls[0].resolve(page([row('late')])); await flush()
   assert.deepEqual(list.state.orders.value, [])
   list.state.loadOrders()
@@ -257,15 +260,16 @@ test('处方订单主查询失败后按处方ID请求一条订单，匹配数字
   const primaryIds = [], fallbackParams = [], applied = []
   let response = { id: 42, prescriptionId: 321, orderStatus: 2, orderNo: 'fixture-order', logisticsNo: 'fixture-logistics' }
   const definition = loadOptions('pages/prescription/detail.vue', {
-    getSessionGeneration, getImageUrl: value => value,
+    getSessionGeneration, isCurrentSession, getImageUrl: value => value,
     AI_DOCTOR: { name: 'fixture doctor' }, STORAGE_KEY_CURRENT_ORDER: 'current_order',
     getOrderByPrescriptionId: async id => { primaryIds.push(id); throw new Error('fixture primary failure') },
     getOrderPage: async params => { fallbackParams.push(params); return { rows: [response] } },
     console: { log() {}, error() {} }
   })
   const prescription = { ...definition.data(), ...definition.methods }
-  prescription.pageOptions.prescriptionNo = '321'
-  prescription.updateDetailFromOrder = order => applied.push(order)
+  prescription.pageOptions.prescriptionId = '321'
+  const apply = prescription.updateDetailFromOrder
+  prescription.updateDetailFromOrder = order => { applied.push(order); apply.call(prescription, order) }
   await prescription.loadOrderStatus()
   assert.deepEqual(primaryIds, ['321'])
   assert.deepEqual(fallbackParams, [{ prescriptionId: '321', pageNum: 1, pageSize: 1 }])

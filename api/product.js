@@ -2,10 +2,10 @@ import { get, post, getToken } from '@/utils/request.js'
 import { API_PATHS, getImageUrl } from '@/utils/config.js'
 import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
 
-export const getCategoryList = (bizType = null) => {
+export const getCategoryList = (productCategory = null) => {
   const params = {}
-  if (bizType !== null && bizType !== undefined && bizType !== '') {
-    params.bizType = bizType
+  if (productCategory !== null && productCategory !== undefined && productCategory !== '') {
+    params.productCategory = productCategory
   }
   return get(API_PATHS.CATEGORY.LIST, params, {
     needAuth: false,
@@ -13,11 +13,11 @@ export const getCategoryList = (bizType = null) => {
   })
 }
 
-export const getProductsByCategory = (
+export const getCategoryProducts = (
   categoryId = null,
   pageNum = 1,
   pageSize = 10,
-  bizType = null,
+  productCategory = null,
   sortField = null,
   sortOrder = null,
   keyword = null
@@ -28,8 +28,8 @@ export const getProductsByCategory = (
     pageSize,
     _t: Date.now()
   }
-  if (bizType !== null && bizType !== undefined && bizType !== '') {
-    payload.bizType = bizType
+  if (productCategory !== null && productCategory !== undefined && productCategory !== '') {
+    payload.productCategory = productCategory
   }
   if (sortField) {
     payload.sortField = sortField
@@ -47,8 +47,6 @@ export const getProductsByCategory = (
   })
 }
 
-export const getCategoryProducts = getProductsByCategory
-
 export const getProductDetail = (id) => {
   const token = getToken()
   const options = {
@@ -63,22 +61,7 @@ export const getProductDetail = (id) => {
   }, options)
 }
 
-const pickField = (product, ...keys) => {
-  if (!product) return null
-  for (const key of keys) {
-    const value = product[key]
-    if (value !== undefined && value !== null && value !== '') {
-      return value
-    }
-  }
-  return null
-}
-
 const parseGalleryImages = (galleryImages, coverImage) => {
-  if (Array.isArray(galleryImages)) {
-    return galleryImages.map(item => getImageUrl(item)).filter(Boolean)
-  }
-
   if (typeof galleryImages === 'string' && galleryImages.trim()) {
     const raw = galleryImages.trim()
     try {
@@ -86,66 +69,56 @@ const parseGalleryImages = (galleryImages, coverImage) => {
       if (Array.isArray(parsed)) {
         return parsed.map(item => getImageUrl(item)).filter(Boolean)
       }
-    } catch (error) {
-      const fallbackList = raw
-        .split(',')
-        .map(item => item.trim())
-        .filter(Boolean)
-      if (fallbackList.length > 0) {
-        return fallbackList.map(item => getImageUrl(item))
-      }
-    }
+    } catch (_) { /* 图集 JSON 无效时显示商品主图。 */ }
   }
 
   const image = getImageUrl(coverImage)
   return image ? [image] : []
 }
 
+// 接口统一使用 Product 的 camelCase 字段；这里只转换为页面使用的展示字段。
 export const mapProductListItem = (product = {}) => {
-  const productName = pickField(product, 'productName', 'product_name', 'name') || ''
-  const subTitle = pickField(product, 'subTitle', 'sub_title')
-  const indications = pickField(product, 'indications')
-  const usageDesc = pickField(product, 'usageDesc', 'usage_desc')
-  const commonUsage = pickField(product, 'commonUsage', 'common_usage')
-  const specText = pickField(product, 'specText', 'spec_text')
-  const unit = pickField(product, 'unit') || ''
-  const goodsMerchantType = pickField(product, 'goodsMerchantType', 'goods_merchant_type')
-  const productCategory = pickField(product, 'productCategory', 'product_category')
+  const productName = product.productName || ''
+  const subTitle = product.subTitle
+  const indications = product.indications
+  const usageDesc = product.usageDesc
+  const commonUsage = product.commonUsage
+  const specText = product.specText
+  const unit = product.unit || ''
+  const goodsMerchantType = product.goodsMerchantType
+  const productCategory = product.productCategory
 
   return {
-    id: pickField(product, 'id'),
+    id: product.id,
+    status: product.status,
+    delSign: product.delSign,
     name: productName,
     subtitle: subTitle || '',
     description: subTitle || indications || '',
-    image: pickField(product, 'coverImage', 'cover_image', 'image', 'productImage') || '',
-    price: Number(pickField(product, 'price') || 0),
-    originalPrice: Number(pickField(product, 'originalPrice', 'original_price') || 0),
+    image: product.coverImage || '',
+    price: Number(product.price || 0),
+    originalPrice: Number(product.originalPrice || 0),
     unit,
-    doctorName: pickField(product, 'pharmacistName', 'pharmacist_name') || '',
+    doctorName: product.pharmacistName || '',
     specText: specText || '',
     notice: usageDesc || commonUsage || '',
-    salesVolume: Number(pickField(product, 'salesVolume', 'sales_volume') || 0),
-    categoryId: pickField(product, 'categoryId', 'category_id'),
-    categoryCode: pickField(product, 'categoryCode', 'category_code') || '',
-    bizType: Number(pickField(product, 'bizType', 'biz_type') || 1),
-    goodsMerchantType: goodsMerchantType === null ? null : Number(goodsMerchantType),
-    productCategory: productCategory === null ? null : Number(productCategory),
-    isPrescription: Number(pickField(product, 'isPrescription', 'is_prescription') || 0),
-    needQuestionnaire: Number(pickField(product, 'needQuestionnaire', 'need_questionnaire') || 0),
-    questionnaireId: pickField(product, 'questionnaireId', 'questionnaire_id'),
-    isHospitalStarFormula: Number(pickField(product, 'isHospitalStarFormula', 'is_hospital_star_formula') || 0),
-    isNewProduct: Number(pickField(product, 'isNewProduct', 'is_new_product') || 0),
-    detailTitle: pickField(product, 'detailTitle', 'detail_title') || '',
-    isStarProduct: Number(pickField(product, 'isStarProduct', 'is_star_product') || 0),
+    salesVolume: Number(product.salesVolume || 0),
+    categoryId: product.categoryId,
+    categoryCode: product.categoryCode || '',
+    goodsMerchantType: goodsMerchantType == null ? null : Number(goodsMerchantType),
+    productCategory: productCategory == null ? null : Number(productCategory),
+    isPrescription: Number(product.isPrescription || 0),
+    needQuestionnaire: Number(product.needQuestionnaire || 0),
+    questionnaireId: product.questionnaireId,
+    isHospitalStarFormula: Number(product.isHospitalStarFormula || 0),
+    isNewProduct: Number(product.isNewProduct || 0),
+    detailTitle: product.detailTitle || '',
+    isStarProduct: Number(product.isStarProduct || 0),
     stock: inventoryStock(product.stock),
     ...inventoryFields(product),
-    isExternal: Number(pickField(product, 'isExternal', 'is_external') || 0),
-    coldShippingType: Number(pickField(product, 'coldShippingType', 'cold_shipping_type') || 0),
-    isSelfDeveloped: (() => {
-      const raw = pickField(product, 'isSelfDeveloped', 'is_self_developed')
-      if (raw === null || raw === undefined || raw === '') return 1
-      return Number(raw)
-    })()
+    isExternal: Number(product.isExternal || 0),
+    coldShippingType: Number(product.coldShippingType || 0),
+    isSelfDeveloped: Number(product.isSelfDeveloped)
   }
 }
 
@@ -158,14 +131,14 @@ const mapRecommendationProducts = (products = []) => {
     const mapped = mapProductListItem(item)
     return {
       ...mapped,
-      image: getImageUrl(pickField(item, 'coverImage', 'cover_image', 'image', 'productImage') || mapped.image)
+      image: getImageUrl(item.coverImage || mapped.image)
     }
   })
 }
 
 const mapLimitInfo = (product) => {
-  const raw = pickField(product, 'limitInfo', 'limit_info') || {}
-  const enabled = raw.enabled === true || raw.enabled === 1 || raw.enabled === '1'
+  const raw = product.limitInfo || {}
+  const enabled = raw.enabled === true
   if (!enabled) {
     return {
       enabled: false,
@@ -175,74 +148,75 @@ const mapLimitInfo = (product) => {
   }
   return {
     enabled: true,
-    periodType: Number(pickField(raw, 'periodType', 'period_type') || 0),
-    periodLabel: pickField(raw, 'periodLabel', 'period_label') || '',
-    limitQuantity: Number(pickField(raw, 'limitQuantity', 'limit_quantity') || 0),
-    purchasedQuantity: Number(pickField(raw, 'purchasedQuantity', 'purchased_quantity') || 0),
-    remainingQuantity: Number(pickField(raw, 'remainingQuantity', 'remaining_quantity') || 0),
-    text: pickField(raw, 'text') || ''
+    periodType: Number(raw.periodType || 0),
+    periodLabel: raw.periodLabel || '',
+    limitQuantity: Number(raw.limitQuantity || 0),
+    purchasedQuantity: Number(raw.purchasedQuantity || 0),
+    remainingQuantity: Number(raw.remainingQuantity || 0),
+    text: raw.text || ''
   }
 }
 
 const mapProductSku = (sku = {}) => {
-  const image = getImageUrl(pickField(sku, 'imageUrl', 'image_url', 'image'))
+  const image = getImageUrl(sku.imageUrl)
   return {
-    id: pickField(sku, 'id'),
-    productId: pickField(sku, 'productId', 'product_id'),
-    skuCode: pickField(sku, 'skuCode', 'sku_code') || '',
-    skuName: pickField(sku, 'skuName', 'sku_name') || '',
-    specText: pickField(sku, 'specText', 'spec_text') || '',
-    unit: pickField(sku, 'unit') || '',
-    price: Number(pickField(sku, 'price') || 0),
-    stock: inventoryStock(sku.stock),
+    id: sku.id,
+    productId: sku.productId,
+    skuCode: sku.skuCode || '',
+    skuName: sku.skuName || '',
+    specText: sku.specText || '',
+    unit: sku.unit || '',
+    price: sku.price,
+    stock: sku.stock,
     ...inventoryFields(sku),
-    stockWarn: Number(pickField(sku, 'stockWarn', 'stock_warn') || 0),
-    salesVolume: Number(pickField(sku, 'salesVolume', 'sales_volume') || 0),
+    stockWarn: Number(sku.stockWarn || 0),
+    salesVolume: Number(sku.salesVolume || 0),
     imageUrl: image,
     image,
-    defaultFlag: Number(pickField(sku, 'defaultFlag', 'default_flag') || 0),
-    sort: Number(pickField(sku, 'sort') || 0),
-    status: Number(sku.status ?? 1)
+    defaultFlag: Number(sku.defaultFlag || 0),
+    sort: Number(sku.sort || 0),
+    status: Number(sku.status ?? 1),
+    delSign: Number(sku.delSign ?? 0)
   }
 }
 
 export const mapProductDetail = (product = {}) => {
   const listView = mapProductListItem(product)
-  const coverImage = pickField(product, 'coverImage', 'cover_image', 'image', 'productImage')
-  const rawSkus = pickField(product, 'skus', 'skuList', 'sku_list') || []
+  const coverImage = product.coverImage
+  const rawSkus = product.skus || []
 
   return {
     ...listView,
     image: getImageUrl(coverImage || listView.image),
     images: parseGalleryImages(
-      pickField(product, 'galleryImages', 'gallery_images'),
+      product.galleryImages,
       coverImage || listView.image
     ),
-    intro: pickField(product, 'intro') || '',
-    indications: pickField(product, 'indications') || '',
-    ingredients: pickField(product, 'ingredients') || '',
-    commonUsage: pickField(product, 'commonUsage', 'common_usage') || '',
-    usageDesc: pickField(product, 'usageDesc', 'usage_desc') || '',
-    contraindication: pickField(product, 'contraindication') || '',
-    precautions: pickField(product, 'precautions') || '',
-    storageCondition: pickField(product, 'storageCondition', 'storage_condition') || '',
-    adverseReactions: pickField(product, 'adverseReactions', 'adverse_reactions') || '',
-    drugInteractions: pickField(product, 'drugInteractions', 'drug_interactions') || '',
-    appearanceDesc: pickField(product, 'appearanceDesc', 'appearance_desc') || '',
-    dosageForm: pickField(product, 'dosageForm', 'dosage_form') || '',
-    packageSpec: pickField(product, 'packageSpec', 'package_spec') || '',
-    validityPeriod: pickField(product, 'validityPeriod', 'validity_period') || '',
-    originType: Number(pickField(product, 'originType', 'origin_type') || 0),
-    approvalNumber: pickField(product, 'approvalNumber', 'approval_number') || '',
-    manufacturer: pickField(product, 'manufacturer') || '',
-    executionStandard: pickField(product, 'executionStandard', 'execution_standard') || '',
-    warmTips: pickField(product, 'warmTips', 'warm_tips') || '',
-    brandName: pickField(product, 'brandName', 'brand_name') || '',
-    suitableCrowd: pickField(product, 'suitableCrowd', 'suitable_crowd') || '',
-    detailTitle: pickField(product, 'detailTitle', 'detail_title') || '',
-    isStarProduct: Number(pickField(product, 'isStarProduct', 'is_star_product') || 0),
-    relatedProducts: mapRecommendationProducts(pickField(product, 'relatedProducts', 'related_products') || []),
-    starProducts: mapRecommendationProducts(pickField(product, 'starProducts', 'star_products') || []),
+    intro: product.intro || '',
+    indications: product.indications || '',
+    ingredients: product.ingredients || '',
+    commonUsage: product.commonUsage || '',
+    usageDesc: product.usageDesc || '',
+    contraindication: product.contraindication || '',
+    precautions: product.precautions || '',
+    storageCondition: product.storageCondition || '',
+    adverseReactions: product.adverseReactions || '',
+    drugInteractions: product.drugInteractions || '',
+    appearanceDesc: product.appearanceDesc || '',
+    dosageForm: product.dosageForm || '',
+    packageSpec: product.packageSpec || '',
+    validityPeriod: product.validityPeriod || '',
+    originType: Number(product.originType || 0),
+    approvalNumber: product.approvalNumber || '',
+    manufacturer: product.manufacturer || '',
+    executionStandard: product.executionStandard || '',
+    warmTips: product.warmTips || '',
+    brandName: product.brandName || '',
+    suitableCrowd: product.suitableCrowd || '',
+    detailTitle: product.detailTitle || '',
+    isStarProduct: Number(product.isStarProduct || 0),
+    relatedProducts: mapRecommendationProducts(product.relatedProducts || []),
+    starProducts: mapRecommendationProducts(product.starProducts || []),
     skus: Array.isArray(rawSkus) ? rawSkus.map(mapProductSku).filter(item => item.id !== null && item.id !== undefined) : [],
     limitInfo: mapLimitInfo(product)
   }

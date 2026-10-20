@@ -59,7 +59,8 @@ test('选择地址只传ID，确认页从最新地址列表解析且不使用旧
     queryFreight: async () => ({}),
     uni: { getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, value),
       removeStorageSync: key => values.delete(key), showToast() {}, showLoading() {}, hideLoading() {} }
-  }, ['loadAddresses', 'selectedAddress'])
+  }, ['loadAddresses', 'selectedAddress', 'selectedRequiresShipping'])
+  page.selectedRequiresShipping.value = true
   await page.loadAddresses()
   assert.equal(page.selectedAddress.value.name, '最新地址')
   assert.equal(values.has('temp_selected_address'), false)
@@ -102,8 +103,8 @@ test('处方订单状态忽略current_order草稿，每次查询真实状态', a
     getOrderByPrescriptionId: async () => ({ id: 5, orderNo: 'real', orderStatus: ++calls, payStatus: 1 }),
     uni: { getStorageSync() { throw new Error('must not read draft as order state') } }
   })
-  const page = { ...options.data(), ...options.methods, updateDetailFromOrder() {} }
-  page.pageOptions.prescriptionNo = 9
+  const page = { ...options.data(), ...options.methods }
+  page.pageOptions.prescriptionId = 9
   await page.loadOrderStatus(); assert.equal(page.orderStatus.status, 1)
   await page.loadOrderStatus(); assert.equal(page.orderStatus.status, 2)
   assert.equal(calls, 2)
@@ -119,7 +120,7 @@ test('处方详情接口失败不会读写旧处方响应副本', async () => {
   })
   const page = { ...options.data(), ...options.methods }
   await page.loadPrescriptionById(9)
-  assert.equal(page.detail.visitNo, 9)
+  assert.equal(page.prescriptionLoaded, false)
   assert.deepEqual(page.detail.prescriptionItems, [])
 })
 
@@ -127,33 +128,33 @@ test('购物车新业务字段覆盖旧元数据，0值有效且问卷新启用�
   const values = new Map()
   globalThis.uni = { getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, value), $emit() {} }
   const cart = await import('../utils/cart.js')
-  cart.replaceCartData({ 7: { productId: 7, verified: true, selected: false, quantity: 3,
-    stock: 8, available: true, bizType: 1, goodsMerchantType: 1, needQuestionnaire: 0, questionnairePassed: true } })
-  const product = { id: 7, stock: 8, available: true, price: 10, bizType: 2,
+  cart.replaceCartData({ '7:1': { productId: 7, skuId: 1, selected: false, quantity: 3,
+    stock: 8, available: true, productCategory: 1, goodsMerchantType: 1, needQuestionnaire: 0, questionnairePassed: true } })
+  const product = { id: '7:1', productId: 7, skuId: 1, stock: 8, available: true, price: 10, productCategory: 2,
     goodsMerchantType: 2, needQuestionnaire: 1, questionnaireId: 101 }
   let [item] = cart.loadCartItems([{ products: [product] }])
-  assert.equal(item.bizType, 2); assert.equal(item.goodsMerchantType, 2)
+  assert.equal(item.productCategory, 2); assert.equal(item.goodsMerchantType, 2)
   assert.equal(item.needQuestionnaire, 1); assert.equal(item.questionnairePassed, false)
   assert.equal(item.questionnaireId, 101); assert.equal(item.answerId, null)
   assert.equal(item.quantity, 3); assert.equal(item.selected, false)
-  assert.equal(cart.getCartProductInfo(7).goodsMerchantType, 2)
+  assert.equal(cart.getCartProductInfo(7, 1).goodsMerchantType, 2)
 
-  ;[item] = cart.loadCartItems([{ products: [{ ...product, bizType: 0, goodsMerchantType: 0, needQuestionnaire: 0 }] }])
-  assert.equal(item.bizType, 0); assert.equal(item.goodsMerchantType, 0); assert.equal(item.needQuestionnaire, 0)
+  ;[item] = cart.loadCartItems([{ products: [{ ...product, productCategory: 0, goodsMerchantType: 0, needQuestionnaire: 0 }] }])
+  assert.equal(item.productCategory, 0); assert.equal(item.goodsMerchantType, 0); assert.equal(item.needQuestionnaire, 0)
   assert.equal(item.answerId, null)
-  ;[item] = cart.loadCartItems([{ products: [{ id: 7, stock: 8, available: true, price: 10 }] }])
+  ;[item] = cart.loadCartItems([{ products: [{ id: '7:1', productId: 7, skuId: 1, stock: 8, available: true, price: 10 }] }])
   assert.equal(item.goodsMerchantType, 0, '缺失字段兼容已有元数据')
-  ;[item] = cart.loadCartItems([{ products: [{ ...product, bizType: 2, goodsMerchantType: null, needQuestionnaire: 0 }] }])
-  assert.equal(item.goodsMerchantType, 2, '显式null按新商品派生商户，不沿用旧商户')
+  ;[item] = cart.loadCartItems([{ products: [{ ...product, productCategory: 2, goodsMerchantType: null, needQuestionnaire: 0 }] }])
+  assert.equal(item.goodsMerchantType, 0, '无效空商户不推断成另一业务类型')
 })
 
 test('购物车问卷相同保留用户答案，问卷换绑清除旧通过态及答案', async () => {
   const values = new Map()
   globalThis.uni = { getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, value), $emit() {} }
   const cart = await import('../utils/cart.js')
-  cart.replaceCartData({ 7: { productId: 7, verified: true, selected: true, quantity: 2,
+  cart.replaceCartData({ '7:1': { productId: 7, skuId: 1, selected: true, quantity: 2,
     stock: 8, available: true, needQuestionnaire: 1, questionnaireId: 101, answerId: 55, questionnairePassed: true } })
-  const product = { id: 7, stock: 8, available: true, price: 10, needQuestionnaire: 1, questionnaireId: 101 }
+  const product = { id: '7:1', productId: 7, skuId: 1, stock: 8, available: true, price: 10, needQuestionnaire: 1, questionnaireId: 101 }
   let [item] = cart.loadCartItems([{ products: [product] }])
   assert.equal(item.answerId, 55); assert.equal(item.questionnairePassed, true)
   ;[item] = cart.loadCartItems([{ products: [{ ...product, questionnaireId: 102 }] }])
@@ -161,10 +162,10 @@ test('购物车问卷相同保留用户答案，问卷换绑清除旧通过态�
   assert.equal(item.answerId, null); assert.equal(item.questionnairePassed, false)
   assert.equal(item.quantity, 2); assert.equal(item.selected, true)
 
-  cart.addCartItem({ ...product, bizType: 0, goodsMerchantType: 0, questionnaireId: 103 }, 2,
-    { bizType: 2, goodsMerchantType: 2, questionnaireId: 101, answerId: 55, questionnairePassed: true })
-  const stored = cart.getCartProductInfo(7)
-  assert.equal(stored.bizType, 0); assert.equal(stored.goodsMerchantType, 0)
+  cart.addCartItem({ ...product, skuId: 1, productCategory: 3, goodsMerchantType: 0, questionnaireId: 103 }, 2,
+    { productCategory: 2, goodsMerchantType: 2, questionnaireId: 101, answerId: 55, questionnairePassed: true })
+  const stored = cart.getCartProductInfo(7, 1)
+  assert.equal(stored.productCategory, 3); assert.equal(stored.goodsMerchantType, 0)
   assert.equal(stored.questionnaireId, 103); assert.equal(stored.answerId, null); assert.equal(stored.questionnairePassed, false)
   ;[item] = cart.loadCartItems([{ products: [{ ...product, questionnaireId: null }] }])
   assert.equal(item.questionnaireId, null, '显式null清除旧问卷ID')

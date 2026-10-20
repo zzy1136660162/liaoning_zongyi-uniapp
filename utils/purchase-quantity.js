@@ -10,7 +10,7 @@ const toQuantityLimit = (value) => {
 }
 
 const isLimitEnabled = (limitInfo = {}) => {
-  return limitInfo.enabled === true || limitInfo.enabled === 1 || limitInfo.enabled === '1'
+  return limitInfo.enabled === true
 }
 
 export const resolvePurchaseQuantityLimit = (product = {}) => {
@@ -22,11 +22,9 @@ export const resolvePurchaseQuantityLimit = (product = {}) => {
     limits.push(stock)
   }
 
-  const limitInfo = product.limitInfo || product.limit_info || {}
+  const limitInfo = product.limitInfo || {}
   if (isLimitEnabled(limitInfo)) {
-    const remainingQuantity = toQuantityLimit(
-      limitInfo.remainingQuantity ?? limitInfo.remaining_quantity
-    )
+    const remainingQuantity = toQuantityLimit(limitInfo.remainingQuantity)
     if (remainingQuantity !== null) {
       limits.push(remainingQuantity)
     }

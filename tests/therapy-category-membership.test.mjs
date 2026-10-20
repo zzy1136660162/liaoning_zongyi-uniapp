@@ -1,23 +1,33 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isTraditionalTherapyProduct } from '../utils/therapy.js'
+import { isTraditionalTherapyProduct, isTherapyOrder, hasTherapyEntitlement } from '../utils/therapy.js'
 import { resolveProductFlow } from '../utils/product-biz.js'
 
-test('server-resolved therapy ancestry works with any leaf category id', () => {
-  const product = { categoryId: 812, categoryCode: '传统疗法', bizType: 1 }
+test('疗法只认购买分类3，任意目录均可归入疗法', () => {
+  const product = { categoryId: 812, categoryCode: '任意展示类目', productCategory: 3 }
   assert.equal(isTraditionalTherapyProduct(product), true)
   assert.equal(resolveProductFlow([product]).allTraditionalTherapy, true)
-  assert.equal(isTraditionalTherapyProduct({ category_id: 812, category_code: '传统疗法' }), true)
+  for (const product of [{ categoryId: 34 }, { categoryCode: '传统疗法' }, { productCategory: 2, categoryCode: '传统疗法' }]) {
+    assert.equal(isTraditionalTherapyProduct(product), false)
+  }
 })
 
-test('explicit ordinary classification overrides old hardcoded root id', () => {
-  const product = { categoryId: 34, categoryCode: 'GOODS', productCategory: 2, bizType: 1 }
-  assert.equal(isTraditionalTherapyProduct(product), false)
-  assert.equal(resolveProductFlow([product]).allTraditionalTherapy, false)
+test('历史订单仅按下单分类和核销资格快照，改当前商品分类不改变权益', () => {
+  const therapy = { productCategorySnapshot: 3, productCategory: 2, redeemRequiredSnapshot: 1 }
+  const physical = { productCategorySnapshot: 2, productCategory: 3, redeemRequiredSnapshot: 0 }
+  assert.equal(isTherapyOrder({ items: [therapy] }), true)
+  assert.equal(isTherapyOrder({ items: [therapy, physical] }), false)
+  assert.equal(hasTherapyEntitlement({ items: [therapy, physical] }), true)
+  assert.equal(hasTherapyEntitlement({ items: [physical] }), false)
+  assert.equal(isTherapyOrder({ orderType: 1, items: [{ productCategory: 3 }] }), false)
+  assert.equal(hasTherapyEntitlement({ items: [{ redeemVouchers: [{ id: 1 }] }] }), true)
 })
 
-test('legacy root fallback only applies without a resolved business code', () => {
-  assert.equal(isTraditionalTherapyProduct({ categoryId: 34 }), true)
-  assert.equal(isTraditionalTherapyProduct({ categoryId: 812 }), false)
-  assert.equal(isTraditionalTherapyProduct({ categoryCode: ' 传统疗法 ' }), true)
+
+test('历史纯疗法配送沿已存订单类型，新实物快照优先于冲突类型', () => {
+  const legacy = { orderType: 4, items: [{ productCategorySnapshot: null }] }
+  assert.equal(isTherapyOrder(legacy), true)
+  assert.equal(legacy.items[0].productCategorySnapshot, null, '不补写历史未知分类')
+  assert.equal(hasTherapyEntitlement(legacy), false, '配送事实不授予核销权益')
+  assert.equal(isTherapyOrder({ orderType: 4, items: [{ productCategorySnapshot: 3 }, { productCategorySnapshot: 2 }] }), false)
 })

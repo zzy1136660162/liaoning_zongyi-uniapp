@@ -156,7 +156,7 @@ export default {
         uni.showLoading({ title: '问卷加载中...' })
         const response = await getQuestionnaireByProductId(this.productId)
         if (!this.isQuestionnaireSessionCurrent() || requestSeq !== this.questionnaireRequestSeq) return
-        const questionnaire = response.data || response
+        const questionnaire = response
         const previousAnswers = String(this.questionnaireId) === String(questionnaire.questionnaireId)
           ? new Map(this.questions.map(question => [String(question.questionId), question.selectedOptionId]))
           : new Map()
@@ -205,7 +205,7 @@ export default {
         this.questionnaireId = null
         console.error('loadQuestionnaire failed:', error)
         uni.showToast({
-          title: error.message || 'Failed to load questionnaire',
+          title: error.message || '问卷加载失败',
           icon: 'none'
         })
         setTimeout(() => {
@@ -243,9 +243,8 @@ export default {
       const selectedItems = checkout.productIds.join(',')
       if (!checkout.requiresConsultation) {
         uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-        const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
         uni.navigateTo({
-          url: `/pages/order/confirm?selectedItems=${selectedItems}${therapyParam}`
+          url: `/pages/order/confirm?selectedItems=${selectedItems}`
         })
         return true
       }
@@ -323,7 +322,7 @@ export default {
           answers
         })
         if (!this.isQuestionnaireSessionCurrent()) return
-        const result = response.data || response
+        const result = response
         if (this.draftAccountId) {
           try {
             clearQuestionnaireDraft(this.draftAccountId, this.productId, this.questionnaireId)

@@ -23,6 +23,10 @@
 </template>
 
 <script>
+import { ref, onMounted, onUnmounted } from 'vue'
+import { onPageShow } from '@dcloudio/uni-app'
+import { getCartTotalQuantity } from '@/utils/cart.js'
+import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
 
 export default {
@@ -31,11 +35,23 @@ export default {
     current: {
       type: String,
       default: 'home'
-    },
-    cartCount: {
-      type: Number,
-      default: 0
     }
+  },
+  setup() {
+    const cartCount = ref(getCartTotalQuantity())
+    const refreshCartCount = () => {
+      cartCount.value = getCartTotalQuantity()
+    }
+    let unsubscribeCartUpdated
+
+    onMounted(() => {
+      unsubscribeCartUpdated = subscribeCartUpdated(refreshCartCount)
+      refreshCartCount()
+    })
+    onPageShow(refreshCartCount)
+    onUnmounted(() => unsubscribeCartUpdated?.())
+
+    return { cartCount }
   },
   computed: {
     currentTab() {

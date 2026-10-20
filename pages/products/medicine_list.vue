@@ -283,7 +283,7 @@
                     @click="goToDetail(product)"
                   >
                     <text
-                      v-if="product.categoryId === 34"
+                      v-if="product.productCategory === 3"
                       class="therapy-tag"
                     >
                       传统疗法
@@ -391,7 +391,6 @@
 
     <TabBar
       :current="currentTab"
-      :cart-count="cartCount"
       @change="handleTabChange"
     />
 
@@ -409,7 +408,7 @@
 
 <script>
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
-import { getCategoryList, getCategoryProducts, mapProductListItem } from '@/api/product.js'
+import { getCategoryList, getCategoryProducts, getProductDetail, mapProductDetail, mapProductListItem } from '@/api/product.js'
 import {
   addCartItem,
   getCartEntries,
@@ -425,6 +424,10 @@ import {
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
 import { useProductImages } from '@/utils/product-image.js'
+import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
+import { buildListCartCategories, getProductCartLines } from '@/utils/product-list-cart.js'
+import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
+import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { buildCategoryTree, normalizeCategoryId } from '@/utils/category-tree.js'
@@ -435,7 +438,7 @@ import {
   isSelfDevelopedProduct
 } from '@/utils/product-display.js'
 
-const PRODUCT_BIZ_TYPE_FILTER = null // null=全部, 1=医院制剂, 2=健康产品
+const PRODUCT_CATEGORY_FILTER = null // null=全部购买分类，目录 categoryId 只作展示筛选
 const PRODUCT_PAGE_SIZE = 20
 
 export default {
@@ -760,7 +763,7 @@ export default {
           apiCategoryId,
           nextPage,
           PRODUCT_PAGE_SIZE,
-          PRODUCT_BIZ_TYPE_FILTER,
+          PRODUCT_CATEGORY_FILTER,
           this.mapSortField(),
           this.sortType ? this.sortOrder : null,
           this.getSearchKeyword()
@@ -768,7 +771,7 @@ export default {
         if (requestSeq !== this.requestSeq) {
           return
         }
-        const productList = productPage.records || productPage.list || []
+        const productList = productPage.records || []
         const mapped = productList.map(item => mapProductListItem(item))
         const total = Number(productPage.total || 0)
         const currentRecords = reset ? [] : (state.records || [])
@@ -829,7 +832,7 @@ export default {
       const requestSeq = ++this.requestSeq
       try {
         uni.showLoading({ title: '加载中...' })
-        const categoryList = await getCategoryList(PRODUCT_BIZ_TYPE_FILTER)
+        const categoryList = await getCategoryList(PRODUCT_CATEGORY_FILTER)
         if (requestSeq !== this.requestSeq) return
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categoryTree = buildCategoryTree(this.categoryList)
@@ -877,7 +880,7 @@ export default {
           }
         })
         this.zeroQuantityProducts = nextZeroQuantityProducts
-        this.cartItems = loadCartItems(this.categories)
+        this.cartItems = loadCartItems(buildListCartCategories(this.categories, this.verifiedProducts))
         console.log('[medicine_list] loadVerifiedProductsFromStorage', {
           source,
           verifiedKeys: Object.keys(this.verifiedProducts),
@@ -973,8 +976,7 @@ export default {
       this.currentSubCategoryId = exists ? currentId : this.buildAllSubCategoryId(category.id)
     },
     goToDetail(product) {
-      const isTherapy = product?.categoryCode === '传统疗法'
-      const page = isTherapy ? 'therapy_detail' : 'medicine_detail'
+      const page = isTraditionalTherapyProduct(product) ? 'therapy_detail' : 'medicine_detail'
       uni.navigateTo({
         url: `/pages/products/${page}?id=${product.id}`
       })
@@ -1004,8 +1006,8 @@ export default {
       }
       return true
     },
-    hasQuestionnairePassed(productId) {
-      const entry = getCartProductInfo(productId)
+    hasQuestionnairePassed(productId, skuId) {
+      const entry = getCartProductInfo(productId, skuId)
       return !!(entry && entry.questionnairePassed)
     },
     showQuantitySelector(productId) {
@@ -1015,115 +1017,82 @@ export default {
     getDisplayQuantity(productId) {
       return Math.max(0, this.getProductQuantity(productId))
     },
-    handleAddToCart(product) {
-      if (!product?.id) {
-        return
-      }
-      if (!this.ensureLogin()) {
-        return
-      }
-      if (!this.ensureCartCompatible(product)) {
-        return
-      }
-
-      const nextQuantity = Math.max(1, this.getProductQuantity(product.id) || 1)
-      const alreadyPassed = this.hasQuestionnairePassed(product.id)
-      if (Number(product.needQuestionnaire) === 1 && !alreadyPassed) {
-        uni.navigateTo({
-          url: `/pages/products/product_notice?id=${product.id}&quantity=${nextQuantity}&action=cart`
+    async handleAddToCart(product) {
+      if (!product?.id || !this.ensureLogin()) return
+      try {
+        // 快捷加购重读当前商品，默认选择真实可售规格，不使用列表汇总价和汇总库存。
+        const detail = mapProductDetail(await getProductDetail(product.id))
+        product = withProductSku(detail, resolveProductSku(detail))
+        if (!isPurchaseAvailable(product)) throw new Error('商品已售罄或限购额度已用完')
+        if (!this.ensureCartCompatible(product)) return
+        const nextQuantity = Math.max(1, getCartProductQuantity(product.id, 0, product.skuId))
+        const alreadyPassed = this.hasQuestionnairePassed(product.id, product.skuId)
+        if (Number(product.needQuestionnaire) === 1 && !alreadyPassed) {
+          uni.navigateTo({
+            url: `/pages/products/product_notice?id=${product.id}&skuId=${product.skuId}&quantity=${nextQuantity}&action=cart`
+          })
+          return
+        }
+        const success = addCartItem(product, nextQuantity, {
+          questionnairePassed: Number(product.needQuestionnaire) !== 1 || alreadyPassed
         })
-        return
+        if (!success) throw new Error('加入购物车失败')
+        this.removeZeroQuantityMarker(product.id)
+        this.loadVerifiedProductsFromStorage()
+        uni.showToast({ title: '已加入购物车', icon: 'success' })
+      } catch (error) {
+        uni.showToast({ title: error.message || '加入购物车失败', icon: 'none' })
       }
-
-      const success = addCartItem(product, nextQuantity, {
-        questionnairePassed: Number(product.needQuestionnaire) !== 1 || alreadyPassed
-      })
-      if (!success) {
-        uni.showToast({
-          title: '加入购物车失败',
-          icon: 'none'
-        })
-        return
-      }
-
-      this.removeZeroQuantityMarker(product.id)
-      this.loadVerifiedProductsFromStorage('handleAddToCart', product.id)
-      this.$nextTick(() => {
-        this.debugProductQuantityState(product.id, 'handleAddToCart:nextTick')
-      })
-      uni.showToast({
-        title: '已加入购物车',
-        icon: 'success'
-      })
     },
     isProductVerified(productId) {
-      return !!this.verifiedProducts[String(productId)]
+      return getProductCartLines(this.verifiedProducts, productId).length > 0
     },
     getProductQuantity(productId) {
       return getCartProductQuantity(productId, 0)
     },
-    increaseQuantity(product) {
-      const current = this.getProductQuantity(product.id)
-      console.log('[medicine_list] increaseQuantity:start', {
-        productId: String(product.id),
-        current,
-        zeroTracked: !!this.zeroQuantityProducts[String(product.id)]
-      })
-      if (current <= 0) {
-        this.debugProductQuantityState(product.id, 'increaseQuantity:before-handleAddToCart')
-        this.handleAddToCart(product)
-        return
+    getQuantityCartLine(product) {
+      const lines = getProductCartLines(getCartEntries(), product.id)
+      // 多个规格的汇总数量不能直接增减，进入购物车明确选择需要调整的规格。
+      if (lines.length > 1) {
+        this.showCart()
+        return null
       }
-      const nextQuantity = current + 1
-      setCartItemQuantity(product.id, nextQuantity)
+      if (lines[0] && !lines[0].skuId) {
+        this.goToDetail(product)
+        return null
+      }
+      return lines[0] || null
+    },
+    increaseQuantity(product) {
+      const lines = getProductCartLines(getCartEntries(), product.id)
+      if (!lines.length) return this.handleAddToCart(product)
+      const line = this.getQuantityCartLine(product)
+      if (!line) return
+      setCartItemQuantity(line.cartKey, line.quantity + 1)
       this.removeZeroQuantityMarker(product.id)
-      this.loadVerifiedProductsFromStorage('increaseQuantity', product.id)
-      this.$nextTick(() => {
-        this.debugProductQuantityState(product.id, 'increaseQuantity:nextTick')
-      })
+      this.loadVerifiedProductsFromStorage()
     },
     decreaseQuantity(product) {
-      const current = this.getProductQuantity(product.id)
-      console.log('[medicine_list] decreaseQuantity:start', {
-        productId: String(product.id),
-        current,
-        zeroTracked: !!this.zeroQuantityProducts[String(product.id)]
-      })
-      if (current <= 0) {
-        this.debugProductQuantityState(product.id, 'decreaseQuantity:blocked-at-zero')
-        return
-      }
-
-      const nextQuantity = Math.max(current - 1, 0)
-      if (nextQuantity === 0) {
-        removeFromCart(product.id)
+      const line = this.getQuantityCartLine(product)
+      if (!line) return
+      if (line.quantity <= 1) {
+        removeFromCart(line.cartKey)
         this.setZeroQuantityMarker(product.id)
-        console.log('[medicine_list] decreaseQuantity:removed-from-cart', {
-          productId: String(product.id),
-          nextQuantity,
-          zeroQuantityKeys: Object.keys(this.zeroQuantityProducts)
-        })
       } else {
-        setCartItemQuantity(product.id, nextQuantity)
+        setCartItemQuantity(line.cartKey, line.quantity - 1)
       }
-      this.loadVerifiedProductsFromStorage('decreaseQuantity', product.id)
-      this.$nextTick(() => {
-        this.debugProductQuantityState(product.id, 'decreaseQuantity:nextTick')
-      })
+      this.loadVerifiedProductsFromStorage()
     },
-    onNumberBoxChange(product, val) {
-      const current = this.getProductQuantity(product.id)
-      if (val > current) {
-        this.increaseQuantity(product)
-      } else if (val < current) {
-        if (val <= 0) {
-          removeFromCart(product.id)
-          this.loadVerifiedProductsFromStorage()
-        } else {
-          setCartItemQuantity(product.id, val)
-          this.loadVerifiedProductsFromStorage()
-        }
+    onNumberBoxChange(product, value) {
+      const line = this.getQuantityCartLine(product)
+      if (!line) return
+      if (value <= 0) {
+        removeFromCart(line.cartKey)
+        this.setZeroQuantityMarker(product.id)
+      } else {
+        setCartItemQuantity(line.cartKey, value)
       }
+      this.loadVerifiedProductsFromStorage()
     },
     showCart() {
       uni.navigateTo({ url: '/pages/cart/cart' })
@@ -1150,7 +1119,7 @@ export default {
         }
 
         const selectedIds = this.cartItems.map(item => String(item.id))
-        const checkout = prepareCheckout(selectedIds, this.categories)
+        const checkout = prepareCheckout(selectedIds, buildListCartCategories(this.categories, getCartEntries()))
         if (!checkout.valid) {
           uni.showToast({
             title: checkout.message,
@@ -1161,9 +1130,8 @@ export default {
 
         if (!checkout.requiresConsultation) {
           uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-          const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
           uni.navigateTo({
-            url: `/pages/order/confirm?selectedItems=${checkout.productIds.join(',')}${therapyParam}`
+            url: `/pages/order/confirm?selectedItems=${checkout.productIds.join(',')}`
           })
           return
         }

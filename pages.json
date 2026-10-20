@@ -38,12 +38,6 @@
       }
     },
     {
-      "path": "pages/products/priducts_detail",
-      "style": {
-        "navigationBarTitleText": "详情"
-      }
-    },
-    {
       "path": "pages/products/medicine_index",
       "style": {
         "navigationBarTitleText": "首页"
@@ -164,20 +158,6 @@
           "path": "prescription_list",
           "style": {
             "navigationBarTitleText": "制剂处方",
-            "navigationBarBackgroundColor": "#ffffff"
-          }
-        },
-        {
-          "path": "prescription_detail",
-          "style": {
-            "navigationBarTitleText": "处方详情",
-            "navigationBarBackgroundColor": "#ffffff"
-          }
-        },
-        {
-          "path": "consultation_detail",
-          "style": {
-            "navigationBarTitleText": "复诊详情",
             "navigationBarBackgroundColor": "#ffffff"
           }
         },

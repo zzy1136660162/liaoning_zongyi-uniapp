@@ -75,7 +75,7 @@ import { getOrderDetail } from '@/api/order.js'
 import { syncPaymentByOrder } from '@/api/payment.js'
 import { buildCartItemKey, removeFromCart } from '@/utils/cart.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
-import { ORDER_TYPE_THERAPY } from '@/utils/therapy.js'
+import { isTherapyOrder } from '@/utils/therapy.js'
 import { getPaymentOutcome } from '@/utils/order-status.js'
 import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
 
@@ -122,22 +122,11 @@ const toAmount = (value, fallback = 0) => {
 const sumItemCount = (items = []) => {
   if (!Array.isArray(items)) return 0
   return items.reduce((total, item) => {
-    const quantity = Number(item.quantity || item.count || item.num || 1)
+    const quantity = Number(item.quantity || 1)
     return total + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
   }, 0)
 }
 
-const resolveOrderItemProductId = (item = {}) => {
-  const product = item.product || item.productInfo || item.goods || {}
-  return item.productId ??
-    item.product_id ??
-    item.goodsId ??
-    item.goods_id ??
-    product.id ??
-    product.productId ??
-    product.product_id ??
-    null
-}
 
 const uniqueStringIds = (ids = []) => {
   const seen = new Set()
@@ -156,16 +145,15 @@ const resolveOrderStatusLabel = (orderData = {}) => {
 }
 
 const resolveShippingFeeText = (orderData = {}) => {
-  const orderType = orderData.orderType ?? orderData.order_type
-  if (Number(orderType) === ORDER_TYPE_THERAPY) {
+  if (isTherapyOrder(orderData)) {
     return '传统疗法无需快递费'
   }
 
-  const shippingFee = toAmount(orderData.shippingFee ?? orderData.shipping_fee, 0)
+  const shippingFee = toAmount(orderData.shippingFee, 0)
   if (shippingFee > 0) {
     return `约¥${shippingFee.toFixed(2)}（到付）`
   }
-  return orderData.shippingPaymentMethod || orderData.shipping_payment_method || '运费到付，由快递员收取，以实际支付为准'
+  return orderData.shippingPaymentMethod || '运费到付，由快递员收取，以实际支付为准'
 }
 
 const applyTips = (orderData = {}) => {
@@ -174,8 +162,7 @@ const applyTips = (orderData = {}) => {
     paymentInfo.value.secondaryTip = ''
     return
   }
-  const orderType = orderData.orderType ?? orderData.order_type
-  if (Number(orderType) === ORDER_TYPE_THERAPY) {
+  if (isTherapyOrder(orderData)) {
     paymentInfo.value.primaryTip = '支付成功后可在订单详情查看核销二维码'
     paymentInfo.value.secondaryTip = '传统疗法到院核销，无需物流配送'
     return
@@ -192,12 +179,11 @@ const clearPaidCartItems = (orderData = {}) => {
   }
 
   const itemProductIds = Array.isArray(orderData.items)
-    ? uniqueStringIds(orderData.items.map(item => buildCartItemKey(resolveOrderItemProductId(item), item.skuId ?? item.sku_id)))
+    ? uniqueStringIds(orderData.items.map(item => buildCartItemKey(item.productId, item.skuId)))
     : []
   const productIds = itemProductIds
 
   if (productIds.length > 0 && removeFromCart(productIds)) {
-    uni.$emit('cartUpdated')
     cartCleared.value = true
   }
 }
@@ -206,15 +192,15 @@ const applyOrderData = (orderData) => {
   assertCurrentSession(pageSession)
   if (!pageActive) return
   paymentOutcome.value = getPaymentOutcome(orderData)
-  paymentInfo.value.amount = toAmount(orderData.paidAmount || orderData.payableAmount || orderData.totalAmount || orderData.amount, 0)
-  paymentInfo.value.goodsAmount = toAmount(orderData.totalAmount || orderData.amount || paymentInfo.value.amount, 0)
+  paymentInfo.value.amount = toAmount(orderData.paidAmount ?? orderData.payableAmount ?? orderData.totalAmount, 0)
+  paymentInfo.value.goodsAmount = toAmount(orderData.totalAmount ?? paymentInfo.value.amount, 0)
   paymentInfo.value.itemCount = sumItemCount(orderData.items)
   paymentInfo.value.orderStatusLabel = resolveOrderStatusLabel(orderData)
-  paymentInfo.value.orderNo = orderData.orderNo || orderData.order_no || currentOrderId || ''
-  paymentInfo.value.createdTime = formatTime(orderData.createdAt || orderData.createTime || orderData.created_at)
+  paymentInfo.value.orderNo = orderData.orderNo || currentOrderId || ''
+  paymentInfo.value.createdTime = formatTime(orderData.createdAt)
   paymentInfo.value.shippingFeeText = resolveShippingFeeText(orderData)
 
-  const payTime = orderData.payTime || orderData.pay_time
+  const payTime = orderData.payTime
   paymentInfo.value.paymentTime = formatTime(payTime)
 
   if (orderData.paymentType) {

@@ -1,3 +1,5 @@
+import { isTherapyOrder, hasTherapyEntitlement } from './therapy.js'
+
 export const ORDER_STATUS_TEXT = {
   0: '待支付',
   1: '待发货',
@@ -26,7 +28,6 @@ export const REDEEM_STATUS_TEXT = {
   3: '退款处理中'
 }
 
-const ORDER_TYPE_THERAPY = 4
 const AFTER_SALE_ORDER_STATUSES = [5, 6, 7]
 
 const toNumber = (value) => {
@@ -35,14 +36,6 @@ const toNumber = (value) => {
   }
   const number = Number(value)
   return Number.isFinite(number) ? number : null
-}
-
-const getVoucherList = (order = {}) => {
-  const items = order.items || order.goods || order.products || []
-  if (!Array.isArray(items)) {
-    return []
-  }
-  return items.flatMap(item => item.redeemVouchers || item.redeem_vouchers || [])
 }
 
 export const isAfterSaleOrderStatus = status => AFTER_SALE_ORDER_STATUSES.includes(toNumber(status))
@@ -58,14 +51,8 @@ export const canPayOrder = (order = {}) => {
     !(order.refundApplicationId ?? order.refund_application_id)
 }
 
-export const isTherapyLikeOrder = (order = {}) => {
-  const redeemStatus = toNumber(order.redeemStatus ?? order.redeem_status)
-  // 包含有核销券的混合订单，不能用来决定整单履约主状态。
-  return toNumber(order.orderType ?? order.order_type) === ORDER_TYPE_THERAPY ||
-    (redeemStatus !== null && redeemStatus !== 0) ||
-    getVoucherList(order).length > 0 ||
-    Boolean(order.hasRedeemVouchers)
-}
+// 核销权益来自订单明细快照/已生成券，不以当前商品分类补判历史订单。
+export const isTherapyLikeOrder = (order = {}) => hasTherapyEntitlement(order) || isTherapyOrder(order)
 
 export const getRedeemStatusText = (voucherOrOrder = {}) => {
   const status = toNumber(voucherOrOrder.redeemStatus ?? voucherOrOrder.redeem_status)
@@ -94,7 +81,7 @@ export const getOrderStatusText = (order = {}) => {
     return order.displayStatusText || order.display_status_text
   }
 
-  if (toNumber(order.orderType ?? order.order_type) === ORDER_TYPE_THERAPY) {
+  if (isTherapyOrder(order)) {
     if (status === 0) {
       return ORDER_STATUS_TEXT[0]
     }

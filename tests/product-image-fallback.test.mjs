@@ -98,7 +98,7 @@ for (const name of ['medicine_list', 'priducts_list', 'priducts_list2']) {
 }
 
 test('registered product pages bind failures to the original displayed image source', () => {
-  for (const name of ['medicine_index', 'medicine_list', 'priducts_list', 'priducts_list2', 'medicine_detail', 'therapy_detail', 'priducts_detail']) {
+  for (const name of ['medicine_index', 'medicine_list', 'priducts_list', 'priducts_list2', 'medicine_detail', 'therapy_detail']) {
     const source = readFileSync(new URL(`../pages/products/${name}.vue`, import.meta.url), 'utf8')
     assert.doesNotMatch(source, /zhongyi_gaoyao1\.png/, name)
     const imageTags = source.match(/<image\b[^>]*>/g) || []

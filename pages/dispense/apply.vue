@@ -235,7 +235,7 @@
 </template>
 
 <script setup>
-import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+import { getSessionGeneration, assertCurrentSession, isCurrentSession } from '@/utils/session.js'
 const pageSession = getSessionGeneration()
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
@@ -247,9 +247,9 @@ import {
   getCurrentCheckoutProductIds,
   loadCartItems,
   setCheckoutProductIds,
-  splitCartItemKey
 } from '@/utils/cart.js'
 import { getPatientList, deletePatient } from '@/api/patient.js'
+import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
@@ -266,7 +266,6 @@ const categories = ref([])
 const selectedItems = ref([])
 const patients = ref([])
 const selectedPatient = ref(null)
-const selectedBizType = ref(1)
 const selectedRequiresConsultation = ref(true)
 const agreementChecked = ref(false)
 const showAgreement = ref(false)
@@ -338,52 +337,10 @@ const loadProducts = async () => {
 
     uni.showLoading({ title: '加载商品...' })
     const cartEntries = getCartEntries()
-    for (const itemKey of requestedIds) {
-      try {
-        const entry = cartEntries[itemKey] || {}
-        const split = splitCartItemKey(itemKey)
-        const productId = entry.productId || split.productId || itemKey
-        const skuId = entry.skuId || split.skuId || null
-        const productDetail = await getProductDetail(productId)
-        if (productDetail) {
-          const skus = Array.isArray(productDetail.skus) ? productDetail.skus : []
-          const sku = skuId
-            ? skus.find(item => String(item.id) === String(skuId))
-            : null
-          const displayPrice = sku ? Number(sku.price || 0) : Number(productDetail.price || 0)
-          const displayStock = sku
-            ? (sku.stock ?? productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
-            : (productDetail.stock ?? productDetail.stockQuantity ?? productDetail.inventory)
-          const displayImage = sku?.image || sku?.imageUrl || productDetail.coverImage || productDetail.image
-          const displaySpec = sku?.specText || sku?.skuName || productDetail.specText || productDetail.specDesc
-          checkoutCategory.products.push({
-            id: itemKey,
-            cartKey: itemKey,
-            productId: productDetail.id,
-            skuId,
-            skuCode: sku?.skuCode || entry.skuCode || '',
-            skuName: sku?.skuName || entry.skuName || '',
-            skuSpecText: displaySpec || entry.skuSpecText || '',
-            name: productDetail.productName || productDetail.name,
-            description: productDetail.subTitle || productDetail.description,
-            image: displayImage,
-            price: displayPrice,
-            bizType: productDetail.bizType,
-            productCategory: productDetail.productCategory,
-            isPrescription: productDetail.isPrescription,
-            goodsMerchantType: productDetail.goodsMerchantType,
-            stock: displayStock,
-            available: productDetail.available ?? productDetail.saleable ?? productDetail.onSale,
-            unit: sku?.unit || productDetail.unit || '件',
-            specText: displaySpec,
-            notice: productDetail.usageDesc || productDetail.notice,
-            needQuestionnaire: productDetail.needQuestionnaire || 0
-          })
-        }
-      } catch (error) {
-        if (!isCurrentSession(pageSession)) return
-        console.error(`load checkout product failed: ${itemKey}`, error)
-      }
+    checkoutCategory.products = await loadCartProducts(requestedIds, cartEntries, getProductDetail)
+    assertCurrentSession(pageSession)
+    if (checkoutCategory.products.some(product => product.loadFailure || product.available === false)) {
+      throw new Error('所选商品或规格已失效，请返回购物车核对')
     }
 
     categories.value = [checkoutCategory]
@@ -402,15 +359,13 @@ const loadProducts = async () => {
       setTimeout(() => { if (isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
       return
     }
-    selectedBizType.value = flow.bizType
     selectedRequiresConsultation.value = flow.requiresConsultation
     if (!flow.requiresConsultation) {
       const directItemIds = cartItems.value.map(item => String(item.id))
       setCheckoutProductIds(directItemIds)
       uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-      const therapyParam = flow.allTraditionalTherapy ? '&therapy=1' : ''
       uni.redirectTo({
-        url: `/pages/order/confirm?selectedItems=${directItemIds.join(',')}${therapyParam}`
+        url: `/pages/order/confirm?selectedItems=${directItemIds.join(',')}`
       })
     }
   } catch (error) {
@@ -585,10 +540,8 @@ const onSubmit = () => {
 
   if (!selectedRequiresConsultation.value) {
     uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-    const checkout = resolveProductFlow(cartItems.value)
-    const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
     uni.navigateTo({
-      url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}${therapyParam}`
+      url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}`
     })
     return
   }
@@ -1134,4 +1087,4 @@ onUnmounted(() => {
   box-shadow: none;
 }
 </style>
-  
+

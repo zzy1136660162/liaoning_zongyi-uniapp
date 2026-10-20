@@ -271,18 +271,17 @@ export const API_CONFIG = {
 | `/pages/index/index` | 首页 | 应用首页 |
 | `/pages/register/register` | 注册/登录 | 用户认证 |
 | `/pages/products/priducts_list` | 选择药方 | 产品列表 |
-| `/pages/products/priducts_detail` | 产品详情 | 产品详细信息 |
+| `/pages/products/medicine_detail` | 商品详情 | 商品与真实规格详细信息 |
+| `/pages/products/therapy_detail` | 传统疗法详情 | 疗法与真实规格详细信息 |
 | `/pages/products/product_notice` | 注意事项 | 产品注意事项 |
 | `/pages/products/product_questionnaire` | 健康问卷 | 健康问卷调查 |
 | `/pages/dispense/apply` | 申请配药 | 配药申请 |
 | `/pages/dispense/patient_edit` | 新增就诊人 | 就诊人管理 |
 | `/pages/dispense/consultation` | 在线复诊 | 在线复诊咨询 |
-| `/pages/prescription/detail` | 处方详情 | 处方信息 |
 | `/pages/order/order_list` | 我的订单 | 订单列表 |
 | `/pages/order/order-detail` | 订单详情 | 订单详细信息 |
 | `/pages/order/prescription_list` | 药品处方 | 处方列表 |
-| `/pages/order/prescription_detail` | 处方详情 | 处方详细信息 |
-| `/pages/order/consultation_detail` | 在线复诊单 | 复诊详情 |
+| `/pages/prescription/detail` | 处方详情 | 按真实处方 ID 查看处方与关联订单 |
 | `/pages/order/confirm` | 确认订单 | 订单确认 |
 | `/pages/order/address_list` | 收货地址 | 地址管理 |
 | `/pages/order/address_edit` | 地址设置 | 地址编辑 |

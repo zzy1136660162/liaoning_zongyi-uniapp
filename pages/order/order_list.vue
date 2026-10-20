@@ -2,8 +2,8 @@
   <view class="order-list-page">
     <!-- 标签页 -->
     <view class="tabs">
-      <view 
-        v-for="tab in tabs" 
+      <view
+        v-for="tab in tabs"
         :key="tab.key"
         class="tab-item"
         :class="{ active: activeTab === tab.key }"
@@ -32,8 +32,8 @@
           暂无订单
         </text>
       </view>
-      
-      <view 
+
+      <view
         v-for="order in orders"
         :key="order.id"
         class="order-item"
@@ -52,7 +52,7 @@
             {{ getStatusText(order.status, order) }}
           </text>
         </view>
-        
+
         <!-- 订单日期 -->
         <view class="order-date">
           <text class="date-label">
@@ -64,7 +64,7 @@
         </view>
 
         <view class="order-products" v-if="order.items && order.items.length > 0">
-          <view 
+          <view
             v-for="item in visibleOrderItems(order)"
             :key="item.id"
             class="product-item"
@@ -98,7 +98,7 @@
         <view v-if="hasRedeemVouchers(order)" class="order-redeem-summary">
           {{ redeemSummaryText(order) }}
         </view>
-        
+
         <view class="order-footer">
           <view class="order-amount">
             <text class="amount-label">
@@ -109,16 +109,16 @@
             </text>
           </view>
           <view class="order-actions">
-            <button 
-              v-if="order.status === 0" 
-              class="action-btn cancel-btn" 
+            <button
+              v-if="order.status === 0"
+              class="action-btn cancel-btn"
               @click.stop="handleCancelOrder(order.id)"
             >
               取消订单
             </button>
             <button
               v-if="canPayOrder(order)"
-              class="action-btn pay-btn" 
+              class="action-btn pay-btn"
               @click.stop="handlePayOrder(order)"
             >
               去支付
@@ -175,8 +175,6 @@
 
     <TabBar
       current="order"
-      :cart-count="cartCount"
-      @change="handleTabChange"
     />
   </view>
 </template>
@@ -187,10 +185,8 @@ import { onShow } from '@dcloudio/uni-app'
 import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/order.js'
 import { checkCanApplyRefund } from '@/api/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
-import { isTherapyOrder } from '@/utils/therapy.js'
+import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
 import { canPayOrder, getOrderStatusText } from '@/utils/order-status.js'
-import { getCartTotalQuantity } from '@/utils/cart.js'
-import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
@@ -204,10 +200,8 @@ const loading = ref(false)
 const refreshing = ref(false)
 const loadError = ref('')
 const navigatingOrderId = ref(null)
-const cartCount = ref(0)
 const ORDER_LIST_PREVIEW_LIMIT = 2
 const ORDER_PAGE_SIZE = 20
-let unsubscribeCartUpdated = null
 let unsubscribeSessionChanged = null
 let requestSequence = 0
 let disposed = false
@@ -222,14 +216,14 @@ const tabs = ref([
 ])
 
 const normalizeRedeemVouchers = (item = {}) => {
-  const vouchers = item.redeemVouchers || item.redeem_vouchers || []
+  const vouchers = item.redeemVouchers || []
   if (!Array.isArray(vouchers)) return []
   return vouchers.map((voucher, index) => ({
     id: voucher.id,
-    sequenceNo: voucher.sequenceNo || voucher.sequence_no || index + 1,
-    redeemStatus: voucher.redeemStatus ?? voucher.redeem_status ?? 0,
-    redeemStatusText: voucher.redeemStatusText || voucher.redeem_status_text || '',
-    verifyQrBase64: voucher.verifyQrBase64 || voucher.verify_qr_base64 || ''
+    sequenceNo: voucher.sequenceNo || index + 1,
+    redeemStatus: voucher.redeemStatus ?? 0,
+    redeemStatusText: voucher.redeemStatusText || '',
+    verifyQrBase64: voucher.verifyQrBase64 || ''
   }))
 }
 
@@ -264,8 +258,7 @@ const flattenRedeemVouchers = (order = {}) => {
 }
 
 const hasRedeemVouchers = (order = {}) => {
-  return flattenRedeemVouchers(order).length > 0 ||
-    (isTherapyOrder(order) && (order.redeemStatus !== null && order.redeemStatus !== undefined))
+  return hasTherapyEntitlement(order)
 }
 
 const redeemSummaryText = (order = {}) => {
@@ -281,48 +274,38 @@ const redeemSummaryText = (order = {}) => {
 }
 
 const resolveRawOrderItems = (order = {}) => {
-  return order.items || order.orderItems || order.order_items || []
+  return order.items || []
 }
 
 const mapOrderItem = (item = {}) => ({
   id: item.id,
-  productName: item.productName || item.product_name || item.name,
-  productImage: item.productImage || item.product_image || item.image,
-  specText: item.specText || item.spec_text || '',
+  productName: item.productName,
+  productImage: item.productImage,
+  specText: item.specText || '',
   unit: item.unit || '',
   quantity: item.quantity || 1,
   price: item.price || '0.00',
-  subtotalAmount: item.subtotalAmount ?? item.subtotal_amount,
+  subtotalAmount: item.subtotalAmount,
+  productCategorySnapshot: item.productCategorySnapshot,
+  redeemRequiredSnapshot: item.redeemRequiredSnapshot,
   redeemVouchers: normalizeRedeemVouchers(item)
 })
 
 const mapOrderListItem = (order = {}) => ({
   id: order.id,
-  orderNo: order.orderNo || order.order_no || order.id,
-  orderType: order.orderType ?? order.order_type,
-  payStatus: order.payStatus ?? order.pay_status,
-  paymentFulfillmentStatus: order.paymentFulfillmentStatus ?? order.payment_fulfillment_status,
-  redeemStatus: order.redeemStatus ?? order.redeem_status,
-  displayStatusText: order.displayStatusText || order.display_status_text || '',
-  verifyQrBase64: order.verifyQrBase64 || order.verify_qr_base64 || '',
-  // 优先使用 orderStatus，如果没有则使用 status，最后默认为 0
-  status: order.orderStatus !== null && order.orderStatus !== undefined
-    ? order.orderStatus
-    : (order.status !== null && order.status !== undefined ? order.status : 0),
-  // 实付款：优先 payableAmount，其次 paidAmount，再其次 totalAmount + shippingFee
-  payableAmount: (function () {
-    if (order.payableAmount !== null && order.payableAmount !== undefined) {
-      return order.payableAmount
-    }
-    if (order.paidAmount !== null && order.paidAmount !== undefined) {
-      return order.paidAmount
-    }
-    return (Number(order.totalAmount) || 0) + (Number(order.shippingFee) || 0)
-  })(),
+  orderNo: order.orderNo,
+  orderType: order.orderType,
+  payStatus: order.payStatus,
+  paymentFulfillmentStatus: order.paymentFulfillmentStatus,
+  redeemStatus: order.redeemStatus,
+  displayStatusText: order.displayStatusText || '',
+  verifyQrBase64: order.verifyQrBase64 || '',
+  status: order.orderStatus,
+  payableAmount: order.payableAmount,
   shippingFee: Number(order.shippingFee) || 0,
-  createTime: order.createTime || order.create_time || order.createdAt || order.created_at,
-  refundApplicationId: order.refundApplicationId ?? order.refund_application_id ?? null,
-  refundStatus: order.refundStatus ?? order.refund_status ?? null,
+  createTime: order.createdAt,
+  refundApplicationId: order.refundApplicationId ?? null,
+  refundStatus: order.refundStatus ?? null,
   items: resolveRawOrderItems(order).map(mapOrderItem)
 })
 
@@ -361,12 +344,12 @@ const hydrateMissingOrderItems = async (pageOrders, isCurrentRequest) => {
 
     return {
       ...order,
-      orderType: order.orderType ?? detail.orderType ?? detail.order_type,
-      payStatus: order.payStatus ?? detail.payStatus ?? detail.pay_status,
-      paymentFulfillmentStatus: detail.paymentFulfillmentStatus ?? detail.payment_fulfillment_status ?? order.paymentFulfillmentStatus,
-      redeemStatus: order.redeemStatus ?? detail.redeemStatus ?? detail.redeem_status,
-      displayStatusText: order.displayStatusText || detail.displayStatusText || detail.display_status_text || '',
-      verifyQrBase64: order.verifyQrBase64 || detail.verifyQrBase64 || detail.verify_qr_base64 || '',
+      orderType: order.orderType ?? detail.orderType,
+      payStatus: order.payStatus ?? detail.payStatus,
+      paymentFulfillmentStatus: detail.paymentFulfillmentStatus ?? order.paymentFulfillmentStatus,
+      redeemStatus: order.redeemStatus ?? detail.redeemStatus,
+      displayStatusText: order.displayStatusText || detail.displayStatusText || '',
+      verifyQrBase64: order.verifyQrBase64 || detail.verifyQrBase64 || '',
       items: detailItems
     }
   })
@@ -491,16 +474,16 @@ const handleCancelOrder = async (orderId) => {
       if (res.confirm) {
         try {
           uni.showLoading({ title: '取消中...' })
-          
+
           await cancelOrder(orderId)
           if (disposed || !isCurrentSession(session)) return
-          
+
           uni.hideLoading()
           uni.showToast({
             title: '订单已取消',
             icon: 'success'
           })
-          
+
           // 重新加载订单列表
           loadOrders()
         } catch (error) {
@@ -536,16 +519,16 @@ const handleConfirmReceipt = async (orderId) => {
       if (res.confirm) {
         try {
           uni.showLoading({ title: '确认中...' })
-          
+
           await confirmReceipt(orderId)
           if (disposed || !isCurrentSession(session)) return
-          
+
           uni.hideLoading()
           uni.showToast({
             title: '确认收货成功',
             icon: 'success'
           })
-          
+
           // 重新加载订单列表
           loadOrders()
         } catch (error) {
@@ -619,14 +602,6 @@ const viewRefundApplication = (refundApplicationId) => {
   })
 }
 
-const refreshCartCount = () => {
-  cartCount.value = getCartTotalQuantity()
-}
-
-const handleTabChange = () => {
-  refreshCartCount()
-}
-
 // 简单日期格式化 YYYY-MM-DD HH:mm
 const formatDate = (dateStr) => {
   if (!dateStr) return ''
@@ -655,8 +630,6 @@ onMounted(() => {
   }
 
   logPageView('ORDER_LIST', activeTab.value)
-  refreshCartCount()
-  unsubscribeCartUpdated = subscribeCartUpdated(refreshCartCount)
   unsubscribeSessionChanged = onSessionChanged(() => {
     requestSequence += 1
     orders.value = []
@@ -671,7 +644,6 @@ onMounted(() => {
 })
 
 onShow(() => {
-  refreshCartCount()
   loadOrders()
 })
 
@@ -679,10 +651,6 @@ onUnmounted(() => {
   disposed = true
   requestSequence += 1
   unsubscribeSessionChanged?.()
-  if (unsubscribeCartUpdated) {
-    unsubscribeCartUpdated()
-    unsubscribeCartUpdated = null
-  }
 })
 </script>
 

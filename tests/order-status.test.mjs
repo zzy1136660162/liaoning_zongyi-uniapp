@@ -6,9 +6,9 @@ import {
   isTherapyLikeOrder
 } from '../utils/order-status.js'
 
-assert.equal(getOrderStatusText({ orderStatus: 7, orderType: 4, redeemStatus: 0 }), '已退货')
-assert.equal(getOrderStatusText({ orderStatus: 6, orderType: 4, redeemStatus: 0 }), '部分退货')
-assert.equal(getOrderStatusText({ orderStatus: 1, orderType: 4, redeemStatus: 0 }), '待核销')
+assert.equal(getOrderStatusText({ orderStatus: 7, orderType: 4, items: [{ productCategorySnapshot: 3 }], redeemStatus: 0 }), '已退货')
+assert.equal(getOrderStatusText({ orderStatus: 6, orderType: 4, items: [{ productCategorySnapshot: 3 }], redeemStatus: 0 }), '部分退货')
+assert.equal(getOrderStatusText({ orderStatus: 1, orderType: 4, items: [{ productCategorySnapshot: 3 }], redeemStatus: 0 }), '待核销')
 assert.equal(getOrderStatusText({ orderStatus: 1, orderType: 1 }), '待发货')
 for (const [orderStatus, expected] of [[1, '待发货'], [2, '待收货']]) {
   const mixedOrder = {
@@ -22,7 +22,7 @@ for (const [orderStatus, expected] of [[1, '待发货'], [2, '待收货']]) {
   assert.equal(getOrderStatusText(mixedOrder), expected)
   assert.equal(isTherapyLikeOrder(mixedOrder), true)
 }
-assert.equal(getOrderStatusText({ orderStatus: 3, orderType: 4, redeemStatus: 1 }), '已核销')
+assert.equal(getOrderStatusText({ orderStatus: 3, orderType: 4, items: [{ productCategorySnapshot: 3 }], redeemStatus: 1 }), '已核销')
 
 assert.equal(getRedeemStatusText({ redeemStatus: 0 }), '待核销')
 assert.equal(getRedeemStatusText({ redeemStatus: 1 }), '已核销')

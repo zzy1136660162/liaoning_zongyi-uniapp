@@ -76,41 +76,11 @@ export const STORAGE_KEY_PRIVACY_ACCEPTED = 'privacy_accepted'
 
 // ==================== 产品相关 ====================
 /**
- * 已验证的产品列表（包含选中状态和数量信息）
- * 存储格式: {
- *   [productId: string]: {
- *     verified: boolean,     // 是否已验证（加入购物车）
- *     selected: boolean,     // 是否在处方列表中选中
- *     quantity: number,      // 产品数量（最小值为1）
- *     timestamp: number      // 添加时间戳（用于排序）
- *   }
- * }
- * 说明: 存储用户购物车中的产品完整信息，包括验证状态、选中状态和数量
- * 示例: {
- *   'zhou1': { verified: true, selected: true, quantity: 2, timestamp: 1234567890 },
- *   'gaoyao1': { verified: true, selected: false, quantity: 1, timestamp: 1234567891 }
- * }
- * 兼容性: 支持旧格式自动转换 { 'productId': boolean } -> 新格式
+ * 当前账号购物车只存 productId:skuId 规范条目；缺真实规格的历史条目不进入当前购物车。
+ * 条目保留数量、勾选、问卷答案及商品展示快照；价格/库存每次打开页面重新查询。
+ * 处方、问诊使用各自真实 ID，不能写成购物车条目。
  */
-export const STORAGE_KEY_VERIFIED_PRODUCTS = 'verifiedProducts'
-
-/**
- * 产品数量（向后兼容）
- * 存储格式: {
- *   [productId: string]: number  // 产品ID作为key，对应的值为该产品的数量
- * }
- * 说明: 保留此常量以确保向后兼容，新代码优先使用 STORAGE_KEY_VERIFIED_PRODUCTS 中的 quantity 字段
- * 示例: { 'zhou1': 2, 'gaoyao1': 1 }
- */
-export const STORAGE_KEY_PRODUCT_QUANTITIES = 'productQuantities'
-
-/**
- * 选中的产品ID列表
- * 存储格式: string[]
- * 说明: 存储用户在商品列表页选中的产品ID列表，用于购物车功能
- * 示例: ['zhou1', 'gaoyao1']
- */
-export const STORAGE_KEY_SELECTED_PRODUCTS = 'selected_products'
+export const STORAGE_KEY_CART_ITEMS = 'cart_items'
 
 // ==================== 问诊/处方相关 ====================
 /**

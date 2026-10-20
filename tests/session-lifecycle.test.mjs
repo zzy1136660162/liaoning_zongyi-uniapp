@@ -19,6 +19,17 @@ const response = (call, http, code, data = {}) => call.success({ statusCode: htt
 beforeEach(() => { values.clear(); calls = []; redirects = 0; prompts = 0; beginSession('fixture-A') })
 afterEach(() => { endSession(); mock.timers.reset() })
 
+test('退款详情重新显示时只在原账号会话有效时读取', () => {
+  const definition = loadOptions('pages/order/refund_detail.vue', { isCurrentSession: value => value === 1,
+    getPaymentRefundStatusText() {}, getRefundStageText() {}, getImageUrl: value => value })
+  let reads = 0
+  const page = { refundApplicationId: 8, sessionGeneration: 1, loadDetail: () => { reads++ } }
+  definition.onShow.call(page)
+  page.sessionGeneration = 0
+  definition.onShow.call(page)
+  assert.equal(reads, 1)
+})
+
 test('匿名和可选鉴权的401不会清理有效会话或设置主动退出', async () => {
   for (const http of [200, 401]) {
     const generation = getSessionGeneration()
@@ -172,4 +183,16 @@ test('个人资料旧异步结果不能写入新账号，旧退出弹窗也不�
   finish({ userName: 'A' }); await loading; await modal.success({ confirm: true })
   assert.deepEqual(values.get('user_register_info'), { realName: 'B' })
   assert.equal(getSessionToken(), 'fixture-B'); assert.equal(redirects, 0)
+})
+
+
+test('请求和上传固定声明新购买分类合同，调用方不能降回旧字段适配', async () => {
+  const pending = request({ url: '/api/contract-fixture', header: { 'X-Product-Contract': 'legacy' } })
+  const call = calls.shift()
+  assert.equal(call.header['X-Product-Contract'], 'category-v1')
+  response(call, 200, 200); await pending
+  const upload = uploadFile('/fixture', { header: { 'X-Product-Contract': 'legacy' } })
+  const uploadCall = calls.shift()
+  assert.equal(uploadCall.header['X-Product-Contract'], 'category-v1')
+  response(uploadCall, 200, 200, { url: '/fixture.png' }); await upload
 })

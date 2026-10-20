@@ -13,12 +13,12 @@ const page = loadSetup('pages/order/confirm.vue', {
   isCurrentSession: () => true,
   assertCurrentSession: () => {},
   getPatientList: async () => patientRows,
-  getCurrentCheckoutProductIds: () => ['100'],
+  getCurrentCheckoutProductIds: () => ['100:1'],
   setCheckoutProductIds: () => {},
-  getCartEntries: () => ({ 100: { productId: 100, quantity: 1 } }),
+  getCartEntries: () => ({ '100:1': { productId: 100, skuId: 1, quantity: 1 } }),
   splitCartItemKey: () => ({ productId: 100 }),
-  getProductDetail: async () => ({ id: 100, productName: 'mock goods', price: 12, available: true }),
-  resolveProductFlow: () => ({ valid: true, bizType: 2, requiresConsultation: false, allTraditionalTherapy: therapy }),
+  getProductDetail: async () => ({ id: 100, status: 1, delSign: 0, productName: 'mock goods', price: 12, available: true, stock: 10, skus: [{ id: 1, price: 12, status: 1, delSign: 0, stock: 10 }] }),
+  resolveProductFlow: () => ({ valid: true, requiresConsultation: false, requiresShipping: !therapy, allTraditionalTherapy: therapy }),
   loadCartItems: categories => categories.flatMap(category => category.products.map(product => ({ ...product, quantity: 1 }))),
   buildOrderInfo: items => ({ items, prescriptions: [], deliveryInfo: {}, cost: { medicineCost: 12, shippingFee: 0 }, total: 12 }),
   getAddressList: async () => [{ id: 10, isDefault: true }],
@@ -75,11 +75,12 @@ await page.loadCheckoutPatients()
 assert.equal(page.selectedPatient.value, null, '不能用其他患者替代已删除的复诊患者')
 
 page.isTherapyOrder.value = true
+page.selectedRequiresConsultation.value = false
 therapy = true
 page.selectedAddress.value = null
 await page.loadCheckoutPatients()
 await page.submitOrder()
-assert.equal(orders.at(-1).orderType, 4)
+assert.equal(orders.at(-1).orderType, undefined, '订单购买分类由服务端按明细核定')
 assert.equal(orders.at(-1).patientId, 7)
 assert.equal(orders.at(-1).addressId, undefined, '到店核销不创建配送地址')
 

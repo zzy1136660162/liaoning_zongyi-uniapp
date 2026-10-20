@@ -166,12 +166,6 @@ export const API_PATHS = {
         REDEEM: '/api/orders/redeem',                              // 传统疗法扫码核销
     },
 
-    // 支付模块
-    PAYMENT: {
-        PREPAY: (channel) => `/api/pay/${channel}/prepay`,  // 创建支付预订单
-        NOTIFY: (channel) => `/api/pay/${channel}/notify`,  // 支付回调
-    },
-
     // 公告模块
     ANNOUNCEMENT: {
         LIST: '/api/announcements',                       // 获取公告列表

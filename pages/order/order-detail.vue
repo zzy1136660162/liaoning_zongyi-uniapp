@@ -37,7 +37,7 @@
 
       <view class="divider" />
 
-      <!-- 医生信息（参考 consultation_detail.vue 的展示） -->
+      <!-- 医生信息使用当前订单关联的真实处方/商品资料 -->
       <view class="doctor-row">
         <image
           class="doctor-avatar"
@@ -257,7 +257,7 @@
   import { checkCanApplyRefund } from '@/api/refund.js'
   import { getImageUrl } from '@/utils/config.js'
   import { logPageView, logButtonClick } from '@/utils/accessLog.js'
-  import { isTherapyOrder } from '@/utils/therapy.js'
+  import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
   import { buildItemRedeemVouchers } from '@/utils/order-redeem-vouchers.js'
   import { canPayOrder, canShowRedeemCode, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
   import { getSessionGeneration, isCurrentSession, assertCurrentSession } from '@/utils/session.js'
@@ -273,7 +273,6 @@
           time: '',
           orderNo: '',
           // 页面展示用的"处方单号"（沿用原来的订单号/处方号文案）
-          prescriptionNo: '',
           // 真正用于跳转处方详情接口的处方ID（数字）
           prescriptionId: null,
           diagnosis: '',
@@ -319,22 +318,6 @@
         this.order.id = orderId
         // 优先从API获取订单详情
         await this.loadOrderDetail(orderId)
-      } else if (options && options.order) {
-        // 从其它页面传来的序列化订单对象（例如 consultation_detail.vue 的 encoded order）
-        try {
-          const orderData = JSON.parse(decodeURIComponent(options.order))
-          console.debug('event=ui_order_order_detail stage=route_snapshot result=parsed')
-
-          // 路由对象只提供查询标识，订单状态和内容以后台为准。
-          this.order.id = orderData.id || orderData.orderId || orderData.order_id || this.order.id
-          if (this.isUsableId(this.order.id)) {
-            await this.loadOrderDetail(this.order.id)
-          } else {
-            uni.showToast({ title: '缺少订单编号，请从订单列表进入', icon: 'none' })
-          }
-        } catch (e) {
-          uni.showToast({ title: '订单参数无效，请从订单列表进入', icon: 'none' })
-        }
       } else {
         uni.showToast({ title: '缺少订单编号，请从订单列表进入', icon: 'none' })
       }
@@ -353,7 +336,7 @@
         return this.orderLoaded && canPayOrder(this.order)
       },
       displayPrescriptionNo() {
-        const value = this.order.prescriptionId ?? this.order.prescriptionNo
+        const value = this.order.prescriptionId
         if (value === null || value === undefined || value === '') {
           return '无'
         }
@@ -366,16 +349,16 @@
         return this.order.doctorName || this.order.doctor || AI_DOCTOR.name
       },
       infoList() {
-        // 判断是否是传统疗法订单
-        const isTherapyOrder = this.allCartItems && this.allCartItems.some(item => item.redeemVouchers && item.redeemVouchers.length > 0)
+        // 新快照含实物就显示配送；历史纯疗法沿已存订单类型保留无需物流的原履约方式。
+        const therapyOnly = isTherapyOrder({ ...this.order, items: this.allCartItems })
         const list = [
-          // 优先展示 lnzy_prescription 表的 id（prescriptionId），回退到 prescriptionNo 文案
+          // 处方单号只使用真实处方表主键 prescriptionId。
           // { label: '处方单号', labelKey: 'prescriptionId', value: this.displayPrescriptionNo },
           { label: '订单号', labelKey: 'orderNo', value: this.order.orderNo },
           { label: '开方医生', labelKey: 'doctor', value: this.displayDoctorName },
           { label: '订单金额', labelKey: 'payableAmount', value: this.order.payableAmount ? Number(this.order.payableAmount).toFixed(2) : '' },
           { label: '支付时间', labelKey: 'payTime', value: this.formatDateTime(this.order.payTime) || '未支付' },
-          { label: '运费', labelKey: 'shippingPaymentMethod', value: isTherapyOrder ? '无' : (this.order.shippingPaymentMethod || '到付，以实际为准') }
+          { label: '运费', labelKey: 'shippingPaymentMethod', value: therapyOnly ? '无' : (this.order.shippingPaymentMethod || '到付，以实际为准') }
         ]
         if (this.order.routeStatusDesc) {
           list.push({ label: '物流状态', labelKey: 'routeStatusDesc', value: this.order.routeStatusDesc })
@@ -411,9 +394,9 @@
         return this.allCartItems && this.allCartItems.some(item => Number(item.refundableQuantity || 0) > 0)
       },
       refundActionText() {
-        const hasRedeemVoucher = this.allCartItems && this.allCartItems.some(item => item.redeemVouchers && item.redeemVouchers.length > 0)
+        const hasRedeemVoucher = hasTherapyEntitlement({ items: this.allCartItems })
         const hasRefundApplication = !!this.order.refundApplicationId || Number(this.order.refundStatus) > 0
-        const baseText = isTherapyOrder(this.order) || hasRedeemVoucher ? '申请退款' : '申请退货'
+        const baseText = isTherapyOrder({ ...this.order, items: this.allCartItems }) || hasRedeemVoucher ? '申请退款' : '申请退货'
         return hasRefundApplication ? `继续${baseText}` : baseText
       }
     },
@@ -541,8 +524,8 @@
           const firstItem = this.allCartItems[0]
           const productId = firstItem.id
           if (productId) {
-            // 判断是否是传统疗法：有 redeemVouchers 的走传统疗法详情页
-            const hasRedeemVouchers = firstItem.redeemVouchers && firstItem.redeemVouchers.length > 0
+            // 订单商品详情入口使用下单分类快照；无分类快照时不猜配历史分类。
+            const hasRedeemVouchers = Number(firstItem.productCategorySnapshot) === 3
             const targetPage = hasRedeemVouchers ? 'therapy_detail' : 'medicine_detail'
             uni.navigateTo({
               url: `/pages/products/${targetPage}?id=${productId}`
@@ -567,7 +550,7 @@
 
       formatRedeemStatus(voucher = {}) {
         if (Number(voucher.redeemStatus) === 3) return getRedeemStatusText(voucher)
-        return voucher.redeemStatusText || voucher.redeem_status_text || getRedeemStatusText(voucher)
+        return voucher.redeemStatusText || getRedeemStatusText(voucher)
       },
 
       canShowVoucherCode(voucher = {}) {
@@ -630,10 +613,7 @@
 
       resolvePrescriptionNavigationParams() {
         if (this.isNumericId(this.order.prescriptionId)) {
-          return `prescriptionNo=${encodeURIComponent(this.order.prescriptionId)}`
-        }
-        if (this.isNumericId(this.order.prescriptionNo)) {
-          return `prescriptionNo=${encodeURIComponent(this.order.prescriptionNo)}`
+          return `prescriptionId=${encodeURIComponent(this.order.prescriptionId)}`
         }
         if (this.isUsableId(this.order.id)) {
           return `orderId=${encodeURIComponent(this.order.id)}`
@@ -706,20 +686,20 @@
             this.applyPatientSnapshot(orderDetail)
             // 设置订单基本信息
             this.order.id = orderDetail.id || orderId || this.order.id
-            this.order.amount = orderDetail.payableAmount || orderDetail.totalAmount || orderDetail.amount || '0.00'
+            this.order.amount = orderDetail.payableAmount ?? orderDetail.totalAmount ?? '0.00'
           this.order.payableAmount = orderDetail.payableAmount || this.order.amount
-          this.order.payTime = this.formatDateTime(orderDetail.payTime || orderDetail.pay_time || '')
+          this.order.payTime = this.formatDateTime(orderDetail.payTime || '')
           this.order.orderStatus = orderDetail.orderStatus
-          this.order.orderType = orderDetail.orderType ?? orderDetail.order_type ?? this.order.orderType
-          this.order.payStatus = orderDetail.payStatus ?? orderDetail.pay_status ?? this.order.payStatus
-          this.order.paymentFulfillmentStatus = orderDetail.paymentFulfillmentStatus ?? orderDetail.payment_fulfillment_status ?? null
-          this.order.refundStatus = orderDetail.refundStatus ?? orderDetail.refund_status ?? this.order.refundStatus
-          this.order.redeemStatus = orderDetail.redeemStatus ?? orderDetail.redeem_status ?? this.order.redeemStatus
-          this.order.refundApplicationId = orderDetail.refundApplicationId ?? orderDetail.refund_application_id ?? this.order.refundApplicationId
+          this.order.orderType = orderDetail.orderType ?? this.order.orderType
+          this.order.payStatus = orderDetail.payStatus ?? this.order.payStatus
+          this.order.paymentFulfillmentStatus = orderDetail.paymentFulfillmentStatus ?? null
+          this.order.refundStatus = orderDetail.refundStatus ?? this.order.refundStatus
+          this.order.redeemStatus = orderDetail.redeemStatus ?? this.order.redeemStatus
+          this.order.refundApplicationId = orderDetail.refundApplicationId ?? this.order.refundApplicationId
             // 检查是否是制剂订单（有待核销券），待发货改为待核销
-            const hasRedeemVouchers = (orderDetail.items && orderDetail.items.some(item => (item.redeemVouchers && item.redeemVouchers.length > 0) || (item.redeem_vouchers && item.redeem_vouchers.length > 0)))
+            const hasRedeemVouchers = (orderDetail.items && orderDetail.items.some(item => item.redeemVouchers && item.redeemVouchers.length > 0))
             this.order.statusText = getOrderStatusText({
-              displayStatusText: orderDetail.displayStatusText || orderDetail.display_status_text,
+              displayStatusText: orderDetail.displayStatusText,
               orderStatus: this.order.orderStatus,
               orderType: this.order.orderType,
               payStatus: this.order.payStatus,
@@ -729,23 +709,18 @@
               hasRedeemVouchers,
               items: orderDetail.items || []
             })
-            this.order.time = this.formatDateTime(orderDetail.createdAt || orderDetail.createTime)
-            this.order.orderNo = orderDetail.orderNo || orderDetail.order_no || this.order.orderNo
+            this.order.time = this.formatDateTime(orderDetail.createdAt)
+            this.order.orderNo = orderDetail.orderNo || this.order.orderNo
             // 物流/运费（到付）信息
             this.order.shippingPaymentMethod = orderDetail.shippingPaymentMethod || '到付，以实际为准'
             this.order.routeStatusDesc = orderDetail.routeStatusDesc || ''
             this.order.logisticsNo = orderDetail.logisticsNo || ''
 
             // 设置处方信息
-            const prescriptionId = orderDetail.prescriptionId || orderDetail.prescription_id
-            const prescriptionNo = orderDetail.prescriptionNo || orderDetail.prescription_no
+            const prescriptionId = orderDetail.prescriptionId
             if (prescriptionId) {
               this.order.prescriptionId = prescriptionId
-              this.order.prescriptionNo = prescriptionNo || String(prescriptionId)
               this.applyAiDoctorInfo()
-            }
-            if (prescriptionNo) {
-              this.order.prescriptionNo = prescriptionNo
             }
 
             // 如果订单中包含 doctorId（直接来自订单或处方），优先从医生表获取头像/职称等信息
@@ -762,25 +737,22 @@
             if (orderDetail.items && orderDetail.items.length > 0) {
 
               this.allCartItems = orderDetail.items.map(item => ({
-                id: item.productId || item.product_id || item.goodsId || item.goods_id || item.id,
-                orderItemId: item.id || item.orderItemId || item.order_item_id,
-                skuId: item.skuId || item.sku_id || null,
-                skuCode: item.skuCode || item.sku_code || '',
-                skuName: item.skuName || item.sku_name || '',
-                specText: item.skuSpecText || item.sku_spec_text || item.specText || item.spec_text || '',
-                name: item.productName || item.product_name || item.name,
+                id: item.productId,
+                orderItemId: item.id,
+                productCategorySnapshot: item.productCategorySnapshot,
+                redeemRequiredSnapshot: item.redeemRequiredSnapshot,
+                skuId: item.skuId || null,
+                skuCode: item.skuCode || '',
+                skuName: item.skuName || '',
+                specText: item.skuSpecText || item.specText || '',
+                name: item.productName,
                 price: parseFloat(item.price || 0),
-                // 兼容不同后端字段命名并确保为数值
-                quantity: (function () {
-                  const q = item.quantity || item.qty || item.count || item.number || 0
-                  const n = Number(String(q).replace(/[^\d.-]/g, ''))
-                  return !isNaN(n) && n > 0 ? n : 1
-                })(),
-                refundedQuantity: Number(item.refundedQuantity || item.refunded_quantity || 0),
-                refundableQuantity: Number(item.refundableQuantity || item.refundable_quantity || 0),
+                quantity: Number(item.quantity),
+                refundedQuantity: Number(item.refundedQuantity || 0),
+                refundableQuantity: Number(item.refundableQuantity || 0),
                 refundable: Boolean(item.refundable),
-                refundBlockedReason: item.refundBlockedReason || item.refund_blocked_reason || '',
-                image: getImageUrl(item.productImage || item.product_image || item.coverImage || item.cover_image || item.image || ''),
+                refundBlockedReason: item.refundBlockedReason || '',
+                image: getImageUrl(item.productImage || ''),
                 redeemVouchers: this.buildRedeemVouchers(item)
               }))
               console.debug('event=ui_order_order_detail stage=order_items result=applied')
@@ -824,12 +796,12 @@
           const productIds = this.allCartItems.map(item => item.id).filter(Boolean)
 
           console.debug('event=ui_order_order_detail stage=diagnosis_enrichment result=started')
-          // 遍历所有商品，获取每个商品的 prescription_diagnosis（兼容 snake_case/camelCase）
+          // 诊断仅补当前真实商品的 prescriptionDiagnosis，不猜测旧字段。
           for (const productId of productIds) {
             try {
               const product = await this.loadProductDetail(productId)
               if (product) {
-                const pd = product.prescription_diagnosis || product.prescriptionDiagnosis || product.prescription_diagnosis
+                const pd = product.prescriptionDiagnosis
                 if (pd) {
                 // 去重，避免重复的诊断信息
                   if (!diagnoses.includes(pd)) {
@@ -902,7 +874,6 @@
           })
           this.applyPatientSnapshot(prescription)
           this.order.prescriptionId = prescription.id
-          this.order.prescriptionNo = prescription.prescriptionNo || String(prescription.id)
           this.order.diagnosis = prescription.diagnosis || consultation?.diagnosis || ''
           this.order.prescriptionDiagnosis = prescription.diagnosis || ''
           if (consultation) {
@@ -926,7 +897,7 @@
             return
           }
           this.applyPatientSnapshot(prescription)
-          const doctorId = prescription.doctorId || prescription.doctor_id
+          const doctorId = prescription.doctorId
           if (!doctorId) {
             this.applyAiDoctorInfo()
             return
@@ -938,7 +909,7 @@
               return
             }
           }
-          const consultationId = prescription.consultationId || prescription.consultation_id
+          const consultationId = prescription.consultationId
           if (consultationId) {
             const consultation = await getConsultationDetail(consultationId)
             const displayName = resolveConsultationDoctorName(consultation)

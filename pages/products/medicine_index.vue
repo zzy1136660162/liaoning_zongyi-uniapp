@@ -78,7 +78,7 @@
           <image class="product-image" :src="getProductImageUrl(item.image)" mode="aspectFill" @error="handleProductImageError(item.image)" />
           <view class="product-body">
             <view class="product-tags">
-              <text class="tag primary" v-if="item.bizType === 1">本院产品</text>
+              <text class="tag primary" v-if="item.productCategory === 1">本院产品</text>
               <text class="tag secondary" v-if="item.isHospitalStarFormula === 1">院藏名方</text>
               <text class="tag warning" v-if="item.isNewProduct === 1">新品</text>
             </view>
@@ -94,24 +94,21 @@
     </view>
 
     <view class="bottom-space"></view>
-    <TabBar current="home" :cartCount="cartCount" @change="handleTabChange" />
+    <TabBar current="home" />
   </view>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getCategoryProducts, mapProductListItem } from '@/api/product.js'
 import { useProductImages } from '@/utils/product-image.js'
-import { getCartTotalQuantity } from '@/utils/cart.js'
-import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
-const HOSPITAL_BIZ_TYPE = 1
+const FORMULA_PRODUCT_CATEGORY = 1
 const { getProductImageUrl, handleProductImageError } = useProductImages()
 
 const featuredProducts = ref([])
-const cartCount = ref(0)
 const loading = ref(false)
 const loadError = ref(false)
 let productRequestSeq = 0
@@ -121,9 +118,9 @@ const loadFeaturedProducts = async () => {
   loadError.value = false
   loading.value = true
   try {
-    const productPage = await getCategoryProducts(null, 1, 8, HOSPITAL_BIZ_TYPE)
+    const productPage = await getCategoryProducts(null, 1, 8, FORMULA_PRODUCT_CATEGORY)
     if (requestSeq !== productRequestSeq) return
-    const productList = productPage.records || productPage.list || []
+    const productList = productPage.records || []
     featuredProducts.value = productList.map(item => mapProductListItem(item))
   } catch (error) {
     if (requestSeq !== productRequestSeq) return
@@ -136,10 +133,6 @@ const loadFeaturedProducts = async () => {
   } finally {
     if (requestSeq === productRequestSeq) loading.value = false
   }
-}
-
-const loadCartCount = () => {
-  cartCount.value = getCartTotalQuantity()
 }
 
 const goMedicineList = () => {
@@ -168,26 +161,8 @@ const goDetail = (item) => {
   })
 }
 
-const handleTabChange = () => {}
-
-let unsubscribeCartUpdated = null
-
-onMounted(() => {
-  unsubscribeCartUpdated = subscribeCartUpdated(() => {
-    loadCartCount()
-  })
-})
-
-onUnmounted(() => {
-  if (unsubscribeCartUpdated) {
-    unsubscribeCartUpdated()
-    unsubscribeCartUpdated = null
-  }
-})
-
 onShow(() => {
   loadFeaturedProducts()
-  loadCartCount()
 })
 </script>
 

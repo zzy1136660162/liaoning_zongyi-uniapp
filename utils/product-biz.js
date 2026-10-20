@@ -1,165 +1,45 @@
-import { isTraditionalTherapyProduct } from './therapy.js'
-
-export const BIZ_TYPE_HOSPITAL_MEDICAL = 1
-export const BIZ_TYPE_HEALTH_GOODS = 2
+/** 购买分类是商品唯一业务分类；categoryId/categoryCode 仅用于展示目录。 */
+export const PRODUCT_CATEGORY_FORMULA = 1
+export const PRODUCT_CATEGORY_HEALTH = 2
+export const PRODUCT_CATEGORY_THERAPY = 3
 
 export const GOODS_MERCHANT_HOSPITAL = 1
 export const GOODS_MERCHANT_TECH_SERVICE = 2
-
-export const PRODUCT_CATEGORY_FORMULA = 1
-export const PRODUCT_CATEGORY_NORMAL_GOODS = 2
-
 export const PRODUCT_FLOW_DIRECT = 'direct'
 export const PRODUCT_FLOW_CONSULTATION = 'consultation'
-export const PRODUCT_FLOW_MIXED = 'mixed'
 
-export const resolveProductBizType = (product = {}) => {
-  return Number(product.bizType || BIZ_TYPE_HOSPITAL_MEDICAL)
-}
+export const resolveProductFlowType = (product = {}) => Number(product.productCategory) === PRODUCT_CATEGORY_FORMULA
+  ? PRODUCT_FLOW_CONSULTATION : PRODUCT_FLOW_DIRECT
 
-export const resolveProductFlowType = (product = {}) => {
-  const productCategory = product.productCategory !== undefined && product.productCategory !== null && product.productCategory !== ''
-    ? Number(product.productCategory)
-    : null
-  const isPrescription = product.isPrescription !== undefined && product.isPrescription !== null && product.isPrescription !== ''
-    ? Number(product.isPrescription)
-    : null
-  const goodsMerchantType = product.goodsMerchantType !== undefined && product.goodsMerchantType !== null && product.goodsMerchantType !== ''
-    ? Number(product.goodsMerchantType)
-    : null
-  const bizType = resolveProductBizType(product)
-
-  if (isTraditionalTherapyProduct(product)) {
-    return PRODUCT_FLOW_DIRECT
-  }
-
-  if (productCategory === PRODUCT_CATEGORY_NORMAL_GOODS || bizType === BIZ_TYPE_HEALTH_GOODS) {
-    return PRODUCT_FLOW_DIRECT
-  }
-
-  if (productCategory === null && isPrescription === null && goodsMerchantType === GOODS_MERCHANT_TECH_SERVICE) {
-    return PRODUCT_FLOW_DIRECT
-  }
-
-  if (
-    productCategory === PRODUCT_CATEGORY_FORMULA ||
-    isPrescription === 1 ||
-    bizType === BIZ_TYPE_HOSPITAL_MEDICAL
-  ) {
-    return PRODUCT_FLOW_CONSULTATION
-  }
-
-  return PRODUCT_FLOW_CONSULTATION
-}
-
-export const resolveGoodsMerchantType = (product = {}) => {
-  if (product.goodsMerchantType != null && product.goodsMerchantType !== '') {
-    return Number(product.goodsMerchantType)
-  }
-
-  return resolveProductFlowType(product) === PRODUCT_FLOW_DIRECT
-    ? GOODS_MERCHANT_TECH_SERVICE
-    : GOODS_MERCHANT_HOSPITAL
-}
-
-export const isHealthGoods = (product = {}) => {
-  return resolveProductFlowType(product) === PRODUCT_FLOW_DIRECT
-}
-
-export const isHospitalMedical = (product = {}) => {
-  return resolveProductFlowType(product) === PRODUCT_FLOW_CONSULTATION
-}
+// 商户是商品配置数据，允许不同商户商品一起结算，不从购买分类反推商户。
+export const resolveGoodsMerchantType = (product = {}) => Number(product.goodsMerchantType)
+export const isHealthGoods = (product = {}) => Number(product.productCategory) === PRODUCT_CATEGORY_HEALTH
+export const isHospitalMedical = (product = {}) => Number(product.productCategory) === PRODUCT_CATEGORY_FORMULA
 
 export const hasBoundQuestionnaire = (product = {}) => {
-  if (Number(product.needQuestionnaire) !== 1) {
-    return false
-  }
-
-  const questionnaireId = product.questionnaireId
-  if (questionnaireId === undefined || questionnaireId === null) {
-    return false
-  }
-
-  const normalizedId = String(questionnaireId).trim()
-  return normalizedId !== '' && normalizedId !== '0'
+  if (Number(product.needQuestionnaire) !== 1 || product.questionnaireId == null) return false
+  const id = String(product.questionnaireId).trim()
+  return id !== '' && id !== '0'
 }
 
-export const resolveProductTypeLabel = (product = {}) => {
-  if (isTraditionalTherapyProduct(product)) {
-    return '传统疗法'
-  }
-  return isHealthGoods(product) ? '健康产品' : '制剂'
-}
+export const resolveProductTypeLabel = (product = {}) => ({
+  1: '制剂', 2: '健康产品', 3: '传统疗法'
+})[Number(product.productCategory)] || '分类待确认'
 
-export const resolveBizTypeLabel = (bizType) => {
-  return Number(bizType) === BIZ_TYPE_HEALTH_GOODS ? '健康产品' : '本院产品'
-}
-
+/** 三类可同单：仅制剂需要复诊；任一实物需要配送；纯疗法到店核销。 */
 export const resolveProductFlow = (products = []) => {
-  if (!Array.isArray(products) || products.length === 0) {
-    return {
-      valid: true,
-      bizType: BIZ_TYPE_HOSPITAL_MEDICAL,
-      goodsMerchantType: GOODS_MERCHANT_HOSPITAL,
-      flowType: PRODUCT_FLOW_CONSULTATION,
-      requiresConsultation: true,
-      hasTraditionalTherapy: false,
-      allTraditionalTherapy: false,
-      message: ''
-    }
-  }
-
-  const hasTraditionalTherapy = products.some(product => isTraditionalTherapyProduct(product))
-  const allTraditionalTherapy = hasTraditionalTherapy && products.every(product => isTraditionalTherapyProduct(product))
-  const hasConsultationProducts = products.some(product => resolveProductFlowType(product) === PRODUCT_FLOW_CONSULTATION)
-  const hasNonTherapyDirectProducts = products.some(product =>
-    !isTraditionalTherapyProduct(product) && resolveProductFlowType(product) === PRODUCT_FLOW_DIRECT
-  )
-
-  if (hasConsultationProducts && hasNonTherapyDirectProducts) {
-    return {
-      valid: false,
-      bizType: null,
-      goodsMerchantType: null,
-      flowType: PRODUCT_FLOW_MIXED,
-      requiresConsultation: null,
-      hasTraditionalTherapy,
-      allTraditionalTherapy,
-      message: '直购商品不能和复诊商品一起结算'
-    }
-  }
-
-  const paymentProducts = products.filter(product => !isTraditionalTherapyProduct(product))
-  const primaryProducts = paymentProducts.length > 0 ? paymentProducts : products
-  const firstBizType = resolveProductBizType(primaryProducts[0])
-  const firstGoodsMerchantType = resolveGoodsMerchantType(primaryProducts[0])
-  const mixedPaymentType = primaryProducts.some(product =>
-    resolveProductBizType(product) !== firstBizType ||
-    resolveGoodsMerchantType(product) !== firstGoodsMerchantType
-  )
-  const flowType = hasConsultationProducts ? PRODUCT_FLOW_CONSULTATION : PRODUCT_FLOW_DIRECT
-
-  if (mixedPaymentType) {
-    return {
-      valid: false,
-      bizType: null,
-      goodsMerchantType: null,
-      flowType,
-      requiresConsultation: null,
-      hasTraditionalTherapy,
-      allTraditionalTherapy,
-      message: '暂不支持不同支付类型商品混合下单'
-    }
-  }
-
+  const items = Array.isArray(products) ? products : []
+  const valid = items.every(product => [1, 2, 3].includes(Number(product.productCategory)))
+  const requiresConsultation = items.some(isHospitalMedical)
+  const requiresShipping = items.some(product => [1, 2].includes(Number(product.productCategory)))
+  const hasTraditionalTherapy = items.some(product => Number(product.productCategory) === PRODUCT_CATEGORY_THERAPY)
   return {
-    valid: true,
-    bizType: firstBizType,
-    goodsMerchantType: firstGoodsMerchantType,
-    flowType,
-    requiresConsultation: flowType === PRODUCT_FLOW_CONSULTATION,
+    valid,
+    flowType: requiresConsultation ? PRODUCT_FLOW_CONSULTATION : PRODUCT_FLOW_DIRECT,
+    requiresConsultation,
+    requiresShipping,
     hasTraditionalTherapy,
-    allTraditionalTherapy,
-    message: ''
+    allTraditionalTherapy: items.length > 0 && items.every(product => Number(product.productCategory) === PRODUCT_CATEGORY_THERAPY),
+    message: valid ? '' : '商品购买分类未配置，请重新加载或联系医院'
   }
 }

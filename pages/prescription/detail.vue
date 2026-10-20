@@ -139,797 +139,183 @@
 
 <script>
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
-import {
-  STORAGE_KEY_CURRENT_ORDER,
-  STORAGE_KEY_VERIFIED_PRODUCTS,
-  STORAGE_KEY_PRODUCT_QUANTITIES, STORAGE_KEY_SELECTED_PRODUCTS
-} from '@/utils/storage.js'
-import { getPrescriptionDetail, getPrescriptionItems, getConsultationDetail } from '@/api/consultation.js'
-import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
+import { getPrescriptionDetail, getPrescriptionItems } from '@/api/consultation.js'
+import { AI_DOCTOR } from '@/utils/consultation-mode.js'
 import { getProductDetail } from '@/api/product.js'
-import { getOrderByPrescriptionId, getOrderPage, getOrderDetail } from '@/api/order.js'
+import { getOrderByPrescriptionId, getOrderDetail, getOrderPage } from '@/api/order.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getOrderStatusText } from '@/utils/order-status.js'
-import { getDoctorDetail, getDoctorByOutpatientNo } from '@/api/hospital.js'
+import { getDoctorDetail } from '@/api/hospital.js'
 import { logPageView } from '@/api/access-log.js'
 
 export default {
   name: 'PrescriptionDetail',
   data() {
     return {
+      AI_DOCTOR,
       sessionGeneration: getSessionGeneration(),
+      prescriptionLoaded: false,
+      orderStatusLoaded: false,
+      prescriptionStatus: null,
+      pageOptions: { prescriptionId: null, orderId: null },
       detail: {
-        visitNo: '',
-        name: '',
-        gender: '',
-        age: 0,
-        idType: '',
-        idNumberMasked: '',
-        patientSnapshotAvailable: false,
-        diagnosis: '',
-        department: '便捷配药门诊',
-        date: '',
-        formulaName: '',
-        packCount: 1,
-        usage: '',
-        doctorName: AI_DOCTOR.name,
-        pharmacistName: '',
-        productPrice: 0,
-        prescriptionItems: [], // 处方药品列表
-        // 签名与关联医生/药师信息（按 id 映射）
-        associatedDoctors: {}, // { [doctorId]: { name, signatureUrl, title, hospital } }
-        associatedPharmacists: {}, // { [pharmacistId]: { name, signatureUrl, title, hospital } }
-        doctorId: null,
-        doctorSignatureUrl: '' // 医师签名图片
+        visitNo: '', name: '', gender: '', age: 0, idNumberMasked: '', patientSnapshotAvailable: false,
+        diagnosis: '', department: '便捷配药门诊', date: '', formulaName: '',
+        doctorName: AI_DOCTOR.name, doctorSignatureUrl: '', pharmacistName: '', pharmacistSignatureUrl: '',
+        prescriptionItems: [], associatedDoctors: {}
       },
-      // 订单状态相关信息
-      orderStatus: {
-        status: 0, // 订单状态：0待支付，1待发货，2待收货，3已完成，4已取消
-        orderNo: '', // 订单号
-        logisticsNo: '', // 快递单号
-        logisticsCompany: '', // 快递公司
-        order: null // 接口返回的完整订单对象，用于统一展示状态（displayStatusText 等）
-      },
-      // 保存页面参数，用于订单查询
-      pageOptions: {
-        prescriptionNo: null, // 保存原始的 prescriptionNo 参数
-        orderId: null
-      }
+      orderStatus: { status: null, orderNo: '', logisticsNo: '', logisticsCompany: '', order: null }
     }
   },
   computed: {
-    // 状态主文案：优先采用接口返回的展示状态（displayStatusText），与订单详情页口径一致
     statusMainText() {
-      if (this.orderStatus.order) {
-        return getOrderStatusText(this.orderStatus.order)
-      }
-      const statusMap = {
-        0: '待支付',
-        1: '已支付',
-        2: '配送中',
-        3: '已完成',
-        4: '已取消'
-      }
-      return statusMap[this.orderStatus.status] || '待下单'
+      return this.orderStatus.order ? getOrderStatusText(this.orderStatus.order) : '待下单'
     },
     statusSubText() {
       const order = this.orderStatus.order
-      const payStatus = order ? Number(order.payStatus ?? order.pay_status) : null
-      if (order && payStatus === 1) {
-        const redeemStatus = order.redeemStatus ?? order.redeem_status
-        if (Number(order.orderType ?? order.order_type) === 4 && redeemStatus !== null && redeemStatus !== undefined) {
-          if (Number(redeemStatus) === 0) {
-            return '请凭核销码到店核销'
-          }
-          if (Number(redeemStatus) === 1) {
-            return '订单已完成'
-          }
-        }
-        if (this.orderStatus.logisticsNo) {
-          return `${this.orderStatus.logisticsCompany || '快递'}单号：${this.orderStatus.logisticsNo}`
-        }
-        return '药品准备中'
-      }
-      switch (this.orderStatus.status) {
-        case 0:
-          return '等待下单支付'
-        case 1:
-          return '药品准备中'
-        case 2:
-          if (this.orderStatus.logisticsNo) {
-            return `${this.orderStatus.logisticsCompany || '快递'}单号：${this.orderStatus.logisticsNo}`
-          }
-          return '药品配送中'
-        case 3:
-          return '订单已完成'
-        case 4:
-          return '订单已取消'
-        default:
-          return '等待下单支付'
-      }
+      if (!order) return this.prescriptionLoaded ? '等待下单支付' : '正在加载处方'
+      if (this.orderStatus.logisticsNo) return `${this.orderStatus.logisticsCompany || '快递'}单号：${this.orderStatus.logisticsNo}`
+      return { 0: '等待下单支付', 1: '药品准备中', 2: '药品配送中', 3: '订单已完成', 4: '订单已取消' }[order.orderStatus] || ''
     },
-    // 仅未支付订单允许从处方购药；已支付订单（含传统疗法待核销）不再展示购药入口
     canBuyMedicine() {
-      const order = this.orderStatus.order
-      if (order && Number(order.payStatus ?? order.pay_status) === 1) {
-        return false
-      }
-      return this.orderStatus.status === 0
+      return this.prescriptionLoaded && this.orderStatusLoaded && this.prescriptionStatus === 1 &&
+        (!this.orderStatus.order || Number(this.orderStatus.order.payStatus) === 0 && Number(this.orderStatus.order.orderStatus) === 0)
     }
   },
   onLoad(options) {
-    this.pageOptions.prescriptionNo = this.isValidPrescriptionId(options.prescriptionNo) ? options.prescriptionNo : null
-    this.pageOptions.orderId = this.isUsableId(options.orderId) ? options.orderId : null
-    if (!this.pageOptions.prescriptionNo && options.prescription) {
-      try {
-        const prescriptionData = JSON.parse(decodeURIComponent(options.prescription))
-        const id = prescriptionData.id || prescriptionData.visitNo
-        if (this.isValidPrescriptionId(id)) this.pageOptions.prescriptionNo = id
-      } catch (e) {
-        console.error('解析处方数据失败:', e)
-      }
-    }
+    this.pageOptions.prescriptionId = this.isValidPrescriptionId(options.prescriptionId) ? options.prescriptionId : null
+    this.pageOptions.orderId = this.isValidPrescriptionId(options.orderId) ? options.orderId : null
     logPageView('处方详情', '用户进入处方详情页面')
   },
   async onShow() {
     if (!isCurrentSession(this.sessionGeneration)) return
-    if (this.pageOptions.prescriptionNo) {
-      await this.loadPrescriptionById(this.pageOptions.prescriptionNo)
+    if (this.pageOptions.prescriptionId) {
+      await this.loadPrescriptionById(this.pageOptions.prescriptionId)
       await this.loadOrderStatus()
-    } else if (this.pageOptions.orderId) {
-      await this.loadOrderFromOrderId(this.pageOptions.orderId)
-    }
+    } else if (this.pageOptions.orderId) await this.loadOrderFromOrderId(this.pageOptions.orderId)
   },
   methods: {
-    // 图片URL处理函数
     getImageUrl,
-
-    isUsableId(value) {
-      if (value === null || value === undefined) {
-        return false
-      }
-      const text = String(value).trim()
-      return text !== '' && text !== 'null' && text !== 'undefined'
-    },
-
-    isValidPrescriptionId(value) {
-      return this.isUsableId(value) && /^\d+$/.test(String(value).trim())
-    },
-
+    isValidPrescriptionId(value) { return /^[1-9]\d*$/.test(String(value || '')) },
     applyPatientSnapshot(source = {}) {
-      if (!Object.prototype.hasOwnProperty.call(source, 'patientSnapshotAvailable')) {
-        return
-      }
       const available = source.patientSnapshotAvailable === true
       this.detail.patientSnapshotAvailable = available
-      this.detail.name = available ? (source.patientName || '') : ''
-      this.detail.gender = available ? (source.patientGender || '') : ''
-      this.detail.age = available ? (source.patientAge || 0) : 0
-      this.detail.idType = available ? (source.patientIdType || '') : ''
-      this.detail.idNumberMasked = available ? (source.patientIdNumberMasked || '') : ''
+      this.detail.name = available ? source.patientName || '' : ''
+      this.detail.gender = available ? source.patientGender || '' : ''
+      this.detail.age = available ? source.patientAge || 0 : 0
+      this.detail.idNumberMasked = available ? source.patientIdNumberMasked || '' : ''
     },
-
-    async applyDoctorFromPrescription(prescriptionData) {
-      if (!prescriptionData) {
-        return
-      }
-      const doctorId = prescriptionData.doctorId || prescriptionData.doctor_id || null
-      this.detail.doctorId = doctorId
-      if (!doctorId) {
-        this.detail.doctorName = AI_DOCTOR.name
-        this.detail.doctorSignatureUrl = ''
-        return
-      }
-
-      const resolvedDoctorName = this.resolvePrescriptionDoctorName(prescriptionData)
-      if (resolvedDoctorName) {
-        this.detail.doctorName = resolvedDoctorName
-      }
-      if (doctorId) {
-        try {
-          const doc = await getDoctorDetail(doctorId)
-          if (doc) {
-            this.detail.doctorId = doctorId
-            this.detail.doctorName = doc.name || this.detail.doctorName
-            this.detail.department = doc.department || this.detail.department
-            const signatureUrl = doc.signatureUrl || doc.signature_url || doc.signature || ''
-            if (signatureUrl) {
-              this.detail.doctorSignatureUrl = getImageUrl(signatureUrl)
-            }
-            return
-          }
-        } catch (e) {
-          console.warn('从处方 doctorId 获取医师失败', e)
-        }
-      }
-
-      const consultationId = prescriptionData.consultationId || prescriptionData.consultation_id
-      if (consultationId) {
-        try {
-          const consultation = await getConsultationDetail(consultationId)
-          this.applyPatientSnapshot(consultation)
-          const displayName = resolveConsultationDoctorName(consultation)
-          if (displayName) {
-            this.detail.doctorName = displayName
-          }
-          if (consultation.department) {
-            this.detail.department = consultation.department
-          }
-          if (consultation.doctorId && !this.detail.doctorSignatureUrl) {
-            const doc = await getDoctorDetail(consultation.doctorId)
-            if (doc) {
-              this.detail.doctorId = consultation.doctorId
-              const signatureUrl = doc.signatureUrl || doc.signature_url || ''
-              if (signatureUrl) {
-                this.detail.doctorSignatureUrl = getImageUrl(signatureUrl)
-              }
-              if (!this.detail.doctorName) {
-                this.detail.doctorName = doc.name || ''
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('从咨询记录补全医师信息失败', e)
-        }
-      }
+    resolvePrescriptionDoctorName(source = {}) { return source.doctorId ? source.doctorName || '' : AI_DOCTOR.name },
+    resolvePrescriptionDate(source = {}) { return source.prescriptionTime || source.createdAt || '' },
+    formatNullableDate(value) {
+      // 后端LocalDateTime直接取日期部分，不依赖微信运行时的时区和字符串日期解析。
+      return String(value || '').match(/^\d{4}-\d{2}-\d{2}/)?.[0] || '—'
     },
-
-    // 从订单信息更新处方详情
-    updateDetailFromOrder(orderInfo) {
-      this.applyPatientSnapshot(orderInfo)
-      if (orderInfo.prescriptionDiagnosis) {
-        this.detail.diagnosis = orderInfo.prescriptionDiagnosis
-      }
-      const prescriptionDate = this.resolvePrescriptionDate(orderInfo)
-      if (prescriptionDate) {
-        this.detail.date = this.formatDate(prescriptionDate)
-      }
-
-      // 更新处方ID（如果还没有设置）
-      if (!this.detail.visitNo && orderInfo.prescriptionId) {
-        this.detail.visitNo = orderInfo.prescriptionId.toString()
-      }
-
-      // 从订单商品列表构建处方药品列表
-      if (orderInfo.items && orderInfo.items.length > 0) {
-        this.detail.prescriptionItems = orderInfo.items.map(item => ({
-          id: item.id,
-          drugName: item.productName,
-          dosage: item.specText || '',
-          frequency: '',
-          days: '',
-          usageDesc: '',
-          productId: item.productId,
-          quantity: item.quantity,
-          price: item.price,
-          unit: item.unit,
-          productDetail: {
-            id: item.productId,
-            name: item.productName,
-            image: item.productImage,
-            price: item.price,
-            unit: item.unit
-          }
-        }))
-
-        // 使用第一个商品的信息作为主要商品信息
-        const firstItem = orderInfo.items[0]
-        this.detail.formulaName = firstItem.productName || this.detail.formulaName
-        this.detail.productPrice = firstItem.price || this.detail.productPrice
-        this.detail.packCount = firstItem.quantity || this.detail.packCount
-      }
-
-      // 设置医生ID（如果有的话）
-      if (orderInfo.doctorId) {
-        this.detail.doctorId = orderInfo.doctorId
-      }
+    async applyDoctorFromPrescription(prescription) {
+      this.detail.doctorName = this.resolvePrescriptionDoctorName(prescription)
+      this.detail.doctorSignatureUrl = ''
+      this.detail.associatedDoctors = {}
+      if (!prescription.doctorId) return
+      const doctor = await getDoctorDetail(prescription.doctorId)
+      if (!isCurrentSession(this.sessionGeneration)) return
+      this.detail.doctorName = doctor.name || ''
+      this.detail.department = doctor.department || '便捷配药门诊'
+      this.detail.doctorSignatureUrl = getImageUrl(doctor.signatureUrl || '')
+      this.detail.associatedDoctors = { [prescription.doctorId]: { name: doctor.name, signatureUrl: this.detail.doctorSignatureUrl } }
     },
-
-    // 获取订单状态信息
-    async loadOrderStatus() {
-      this.orderStatus = { status: null, orderNo: '', logisticsNo: '', logisticsCompany: '', order: null }
-      try {
-        // 通过处方ID查询订单信息
-        // 优先使用原始的 prescriptionNo 参数，其次使用 detail.visitNo
-        const prescriptionId = this.pageOptions.prescriptionNo || (this.isValidPrescriptionId(this.detail.visitNo) ? this.detail.visitNo : null)
-        if (!this.isValidPrescriptionId(prescriptionId)) {
-          console.log('处方详情无有效处方ID，跳过按处方查询订单')
-          return
-        }
-        console.log('查询订单使用的处方ID:', prescriptionId)
-        const orderInfo = await getOrderByPrescriptionId(prescriptionId)
-
-        if (orderInfo && orderInfo.id) {
-          // 更新订单状态信息
-          this.orderStatus.status = orderInfo.orderStatus !== null && orderInfo.orderStatus !== undefined
-            ? orderInfo.orderStatus
-            : (orderInfo.status || 0)
-          this.orderStatus.orderNo = orderInfo.orderNo || orderInfo.id || ''
-          this.orderStatus.order = orderInfo
-
-          // 如果是配送中状态，尝试获取物流信息
-          if (this.orderStatus.status === 2 && orderInfo.logisticsNo) {
-            this.orderStatus.logisticsNo = orderInfo.logisticsNo
-            this.orderStatus.logisticsCompany = orderInfo.logisticsCompany || '顺丰快递'
-          }
-
-          this.updateDetailFromOrder(orderInfo)
-
-          console.log('通过处方ID查询到订单状态:', this.orderStatus)
-          console.log('从订单更新处方详情:', this.detail)
-        } else {
-          this.orderStatus.status = 0
-        }
-      } catch (error) {
-        console.error('获取订单状态失败:', error)
-        // 如果API查询失败，尝试备用方案：从订单列表中查找
-        try {
-          const prescriptionId = this.pageOptions.prescriptionNo || (this.isValidPrescriptionId(this.detail.visitNo) ? this.detail.visitNo : null)
-          if (!this.isValidPrescriptionId(prescriptionId)) return
-          const { rows: orders } = await getOrderPage({ prescriptionId, pageNum: 1, pageSize: 1 })
-
-          if (orders && orders.length > 0) {
-            const relatedOrder = orders.find(order => String(order.prescriptionId) === String(prescriptionId))
-
-            if (relatedOrder) {
-              this.orderStatus.status = relatedOrder.orderStatus !== null && relatedOrder.orderStatus !== undefined
-                ? relatedOrder.orderStatus
-                : (relatedOrder.status || 0)
-              this.orderStatus.orderNo = relatedOrder.orderNo || relatedOrder.id || ''
-              this.orderStatus.order = relatedOrder
-
-              // 如果是配送中状态，尝试获取物流信息
-              if (this.orderStatus.status === 2 && relatedOrder.logisticsNo) {
-                this.orderStatus.logisticsNo = relatedOrder.logisticsNo
-                this.orderStatus.logisticsCompany = relatedOrder.logisticsCompany || '顺丰快递'
-              }
-
-              // 从订单信息更新处方详情
-              this.updateDetailFromOrder(relatedOrder)
-
-              console.log('备用方案：从订单列表中找到订单状态:', this.orderStatus)
-              console.log('从订单更新处方详情:', this.detail)
-            }
-          } else {
-            this.orderStatus.status = 0
-          }
-        } catch (backupError) {
-          console.error('备用方案也失败:', backupError)
-          // 出错时保持默认状态
-        }
-      }
-    },
-
-    // 格式化日期，只显示年月日
-    formatDate(dateStr) {
-      if (!dateStr) {
-        return ''
-      }
-
-      try {
-        // 如果是时间戳（数字）
-        if (typeof dateStr === 'number') {
-          const date = new Date(dateStr)
-          const year = date.getFullYear()
-          const month = String(date.getMonth() + 1).padStart(2, '0')
-          const day = String(date.getDate()).padStart(2, '0')
-          return `${year}-${month}-${day}`
-        }
-
-        // 如果是字符串
-        if (typeof dateStr === 'string') {
-          // 处理 ISO 格式：2024-01-01T10:30:00 或 2024-01-01 10:30:00
-          const datePart = dateStr.split('T')[0].split(' ')[0]
-          // 验证格式是否为 YYYY-MM-DD
-          if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-            return datePart
-          }
-
-          // 尝试解析为日期对象
-          const date = new Date(dateStr)
-          if (!isNaN(date.getTime())) {
-            const year = date.getFullYear()
-            const month = String(date.getMonth() + 1).padStart(2, '0')
-            const day = String(date.getDate()).padStart(2, '0')
-            return `${year}-${month}-${day}`
-          }
-        }
-
-        return dateStr
-      } catch (e) {
-        console.error('格式化日期失败:', e)
-        return dateStr
-      }
-    },
-
-    formatNullableDate(dateStr) {
-      return this.formatDate(dateStr) || '—'
-    },
-
-    resolvePrescriptionDoctorName(source = {}) {
-      const doctorId = source.doctorId ?? source.doctor_id ?? null
-      if (!this.isUsableId(doctorId)) {
-        return AI_DOCTOR.name
-      }
-      return source.doctorName ||
-        source.doctor_name ||
-        source.doctor ||
-        source.openDoctorName ||
-        source.open_doctor_name ||
-        ''
-    },
-
-    resolvePrescriptionDate(source = {}) {
-      return source.prescriptionTime ||
-        source.prescription_time ||
-        source.consultationTime ||
-        source.consultation_time ||
-        source.createdAt ||
-        source.createTime ||
-        source.created_at ||
-        source.date ||
-        ''
-    },
-
-    // 从API加载处方详情
+    // 处方患者/医师来自真实处方快照；商品只补用法和药师，不覆盖开方主体。
     async loadPrescriptionById(id) {
-      if (!this.isValidPrescriptionId(id)) {
-        console.warn('处方ID无效，跳过处方详情加载:', id)
-        return
-      }
+      this.prescriptionLoaded = false
+      this.orderStatusLoaded = false
+      if (!this.isValidPrescriptionId(id)) return
       try {
-        uni.showLoading({ title: '加载中...' })
-
-        // 调用后端API获取处方详情
-        const prescriptionData = await getPrescriptionDetail(id)
-
-        console.log('处方详情:', prescriptionData)
-
-        if (prescriptionData) {
-          // 优先尝试从处方记录关联的 doctor_id 获取医生门诊号（lnzy_doctor.outpatient_no）
-          let visitNoFromDoctor = null
-          try {
-            const doctorId = prescriptionData.doctorId || prescriptionData.doctor_id || prescriptionData.doctor || null
-            if (doctorId) {
-              const doc = await getDoctorDetail(doctorId)
-              if (doc) {
-                visitNoFromDoctor = doc.outpatientNo || doc.outpatient_no || null
-              }
-            }
-          } catch (e) {
-            console.warn('获取医生门诊号失败', e)
-          }
-          this.detail.visitNo = visitNoFromDoctor || prescriptionData.consultationNo || prescriptionData.id || id
-          this.detail.formulaName = prescriptionData.formulaName || prescriptionData.medicineName || ''
-          this.detail.packCount = prescriptionData.doses || prescriptionData.quantity || 1
-          this.detail.productPrice = prescriptionData.totalAmount || 0
-          this.detail.diagnosis = prescriptionData.diagnosis || ''
-          this.detail.department = prescriptionData.department || '便捷配药门诊'
-          this.detail.doctorName = this.resolvePrescriptionDoctorName(prescriptionData) || this.detail.doctorName
-          this.detail.date = this.formatDate(this.resolvePrescriptionDate(prescriptionData)) || this.detail.date
-          this.applyPatientSnapshot(prescriptionData)
-
-          this.detail.doctorId = prescriptionData.doctorId || null
-          await this.applyDoctorFromPrescription(prescriptionData)
-
-          // 获取处方药品列表
-          try {
-            const prescriptionItems = await getPrescriptionItems(id)
-            this.detail.prescriptionItems = prescriptionItems || []
-            console.log('处方药品列表:', prescriptionItems)
-            if (this.detail.prescriptionItems.length > 0) {
-              const firstItem = this.detail.prescriptionItems[0]
-              if (firstItem.price) {
-                this.detail.productPrice = Number(firstItem.price)
-              }
-              if (firstItem.quantity) {
-                this.detail.packCount = Number(firstItem.quantity) || this.detail.packCount
-              }
-            }
-
-            // 针对每个处方项，查询商品详情以获得 usage_desc、doctor_id、pharmacist_id 等信息
-            const doctorIds = new Set()
-            const pharmacistIds = new Set()
-            for (const item of this.detail.prescriptionItems) {
-              try {
-                // 处方明细中保存的是 prescription_item.id 与 product_id
-                const productId = item.productId || item.product_id || item.product || null
-                console.log('处理处方项，prescription_item.id=', item.id, 'productId=', productId)
-                if (!productId) {
-                  // 没有关联商城商品，跳过但保留处方明细文本信息
-                  console.log('处方项没有关联商城商品，跳过 product fetch for item.id=', item.id)
-                  continue
-                }
-                const product = await getProductDetail(productId)
-                console.log('商品详情返回', productId, product)
-                if (product) {
-                  // 兼容不同字段命名
-                  item.usageDesc = product.usageDesc || product.usage_desc || product.usage || ''
-                  const pDoctorId = product.doctorId || product.doctor_id || product.doctor || null
-                  const pPharmacistId = product.pharmacistId || product.pharmacist_id || product.pharmacist || null
-                  item.productDetail = product
-                  console.log('从商品中读取 doctorId, pharmacistId:', pDoctorId, pPharmacistId)
-                  if (pDoctorId) doctorIds.add(pDoctorId)
-                  if (pPharmacistId) pharmacistIds.add(pPharmacistId)
-                }
-              } catch (prodErr) {
-                console.warn('get product detail failed:', item.id || item.product_id || item.productId, prodErr)
-              }
-            }
-
-            // 使用 doctorId/pharmacistId 列表去拉取对应医生/药师详情（去重）
-            for (const docId of Array.from(doctorIds)) {
-              try {
-                console.log('获取关联医生详情 docId=', docId)
-                const doc = await getDoctorDetail(docId)
-                console.log('关联医生详情返回', doc)
-                if (doc) {
-                  const sig = getImageUrl(doc.signatureUrl || doc.signature_url || doc.signature || doc.signUrl || '')
-                  console.log('解析到医生签名sig=', sig, '医生avatar/头像兼容字段:', doc.avatarUrl || doc.avatar || doc.avatar_url)
-                  this.detail.associatedDoctors[docId] = {
-                    name: doc.name || '',
-                    title: doc.title || '',
-                    hospital: doc.hospitalName || doc.hospital || '',
-                    signatureUrl: sig
-                  }
-                }
-              } catch (e) {
-                console.warn('获取关联医生详情失败:', docId, e)
-              }
-            }
-            for (const phId of Array.from(pharmacistIds)) {
-              try {
-                // 假设药师也在医生表或同一接口可查询
-                const ph = await getDoctorDetail(phId)
-                if (ph) {
-                  this.detail.associatedPharmacists[phId] = {
-                    name: ph.name || '',
-                    title: ph.title || '',
-                    hospital: ph.hospitalName || ph.hospital || '',
-                    signatureUrl: getImageUrl(ph.signatureUrl || ph.signature_url || ph.signature || ph.signUrl || '')
-                  }
-                }
-              } catch (e) {
-                console.warn('获取关联药师详情失败:', phId, e)
-              }
-            }
-
-
-          } catch (itemError) {
-            console.warn('获取处方药品列表失败:', itemError)
-            this.detail.prescriptionItems = []
-          }
-
-          // 使用第一个处方项关联的商品的 doctor_id / pharmacist_id 获取医生/药师信息并显示 avatarUrl（首项优先）
-          try {
-            const firstItem = (this.detail.prescriptionItems || []).find(it => it && (it.productDetail || it.productId || it.product_id))
-            if (firstItem) {
-              const productDetail = firstItem.productDetail || {}
-              const firstDoctorId = productDetail.doctorId || productDetail.doctor_id || productDetail.doctor || null
-              const firstPharmacistId = productDetail.pharmacistId || productDetail.pharmacist_id || productDetail.pharmacist || null
-
-              if (firstDoctorId && !this.detail.doctorName) {
-                try {
-                  const doc = await getDoctorDetail(firstDoctorId)
-                  if (doc) {
-                    const signatureUrl = doc.signatureUrl
-                    if (signatureUrl && !this.detail.doctorSignatureUrl) {
-                      this.detail.doctorSignatureUrl = getImageUrl(signatureUrl)
-                    }
-                    this.detail.doctorName = doc.name || this.detail.doctorName
-                  }
-                } catch (docErr) {
-                  console.warn('获取首项商品关联医生信息失败:', docErr)
-                }
-              }
-
-              if (firstPharmacistId) {
-                try {
-                  console.log('使用首项product的pharmacistId去获取药师详情:', firstPharmacistId)
-                  const ph = await getDoctorDetail(firstPharmacistId)
-                  console.log('首项关联药师详情返回', ph)
-                  if (ph) {
-                    const signatureUrl = ph.signatureUrl
-                    this.detail.pharmacistSignatureUrl = getImageUrl(signatureUrl)
-                    console.log('set detail.pharmacistSignatureUrl =', this.detail.pharmacistSignatureUrl, 'raw avatar field=', signatureUrl)
-                    this.detail.pharmacistName = this.detail.pharmacistName || ph.name || this.detail.pharmacistName
-                  }
-                } catch (phErr) {
-                  console.warn('获取首项商品关联药师信息失败:', phErr)
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('处理首项商品关联医师/药师信息失败', e)
-          }
-
-        }
-
-        uni.hideLoading()
-      } catch (error) {
-        console.error('加载处方详情失败:', error)
-        uni.hideLoading()
-
-        // 显示用户友好的错误提示
-        let errorMessage = '加载处方详情失败'
-        if (error && error.message) {
-          if (error.message.includes('无权限')) {
-            errorMessage = '您没有权限查看此处方'
-          } else if (error.message.includes('不存在')) {
-            errorMessage = '处方信息不存在'
-          } else {
-            errorMessage = error.message
-          }
-        }
-
-        uni.showToast({
-          title: errorMessage,
-          icon: 'none',
-          duration: 3000
-        })
-
-        this.detail.visitNo = id
-      }
-    },
-
-    async loadOrderFromOrderId(orderId) {
-      if (!this.isUsableId(orderId)) {
-        return
-      }
-      try {
-        const orderInfo = await getOrderDetail(orderId, { showLoading: false })
-        if (!orderInfo) {
-          return
-        }
-
-        this.orderStatus.status = orderInfo.orderStatus !== null && orderInfo.orderStatus !== undefined
-          ? orderInfo.orderStatus
-          : (orderInfo.status || 0)
-        this.orderStatus.orderNo = orderInfo.orderNo || orderInfo.id || ''
-        this.orderStatus.logisticsNo = orderInfo.logisticsNo || ''
-        this.orderStatus.logisticsCompany = orderInfo.logisticsCompany || ''
-        this.orderStatus.order = orderInfo
-        this.updateDetailFromOrder(orderInfo)
-
-        const prescriptionId = orderInfo.prescriptionId || orderInfo.prescription_id
-        if (this.isValidPrescriptionId(prescriptionId)) {
-          this.pageOptions.prescriptionNo = String(prescriptionId)
-          await this.loadPrescriptionById(prescriptionId)
-        }
-      } catch (error) {
-        console.error('通过订单ID加载处方详情失败:', error)
-        uni.showToast({
-          title: error.message || '加载订单处方失败',
-          icon: 'none'
-        })
-      }
-    },
-
-    goBuy() {
-      // 验证订单状态，只有待支付订单才能购药（已支付订单不可重复购药）
-      if (!this.canBuyMedicine) {
-        const statusText = this.statusMainText || '非待支付状态'
-        uni.showToast({
-          title: `订单状态为${statusText}，无法购药`,
-          icon: 'none'
-        })
-        return
-      }
-
-      // 验证必要数据
-      if (!this.detail.visitNo) {
-        uni.showToast({
-          title: '处方信息不完整',
-          icon: 'none'
-        })
-        return
-      }
-
-      // 构建订单信息
-      // 使用统一的单价和数量计算总价（与商品详情页和复诊详情页保持一致）
-      const unitPrice = this.detail.productPrice
-        || (this.detail.prescriptionItems[0] && this.detail.prescriptionItems[0].price)
-        || 0
-      const quantity = this.detail.packCount || 1
-      const totalPrice = parseFloat((unitPrice * quantity).toFixed(2))
-
-      const orderItems = [{
-        id: this.detail.visitNo,
-        name: this.detail.formulaName || '中药处方',
-        type: '中药',
-        price: totalPrice,
-        quantity: quantity
-      }]
-
-      const medicineCost = parseFloat(orderItems.reduce((sum, item) => sum + item.price, 0).toFixed(2))
-
-      const orderInfo = {
-        prescriptions: [this.detail.visitNo],
-        items: orderItems,
-        deliveryInfo: {
-          distributor: '辽宁中医药大学附属医院',
-          logistics: '顺丰快递',
-          purchaseMethod: '药品配送-在线支付',
-          shippingPaymentMethod: '在线支付'
-        },
-        cost: {
-          medicineCost: medicineCost,
-          isDecocted: false,
-          shippingFee: 0 // 确认页面会自动设置为18元
-        },
-        total: medicineCost // 确认页面会重新计算包含快递费的总价
-      }
-
-      // 保存订单信息
-      try {
-        // 同步到购物车/已验证产品，确保 confirm 页面能正确加载商品明细
-        try {
-          const verified = uni.getStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS) || {}
-          const quantities = uni.getStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES) || {}
-          const selected = uni.getStorageSync(STORAGE_KEY_SELECTED_PRODUCTS) || []
-
-          // 如果处方里包含处方明细且有关联商城商品ID，则优先把这些商品加入到已验证列表
-          const associatedProductIds = []
-          if (this.detail.prescriptionItems && this.detail.prescriptionItems.length > 0) {
-            for (const pi of this.detail.prescriptionItems) {
-              const pid = pi.productId || pi.product_id || pi.product || null
-              if (pid) {
-                const key = String(pid)
-                verified[key] = true
-                // 处方明细里没有明确数量时，使用处方页的 packCount 或明细的 days 作为兜底
-                quantities[key] = quantities[key] || pi.quantity || pi.days || this.detail.packCount || 1
-                if (!selected.includes(key)) selected.push(key)
-                associatedProductIds.push(key)
-              }
-            }
-          } else {
-            // 如果没有处方商品关联到商城商品，把处方本身作为一个虚拟商品放入已选列表（id 使用 visitNo，confirm 会使用 current_order 的 items）
-            // 这里仍然标记 visitNo 在已选项中，避免 confirm 页出现空商品列表（某些流程会用到 selected_products）
-            const vkey = String(this.detail.visitNo || '')
-            if (vkey) {
-              verified[vkey] = true
-              quantities[vkey] = quantities[vkey] || (this.detail.packCount || 1)
-              if (!selected.includes(vkey)) selected.push(vkey)
-            }
-          }
-
-          if (!isCurrentSession(this.sessionGeneration)) return
-
-          uni.setStorageSync(STORAGE_KEY_VERIFIED_PRODUCTS, verified)
-          if (!isCurrentSession(this.sessionGeneration)) return
-          uni.setStorageSync(STORAGE_KEY_PRODUCT_QUANTITIES, quantities)
-          if (!isCurrentSession(this.sessionGeneration)) return
-          uni.setStorageSync(STORAGE_KEY_SELECTED_PRODUCTS, selected)
-          console.log('同步购物车已验证商品:', associatedProductIds.length ? associatedProductIds : (this.detail.visitNo || 'visitNo'), verified, quantities)
-        } catch (syncErr) {
-          console.warn('同步购物车信息失败:', syncErr)
-        }
-
+        const prescription = await getPrescriptionDetail(id)
         if (!isCurrentSession(this.sessionGeneration)) return
-
-        uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo)
-
-        // 跳转到订单确认页面
-        uni.navigateTo({
-          url: '/pages/order/confirm',
-          success: () => {
-            console.log('跳转到订单确认页面成功')
-          },
-          fail: (err) => {
-            console.error('跳转失败:', err)
-            uni.showToast({
-              title: '跳转失败，请重试',
-              icon: 'none'
-            })
-          }
-        })
-      } catch (e) {
-        console.error('保存订单信息失败:', e)
-        uni.showToast({
-          title: '保存订单信息失败',
-          icon: 'none'
-        })
+        if (String(prescription?.id) !== String(id)) throw new Error('处方信息不匹配')
+        this.pageOptions.prescriptionId = prescription.id
+        this.prescriptionStatus = prescription.status
+        this.detail.visitNo = String(prescription.id)
+        this.applyPatientSnapshot(prescription)
+        this.detail.date = this.resolvePrescriptionDate(prescription)
+        this.detail.diagnosis = prescription.diagnosis || ''
+        this.detail.pharmacistSignatureUrl = ''
+        this.detail.pharmacistName = ''
+        const items = await getPrescriptionItems(id)
+        if (!isCurrentSession(this.sessionGeneration)) return
+        this.detail.prescriptionItems = Array.isArray(items) ? items.map(item => ({ ...item, usageDesc: '' })) : []
+        this.detail.formulaName = this.detail.prescriptionItems.map(item => item.drugName).filter(Boolean).join('、')
+        const productRequests = new Map()
+        for (const item of this.detail.prescriptionItems) {
+          if (!item.productId) continue
+          try {
+            if (!productRequests.has(item.productId)) productRequests.set(item.productId, getProductDetail(item.productId))
+            const product = await productRequests.get(item.productId)
+            if (!isCurrentSession(this.sessionGeneration)) return
+            item.usageDesc = product.usageDesc || ''
+            if (!this.detail.pharmacistSignatureUrl && product.pharmacistId) {
+              const pharmacist = await getDoctorDetail(product.pharmacistId)
+              if (!isCurrentSession(this.sessionGeneration)) return
+              this.detail.pharmacistSignatureUrl = getImageUrl(pharmacist.signatureUrl || '')
+              this.detail.pharmacistName = pharmacist.name || ''
+            }
+          } catch (_) { /* 辅助用法/签名加载失败不丢弃已取得的真实处方明细。 */ }
+        }
+        try { await this.applyDoctorFromPrescription(prescription) } catch (_) { /* 医师资料暂不可用时保留处方医师身份，不改成商品医师。 */ }
+        if (!isCurrentSession(this.sessionGeneration)) return
+        this.prescriptionLoaded = true
+      } catch (error) {
+        if (!isCurrentSession(this.sessionGeneration)) return
+        this.detail.prescriptionItems = []
+        uni.showToast({ title: error.message || '加载处方详情失败', icon: 'none' })
       }
+    },
+    updateDetailFromOrder(order) {
+      this.orderStatusLoaded = true
+      this.orderStatus = { status: order.orderStatus, orderNo: order.orderNo || '',
+        logisticsNo: order.logisticsNo || '', logisticsCompany: order.logisticsCompany || '', order }
+    },
+    // 查询失败不恢复本地旧订单，也不将“未知”当成可再次购药。
+    async loadOrderStatus() {
+      this.orderStatusLoaded = false
+      this.orderStatus = { status: null, orderNo: '', logisticsNo: '', logisticsCompany: '', order: null }
+      if (!this.isValidPrescriptionId(this.pageOptions.prescriptionId)) return
+      try {
+        const order = await getOrderByPrescriptionId(this.pageOptions.prescriptionId)
+        if (!isCurrentSession(this.sessionGeneration)) return
+        if (order?.id) this.updateDetailFromOrder(order)
+        else { this.orderStatus.status = 0; this.orderStatusLoaded = true }
+      } catch (_) {
+        // 主查询暂不可用时仍只向后台按同一处方ID查询，不能读取本地订单草稿。
+        try {
+          const { rows } = await getOrderPage({ prescriptionId: this.pageOptions.prescriptionId, pageNum: 1, pageSize: 1 })
+          if (!isCurrentSession(this.sessionGeneration)) return
+          const order = rows.find(row => String(row.prescriptionId) === String(this.pageOptions.prescriptionId))
+          if (order) this.updateDetailFromOrder(order)
+          else { this.orderStatus.status = 0; this.orderStatusLoaded = true }
+        } catch (_) {
+          if (isCurrentSession(this.sessionGeneration)) this.prescriptionLoaded = false
+        }
+      }
+    },
+    async loadOrderFromOrderId(orderId) {
+      try {
+        const order = await getOrderDetail(orderId, { showLoading: false })
+        if (!isCurrentSession(this.sessionGeneration)) return
+        if (!this.isValidPrescriptionId(order?.prescriptionId)) throw new Error('此订单没有关联处方')
+        await this.loadPrescriptionById(order.prescriptionId)
+        if (isCurrentSession(this.sessionGeneration)) this.updateDetailFromOrder(order)
+      } catch (error) {
+        if (isCurrentSession(this.sessionGeneration)) uni.showToast({ title: error.message || '加载订单处方失败', icon: 'none' })
+      }
+    },
+    goBuy() {
+      if (!this.canBuyMedicine || !isCurrentSession(this.sessionGeneration)) return
+      // 已有待付订单续付原单，避免为同一处方再次创建订单。
+      const order = this.orderStatus.order
+      const url = order?.id
+        ? `/pages/order/order-detail?orderId=${order.id}`
+        : `/pages/order/confirm?prescriptionId=${this.pageOptions.prescriptionId}`
+      uni.navigateTo({ url })
     }
   }
 }

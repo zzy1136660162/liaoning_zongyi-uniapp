@@ -35,7 +35,6 @@ import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail } from '@/api/product.js'
-import { getQuestionnaireByProductId } from '@/api/questionnaire.js'
 import { getImageUrl } from '@/utils/config.js'
 import {
   addCartItem,
@@ -66,7 +65,6 @@ export default {
   onLoad(options) {
     this.productId = options.id || ''
     this.skuId = options.skuId || ''
-    this.productName = options.name ? decodeURIComponent(options.name) : ''
     this.requestedQuantity = Math.max(1, Number(options.quantity) || 1)
     this.action = options.action || 'cart'
     if (!this.productId) {
@@ -100,8 +98,8 @@ export default {
         if (!isCurrentSession(this.sessionGeneration) || requestSeq !== this.productRequestSeq) return
         if (detail) {
           this.productDetail = detail
-          this.productName = detail.productName || detail.name || this.productName
-          this.noticeText = detail.contraindication || detail.noticeText || ''
+          this.productName = detail.productName || ''
+          this.noticeText = detail.contraindication || ''
           this.suitableCrowd = detail.suitableCrowd || ''
           this.usageDesc = detail.usageDesc || ''
           return
@@ -157,9 +155,8 @@ export default {
       const selectedItems = checkout.productIds.join(',')
       if (!checkout.requiresConsultation) {
         uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-        const therapyParam = checkout.allTraditionalTherapy ? '&therapy=1' : ''
         uni.navigateTo({
-          url: `/pages/order/confirm?selectedItems=${selectedItems}${therapyParam}`
+          url: `/pages/order/confirm?selectedItems=${selectedItems}`
         })
         return true
       }
@@ -186,23 +183,8 @@ export default {
         }
 
         const selectedQuantity = this.getSelectedQuantity()
-        let shouldGoQuestionnaire = hasBoundQuestionnaire(detail)
-
-        if (!shouldGoQuestionnaire) {
-          try {
-            const response = await getQuestionnaireByProductId(this.productId)
-            const questionnaire = response.data || response
-            shouldGoQuestionnaire = !!(
-              questionnaire &&
-              questionnaire.questionnaireId &&
-              Array.isArray(questionnaire.questions) &&
-              questionnaire.questions.length > 0
-            )
-          } catch (error) {
-            if (!isCurrentSession(this.sessionGeneration)) return
-            shouldGoQuestionnaire = false
-          }
-        }
+        // 问卷绑定以当前商品配置为准，不探测旧接口结构或猜测绑定关系。
+        const shouldGoQuestionnaire = hasBoundQuestionnaire(detail)
 
         if (shouldGoQuestionnaire) {
           const skuParam = this.skuId ? `&skuId=${encodeURIComponent(this.skuId)}` : ''

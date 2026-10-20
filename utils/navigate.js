@@ -1,3 +1,4 @@
+/* global __uniConfig */
 /**
  * 安全页面跳转（缓解「Page has not been registered yet」）
  */

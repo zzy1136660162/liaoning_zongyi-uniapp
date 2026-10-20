@@ -10,9 +10,7 @@ const read = (relativePath) => fs.readFileSync(path.resolve(uniappRoot, relative
 
 const relatedPagePaths = [
   'pages/order/order-detail.vue',
-  'pages/order/consultation_detail.vue',
   'pages/order/prescription_list.vue',
-  'pages/order/prescription_detail.vue',
   'pages/prescription/detail.vue'
 ]
 
@@ -27,20 +25,6 @@ assert.doesNotMatch(
   prescriptionListSource,
   /productDetail\.pharmacistName\s*\|\|/,
   '处方清单不得使用商品药师作为接诊医生'
-)
-
-const consultationDetailSource = read('pages/order/consultation_detail.vue')
-assert.doesNotMatch(
-  consultationDetailSource,
-  /没有医生ID[\s\S]{0,160}enrichByProduct/,
-  '问诊详情在 doctor_id 为空时不得从商品补医生'
-)
-
-const legacyPrescriptionDetailSource = read('pages/order/prescription_detail.vue')
-assert.doesNotMatch(
-  legacyPrescriptionDetailSource,
-  /prescription\.value\.doctorId\s*=\s*product\.doctorId/,
-  '旧处方详情不得从商品补 doctorId'
 )
 
 const orderDetailSource = read('pages/order/order-detail.vue')
