@@ -32,8 +32,8 @@ for (const combination of combinations) {
       getPatientList: async () => [{ id: 8, name: '本次就诊人' }],
       getAddressList: async () => [{ id: 7, isDefault: true }], queryFreight: async () => ({ freight: 0 }),
       createOrder: async input => { orders.push(input); return { id: 70, payableAmount: 2 * combination.reduce((sum, category) => sum + category * 10, 0) } },
-      ensureWeChatIdentity: async () => ({ openid: 'fixture' }),
-      wechatSinglePay: async (id, input) => { payments.push({ id, input }); return {} },
+      ensureWeChatIdentity: () => assert.fail('确认页不能重复获取支付身份'),
+      wechatSinglePay: async (...args) => { payments.push(args); return {} },
       STORAGE_KEY_CURRENT_ORDER: 'current_order', STORAGE_KEY_DEFAULT_ADDRESS_ID: 'default_address_id',
       logButtonClick() {}, console: { debug() {}, error() {}, warn() {} }
     }, ['loadProducts', 'loadOrderInfo', 'orderInfo', 'submitOrder', 'requiresShipping', 'requiresConsultationPatient'])
@@ -52,6 +52,7 @@ for (const combination of combinations) {
     assert.equal(orders[0].consultationId, combination.includes(1) ? 99 : undefined)
     assert.equal(orders[0].patientId, 8)
     assert.deepEqual(consultationChecks, combination.includes(1) ? [99] : [])
-    assert.equal(payments[0].input.totalAmount, expectedTotal)
+    assert.equal(page.orderInfo.value.total, expectedTotal)
+    assert.deepEqual(payments[0], [70])
   })
 }

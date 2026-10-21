@@ -4,7 +4,7 @@
 
 import { get, post } from '../utils/request.js'
 import { API_PATHS } from '../utils/config.js'
-import { assertCurrentSession, getSessionGeneration } from '../utils/session.js'
+import { assertCurrentSession, getSessionGeneration, getSessionToken, sessionChangedError } from '../utils/session.js'
 import { 
   STORAGE_KEY_WECHAT_OPENID, 
   STORAGE_KEY_WECHAT_UNIONID
@@ -76,18 +76,35 @@ export const getWeChatLoginCode = () => new Promise((resolve, reject) => {
  */
 export { logout } from './logout.js'
 
+const assertIdentitySession = (session, token) => {
+  assertCurrentSession(session)
+  if (getSessionToken() !== token) throw sessionChangedError()
+}
+
 /**
- * 获取微信 openid 和 unionid
- * @returns {Promise} 返回 { openid, unionid }
+ * 获取本次微信接口确认的 openid/unionid，供标识展示等场景使用。
+ * Token 决定商城账号，微信 code 由服务端向微信验证，两者不能相互替代。
+ * 标识缓存只是可丢弃的便利数据；缓存写入失败不能丢弃本次成功取得的身份。
+ * code 已在此接口消费，不能再把它传给支付接口重复交换。
+ * @returns {Promise<{openid: string, unionid?: string}>} 本次服务端验证的微信标识。
  */
 export const getWeChatOpenId = async () => {
   const session = getSessionGeneration()
+  const token = getSessionToken()
   const code = await getWeChatLoginCode()
-  assertCurrentSession(session)
+  assertIdentitySession(session, token)
   const identity = await get('/api/wechat/auth/jscode2session', { code }, { needAuth: false, showLoading: false })
-  assertCurrentSession(session)
-  if (identity.openid) uni.setStorageSync(STORAGE_KEY_WECHAT_OPENID, identity.openid)
-  if (identity.unionid) uni.setStorageSync(STORAGE_KEY_WECHAT_UNIONID, identity.unionid)
+  assertIdentitySession(session, token)
+  if (typeof identity?.openid !== 'string' || !identity.openid.trim()) throw new Error('未获取到微信身份，请重试')
+  for (const [key, value] of [[STORAGE_KEY_WECHAT_OPENID, identity.openid], [STORAGE_KEY_WECHAT_UNIONID, identity.unionid]]) {
+    if (!value) continue
+    try { uni.setStorageSync(key, value) }
+    catch (_) {
+      // 缓存和诊断均为尽力处理，不能把本次成功的微信身份交换改成失败。
+      try { console.warn('event=wechat_identity stage=identity_cache result=failed reason=storage_error') }
+      catch (_) { /* 诊断渠道不可用时，仍返回本次已核验的身份。 */ }
+    }
+  }
   return { openid: identity.openid, unionid: identity.unionid }
 }
 
@@ -158,24 +175,19 @@ export const getStoredWeChatUnionId = () => {
 }
 
 /**
- * 确保本地存在可用的微信身份信息
- * @returns {Promise<{openid: string, unionid?: string}>}
+ * 为一次支付取得新的、尚未消费的微信授权码。
+ * 不读取本地 openid，也不预先调用 jscode2session：支付接口会验证此 code，
+ * 并与 Token 所属账户的微信绑定核对，避免缓存过时或调用者伪造付款人。
+ * 这里不建立/切换商城会话，不修改账户绑定；授权失败或期间切号立即停止支付。
+ * @returns {Promise<{wechatCode: string}>} 只交给本次受 Token 保护的支付创建请求。
  */
 export const ensureWeChatIdentity = async () => {
-  const storedOpenid = getStoredWeChatOpenId()
-  if (storedOpenid) {
-    return {
-      openid: storedOpenid,
-      unionid: getStoredWeChatUnionId()
-    }
-  }
-
-  const wechatData = await getWeChatOpenId()
-  if (!wechatData || !wechatData.openid) {
-    throw new Error('未获取到微信支付信息，请稍后重试')
-  }
-
-  return wechatData
+  const session = getSessionGeneration()
+  const token = getSessionToken()
+  if (!token) throw new Error('请先登录后支付')
+  const wechatCode = await getWeChatLoginCode()
+  assertIdentitySession(session, token)
+  return { wechatCode }
 }
 
 /**

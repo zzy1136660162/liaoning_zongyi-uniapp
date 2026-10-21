@@ -1,4 +1,17 @@
 import { getCartEntries, splitCartItemKey } from './cart.js'
+import { resolveCheckoutQuestionnaire } from './questionnaire-state.js'
+
+// 仅表示下单问卷准入需重新确认；不是登录失效，也不适用于支付或订单快照保存失败。
+export const QUESTIONNAIRE_RECHECK_REQUIRED = 40910
+
+/**
+ * 按实时所选商品确定唯一问卷目标，保留该目标当前问卷对应的真实答卷 ID。
+ * 不接受本地 isMatch/通过标志；服务端仍须独立确认目标、归属、规则与有效期。
+ */
+export const getCheckoutQuestionnaireAnswer = items => {
+  const check = resolveCheckoutQuestionnaire(items)
+  return { ...check, questionnaireAnswerId: check.valid && check.state === 'passed' ? check.item.answerId : null }
+}
 
 const positiveInteger = (value, message) => {
   const number = Number(value)

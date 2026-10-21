@@ -2,13 +2,15 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { loadSetup, loadOptions } from './sfc-harness.mjs'
 import { requireConsultationPatient, parseConsultationContext } from '../utils/consultation-checkout.js'
+import { QUESTIONNAIRE_RECHECK_REQUIRED } from '../utils/checkout.js'
 
 const harness = (overrides = {}) => {
-  let onLoad
-  const orders = [], payments = [], writes = [], routes = []
+  let onLoad, onShow, onUnload
+  const orders = [], payments = [], writes = [], routes = [], questionnaireRoutes = [], channels = new Map()
   const mocks = {
     ref: value => ({ value }), computed: get => ({ get value() { return get() } }),
-    onLoad: callback => { onLoad = callback }, onShow() {}, onMounted() {},
+    onLoad: callback => { onLoad = callback }, onShow: callback => { onShow = callback },
+    onUnload: callback => { onUnload = callback }, onMounted() {},
     getSessionGeneration: () => 1, isCurrentSession: () => true, assertCurrentSession() {},
     parseConsultationContext, requireConsultationPatient,
     getPrescriptionDetail: async () => ({ id: 7, consultationId: 30, patientId: 8, status: 1, expired: false }),
@@ -22,8 +24,8 @@ const harness = (overrides = {}) => {
     getAddressList: async () => [{ id: 10, isDefault: true }], queryFreight: async () => ({ freight: 0 }),
     createOrderFromPrescription: async input => { orders.push(input); return { id: 42, orderNo: 'fixture-order', payableAmount: 18 } },
     createOrder: async () => { throw new Error('处方不能走普通购物车下单') },
-    ensureWeChatIdentity: async () => ({ openid: 'fixture-openid' }),
-    wechatSinglePay: async (id, input) => { payments.push({ id, ...input }); return {} },
+    ensureWeChatIdentity: () => assert.fail('确认页不能重复获取支付身份'),
+    wechatSinglePay: async (...args) => { payments.push({ id: args[0], args }); return {} },
     getCartEntries: () => { throw new Error('处方入口不读购物车') },
     buildOrderInfo: items => ({ items, prescriptions: [], deliveryInfo: {}, cost: {
       medicineCost: items.reduce((sum, item) => sum + item.price * item.quantity, 0), shippingFee: 0 } }),
@@ -31,14 +33,155 @@ const harness = (overrides = {}) => {
     STORAGE_KEY_CURRENT_ORDER: 'current_order', STORAGE_KEY_DEFAULT_ADDRESS_ID: 'default_address',
     console: { debug() {}, error() {}, warn() {} },
     uni: { getStorageSync: () => null, setStorageSync: (key, value) => writes.push({ key, value }), removeStorageSync() {},
-      showLoading() {}, hideLoading() {}, showToast() {}, redirectTo: route => routes.push(route.url) },
+      showLoading() {}, hideLoading() {}, showToast() {}, redirectTo: route => routes.push(route.url),
+      navigateTo: route => {
+        questionnaireRoutes.push(route.url)
+        route.success?.({ eventChannel: { on: (event, callback) => channels.set(event, callback) } })
+      } },
     ...overrides
   }
   const page = loadSetup('pages/order/confirm.vue', mocks, ['loadProducts', 'loadOrderInfo', 'loadCheckoutPatients',
-    'loadAddresses', 'submitOrder', 'selectPatient', 'selectedPatient', 'orderInfo', 'selectionIssue', 'categories'])
+    'loadAddresses', 'submitOrder', 'selectPatient', 'selectedPatient', 'orderInfo', 'selectionIssue', 'categories',
+    'prescriptionQuestionnaireAnswer', 'directPurchase', 'orderRemark'])
   onLoad({ prescriptionId: '7' })
-  return { page, orders, payments, writes, routes }
+  return { page, orders, payments, writes, routes, questionnaireRoutes, channels, show: () => onShow(), unload: () => onUnload() }
 }
+
+// 运行真实须知页与答题页，验证处方补答沿独立答卷通道回到原确认页，不借用购物车。
+const completePrescriptionQuestionnaire = async (checkout, getProductDetail, answerId = 501) => {
+  const parseRoute = url => Object.fromEntries(new URL(url, 'https://fixture.invalid').searchParams)
+  let questionnaireRoute
+  const answerChannels = new Map(), submitted = [], returns = []
+  const boundary = {
+    getSessionGeneration: () => 1, isCurrentSession: value => value === 1,
+    onSessionChanged: () => () => {}, getProductDetail,
+    resolveCartCompatibility: () => ({ valid: true }),
+    getCartProductInfo: () => assert.fail('处方补答不能读取购物车凭据'),
+    getCartEntries: () => assert.fail('处方补答不能读取购物车'),
+    addCartItem: () => assert.fail('处方补答不能加购'),
+    updateCartQuestionnaire: () => assert.fail('处方补答不能修改购物车'),
+    uni: { showLoading() {}, hideLoading() {}, showToast() {},
+      navigateBack: options => returns.push(options),
+      navigateTo: route => {
+        questionnaireRoute = route.url
+        route.success?.({ eventChannel: { on: (event, callback) => answerChannels.set(event, callback) } })
+      } }
+  }
+  const noticeDefinition = loadOptions('pages/products/product_notice.vue', boundary)
+  const notice = { ...noticeDefinition.data(), ...noticeDefinition.methods,
+    getOpenerEventChannel: () => ({ emit: (event, value) => checkout.channels.get(event)?.(value) }) }
+  noticeDefinition.onLoad.call(notice, parseRoute(checkout.questionnaireRoutes.at(-1)))
+  await notice.startQuestionnaire()
+  const definition = loadOptions('pages/products/product_questionnaire.vue', { ...boundary,
+    fetchAccountProfile: async () => ({ id: 7 }),
+    restoreQuestionnaireDraft: (_account, _product, _questionnaire, questions) => questions,
+    clearQuestionnaireDraft() {},
+    getQuestionnaireByProductId: async productId => ({ questionnaireId: Number(productId) * 10,
+      questions: [{ questionId: 1, questionType: 1, isRequired: 1,
+        options: [{ optionId: 2, optionText: '是' }] }] }),
+    submitQuestionnaire: async input => { submitted.push(input); return { answerId, isMatch: true } }
+  })
+  const questionnaire = { ...definition.data(), ...definition.methods,
+    getOpenerEventChannel: () => ({ emit: (event, value) => answerChannels.get(event)?.(value) }) }
+  definition.onLoad.call(questionnaire, parseRoute(questionnaireRoute))
+  await questionnaire.loadQuestionnaire()
+  questionnaire.selectAnswer(0, 2)
+  await questionnaire.submitAnswer()
+  definition.onUnload.call(questionnaire)
+  noticeDefinition.onUnload.call(notice)
+  assert.deepEqual(submitted, [{ productId: '20', questionnaireId: 200, answers: [{ questionId: 1, optionId: 2 }] }])
+  assert.deepEqual(returns, [{ delta: 2 }])
+}
+
+const questionnaireProduct = id => ({ id, productCategory: 1, status: 1, delSign: 0,
+  productName: '处方问卷商品', available: true, stock: 10, needQuestionnaire: 1, questionnaireId: id * 10,
+  skus: [{ id: 1, status: 1, delSign: 0, defaultFlag: 1, price: 12, stock: 10 }] })
+
+test('处方按实时商品最小ID补答，经须知与问卷返回原页后仍按处方数量和原患者备注创建', async () => {
+  let productIds = [30, 20]
+  const getProductDetail = async id => questionnaireProduct(Number(id))
+  const checkout = harness({ getProductDetail,
+    getPrescriptionItems: async () => productIds.map(productId => ({ id: productId + 100, productId, days: 7 })) })
+  await checkout.show()
+  checkout.page.orderRemark.value = '保留原处方备注'
+
+  await checkout.page.submitOrder()
+
+  assert.equal(checkout.orders.length, 0)
+  assert.match(checkout.questionnaireRoutes[0], /product_notice\?id=20&/)
+  assert.match(checkout.questionnaireRoutes[0], /action=repair/)
+  assert.match(checkout.questionnaireRoutes[0], /buyQuantity=1/)
+  await completePrescriptionQuestionnaire(checkout, getProductDetail)
+  productIds = [20, 30]
+  await checkout.show()
+  assert.equal(checkout.page.selectedPatient.value.id, 8)
+  assert.equal(checkout.page.orderRemark.value, '保留原处方备注')
+  assert.equal(checkout.page.directPurchase.value, null)
+  assert.deepEqual(checkout.page.orderInfo.value.items.map(item => item.quantity), [1, 1])
+
+  await checkout.page.submitOrder()
+
+  assert.equal(checkout.orders.length, 1)
+  assert.equal(checkout.orders[0].prescriptionId, 7)
+  assert.equal(checkout.orders[0].questionnaireAnswerId, 501)
+  assert.equal(checkout.orders[0].remark, '保留原处方备注')
+  assert.deepEqual(checkout.payments[0].args, [42])
+})
+
+test('处方补答拒绝其他商品或旧问卷回调，切号或卸载后的迟到答卷不能回填或创建订单', async () => {
+  for (const boundary of ['session', 'unload']) {
+    let generation = 1
+    const checkout = harness({ getProductDetail: async id => questionnaireProduct(Number(id)),
+      getSessionGeneration: () => generation, isCurrentSession: value => value === generation,
+      assertCurrentSession: value => { if (value !== generation) throw Object.assign(new Error('stale'), { code: 'SESSION_CHANGED' }) } })
+    await checkout.show()
+    await checkout.page.submitOrder()
+    const answer = checkout.channels.get('directPurchaseQuestionnaireAnswered')
+    answer({ productId: 30, skuId: 1, questionnaireId: 200, answerId: 501 })
+    answer({ productId: 20, skuId: 1, questionnaireId: 199, answerId: 501 })
+    assert.equal(checkout.page.prescriptionQuestionnaireAnswer.value, null)
+    if (boundary === 'session') generation++
+    else checkout.unload()
+    answer({ productId: 20, skuId: 1, questionnaireId: 200, answerId: 501 })
+    assert.equal(checkout.page.prescriptionQuestionnaireAnswer.value, null)
+    await checkout.page.submitOrder()
+    assert.equal(checkout.orders.length, 0)
+    assert.equal(checkout.payments.length, 0)
+  }
+})
+
+test('处方下单40910清除本页旧凭据，再补答后仍创建原处方订单', async () => {
+  const requests = []
+  const getProductDetail = async id => questionnaireProduct(Number(id))
+  const checkout = harness({ getProductDetail, createOrderFromPrescription: async input => {
+    requests.push(input)
+    if (requests.length === 1) throw Object.assign(new Error('答卷已失效，请重新填写'), { code: QUESTIONNAIRE_RECHECK_REQUIRED })
+    return { id: 42, payableAmount: 18 }
+  } })
+  await checkout.show()
+  checkout.page.orderRemark.value = '原处方备注'
+  await checkout.page.submitOrder()
+  await completePrescriptionQuestionnaire(checkout, getProductDetail)
+  await checkout.show()
+
+  await checkout.page.submitOrder()
+
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].questionnaireAnswerId, 501)
+  assert.equal(checkout.page.prescriptionQuestionnaireAnswer.value, null)
+  assert.equal(checkout.payments.length, 0)
+  await completePrescriptionQuestionnaire(checkout, getProductDetail, 502)
+  await checkout.show()
+  await checkout.page.submitOrder()
+  assert.equal(requests.length, 2)
+  assert.equal(requests[1].questionnaireAnswerId, 502)
+  assert.equal(requests[1].prescriptionId, 7)
+  assert.equal(requests[1].remark, '原处方备注')
+  assert.equal(checkout.page.selectedPatient.value.id, 8)
+  assert.equal(checkout.page.directPurchase.value, null)
+  assert.equal(checkout.page.orderInfo.value.items[0].quantity, 1)
+  assert.deepEqual(checkout.payments[0].args, [42])
+})
 
 test('真实处方固定原患者，按每条明细一件和默认真实SKU展示，支付只用后台金额', async () => {
   const { page, orders, payments, writes } = harness()
@@ -53,7 +196,8 @@ test('真实处方固定原患者，按每条明细一件和默认真实SKU展�
   assert.deepEqual(orders.map(({ prescriptionId, addressId, remark }) => ({ prescriptionId, addressId, remark })),
     [{ prescriptionId: 7, addressId: 10, remark: '' }])
   if ('requestId' in orders[0]) assert.match(orders[0].requestId, /^\S+$/)
-  assert.equal(payments[0].totalAmount, 18)
+  assert.equal(page.orderInfo.value.total, 18, '创建成功后展示后台成交金额')
+  assert.deepEqual(payments[0].args, [42], '支付身份和金额由统一支付入口及后台核定')
   assert.ok(writes.every(write => ['current_order', 'default_address'].includes(write.key)), '不写虚拟购物车或旧数量键')
 })
 

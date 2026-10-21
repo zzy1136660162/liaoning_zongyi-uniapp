@@ -1,24 +1,43 @@
-import { getSessionGeneration, isCurrentSession, assertCurrentSession, sessionChangedError } from '../utils/session.js'
+import { getSessionGeneration, getSessionToken, isCurrentSession, sessionChangedError } from '../utils/session.js'
 /**
  * 支付模块API
  */
 
-import { post } from '@/utils/request.js'
+import { post } from '../utils/request.js'
+import { ensureWeChatIdentity } from './auth.js'
 import { logPaymentDiagnostic } from '../utils/diagnostics.js'
 
+const isPaymentSessionCurrent = (session, token) => isCurrentSession(session) && getSessionToken() === token
+const assertPaymentSession = (session, token) => {
+  if (!isPaymentSessionCurrent(session, token)) throw sessionChangedError()
+}
+
 /**
- * 创建支付预订单
+ * 所有页面共用的支付准备入口。
+ * Token 认证订单所属商城账号；本次微信 code 由后端核验付款微信身份。
+ * 调用者不能提供 openid、金额或认证身份覆盖这两个来源，金额继续由服务端订单计算。
+ * 每次重试都重新授权，禁止复用已消费的 code；授权失败或切号时不创建支付尝试。
+ */
+const prepareWechatPayment = async (orderId, session, token) => {
+  const identity = await ensureWeChatIdentity()
+  assertPaymentSession(session, token)
+  const response = await post(`/api/payment/single/create-by-order/${orderId}`, {
+    wechatCode: identity.wechatCode
+  }, { needAuth: true, showLoading: true })
+  assertPaymentSession(session, token)
+  return response
+}
+
+/**
+ * 创建支付预订单；仅需渠道和订单 ID，付款身份在模块内部取得。
  * @param {String} channel 支付渠道 wechat/alipay
  * @param {Number} orderId 订单ID
  */
-export const createPrepay = (channel, orderId) => {
+export const createPrepay = async (channel, orderId) => {
   if (channel !== 'wechat') {
-    return Promise.reject(new Error('暂不支持该支付渠道'))
+    throw new Error('暂不支持该支付渠道')
   }
-  return post(`/api/payment/single/create-by-order/${orderId}`, {}, {
-    needAuth: true,
-    showLoading: true
-  })
+  return prepareWechatPayment(orderId, getSessionGeneration(), getSessionToken())
 }
 
 /**
@@ -44,20 +63,16 @@ export const syncPaymentByOrder = async (orderId, outTradeNo) => {
 /**
  * 微信单笔支付（商品费用+快递费统一支付给主商户）
  * @param {Number} orderId 订单ID
- * @param {Object} paymentData 支付数据（可选，包含openid、totalAmount等）
+ * 与订单详情、确认页统一使用同一身份协议，不接受页面传入的 openid 或金额。
+ * SDK 成功仅代表付款提交，到账及履约仍由服务端查单/签名回调确认。
  */
-export const wechatSinglePay = async (orderId, paymentData = {}) => {
+export const wechatSinglePay = async (orderId) => {
   const session = getSessionGeneration()
+  const token = getSessionToken()
   try {
     logPaymentDiagnostic('client_pay_prepare', orderId)
     
-    // 调用后端创建单笔支付订单
-    // request.js 已统一处理 code，成功时直接返回 data
-    const singlePayData = await post('/api/payment/single/create-by-order/' + orderId, paymentData, {
-      needAuth: true,
-      showLoading: true,
-      loadingTitle: '正在创建支付订单...'
-    })
+    const singlePayData = await prepareWechatPayment(orderId, session, token)
     
     logPaymentDiagnostic('client_pay_prepared', orderId)
     
@@ -65,7 +80,7 @@ export const wechatSinglePay = async (orderId, paymentData = {}) => {
       throw new Error('支付参数不完整')
     }
     
-    assertCurrentSession(session)
+    assertPaymentSession(session, token)
     const payParams = singlePayData.payParams
     
     logPaymentDiagnostic('client_pay_invoke', orderId)
@@ -80,7 +95,7 @@ export const wechatSinglePay = async (orderId, paymentData = {}) => {
         signType: payParams.signType || 'RSA',
         paySign: payParams.paySign,
         success: (res) => {
-          if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
+          if (!isPaymentSessionCurrent(session, token)) { reject(sessionChangedError()); return }
           // The client callback is not authoritative proof of server settlement.
           logPaymentDiagnostic('client_pay_submitted', orderId)
           uni.showToast({
@@ -95,7 +110,7 @@ export const wechatSinglePay = async (orderId, paymentData = {}) => {
           })
         },
         fail: (err) => {
-          if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
+          if (!isPaymentSessionCurrent(session, token)) { reject(sessionChangedError()); return }
           logPaymentDiagnostic('client_pay_failed', orderId,
             err.errMsg === 'requestPayment:fail cancel' ? 'user_cancelled' : 'sdk_failure')
           if (err.errMsg === 'requestPayment:fail cancel') {

@@ -1,23 +1,54 @@
 <template>
   <view class="profile-page">
     <view class="user-header">
-      <view class="user-info">
-        <view v-if="profileLoading" class="profile-status">个人资料加载中...</view>
-        <view v-else-if="profileError" class="profile-status">
+      <view
+        class="user-info"
+        @click="goToLogin"
+      >
+        <view
+          v-if="profileLoading"
+          class="profile-status"
+        >
+          个人资料加载中...
+        </view>
+        <view
+          v-else-if="profileError"
+          class="profile-status"
+        >
           <text>{{ profileError }}</text>
-          <button class="profile-retry" size="mini" @click="loadUserProfile">重新加载</button>
+          <button
+            class="profile-retry"
+            size="mini"
+            @click.stop="loadUserProfile"
+          >
+            重新加载
+          </button>
         </view>
         <template v-else>
           <view class="name">
-            {{ userInfo.realName || '微信用户' }}
+            {{ isLoggedIn ? (userInfo.realName || '微信用户') : '未登录用户' }}
           </view>
-          <view class="card-info">
+          <view
+            v-if="isLoggedIn"
+            class="card-info"
+          >
             <text class="card-label">
               就诊卡号
             </text>
             <text class="card-number">
               {{ userInfo.idNumber || '暂无' }}
             </text>
+          </view>
+          <view
+            v-else
+            class="profile-login-hint"
+          >
+            <text>点击登录，查看个人资料</text>
+            <uni-icons
+              type="right"
+              size="14"
+              color="#ffffff"
+            />
           </view>
         </template>
       </view>
@@ -32,8 +63,14 @@
           class="view-all"
           @click="goToOrderList"
         >
-          <text class="view-all-text">全部订单</text>
-          <uni-icons type="right" size="10" color="#999999" />
+          <text class="view-all-text">
+            全部订单
+          </text>
+          <uni-icons
+            type="right"
+            size="10"
+            color="#999999"
+          />
         </view>
       </view>
       <view class="order-grid">
@@ -186,18 +223,24 @@
       </view>
       <view
         class="settings-item"
-        @click="handleLogout"
+        @click="handleAuthAction"
       >
         <view class="settings-left">
           <uni-icons
-            type="close"
+            :type="isLoggedIn ? 'close' : 'person'"
             size="32"
-            color="#e64340"
+            :color="isLoggedIn ? '#e64340' : '#4A90E2'"
           />
           <text class="settings-text">
-            退出登录
+            {{ isLoggedIn ? '退出登录' : '去登录' }}
           </text>
         </view>
+        <uni-icons
+          v-if="!isLoggedIn"
+          type="right"
+          size="16"
+          color="#999999"
+        />
       </view>
     </view>
 
@@ -228,6 +271,7 @@ const emptyUserInfo = () => ({
   idNumber: ''
 })
 const userInfo = ref(emptyUserInfo())
+const isLoggedIn = ref(Boolean(getSessionToken()))
 const profileLoading = ref(false)
 const profileError = ref('')
 let profileRequestSequence = 0
@@ -250,8 +294,11 @@ const loadUserProfile = async () => {
   const isCurrentRequest = () => pageActive && sequence === profileRequestSequence && isCurrentSession(session)
   // 重新进入或重试时立即清空上次展示，接口失败不能冒充资料仍然有效。
   userInfo.value = emptyUserInfo()
-  profileLoading.value = true
+  isLoggedIn.value = Boolean(getSessionToken())
+  profileLoading.value = false
   profileError.value = ''
+  if (!isLoggedIn.value) return
+  profileLoading.value = true
   try {
     const userData = await fetchAccountProfile()
     if (!isCurrentRequest()) return
@@ -270,6 +317,20 @@ const loadUserProfile = async () => {
   }
 }
 
+const goToLogin = () => {
+  if (getSessionToken()) return
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_LOGIN', accessTitle: '去登录', accessDescription: '从个人中心进入登录页，完成后返回个人中心' })
+  uni.navigateTo({ url: `/pages/register/register?redirect=${encodeURIComponent('/pages/user/profile')}` })
+}
+
+const handleAuthAction = () => {
+  if (!getSessionToken()) {
+    goToLogin()
+    return
+  }
+  handleLogout()
+}
+
 const handleLogout = async () => {
   const session = getSessionGeneration()
   uni.showModal({
@@ -284,6 +345,7 @@ const handleLogout = async () => {
       const revocation = logout(getSessionToken())
       endSession()
       const endedGeneration = getSessionGeneration()
+      isLoggedIn.value = false
       userInfo.value = emptyUserInfo()
       uni.reLaunch({ url: '/pages/register/register' })
       const result = await revocation
@@ -297,6 +359,10 @@ const handleLogout = async () => {
 const loadOrderStats = async () => {
   if (!pageActive) return
   const sequence = ++statsRequestSequence
+  if (!getSessionToken()) {
+    orderStats.value = { pending: 0, paid: 0, cancelled: 0, refund: 0 }
+    return
+  }
   const session = getSessionGeneration()
   const isCurrentRequest = () => pageActive && sequence === statsRequestSequence && isCurrentSession(session)
   try {
@@ -458,6 +524,15 @@ onUnload(() => {
   align-items: flex-start;
   gap: 16rpx;
   min-width: 0;
+}
+
+.profile-login-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .card-label {

@@ -8,6 +8,7 @@ const createProfile = () => {
   let generation = 1
   const state = loadSetup('pages/user/profile.vue', {
     ref: value => ({ value }),
+    getSessionToken: () => 'fixture-token',
     onShow: fn => { hooks.show = fn },
     onUnload: fn => { hooks.unload = fn },
     getSessionGeneration: () => generation, isCurrentSession: value => value === generation,
