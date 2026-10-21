@@ -102,7 +102,7 @@ test('medicine_list 实际加购和增减数量即时更新角标，其他分类
   } finally { definition.onUnload.call(page) }
 })
 
-test('需要问卷的加购先跳转而不虚增数量，真正写入购物车后才刷新', async () => {
+test('需要问卷的商品先加购并刷新数量，答题留到结算统一检查', async () => {
   const tab = createTabBar()
   const definition = loadOptions('pages/products/medicine_list.vue', {
     ...cart, console: quiet, getApp: () => ({ globalData: { mallIntroPlayed: true } }),
@@ -113,8 +113,9 @@ test('需要问卷的加购先跳转而不虚增数量，真正写入购物车�
   const product = { id: 10, skuId: 1, price: 5, stock: 20, available: true, needQuestionnaire: 1, questionnaireId: 7 }
   const page = { ...definition.data(), ...definition.methods, ensureLogin: () => true, ensureCartCompatible: () => true }
   await page.handleAddToCart(product)
-  assert.match(navigations[0].url, /product_notice\?id=10&skuId=1&quantity=1&action=cart/)
-  assert.equal(count(tab), 0)
+  assert.equal(navigations.length, 0)
+  assert.equal(count(tab), 1)
+  assert.equal(cart.getCartProductInfo(10, 1).questionnairePassed, false)
   cart.addCartItem(product, 2, { questionnaireId: 7, questionnairePassed: true, answerId: 9 })
   assert.equal(count(tab), 2)
 })

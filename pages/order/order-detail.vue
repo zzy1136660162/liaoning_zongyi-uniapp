@@ -85,6 +85,7 @@
         <text class="info-value">
           {{ item.value }}
         </text>
+        <text v-if="item.labelKey === 'orderNo' && item.value" class="copy-order-no" @click.stop="copyOrderNo">复制</text>
       </view>
 
       <!-- 操作按钮 -->
@@ -412,6 +413,14 @@
       }
     },
     methods: {
+      copyOrderNo() {
+        const orderNo = String(this.order.orderNo ?? '').trim()
+        if (!orderNo) return
+        uni.setClipboardData({
+          data: orderNo,
+          fail: () => uni.showToast({ title: '复制失败，请重试', icon: 'none' })
+        })
+      },
       async handlePayOrder() {
         if (!this.canPay || this.paying || !this.paymentPageActive) return
         const session = getSessionGeneration()
@@ -1192,12 +1201,23 @@
     font-size: 26rpx;
     color: #999999;
     width: 160rpx;
+    flex-shrink: 0;
   }
 
   .info-value {
     font-size: 28rpx;
     color: #333333;
     flex: 1;
+    min-width: 0;
+    word-break: break-all;
+  }
+
+  .copy-order-no {
+    flex-shrink: 0;
+    margin-left: 16rpx;
+    font-size: 22rpx;
+    line-height: 1.5;
+    color: #2f7cf6;
   }
 
   /* 操作按钮 */

@@ -16,12 +16,6 @@ export const resolveGoodsMerchantType = (product = {}) => Number(product.goodsMe
 export const isHealthGoods = (product = {}) => Number(product.productCategory) === PRODUCT_CATEGORY_HEALTH
 export const isHospitalMedical = (product = {}) => Number(product.productCategory) === PRODUCT_CATEGORY_FORMULA
 
-export const hasBoundQuestionnaire = (product = {}) => {
-  if (Number(product.needQuestionnaire) !== 1 || product.questionnaireId == null) return false
-  const id = String(product.questionnaireId).trim()
-  return id !== '' && id !== '0'
-}
-
 export const resolveProductTypeLabel = (product = {}) => ({
   1: '制剂', 2: '健康产品', 3: '传统疗法'
 })[Number(product.productCategory)] || '分类待确认'

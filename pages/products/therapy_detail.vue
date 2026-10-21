@@ -796,6 +796,7 @@ import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/util
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { getProductDetail, mapProductDetail } from '@/api/product.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
+import { resolveQuestionnaireState, getQuestionnaireStateMessage, buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 import { getImageUrl } from '@/utils/config.js'
 import { getProductCartLines } from '@/utils/product-list-cart.js'
 import { formatRichText } from '@/utils/product-rich-text.js'
@@ -906,7 +907,6 @@ const productImages = computed(() => {
 
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
-const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
 const selectedSpec = computed(() => saleProduct.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
 const maxPurchaseQuantity = computed(() => resolvePurchaseQuantityLimit(saleProduct.value))
 const canPurchase = computed(() => isPurchaseAvailable(saleProduct.value))
@@ -1127,14 +1127,9 @@ const ensureCartCompatible = (targetProduct) => {
   return true
 }
 
-const hasQuestionnairePassed = (targetProduct) => {
-  const entry = getCartProductInfo(targetProduct.id, targetProduct.skuId || null)
-  return !!(entry && entry.questionnairePassed)
-}
-
 const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart') => {
   uni.navigateTo({
-    url: `/pages/products/product_notice?id=${targetProduct.id}&quantity=${selectedQuantity}&action=${action}${targetProduct.skuId ? '&skuId=' + encodeURIComponent(targetProduct.skuId) : ''}`
+    url: buildQuestionnaireNoticeUrl(targetProduct, { quantity: selectedQuantity, action })
   })
   return false
 }
@@ -1194,14 +1189,16 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
     return false
   }
 
-  const alreadyPassed = hasQuestionnairePassed(targetProduct)
-  if (Number(targetProduct.needQuestionnaire) === 1 && !alreadyPassed) {
+  const questionnaireState = resolveQuestionnaireState(targetProduct, getCartProductInfo(targetProduct.productId || targetProduct.id, targetProduct.skuId))
+  if (mode === 'buy' && questionnaireState === 'unavailable') {
+    uni.showToast({ title: getQuestionnaireStateMessage(questionnaireState), icon: 'none' })
+    return false
+  }
+  if (mode === 'buy' && questionnaireState === 'required') {
     return navigateToNotice(targetProduct, requestedQuantity, mode)
   }
 
-  const saved = addCartItem(targetProduct, requestedQuantity, {
-    questionnairePassed: Number(targetProduct.needQuestionnaire) !== 1 || alreadyPassed
-  })
+  const saved = addCartItem(targetProduct, requestedQuantity)
   if (!saved) {
     uni.showToast({
       title: '加入购物车失败',

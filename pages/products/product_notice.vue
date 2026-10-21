@@ -25,7 +25,7 @@
         <text class="block-content">{{ usageDesc }}</text>
       </view>
 
-      <button class="start-btn" @click="startQuestionnaire">继续</button>
+      <button class="start-btn" :disabled="continuing" :loading="continuing" @click="startQuestionnaire">继续</button>
     </view>
   </view>
 </template>
@@ -39,12 +39,14 @@ import { getImageUrl } from '@/utils/config.js'
 import {
   addCartItem,
   buildCartItemKey,
-  getCartProductQuantity,
+  getCartProductInfo,
+  getCartEntries,
   prepareCheckout,
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { logPageView } from '@/api/access-log.js'
-import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
+import { resolveQuestionnaireState, getQuestionnaireStateMessage } from '@/utils/questionnaire-state.js'
+import { loadCartProducts } from '@/utils/cart-products.js'
 
 export default {
   data() {
@@ -59,7 +61,11 @@ export default {
       productDetail: null,
       productRequestSeq: 0,
       requestedQuantity: 1,
-      action: 'cart'
+      action: 'cart',
+      selectedItems: '',
+      pageActive: true,
+      continuing: false,
+      returnTimer: null
     }
   },
   onLoad(options) {
@@ -67,6 +73,7 @@ export default {
     this.skuId = options.skuId || ''
     this.requestedQuantity = Math.max(1, Number(options.quantity) || 1)
     this.action = options.action || 'cart'
+    this.selectedItems = decodeURIComponent(options.selectedItems || '')
     if (!this.productId) {
       console.warn('missing productId on notice page')
       return
@@ -77,10 +84,15 @@ export default {
     if (this.productId) this.loadProductDetail(this.productId)
   },
   onUnload() {
+    this.pageActive = false
     this.productRequestSeq += 1
+    if (this.returnTimer) clearTimeout(this.returnTimer)
   },
   methods: {
     getImageUrl,
+    isNoticeCurrent() {
+      return this.pageActive && isCurrentSession(this.sessionGeneration)
+    },
     resolveSelectedProduct(detail = this.productDetail) {
       return detail ? withProductSku(detail, resolveProductSku(detail, this.skuId)) : null
     },
@@ -88,14 +100,20 @@ export default {
       return buildCartItemKey(detail?.productId || detail?.id || this.productId, detail?.skuId || this.skuId || null)
     },
     getSelectedQuantity() {
-      return Math.max(1, Number(this.requestedQuantity) || getCartProductQuantity(this.productId, 1, this.skuId) || 1)
+      return Math.max(1, Number(this.requestedQuantity) || 1)
+    },
+    goQuestionnaire(product, action = this.action) {
+      const productId = product.productId || product.id
+      const skuParam = product.skuId ? `&skuId=${encodeURIComponent(product.skuId)}` : ''
+      const selectedParam = this.selectedItems ? `&selectedItems=${encodeURIComponent(this.selectedItems)}` : ''
+      uni.navigateTo({ url: `/pages/products/product_questionnaire?id=${encodeURIComponent(productId)}&quantity=${this.getSelectedQuantity()}&action=${action}${skuParam}${selectedParam}` })
     },
     async loadProductDetail(productId) {
       const requestSeq = ++this.productRequestSeq
       this.productDetail = null
       try {
         const detail = await getProductDetail(productId)
-        if (!isCurrentSession(this.sessionGeneration) || requestSeq !== this.productRequestSeq) return
+        if (!this.isNoticeCurrent() || requestSeq !== this.productRequestSeq) return
         if (detail) {
           this.productDetail = detail
           this.productName = detail.productName || ''
@@ -105,7 +123,7 @@ export default {
           return
         }
       } catch (error) {
-        if (!isCurrentSession(this.sessionGeneration) || requestSeq !== this.productRequestSeq) return
+        if (!this.isNoticeCurrent() || requestSeq !== this.productRequestSeq) return
         console.warn('loadProductDetail failed:', error)
       }
       if (!this.noticeText) {
@@ -114,13 +132,11 @@ export default {
     },
     async ensureCartCompatible(detail) {
       const target = detail || this.productDetail || await getProductDetail(this.productId)
-      if (!target) {
+      if (!target || !this.isNoticeCurrent()) {
         return false
       }
       const saleProduct = this.resolveSelectedProduct(target)
-      const flow = resolveCartCompatibility(saleProduct, {
-        ignoreCartKey: this.getCartKey(saleProduct)
-      })
+      const flow = resolveCartCompatibility(saleProduct)
       if (!flow.valid) {
         uni.showToast({
           title: flow.message,
@@ -131,20 +147,24 @@ export default {
       this.productDetail = target
       return true
     },
-    goCheckout(detail) {
-      if (!isCurrentSession(this.sessionGeneration)) return false
+    async goCheckout(detail) {
+      if (!this.isNoticeCurrent()) return false
       const saleProduct = this.resolveSelectedProduct(detail)
       const cartKey = this.getCartKey(saleProduct)
-      const checkout = prepareCheckout([cartKey], [{
+      const selectedKeys = this.action === 'checkout' ? this.selectedItems.split(',').filter(Boolean) : [cartKey]
+      const products = this.action === 'checkout'
+        ? await loadCartProducts(selectedKeys, getCartEntries(), getProductDetail)
+        : [{ ...saleProduct, id: cartKey, cartKey, productId: saleProduct.productId || saleProduct.id }]
+      if (!this.isNoticeCurrent()) return false
+      const checkout = prepareCheckout(selectedKeys, [{
         id: 'notice_checkout',
-        products: [{
-          ...saleProduct,
-          id: cartKey,
-          cartKey,
-          productId: saleProduct.productId || saleProduct.id
-        }]
+        products
       }])
       if (!checkout.valid) {
+        if (checkout.questionnaireCheck?.state === 'required') {
+          this.goQuestionnaire(checkout.questionnaireCheck.item, 'checkout')
+          return false
+        }
         uni.showToast({
           title: checkout.message,
           icon: 'none'
@@ -167,6 +187,7 @@ export default {
       return true
     },
     async startQuestionnaire() {
+      if (this.continuing || !this.isNoticeCurrent()) return
       if (!this.productId) {
         uni.showToast({
           title: '缺少商品信息',
@@ -175,30 +196,36 @@ export default {
         return
       }
 
+      this.continuing = true
       uni.showLoading({ title: '校验中...' })
       try {
         const detail = await getProductDetail(this.productId)
+        if (!this.isNoticeCurrent()) return
         if (!(await this.ensureCartCompatible(detail))) {
           return
         }
+        if (!this.isNoticeCurrent()) return
 
         const selectedQuantity = this.getSelectedQuantity()
-        // 问卷绑定以当前商品配置为准，不探测旧接口结构或猜测绑定关系。
-        const shouldGoQuestionnaire = hasBoundQuestionnaire(detail)
-
-        if (shouldGoQuestionnaire) {
-          const skuParam = this.skuId ? `&skuId=${encodeURIComponent(this.skuId)}` : ''
-          uni.navigateTo({
-            url: `/pages/products/product_questionnaire?id=${this.productId}&quantity=${selectedQuantity}&action=${this.action}${skuParam}`
-          })
+        const saleProduct = this.resolveSelectedProduct(detail)
+        const state = resolveQuestionnaireState(saleProduct, getCartProductInfo(this.productId, saleProduct.skuId))
+        if (this.action !== 'cart' && state === 'unavailable') throw new Error(getQuestionnaireStateMessage(state))
+        // 加购不答题；立即购买/整组结算/补答只进入当前绑定的问卷。
+        if (this.action !== 'cart' && state === 'required') {
+          this.goQuestionnaire(saleProduct)
           return
         }
 
-        const saleProduct = this.resolveSelectedProduct(detail)
-        if (!isCurrentSession(this.sessionGeneration)) return
-        const success = addCartItem(saleProduct, selectedQuantity, {
-          questionnairePassed: !hasBoundQuestionnaire(detail)
-        })
+        if (!this.isNoticeCurrent()) return
+        if (this.action === 'repair') {
+          uni.navigateBack({ delta: 1 })
+          return
+        }
+        if (this.action === 'checkout') {
+          await this.goCheckout(saleProduct)
+          return
+        }
+        const success = addCartItem(saleProduct, selectedQuantity)
         if (!success) {
           uni.showToast({
             title: '加入购物车失败',
@@ -208,7 +235,7 @@ export default {
         }
 
         if (this.action === 'buy') {
-          this.goCheckout(saleProduct)
+          await this.goCheckout(saleProduct)
           return
         }
 
@@ -217,8 +244,8 @@ export default {
           icon: 'success'
         })
 
-        setTimeout(() => {
-          if (!isCurrentSession(this.sessionGeneration)) return
+        this.returnTimer = setTimeout(() => {
+          if (!this.isNoticeCurrent()) return
           uni.navigateBack({
             delta: 1,
             success: () => {
@@ -227,13 +254,14 @@ export default {
           })
         }, 1200)
       } catch (error) {
-        if (!isCurrentSession(this.sessionGeneration)) return
+        if (!this.isNoticeCurrent()) return
         console.error('startQuestionnaire failed:', error)
         uni.showToast({
           title: error.message || '请求失败，请稍后重试',
           icon: 'none'
         })
       } finally {
+        if (!this.returnTimer) this.continuing = false
         if (isCurrentSession(this.sessionGeneration)) uni.hideLoading()
       }
     }

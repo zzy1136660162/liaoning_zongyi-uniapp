@@ -227,6 +227,7 @@ import TabBar from '@/components/TabBar/TabBar.vue'
 import { BASE_URL } from '@/utils/config.js'
 import { logPageView } from '@/utils/accessLog.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
+import { buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 
 const parseCartLoadError = (error) => {
   const statusCode = error?.statusCode
@@ -578,6 +579,11 @@ export default {
 
         const checkout = prepareCheckout(this.selectedItems, this.categories)
         if (!checkout.valid) {
+          if (checkout.questionnaireCheck?.state === 'required') {
+            uni.navigateTo({ url: buildQuestionnaireNoticeUrl(checkout.questionnaireCheck.item,
+              { action: 'checkout', selectedItems: checkout.productIds }) })
+            return
+          }
           uni.showToast({ title: checkout.message, icon: 'none' })
           return
         }

@@ -42,9 +42,12 @@
         @click="goToOrderDetail(order.id)"
       >
         <view class="order-header">
-          <text class="order-no">
-            订单号: {{ order.orderNo }}
-          </text>
+          <view class="order-number">
+            <text class="order-no">
+              订单号: {{ order.orderNo }}
+            </text>
+            <text v-if="order.orderNo" class="copy-order-no" @click.stop="copyOrderNo(order.orderNo)">复制</text>
+          </view>
           <text
             class="order-status"
             :class="'s-' + order.status"
@@ -95,7 +98,7 @@
         </view>
         <view v-else class="order-products-empty">暂无商品明细</view>
 
-        <view v-if="hasRedeemVouchers(order)" class="order-redeem-summary">
+        <view v-if="hasRedeemEntitlement(order)" class="order-redeem-summary">
           {{ redeemSummaryText(order) }}
         </view>
 
@@ -257,11 +260,13 @@ const flattenRedeemVouchers = (order = {}) => {
   return (order.items || []).flatMap(item => item.redeemVouchers || [])
 }
 
-const hasRedeemVouchers = (order = {}) => {
+const hasRedeemEntitlement = (order = {}) => {
+  // 只认购买时的核销资格或已生成的真实券，整单默认核销状态不代表有权益。
   return hasTherapyEntitlement(order)
 }
 
 const redeemSummaryText = (order = {}) => {
+  if (!hasRedeemEntitlement(order)) return ''
   const vouchers = flattenRedeemVouchers(order)
   if (vouchers.length > 0) {
     const redeemedCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 1).length
@@ -545,6 +550,16 @@ const handleConfirmReceipt = async (orderId) => {
   })
 }
 
+const copyOrderNo = (value) => {
+  const orderNo = String(value ?? '').trim()
+  if (!orderNo) return
+  // setClipboardData 成功时使用平台原生提示，不叠加第二个成功提示。
+  uni.setClipboardData({
+    data: orderNo,
+    fail: () => uni.showToast({ title: '复制失败，请重试', icon: 'none' })
+  })
+}
+
 // 跳转到订单详情
 const goToOrderDetail = (orderId) => {
   if (!orderId || navigatingOrderId.value === orderId) {
@@ -785,18 +800,39 @@ $info: #3b82f6;
 .order-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding-bottom: 12rpx;
 }
 
+.order-number {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+  margin-right: 16rpx;
+}
+
 .order-no {
+  min-width: 0;
   font-size: 26rpx;
   color: rgba(15, 23, 42, 0.92);
   font-weight: 700;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.copy-order-no {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  padding: 2rpx 0;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: $primary;
 }
 
 /* 状态徽标：class 驱动，颜色/背景一致 */
 .order-status {
+  flex-shrink: 0;
   font-size: 22rpx;
   font-weight: 700;
   padding: 6rpx 14rpx;

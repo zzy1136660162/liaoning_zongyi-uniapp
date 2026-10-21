@@ -832,6 +832,7 @@
 <script setup>
 import { isPurchaseAvailable, normalizePurchaseQuantity } from '@/utils/purchase-quantity.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
+import { resolveQuestionnaireState, getQuestionnaireStateMessage, buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 import { computed, getCurrentInstance, onMounted, onUnmounted, ref } from 'vue'
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
@@ -943,7 +944,6 @@ const productImages = computed(() => {
 
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
-const requiresQuestionnaire = computed(() => Number(product.value.needQuestionnaire) === 1)
 const skuList = computed(() => Array.isArray(product.value.skus) ? product.value.skus : [])
 const selectedSku = computed(() => {
   try { return resolveProductSku(product.value, selectedSkuId.value) } catch (_) { return null }
@@ -1141,15 +1141,9 @@ const ensureCartCompatible = (targetProduct) => {
   return true
 }
 
-const hasQuestionnairePassed = (targetProduct) => {
-  const entry = getCartProductInfo(targetProduct?.productId || targetProduct?.id, targetProduct?.skuId || null)
-  return !!(entry && entry.questionnairePassed)
-}
-
 const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart') => {
-  const skuParam = targetProduct?.skuId ? `&skuId=${encodeURIComponent(targetProduct.skuId)}` : ''
   uni.navigateTo({
-    url: `/pages/products/product_notice?id=${targetProduct.id}&quantity=${selectedQuantity}&action=${action}${skuParam}`
+    url: buildQuestionnaireNoticeUrl(targetProduct, { quantity: selectedQuantity, action })
   })
   return false
 }
@@ -1209,14 +1203,16 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
     return false
   }
   const nextQuantity = Math.max(1, Number(selectedQuantity) || 1)
-  const alreadyPassed = hasQuestionnairePassed(saleProduct)
-  if (Number(saleProduct.needQuestionnaire) === 1 && !alreadyPassed) {
+  const questionnaireState = resolveQuestionnaireState(saleProduct, getCartProductInfo(saleProduct.productId || saleProduct.id, saleProduct.skuId))
+  if (mode === 'buy' && questionnaireState === 'unavailable') {
+    uni.showToast({ title: getQuestionnaireStateMessage(questionnaireState), icon: 'none' })
+    return false
+  }
+  if (mode === 'buy' && questionnaireState === 'required') {
     return navigateToNotice(saleProduct, nextQuantity, mode)
   }
 
-  const saved = addCartItem(saleProduct, nextQuantity, {
-    questionnairePassed: Number(saleProduct.needQuestionnaire) !== 1 || alreadyPassed
-  })
+  const saved = addCartItem(saleProduct, nextQuantity)
   if (!saved) {
     uni.showToast({
       title: '加入购物车失败',

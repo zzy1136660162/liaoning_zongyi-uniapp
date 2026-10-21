@@ -135,7 +135,7 @@ import { buildListCartCategories, getProductCartLines } from '@/utils/product-li
 import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { getToken } from '@/utils/request.js'
-import { hasBoundQuestionnaire } from '@/utils/product-biz.js'
+import { buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
@@ -262,13 +262,8 @@ export default {
           uni.showToast({ title: flow.message, icon: 'none' })
           return
         }
-        if (hasBoundQuestionnaire(product)) {
-          uni.navigateTo({
-            url: `/pages/products/product_notice?id=${product.id}&skuId=${product.skuId}&quantity=1&action=cart`
-          })
-          return
-        }
-        if (!addCartItem(product, 1, { questionnairePassed: true })) throw new Error('加入购物车失败')
+        // 健康商品也先加购，结算只检查所选商品中固定的一份问卷。
+        if (!addCartItem(product, 1)) throw new Error('加入购物车失败')
         this.loadVerifiedProductsFromStorage()
         uni.showToast({ title: '已加入购物车', icon: 'success' })
       } catch (error) {
@@ -336,6 +331,11 @@ export default {
         const selectedIds = this.cartItems.map(item => String(item.id))
         const checkout = prepareCheckout(selectedIds, buildListCartCategories(this.categories, getCartEntries()))
         if (!checkout.valid) {
+          if (checkout.questionnaireCheck?.state === 'required') {
+            uni.navigateTo({ url: buildQuestionnaireNoticeUrl(checkout.questionnaireCheck.item,
+              { action: 'checkout', selectedItems: checkout.productIds }) })
+            return
+          }
           uni.showToast({
             title: checkout.message,
             icon: 'none'

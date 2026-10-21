@@ -175,7 +175,6 @@ export const API_PATHS = {
     // 问卷模块
     QUESTIONNAIRE: {
         GET_BY_PRODUCT: (productId) => `/api/questionnaire/product/${productId}`, // 根据商品ID获取问卷
-        GET_BY_ID: (id) => `/api/questionnaire/${id}`,   // 根据问卷ID获取问卷
         SUBMIT: '/api/questionnaire/submit',              // 提交问卷答案
     },
 

@@ -78,10 +78,10 @@
           >
             <view class="address-header">
               <text class="name">
-                {{ selectedAddress.name }}
+                {{ selectedAddress.receiverName }}
               </text>
               <text class="phone">
-                {{ selectedAddress.phone }}
+                {{ selectedAddress.receiverPhone }}
               </text>
             </view>
             <view class="address-detail">
@@ -265,7 +265,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import {
   STORAGE_KEY_CURRENT_ORDER,
   STORAGE_KEY_DEFAULT_ADDRESS_ID
@@ -286,6 +286,7 @@ import { ensureWeChatIdentity } from '@/api/auth.js'
 import { queryFreight } from '@/api/express.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
 import { resolveProductFlow } from '@/utils/product-biz.js'
+import { resolveCheckoutQuestionnaire, buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 
 const isTherapyOrder = ref(false)
 const checkoutContext = ref(null)
@@ -294,6 +295,11 @@ const prescription = ref(null)
 const prescriptionLoadError = ref('')
 const submitting = ref(false)
 const pageSession = getSessionGeneration()
+let pageActive = true
+onUnload(() => {
+  pageActive = false
+  if (submitting.value && isCurrentSession(pageSession)) uni.hideLoading()
+})
 
 const orderInfo = ref({
   prescriptions: [],
@@ -427,6 +433,7 @@ const loadProducts = async () => {
 
     cartCategory.products = await loadCartProducts(currentSelectedIds, cartEntries, getProductDetail)
 
+    if (!pageActive) return []
     assertCurrentSession(pageSession)
     categories.value = [cartCategory]
     const flow = resolveProductFlow(cartCategory.products)
@@ -444,7 +451,7 @@ const loadProducts = async () => {
     categories.value = []
     return []
   } finally {
-    uni.hideLoading()
+    if (pageActive) uni.hideLoading()
   }
 }
 
@@ -704,7 +711,7 @@ const selectAddress = () => {
 }
 
 const submitOrder = async () => {
-  if (submitting.value) return
+  if (submitting.value || !pageActive) return
   submitting.value = true
   try {
     assertCurrentSession(pageSession)
@@ -714,14 +721,30 @@ const submitOrder = async () => {
     console.debug('event=ui_order_confirm stage=submit_order result=started')
 
     await loadProducts()
+    if (!pageActive) return
+    // 提交前按最新商品绑定再检查一次；混合结算仍只验证最小商品 ID 的问卷。
+    if (!prescriptionId.value) {
+      const questionnaireCheck = resolveCheckoutQuestionnaire(loadCartItems(categories.value))
+      if (!questionnaireCheck.valid) {
+        if (questionnaireCheck.state === 'required') {
+          uni.navigateTo({ url: buildQuestionnaireNoticeUrl(questionnaireCheck.item, {
+            // 答完返回本确认页，保留已选患者、备注及已完成的复诊。
+            action: 'repair'
+          }) })
+        } else uni.showToast({ title: questionnaireCheck.message, icon: 'none' })
+        return
+      }
+    }
     loadOrderInfo()
     await loadAddresses()
     await loadCheckoutPatients()
+    if (!pageActive) return
     assertCurrentSession(pageSession)
     if (requiresShipping.value) {
       if ((!orderInfo.value.cost || orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null)
           && selectedAddress.value) {
         await calculateShippingFee()
+        if (!pageActive) return
       }
       if (!selectedAddress.value) {
         uni.showToast({ title: '请选择收货地址', icon: 'none' })
@@ -760,6 +783,7 @@ const submitOrder = async () => {
       // 从旧链接进入确认页也先核实已有订单；待付续付原单，已付款不重复创建。
       if (prescriptionId.value) {
         const existing = await getOrderByPrescriptionId(prescriptionId.value)
+        if (!pageActive) return
         assertCurrentSession(pageSession)
         if (existing?.id) {
           if (Number(existing.payStatus) === 0 && Number(existing.orderStatus) === 0) {
@@ -773,10 +797,12 @@ const submitOrder = async () => {
       if (selectedRequiresConsultation.value) {
         if (!checkoutContext.value) throw new Error('缺少本次复诊和就诊人信息，请返回重新申请')
         const consultation = await getConsultationDetail(checkoutContext.value.consultationId)
+        if (!pageActive) return
         requireConsultationPatient(consultation, checkoutContext.value)
       }
       assertCurrentSession(pageSession)
       const wechatInfo = await ensureWeChatIdentity()
+      if (!pageActive) return
       assertCurrentSession(pageSession)
       const openid = wechatInfo && wechatInfo.openid
       if (!openid) {
@@ -808,6 +834,7 @@ const submitOrder = async () => {
       const order = prescriptionId.value
         ? await createOrderFromPrescription({ prescriptionId: prescriptionId.value, addressId: selectedAddress.value.id, remark: orderRemark.value.trim() })
         : await createOrder(orderData)
+      if (!pageActive) return
       assertCurrentSession(pageSession)
 
       console.debug('event=ui_order_confirm stage=order_create_response result=received')
@@ -833,6 +860,7 @@ const submitOrder = async () => {
           openid,
           totalAmount: orderInfo.value.total
         })
+        if (!pageActive) return
         assertCurrentSession(pageSession)
         console.debug('event=ui_order_confirm stage=payment_client result=completed')
         const itemCount = (orderInfo.value.items || []).reduce((sum, item) => {
@@ -867,7 +895,7 @@ const submitOrder = async () => {
           }
         })
       } catch (error) {
-        if (error.code === 'SESSION_CHANGED') return
+        if (!pageActive || error.code === 'SESSION_CHANGED') return
         console.error('event=ui_order_confirm stage=payment_request result=failed reason=payment_call_failed')
 
         // 判断是否是用户取消
@@ -901,7 +929,7 @@ const submitOrder = async () => {
       }
 
     } catch (error) {
-      if (error.code === 'SESSION_CHANGED') return
+      if (!pageActive || error.code === 'SESSION_CHANGED') return
       console.error('event=ui_order_confirm stage=submit_order result=failed reason=order_or_payment_failed')
       uni.hideLoading()
       uni.showToast({
@@ -910,7 +938,7 @@ const submitOrder = async () => {
       })
     }
   } catch (error) {
-    if (error?.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '提交失败', icon: 'none' })
+    if (pageActive && error?.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '提交失败', icon: 'none' })
   } finally {
     submitting.value = false
   }
@@ -1037,12 +1065,15 @@ const submitOrder = async () => {
 
 .address-content {
   flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 
 .address-header {
   display: flex;
   align-items: center;
-  gap: 20rpx;
+  flex-wrap: wrap;
+  gap: 12rpx 20rpx;
   margin-bottom: 12rpx;
 }
 
@@ -1050,17 +1081,21 @@ const submitOrder = async () => {
   font-size: 30rpx;
   font-weight: 600;
   color: #333;
+  max-width: 100%;
+  word-break: break-all;
 }
 
 .phone {
   font-size: 28rpx;
   color: #666;
+  white-space: nowrap;
 }
 
 .address-detail {
   font-size: 26rpx;
   color: #666;
   line-height: 1.6;
+  word-break: break-all;
 }
 
 .address-empty {

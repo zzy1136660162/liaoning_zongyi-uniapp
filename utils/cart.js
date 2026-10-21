@@ -9,6 +9,7 @@ import {
   resolveProductTypeLabel
 } from './product-biz.js'
 import { inventoryFields } from './inventory.js'
+import { resolveQuestionnaireState, resolveCheckoutQuestionnaire } from './questionnaire-state.js'
 
 const CART_REMOTE_SYNC_EVENT = 'cartRemoteSync'
 
@@ -149,7 +150,6 @@ const buildCartEntry = (cartKeyOrProductId, partial = {}) => {
   const available = !skuId || stock === 0 ? false : resolveAvailableFlag(partial, true)
   const quantity = clampQuantityToStock(toPositiveInt(partial.quantity, 1), stock)
   const needQuestionnaire = toNumber(partial.needQuestionnaire, 0)
-  const defaultQuestionnairePassed = needQuestionnaire === 1 ? false : true
 
   return {
     productId,
@@ -180,7 +180,7 @@ const buildCartEntry = (cartKeyOrProductId, partial = {}) => {
     needQuestionnaire,
     questionnaireId: needQuestionnaire === 1 ? pickValue(partial.questionnaireId) : null,
     answerId: needQuestionnaire === 1 ? pickValue(partial.answerId) : null,
-    questionnairePassed: toFlag(partial.questionnairePassed, defaultQuestionnairePassed),
+    questionnairePassed: ['not_required', 'passed'].includes(resolveQuestionnaireState(partial, partial)),
     timestamp: partial.timestamp ? toNumber(partial.timestamp, Date.now()) : Date.now()
   }
 }
@@ -264,19 +264,11 @@ const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) =
   const questionnaireId = resolvedNeedQuestionnaire === 1
     ? (hasProductQuestionnaireId ? productQuestionnaireId : pickValue(options.questionnaireId, existing.questionnaireId))
     : null
-  const questionnaireChanged = resolvedNeedQuestionnaire === 1 && (
-    toNumber(existing.needQuestionnaire, 0) !== 1 || normalizeId(questionnaireId) !== normalizeId(existing.questionnaireId)
-  )
-  const matchingSubmission = normalizeId(options.questionnaireId) !== '' && normalizeId(options.questionnaireId) === normalizeId(questionnaireId)
-  const questionnairePassed = resolvedNeedQuestionnaire !== 1 || questionnaireId !== null && (
-    options.questionnairePassed !== undefined && (!questionnaireChanged || matchingSubmission)
-      ? toFlag(options.questionnairePassed, false)
-      : !questionnaireChanged && toFlag(existing.questionnairePassed, false)
-  )
-  const answerId = resolvedNeedQuestionnaire === 1 && questionnaireId !== null
-    ? pickValue(matchingSubmission || !questionnaireChanged ? options.answerId : null,
-      product.answerId, questionnaireChanged ? null : existing.answerId)
-    : null
+  const questionnaireProduct = { needQuestionnaire: resolvedNeedQuestionnaire, questionnaireId }
+  // 提交凭据、后台回读凭据、原购物车凭据都必须匹配当前绑定，换绑不能沿用旧答案。
+  const answerSource = [options, product, existing].find(entry => resolveQuestionnaireState(questionnaireProduct, entry) === 'passed')
+  const answerId = answerSource?.answerId ?? null
+  const questionnairePassed = ['not_required', 'passed'].includes(resolveQuestionnaireState(questionnaireProduct, { questionnaireId, answerId }))
 
   return {
     ...inventoryFields(product, existing),
@@ -495,6 +487,18 @@ export const addCartItem = (productOrId, quantity = 1, options = {}) => {
   }
 }
 
+
+/** 补答只更新原行的问卷凭据；期间数量、勾选和删除操作均以当前购物车为准。 */
+export const updateCartQuestionnaire = (product, submission) => {
+  if (resolveQuestionnaireState(product, submission) !== 'passed') return false
+  const cartKey = resolveCartItemKey(product)
+  const data = readCartData()
+  if (!resolveSkuId(product) || !data[cartKey]) return false
+  data[cartKey] = { ...data[cartKey], needQuestionnaire: 1, questionnaireId: product.questionnaireId,
+    answerId: submission.answerId, questionnairePassed: true }
+  writeCartData(data, { syncProductIds: [cartKey] })
+  return true
+}
 
 export const setCartItemQuantity = (productId, quantity) => {
   try {
@@ -993,6 +997,9 @@ export const prepareCheckout = (productIds = [], categories = []) => {
   }
 
   const resolved = resolveCheckoutFlow(productIds, categories)
+  if (!resolved.valid) return resolved
+  const questionnaireCheck = resolveCheckoutQuestionnaire(resolved.items)
+  if (!questionnaireCheck.valid) return { ...resolved, valid: false, message: questionnaireCheck.message, questionnaireCheck }
   if (resolved.productIds.length > 0) {
     setCheckoutProductIdsInternal(resolved.productIds)
   }

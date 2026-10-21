@@ -15,7 +15,10 @@ export const buildCartSyncPayload = (cartKey, entry = {}) => {
     quantity: entry.quantity,
     checked: entry.selected !== false ? 1 : 0
   }
-  if (entry.questionnaireId != null) payload.questionnaireId = requiredId(entry.questionnaireId)
-  if (entry.answerId != null) payload.answerId = requiredId(entry.answerId)
+  // 缺少问卷配置仍允许先加购，不能发送 0/空绑定而使后台同步整批失败。
+  if (Number.isSafeInteger(Number(entry.questionnaireId)) && Number(entry.questionnaireId) > 0) {
+    payload.questionnaireId = requiredId(entry.questionnaireId)
+    if (Number.isSafeInteger(Number(entry.answerId)) && Number(entry.answerId) > 0) payload.answerId = requiredId(entry.answerId)
+  }
   return payload
 }

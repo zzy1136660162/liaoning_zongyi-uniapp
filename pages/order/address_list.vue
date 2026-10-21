@@ -11,9 +11,9 @@
       >
         <view class="address-content">
           <view class="address-header">
-            <text class="name">{{ address.name }}</text>
-            <text class="phone">{{ address.phone }}</text>
             <view v-if="address.isDefault" class="default-badge">默认</view>
+            <text class="name">{{ address.receiverName }}</text>
+            <text class="phone">{{ address.receiverPhone }}</text>
           </view>
           <view class="address-detail">
             {{ address.region || (address.province + address.city + address.district) }}{{ address.addressDetail || (address.street || '') + (address.detail || '') }}
@@ -182,18 +182,20 @@ const addAddress = () => {
   padding: 20rpx;
   margin-bottom: 20rpx;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .address-content {
-  flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 
 .address-header {
   display: flex;
   align-items: center;
-  gap: 20rpx;
+  flex-wrap: wrap;
+  gap: 12rpx 20rpx;
   margin-bottom: 12rpx;
 }
 
@@ -201,31 +203,40 @@ const addAddress = () => {
   font-size: 30rpx;
   font-weight: 600;
   color: #333;
+  max-width: 100%;
+  word-break: break-all;
 }
 
 .phone {
   font-size: 28rpx;
   color: #666;
+  white-space: nowrap;
 }
 
 .default-badge {
+  flex-shrink: 0;
   background: #2a82e4;
   color: #fff;
   font-size: 22rpx;
   padding: 4rpx 12rpx;
   border-radius: 4rpx;
+  white-space: nowrap;
 }
 
 .address-detail {
   font-size: 26rpx;
   color: #666;
   line-height: 1.6;
+  word-break: break-all;
 }
 
 .address-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 20rpx;
-  margin-left: 20rpx;
+  margin-top: 20rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #f0f0f0;
 }
 
 .action-btn {

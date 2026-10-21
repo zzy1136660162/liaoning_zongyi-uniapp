@@ -56,7 +56,7 @@ test('traditional therapy selection changes price and saves two independent cart
 })
 
 test('questionnaire route and direct checkout retain the actual SKU', async () => {
-  const page = therapy(); const product = base(); product.needQuestionnaire = 1; page.applyProduct(product)
+  const page = therapy(); const product = base(); product.needQuestionnaire = 1; product.questionnaireId = 90; page.applyProduct(product)
   page.selectSku(product.skus[1]); page.quantity.value = 2; await page.buyNow()
   assert.match(navigation.at(-1).url, /product_notice.*skuId=11/)
   assert.match(navigation.at(-1).url, /quantity=2/)

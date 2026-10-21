@@ -74,7 +74,7 @@ export const captureCartSyncSnapshot = () => ({
 const serverItemsToLocalCart = (items = []) => Object.fromEntries(items.map(item => {
   const product = mapServerCartItemToProduct(item)
   return [product.cartKey, { ...product, selected: item.checked === 1,
-    quantity: item.quantity, questionnairePassed: item.needQuestionnaire !== 1 || !!item.answerId,
+    quantity: item.quantity,
     timestamp: item.updatedAt ? new Date(item.updatedAt).getTime() : Date.now() }]
 }).filter(([key]) => key))
 

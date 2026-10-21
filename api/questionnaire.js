@@ -12,18 +12,7 @@ import { API_PATHS } from '@/utils/config.js'
 export const getQuestionnaireByProductId = (productId) => {
   return get(API_PATHS.QUESTIONNAIRE.GET_BY_PRODUCT(productId), {}, {
     needAuth: true,
-    showLoading: true
-  })
-}
-
-/**
- * 根据问卷ID获取问卷详情
- * @param {Number} questionnaireId 问卷ID
- */
-export const getQuestionnaireById = (questionnaireId) => {
-  return get(API_PATHS.QUESTIONNAIRE.GET_BY_ID(questionnaireId), {}, {
-    needAuth: true,
-    showLoading: true
+    showLoading: false
   })
 }
 
@@ -34,14 +23,12 @@ export const getQuestionnaireById = (questionnaireId) => {
  * @param {Number} data.questionnaireId 问卷ID
  * @param {Array} data.answers 答案列表
  * @param {Number} data.answers[].questionId 问题ID
- * @param {Number} data.answers[].optionId 选项ID（单选/多选题）
- * @param {String} data.answers[].inputValue 填空题内容
+ * @param {Number} data.answers[].optionId 单选题选项ID
  */
 export const submitQuestionnaire = (data) => {
   return post(API_PATHS.QUESTIONNAIRE.SUBMIT, data, {
     needAuth: true,
-    showLoading: true,
-    loadingTitle: '提交中...'
+    showLoading: false
   })
 }
 

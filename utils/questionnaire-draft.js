@@ -32,7 +32,7 @@ export const restoreQuestionnaireDraft = (accountId, productId, questionnaireId,
   return questions.map(question => {
     const option = question.questionType === 1 && question.options.find(item =>
       String(item.optionId) === answers.get(String(question.questionId)))
-    return { ...question, selectedOptionId: option ? option.optionId : null, answer: option ? option.value : null }
+    return { ...question, selectedOptionId: option ? option.optionId : null }
   })
 }
 

@@ -428,6 +428,7 @@ import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 import { buildListCartCategories, getProductCartLines } from '@/utils/product-list-cart.js'
 import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
+import { buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { buildCategoryTree, normalizeCategoryId } from '@/utils/category-tree.js'
@@ -1006,10 +1007,6 @@ export default {
       }
       return true
     },
-    hasQuestionnairePassed(productId, skuId) {
-      const entry = getCartProductInfo(productId, skuId)
-      return !!(entry && entry.questionnairePassed)
-    },
     showQuantitySelector(productId) {
       const normalizedId = String(productId)
       return this.getProductQuantity(productId) > 0 || !!this.zeroQuantityProducts[normalizedId]
@@ -1026,16 +1023,8 @@ export default {
         if (!isPurchaseAvailable(product)) throw new Error('商品已售罄或限购额度已用完')
         if (!this.ensureCartCompatible(product)) return
         const nextQuantity = Math.max(1, getCartProductQuantity(product.id, 0, product.skuId))
-        const alreadyPassed = this.hasQuestionnairePassed(product.id, product.skuId)
-        if (Number(product.needQuestionnaire) === 1 && !alreadyPassed) {
-          uni.navigateTo({
-            url: `/pages/products/product_notice?id=${product.id}&skuId=${product.skuId}&quantity=${nextQuantity}&action=cart`
-          })
-          return
-        }
-        const success = addCartItem(product, nextQuantity, {
-          questionnairePassed: Number(product.needQuestionnaire) !== 1 || alreadyPassed
-        })
+        // 加购仅保存当前规格和数量，问卷在结算所选商品时统一检查一次。
+        const success = addCartItem(product, nextQuantity)
         if (!success) throw new Error('加入购物车失败')
         this.removeZeroQuantityMarker(product.id)
         this.loadVerifiedProductsFromStorage()
@@ -1121,6 +1110,11 @@ export default {
         const selectedIds = this.cartItems.map(item => String(item.id))
         const checkout = prepareCheckout(selectedIds, buildListCartCategories(this.categories, getCartEntries()))
         if (!checkout.valid) {
+          if (checkout.questionnaireCheck?.state === 'required') {
+            uni.navigateTo({ url: buildQuestionnaireNoticeUrl(checkout.questionnaireCheck.item,
+              { action: 'checkout', selectedItems: checkout.productIds }) })
+            return
+          }
           uni.showToast({
             title: checkout.message,
             icon: 'none'

@@ -63,7 +63,7 @@ test('暂存实际写入答案，退出后重新进入恢复，且只保存题�
   const { page: reopened } = createPage()
   await reopened.loadQuestionnaire()
   assert.equal(reopened.questions[0].selectedOptionId, 10)
-  assert.equal(reopened.questions[0].answer, 'yes')
+  assert.ok(!Object.hasOwn(reopened.questions[0], 'answer'))
   assert.equal(reopened.questions[1].selectedOptionId, null)
 })
 
@@ -94,7 +94,7 @@ test('恢复时忽略删除的题目、删除的选项以及属于其他题目�
   values.set(key, { answers: [null, { questionId: 7, optionId: 20 }, { questionId: 'deleted', optionId: 10 }] })
   const { page: changed } = createPage()
   await changed.loadQuestionnaire()
-  assert.ok(changed.questions.every(question => question.selectedOptionId === null && question.answer === null))
+  assert.ok(changed.questions.every(question => question.selectedOptionId === null))
 
   values.set(key, { answers: [{ questionId: 7, optionId: 10 }] })
   const detail = questionnaire()
@@ -179,8 +179,7 @@ test('重新展示刷新问卷，保留未提交且仍有效的答案，清除�
   definition.onShow.call(page); await flush()
   assert.equal(calls, 2)
   assert.equal(page.questions[0].selectedOptionId, 10)
-  assert.equal(page.questions[0].answer, 'new-value')
+  assert.ok(!Object.hasOwn(page.questions[0], 'answer'))
   assert.equal(page.questions[1].selectedOptionId, null)
-  assert.equal(page.questions[1].answer, null)
   assert.equal(draftEntries().length, 0)
 })

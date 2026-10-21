@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import * as cart from '../utils/cart.js'
-import { hasBoundQuestionnaire } from '../utils/product-biz.js'
 import { inventoryFields, inventoryStock } from '../utils/inventory.js'
 import { loadOptions, loadSetup } from './sfc-harness.mjs'
 import { isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit } from '../utils/purchase-quantity.js'
@@ -28,7 +27,7 @@ function list(name, product = detail()) {
   const definition = loadOptions(`pages/products/${name}.vue`, {
     ...cart, getToken: () => 'fixture', getProductDetail: async () => product, mapProductDetail,
     getApp: () => ({ globalData: { mallIntroPlayed: true } }),
-    hasBoundQuestionnaire, TabBar: {}, getImageUrl: value => value,
+    TabBar: {}, getImageUrl: value => value,
     getExternalUseLabel() {}, getColdShippingLabel() {}, isSelfDevelopedProduct() {}
   })
   return { ...definition.data(), ...definition.methods, categories: [],
@@ -106,7 +105,22 @@ for (const name of ['medicine_detail', 'therapy_detail']) {
     getToken: () => 'fixture', getImageUrl: value => value, getSessionGeneration: () => 1, isCurrentSession: () => true,
     getProductDetail: fetchProduct, mapProductDetail, isPurchaseAvailable, normalizePurchaseQuantity,
     resolvePurchaseQuantityLimit,  console: { log() {}, info() {}, warn() {}, error() {} }
-  }, ['flyToCart'])
+  }, ['flyToCart', 'handlePurchaseAction'])
+
+  test(`${name}: 缺少问卷配置仍可加购，但立即购买会阻断，已绑定时只在购买答题`, async () => {
+    const page = recommendation(), current = { ...detail(), id: 10, productId: 10, skuId: 11,
+      price: 5, stock: 6, available: true, needQuestionnaire: 1, questionnaireId: null }
+    await page.handlePurchaseAction('cart', current, 2)
+    assert.equal(cart.getCartProductInfo(10, 11).quantity, 2)
+    assert.equal(navigations.length, 0)
+    await page.handlePurchaseAction('buy', current, 2)
+    assert.equal(navigations.length, 0)
+    assert.match(messages.at(-1).title, /问卷暂不可用/)
+    await page.handlePurchaseAction('buy', { ...current, questionnaireId: 90 }, 2)
+    assert.match(navigations.at(-1).url, /product_notice\?id=10/)
+    assert.match(navigations.at(-1).url, /action=buy/)
+    assert.match(navigations.at(-1).url, /skuId=11/)
+  })
 
   test(`${name}: 推荐商品快捷加购读取真实 SKU，已有单规格只递增该规格`, async () => {
     const page = recommendation()
