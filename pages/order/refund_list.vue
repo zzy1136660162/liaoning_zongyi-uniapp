@@ -62,7 +62,7 @@
               <text class="apply-time">{{ formatDateTime(item.createdAt) }}</text>
             </view>
             <view class="status-tag" :class="'status-' + item.status">
-              {{ getStatusText(item.status) }}
+              {{ getRefundStageText(item) }}
             </view>
           </view>
 
@@ -70,12 +70,6 @@
             <view class="refund-info">
               <text class="reason">原因：{{ item.refundReason }}</text>
               <text class="amount">退款：¥{{ item.refundAmount }}</text>
-            </view>
-
-            <view class="progress-info" v-if="item.status >= 3">
-              <text class="progress-text">
-                {{ getProgressText(item.status) }}
-              </text>
             </view>
           </view>
 
@@ -118,6 +112,7 @@
 
 <script>
 import { getRefundPage, getRefundStats, cancelRefund } from '@/api/refund.js'
+import { getRefundStageText } from '@/utils/refund.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 
@@ -182,6 +177,7 @@ export default {
   },
 
   methods: {
+    getRefundStageText,
     resetRefundList() {
       this.refundList = []
       this.pageNum = 0
@@ -256,27 +252,6 @@ export default {
       if (tabKey === this.activeTab || !this.tabs.some(tab => tab.key === tabKey)) return
       this.activeTab = tabKey
       return this.loadRefundList()
-    },
-
-    getStatusText(status) {
-      const statusMap = {
-        0: '待审核',
-        1: '审核通过',
-        2: '审核拒绝',
-        3: '退货中',
-        4: '已退货',
-        5: '退货失败'
-      }
-      return statusMap[status] || '未知状态'
-    },
-
-    getProgressText(status) {
-      const progressMap = {
-        3: '请提交退货物流信息',
-        4: '退货完成，款项已退回',
-        5: '退货申请被拒绝'
-      }
-      return progressMap[status] || ''
     },
 
     goToDetail(refundApplicationId) {
@@ -472,12 +447,14 @@ export default {
 
         .order-info {
           flex: 1;
+          min-width: 0;
 
           .order-no {
             display: block;
             font-size: 28rpx;
             color: #333;
             margin-bottom: 8rpx;
+            word-break: break-all;
           }
 
           .apply-time {
@@ -488,10 +465,15 @@ export default {
         }
 
         .status-tag {
+          flex-shrink: 0;
+          max-width: 240rpx;
+          margin-left: 16rpx;
           padding: 8rpx 16rpx;
           border-radius: 20rpx;
           font-size: 24rpx;
           font-weight: 500;
+          line-height: 1.5;
+          word-break: break-all;
 
           &.status-0 { color: #ff6b35; background: rgba(255, 107, 53, 0.1); }
           &.status-1 { color: #007aff; background: rgba(0, 122, 255, 0.1); }
@@ -519,13 +501,6 @@ export default {
             font-size: 28rpx;
             color: #ff6b35;
             font-weight: 600;
-          }
-        }
-
-        .progress-info {
-          .progress-text {
-            font-size: 24rpx;
-            color: #007aff;
           }
         }
       }

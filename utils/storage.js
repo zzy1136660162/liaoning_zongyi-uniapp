@@ -151,6 +151,10 @@ export const STORAGE_KEY_SELECTED_PRESCRIPTIONS = 'selected_prescriptions'
  */
 export const STORAGE_KEY_CURRENT_ORDER = 'current_order'
 
+/** 当前下单请求与按订单保存的购物车版本快照，均在账号边界清理。 */
+export const STORAGE_KEY_ORDER_SUBMISSION = 'order_submission'
+export const STORAGE_KEY_ORDER_CART_SNAPSHOTS = 'order_cart_snapshots'
+
 // ==================== 地址相关 ====================
 /**
  * 默认收货地址ID

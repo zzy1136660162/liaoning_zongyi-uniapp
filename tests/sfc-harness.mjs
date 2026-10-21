@@ -9,8 +9,12 @@ import { createHealthProductListMethods } from '../utils/health-product-list.js'
 import { formatRichText } from '../utils/product-rich-text.js'
 import { inventoryFields } from '../utils/inventory.js'
 import { getImageUrl } from '../utils/config.js'
+import * as checkout from '../utils/checkout.js'
 import * as questionnaireForm from '../utils/questionnaire-form.js'
 import * as questionnaireState from '../utils/questionnaire-state.js'
+import { canPayOrder, getOrderStatusText } from '../utils/order-status.js'
+import * as prescription from '../utils/prescription.js'
+import { hasTherapyEntitlement } from '../utils/therapy.js'
 
 const imageScript = readFileSync(new URL('../utils/product-image.js', import.meta.url), 'utf8')
   .replace(/^import .*$/gm, '')
@@ -21,7 +25,11 @@ export const { PRODUCT_PLACEHOLDER, useProductImages } = Function('ref', 'getIma
 
 // 执行页面本身的业务代码，仅替换生命周期、响应式和网络边界。
 export const loadSetup = (path, mocks, exports) => {
-  mocks = { ...questionnaireForm, ...questionnaireState, resolveProductFlow, getSessionGeneration, isCurrentSession, getProductCartLines, loadCartProducts, formatRichText, onUnload() {}, resolveProductSku, withProductSku, inventoryFields, useProductImages, ...mocks }
+  mocks = { ...checkout, checkoutEntries: (keys, purchase) => purchase ? checkout.checkoutEntries(keys, purchase)
+    : mocks.getCartEntries ? mocks.getCartEntries() : {},
+    getOrderSubmission: (kind, data, cartSnapshot) => ({ requestId: 'fixture-order-request', cartSnapshot }),
+    rememberCreatedOrder() {}, releaseOrderSubmission() {}, forgetOrderSubmission() {}, consumeOrderCart: () => true, ...mocks }
+  mocks = { ...prescription, canPayOrder, ...questionnaireForm, ...questionnaireState, getOrderStatusText, hasTherapyEntitlement, resolveProductFlow, getSessionGeneration, isCurrentSession, getProductCartLines, loadCartProducts, formatRichText, onUnload() {}, resolveProductSku, withProductSku, inventoryFields, useProductImages, ...mocks }
   const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
   const script = source.match(/<script\s+setup[^>]*>([\s\S]*?)<\/script>/)[1]
     .replace(/^[ \t]*import\s[\s\S]*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
@@ -29,8 +37,10 @@ export const loadSetup = (path, mocks, exports) => {
 }
 
 export const loadOptions = (path, mocks) => {
+  mocks = { ...checkout, checkoutEntries: (keys, purchase) => purchase ? checkout.checkoutEntries(keys, purchase)
+    : mocks.getCartEntries ? mocks.getCartEntries() : {}, ...mocks }
   const missingProductRequest = () => { throw new Error('测试未提供商品请求') }
-  mocks = { ...questionnaireForm, ...questionnaireState, SingleChoiceQuestion: {}, resolveProductFlow, getSessionGeneration, isCurrentSession, buildListCartCategories, isPurchaseAvailable, getProductCartLines, loadCartProducts, createHealthProductListMethods, getCategoryList: missingProductRequest,
+  mocks = { ...prescription, canPayOrder, getOrderStatusText, getImageUrl, ...questionnaireForm, ...questionnaireState, SingleChoiceQuestion: {}, resolveProductFlow, getSessionGeneration, isCurrentSession, buildListCartCategories, isPurchaseAvailable, getProductCartLines, loadCartProducts, createHealthProductListMethods, getCategoryList: missingProductRequest,
     getCategoryProducts: missingProductRequest, getProductDetail: missingProductRequest,
     mapProductDetail: missingProductRequest, mapProductListItem: missingProductRequest,
     resolveProductSku, withProductSku, useProductImages, ...mocks }

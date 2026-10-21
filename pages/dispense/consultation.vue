@@ -56,11 +56,12 @@ import { onLoad, onUnload } from '@dcloudio/uni-app'
 import { createConsultation, getPrescriptionByConsultation } from '@/api/consultation.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
-import { getCartEntries, getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/cart.js'
+import { getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/cart.js'
+import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
 import { logPageView } from '@/api/access-log.js'
 import { getImageUrl } from '@/utils/config.js'
 import { PRODUCT_FLOW_CONSULTATION, resolveProductFlow, resolveProductFlowType } from '@/utils/product-biz.js'
-import { AI_DOCTOR, CONSULTATION_MODE_AI, CONSULTATION_MODE_MANUAL, normalizeConsultationMode } from '@/utils/consultation-mode.js'
+import { AI_DOCTOR, CONSULTATION_MODE_AI, CONSULTATION_MODE_MANUAL, resolveConsultationDoctor } from '@/utils/consultation-mode.js'
 
 import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
 import { requireConsultationPatient, requireCreatedPrescription } from '@/utils/consultation-checkout.js'
@@ -71,6 +72,8 @@ let createdConsultation = null
 let messageTimer = null
 const consultationError = ref('')
 const checkoutContext = ref(null)
+const directPurchase = ref(null)
+const checkoutRouteError = ref('')
 const consultationMode = ref(CONSULTATION_MODE_AI)
 const doctorName = ref(AI_DOCTOR.name)
 const doctorAvatar = ref(AI_DOCTOR.avatar)
@@ -137,25 +140,47 @@ const viewPrescription = () => {
   queryParts.push(`patientId=${checkoutContext.value.patientId}`)
   const query = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
   uni.navigateTo({
-    url: `/pages/order/prescription_list${query}`
+    url: `/pages/order/prescription_list${query}${directPurchaseQuery(directPurchase.value)}`
   })
 }
 
-// 从购物车获取当前勾选的所有商品，用于创建处方明细
+// 同次创建只读取一次商品；再次创建时仍重新核验商品和规格。
 const loadProductsForConsultation = async () => {
+  if (checkoutRouteError.value) throw new Error(checkoutRouteError.value)
   const itemKeys = selectedProductIds.value.length > 0
     ? selectedProductIds.value
     : getCurrentCheckoutProductIds()
   if (itemKeys.length === 0) return []
 
-  const products = await loadCartProducts(itemKeys, getCartEntries(), getProductDetail)
+  const products = await loadCartProducts(itemKeys, checkoutEntries(itemKeys, directPurchase.value), getProductDetail)
   assertCurrentSession(pageSession)
   if (products.some(product => product.loadFailure || product.available === false)) throw new Error('所选商品或规格已失效，请重新选择')
   return products
 
 }
 
-// ✅ 创建咨询
+const buildConsultationData = (products) => {
+  // 混合结算保留全部行，处方只包含购买分类1的制剂。
+  const consultationProducts = products.filter(product => resolveProductFlowType(product) === PRODUCT_FLOW_CONSULTATION)
+  if (consultationProducts.length === 0) throw new Error('本次没有可复诊商品')
+  const firstProduct = consultationProducts[0]
+  return {
+    patientId: patientId.value,
+    consultType: 1,
+    symptomDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? '人工接诊复诊开药' : '实时接诊复诊开药',
+    historyDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? `人工接诊医生：${doctorName.value}` : '实时医生接诊',
+    doctorId: doctorId.value,
+    diagnosis: firstProduct.prescriptionDiagnosis || '复诊开药',
+    usageNote: firstProduct.usageDesc || '',
+    // 购买数量和规格继续由结算行保留，不作为处方剂量。
+    prescriptionItems: consultationProducts.map(p => ({
+      productId: p.productId || p.id,
+      drugName: p.productName || p.name || '未命名药品',
+      remark: p.usageDesc || p.notice || ''
+    }))
+  }
+}
+
 const createConsultationRecord = async () => {
   if (!pageActive || !patientId.value || isSubmitting.value) {
     return null
@@ -171,36 +196,18 @@ const createConsultationRecord = async () => {
   console.info('event=ui_dispense_consultation stage=create result=started')
   try {
     assertCurrentSession(pageSession)
-    const products = await loadProductsForConsultation()
-    const flow = resolveProductFlow(products)
-    if (!flow.valid || !flow.requiresConsultation) throw new Error(flow.message || '本次商品无需复诊，请返回重新结算')
-    // 混合结算保留全部行，但处方范围只含购买分类1的制剂，绝不按目录或商户筛选。
-    const consultationProducts = products.filter(product => resolveProductFlowType(product) === PRODUCT_FLOW_CONSULTATION)
-    if (consultationProducts.length === 0) throw new Error('本次没有可复诊商品')
-
-    // 人工模式使用上页传入的真实医生ID；AI模式不写入商品默认医生，避免下游展示与「」不一致
-    const firstProduct = consultationProducts[0]
-
-    // 处方明细使用后端 PrescriptionItemRequest 字段；购买数量和规格仍由购物车结算保留。
-    const prescriptionItems = consultationProducts.map(p => ({
-      productId: p.productId || p.id,
-      drugName: p.productName || p.name || '未命名药品',
-      remark: p.usageDesc || p.notice || ''
-    }))
-
-    const consultationData = {
-      patientId: patientId.value,
-      consultType: 1, // 在线咨询
-      symptomDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? '人工接诊复诊开药' : '实时接诊复诊开药',
-      historyDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? `人工接诊医生：${doctorName.value}` : '实时医生接诊',
-      doctorId: doctorId.value,
-      diagnosis: firstProduct?.prescriptionDiagnosis || '复诊开药',
-      usageNote: firstProduct?.usageDesc || '',
-      prescriptionItems
+    let result = createdConsultation
+    if (!result) {
+      const products = await loadProductsForConsultation()
+      if (!pageActive) return null
+      const flow = resolveProductFlow(products)
+      if (!flow.valid) throw new Error(flow.message)
+      if (!flow.requiresConsultation) {
+        redirectToConfirm()
+        return null
+      }
+      result = await createConsultation(buildConsultationData(products))
     }
-
-    assertCurrentSession(pageSession)
-    const result = createdConsultation || await createConsultation(consultationData)
     assertCurrentSession(pageSession)
     if (!pageActive) return null
     const context = { consultationId: Number(result?.id), patientId: patientId.value }
@@ -227,35 +234,17 @@ const createConsultationRecord = async () => {
   }
 }
 
-const redirectHealthGoodsToConfirm = async () => {
-  let products
-  try {
-    products = await loadProductsForConsultation()
-    assertCurrentSession(pageSession)
-    if (!pageActive) return true
-  } catch (error) {
-    if (error.code === 'SESSION_CHANGED' || !pageActive) return true
-    return false
-  }
-  const flow = resolveProductFlow(products)
-  if (flow.valid && !flow.requiresConsultation) {
-    const ids = selectedProductIds.value.length > 0 ? selectedProductIds.value : getCurrentCheckoutProductIds()
-    uni.redirectTo({
-      url: `/pages/order/confirm?selectedItems=${ids.join(',')}`
-    })
-    return true
-  }
-  return false
+const redirectToConfirm = () => {
+  const ids = selectedProductIds.value.length > 0 ? selectedProductIds.value : getCurrentCheckoutProductIds()
+  uni.redirectTo({
+    url: `/pages/order/confirm?selectedItems=${ids.join(',')}${directPurchaseQuery(directPurchase.value)}`
+  })
 }
 
 onMounted(async () => {
   if (!patientId.value) {
     return
   }
-  if (await redirectHealthGoodsToConfirm()) {
-    return
-  }
-
   // 页面加载后创建咨询记录
   await createConsultationRecord()
 
@@ -269,32 +258,34 @@ onUnload(() => {
 })
 
 onLoad((options) => {
+  try { directPurchase.value = parseDirectPurchase(options) }
+  catch (error) { checkoutRouteError.value = error.message }
+  if (directPurchase.value && !options?.selectedItems) checkoutRouteError.value = '购买信息无效，请返回商品页重新选择'
   const parsedPatientId = Number(options?.patientId)
   if (!Number.isInteger(parsedPatientId) || parsedPatientId <= 0) {
     uni.showToast({ title: '请选择有效就诊人', icon: 'none' })
-    setTimeout(() => uni.navigateBack(), 1200)
+    setTimeout(() => {
+      if (!pageActive) return
+      try { assertCurrentSession(pageSession) } catch (_) { return }
+      uni.navigateBack()
+    }, 1200)
     return
   }
   patientId.value = parsedPatientId
   if (options?.selectedItems) {
     selectedProductIds.value = options.selectedItems.split(',').filter(id => id.trim())
-    setCheckoutProductIds(selectedProductIds.value)
+    if (!directPurchase.value) setCheckoutProductIds(selectedProductIds.value)
   } else {
     selectedProductIds.value = getCurrentCheckoutProductIds()
   }
-  consultationMode.value = normalizeConsultationMode(options?.consultationMode)
-  if (options?.doctorId) {
-    doctorId.value = Number(options.doctorId)
-  }
-  if (options?.doctorName) {
-    doctorName.value = decodeURIComponent(options.doctorName)
-  } else if (consultationMode.value === CONSULTATION_MODE_AI) {
-    doctorName.value = AI_DOCTOR.name
-  }
-  if (options?.doctorAvatar) {
-    doctorAvatar.value = decodeURIComponent(options.doctorAvatar)
-  } else if (consultationMode.value === CONSULTATION_MODE_AI) {
-    doctorAvatar.value = AI_DOCTOR.avatar
+  try {
+    const doctor = resolveConsultationDoctor(options)
+    consultationMode.value = doctor.mode
+    doctorId.value = doctor.id
+    doctorName.value = doctor.name
+    doctorAvatar.value = doctor.avatar
+  } catch (error) {
+    checkoutRouteError.value = error.message
   }
 })
 </script>

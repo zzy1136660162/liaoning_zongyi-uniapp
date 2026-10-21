@@ -30,24 +30,23 @@ test('已取消终态、付款处理中及异常退款不显示履约成功或�
   assert.equal(getPaymentOutcome({ orderStatus: 1, payStatus: 1, paymentFulfillmentStatus: 'READY' }).state, 'success')
 })
 
-test('支付页面只在服务端确认可履约后清理当前已付订单商品及SKU', () => {
+test('支付页面只在服务端确认可履约后消费当前已付订单的购物车快照', () => {
   const removed = []
   const mocks = {
     ref: value => ({ value }), onLoad() {}, onUnload() {}, getSessionGeneration: () => 0, assertCurrentSession() {},
     getPaymentOutcome, isTherapyOrder,
     dayjs: value => ({ format: () => String(value) }),
-    buildCartItemKey: (id, sku) => sku ? `${id}:${sku}` : String(id),
-    removeFromCart: ids => { removed.push(ids); return true }, uni: { $emit() {} }
+    consumeOrderCart: id => { removed.push(id); return true }, uni: { $emit() {} }
   }
   const page = loadSetup('pages/order/payment_success.vue', mocks, ['applyOrderData', 'paymentOutcome'])
   assert.equal(page.paymentOutcome.value.state, 'pending')
-  const order = { orderStatus: 1, payStatus: 1, items: [{ productId: 11, skuId: 21, quantity: 2 }] }
+  const order = { id: 42, orderStatus: 1, payStatus: 1, items: [{ productId: 11, skuId: 21, quantity: 2 }] }
   page.applyOrderData({ ...order, paymentFulfillmentStatus: 'PENDING' })
   assert.deepEqual(removed, [])
   page.applyOrderData({ ...order, paymentFulfillmentStatus: 'REFUND_REQUIRED' })
   assert.deepEqual(removed, [])
   page.applyOrderData({ ...order, paymentFulfillmentStatus: 'READY' })
-  assert.deepEqual(removed, [['11:21']])
+  assert.deepEqual(removed, [42])
   assert.equal(page.paymentOutcome.value.state, 'success')
 })
 

@@ -820,6 +820,7 @@ import {
   resolvePurchaseQuantityLimit
 } from '@/utils/purchase-quantity.js'
 import { getToken } from '@/utils/request.js'
+import { checkoutEntries, directPurchaseQuery } from '@/utils/checkout.js'
 import {
   getDeliverySummary,
   getExternalUseLabel,
@@ -990,18 +991,7 @@ const withSelectedSku = (targetProduct = product.value) => {
 const selectSku = (sku) => {
   if (!isPurchaseAvailable(withProductSku(product.value, sku))) return uni.showToast({ title: '该规格已售罄', icon: 'none' })
   selectedSkuId.value = sku.id
-  loadQuantityFromStorage()
-}
-
-const loadQuantityFromStorage = () => {
-  if (!product.value.id) {
-    quantity.value = 1
-    return
-  }
-  quantity.value = normalizePurchaseQuantity(
-    saleProduct.value,
-    getCartProductQuantity(product.value.id, 1, selectedSkuId.value)
-  )
+  quantity.value = 1
 }
 
 const getQuantityLimitMessage = (targetProduct = saleProduct.value) => {
@@ -1069,7 +1059,7 @@ const applyProduct = (source, { preserveQuantity = false } = {}) => {
   starProducts.value = Array.isArray(mapped.starProducts) ? mapped.starProducts : []
   recommendTab.value = resolveRecommendTab()
   if (preserveQuantity) quantity.value = normalizePurchaseQuantity(saleProduct.value, quantity.value)
-  else loadQuantityFromStorage()
+  else quantity.value = 1
   loadRecommendCartQuantities()
 }
 
@@ -1114,9 +1104,7 @@ const ensureLogin = () => {
 }
 
 const ensureCartCompatible = (targetProduct) => {
-  const result = resolveCartCompatibility(targetProduct, {
-    ignoreProductId: targetProduct?.id
-  })
+  const result = resolveCartCompatibility(targetProduct)
   if (!result.valid) {
     uni.showToast({
       title: result.message,
@@ -1127,19 +1115,19 @@ const ensureCartCompatible = (targetProduct) => {
   return true
 }
 
-const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart') => {
+const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart', purchase = null) => {
   uni.navigateTo({
-    url: buildQuestionnaireNoticeUrl(targetProduct, { quantity: selectedQuantity, action })
+    url: buildQuestionnaireNoticeUrl(targetProduct, { quantity: selectedQuantity, action }) + directPurchaseQuery(purchase)
   })
   return false
 }
 
-const goCheckout = (targetProduct) => {
+const goCheckout = (targetProduct, purchase) => {
   const cartKey = buildCartItemKey(targetProduct.id, targetProduct.skuId)
   const checkout = prepareCheckout([cartKey], [{
     id: 'detail_checkout',
     products: [{ ...targetProduct, id: cartKey, cartKey, productId: targetProduct.id }]
-  }])
+  }], { entries: checkoutEntries([cartKey], purchase) })
 
   if (!checkout.valid) {
     uni.showToast({
@@ -1153,8 +1141,8 @@ const goCheckout = (targetProduct) => {
   if (!checkout.requiresConsultation) uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
   uni.navigateTo({
     url: checkout.requiresConsultation
-      ? `/pages/dispense/apply?selectedItems=${selectedItems}`
-      : `/pages/order/confirm?selectedItems=${selectedItems}`
+      ? `/pages/dispense/apply?selectedItems=${selectedItems}${directPurchaseQuery(purchase)}`
+      : `/pages/order/confirm?selectedItems=${selectedItems}${directPurchaseQuery(purchase)}`
   })
   return true
 }
@@ -1189,14 +1177,24 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
     return false
   }
 
-  const questionnaireState = resolveQuestionnaireState(targetProduct, getCartProductInfo(targetProduct.productId || targetProduct.id, targetProduct.skuId))
+  const purchase = mode === 'buy' ? { quantity: requestedQuantity } : null
+  if (purchase) {
+    const entry = getCartProductInfo(targetProduct.productId || targetProduct.id, targetProduct.skuId)
+    if (resolveQuestionnaireState(targetProduct, entry) === 'passed') {
+      purchase.questionnaireId = targetProduct.questionnaireId
+      purchase.answerId = entry.answerId
+    }
+  }
+  const questionnaireState = resolveQuestionnaireState(targetProduct, purchase || {})
   if (mode === 'buy' && questionnaireState === 'unavailable') {
     uni.showToast({ title: getQuestionnaireStateMessage(questionnaireState), icon: 'none' })
     return false
   }
   if (mode === 'buy' && questionnaireState === 'required') {
-    return navigateToNotice(targetProduct, requestedQuantity, mode)
+    return navigateToNotice(targetProduct, requestedQuantity, mode, purchase)
   }
+
+  if (mode === 'buy') return goCheckout(targetProduct, purchase)
 
   const saved = addCartItem(targetProduct, requestedQuantity)
   if (!saved) {
@@ -1209,14 +1207,6 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
 
   loadCartCount()
   loadRecommendCartQuantities()
-  if (String(targetProduct.id) === String(product.value.id)) {
-    loadQuantityFromStorage()
-  }
-
-  if (mode === 'buy') {
-    return goCheckout(targetProduct)
-  }
-
   uni.showToast({
     title: '已加入购物车',
     icon: 'success'
@@ -1225,7 +1215,8 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
 }
 
 const addCart = async () => {
-  await handlePurchaseAction('cart', product.value, quantity.value)
+  await handlePurchaseAction('cart', product.value,
+    getCartProductQuantity(product.value.id, 0, selectedSkuId.value) + quantity.value)
 }
 
 const buyNow = async () => {
@@ -1353,6 +1344,7 @@ onLoad((options) => {
   unsubscribeSession?.()
   logPageView('MEDICINE_DETAIL', options?.id || '')
   product.value = createEmptyProduct()
+  quantity.value = 1
   selectedSkuId.value = options.skuId || null
   routeProductId.value = options.id || ''
   unsubscribeSession = onSessionChanged(() => {

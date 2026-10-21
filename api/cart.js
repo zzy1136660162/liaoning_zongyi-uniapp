@@ -37,3 +37,12 @@ export const syncCart = (items = []) => {
     showLoading: false
   })
 }
+
+export const cleanupPurchasedCartItems = async (items = []) => {
+  for (let offset = 0; offset < items.length; offset += 200) {
+    await post(`${API_PATHS.CART.LIST}/purchased-cleanup`, { items: items.slice(offset, offset + 200) }, {
+      needAuth: true,
+      showLoading: false
+    })
+  }
+}

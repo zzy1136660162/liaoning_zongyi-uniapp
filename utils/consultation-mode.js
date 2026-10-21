@@ -46,23 +46,30 @@ export const getConsultationDoctorByMode = (mode) => {
   return AI_DOCTOR
 }
 
+export const resolveConsultationDoctor = (options = {}) => {
+  if (normalizeConsultationMode(options.consultationMode) === CONSULTATION_MODE_AI) return AI_DOCTOR
+  const doctor = MANUAL_DOCTORS.find(item => String(item.id) === String(options.doctorId))
+  if (!doctor) throw new Error('问诊未完成，请重试')
+  return doctor
+}
+
 /** 从咨询记录解析展示用医师姓名（与 consultation 页一致） */
 export const resolveConsultationDoctorName = (consultation) => {
   if (!consultation) {
     return ''
   }
 
-  const doctorId = consultation.doctorId ?? consultation.doctor_id ?? null
+  const doctorId = consultation.doctorId
   if (doctorId === null || doctorId === undefined || String(doctorId).trim() === '') {
     return AI_DOCTOR.name
   }
 
-  const doctorName = consultation.doctorName || consultation.doctor_name
+  const doctorName = consultation.doctorName
   if (doctorName) {
     return doctorName
   }
   const history = consultation.historyDesc || ''
-  if (history.includes('AI') || history.includes('AI药师')) {
+  if (history.includes('AI')) {
     return AI_DOCTOR.name
   }
   if (history.includes('人工接诊医生：')) {
@@ -72,16 +79,4 @@ export const resolveConsultationDoctorName = (consultation) => {
     }
   }
   return ''
-}
-
-if (typeof module !== 'undefined') {
-  module.exports = {
-    CONSULTATION_MODE_AI,
-    CONSULTATION_MODE_MANUAL,
-    AI_DOCTOR,
-    MANUAL_DOCTORS,
-    normalizeConsultationMode,
-    getConsultationDoctorByMode,
-    resolveConsultationDoctorName
-  }
 }

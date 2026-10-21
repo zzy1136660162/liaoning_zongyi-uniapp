@@ -32,6 +32,113 @@ const syncModule = (syncCart = async () => [], overrides = {}) => {
   return { ...api, pushed, removed, changeSession: () => { session++; sessionChanged() } }
 }
 
+test('单行写回清除服务端判无效的答卷，只合并对应行凭据', async t => {
+  const assessed = { ...product(10), needQuestionnaire: 1, questionnaireId: 92 }
+  cart.addCartItem(assessed, 3)
+  cart.updateCartQuestionnaire(assessed, { questionnaireId: 92, answerId: 91 })
+  cart.addCartItem(product(20), 2)
+  const sync = syncModule(undefined, { upsert: async () => ({ productId: 10, skuId: 1,
+    needQuestionnaire: 1, questionnaireId: 92, answerId: null, quantity: 99, checked: 0 }) })
+  await sync.handleCartRemoteSync('upsert', ['10:1'])
+  t.mock.timers.tick(400)
+  await flush()
+  const entries = cart.getCartEntries()
+  assert.equal(entries['10:1'].answerId, null)
+  assert.equal(entries['10:1'].questionnairePassed, false)
+  assert.equal(entries['10:1'].quantity, 3)
+  assert.equal(entries['10:1'].selected, true)
+  assert.equal(entries['20:1'].quantity, 2)
+})
+
+test('单行旧回包不能覆盖新答卷、恢复删除行或写入新账号', async t => {
+  for (const action of ['answer', 'delete', 'session']) {
+    const assessed = { ...product(10), needQuestionnaire: 1, questionnaireId: 92 }
+    cart.addCartItem(assessed, 1)
+    cart.updateCartQuestionnaire(assessed, { questionnaireId: 92, answerId: 91 })
+    const reply = deferred()
+    const sync = syncModule(undefined, { upsert: () => reply.promise })
+    await sync.handleCartRemoteSync('upsert', ['10:1'])
+    t.mock.timers.tick(400)
+    if (action === 'answer') {
+      cart.updateCartQuestionnaire(assessed, { questionnaireId: 92, answerId: 93 })
+      await sync.handleCartRemoteSync('upsert', ['10:1'])
+    } else if (action === 'delete') cart.removeFromCart('10:1')
+    else sync.changeSession()
+    reply.finish({ productId: 10, skuId: 1, needQuestionnaire: 1, questionnaireId: 92, answerId: null })
+    await flush()
+    if (action === 'answer') assert.equal(cart.getCartEntries()['10:1'].answerId, 93)
+    if (action === 'delete') assert.equal(cart.getCartEntries()['10:1'], undefined)
+    if (action === 'session') assert.equal(cart.getCartEntries()['10:1'].answerId, 91)
+    sync.changeSession()
+    cart.clearCart()
+  }
+})
+
+test('单行回包保留旧后台省略的凭据，接受合法新答卷和关闭问卷配置', async t => {
+  const replies = [
+    { needQuestionnaire: 1 },
+    { needQuestionnaire: 1, questionnaireId: 92 },
+    { needQuestionnaire: 1, answerId: null },
+    { needQuestionnaire: 1, questionnaireId: 92, answerId: 91 },
+    { needQuestionnaire: 1, questionnaireId: 92, answerId: 93 },
+    { needQuestionnaire: 0, questionnaireId: null, answerId: null }
+  ]
+  for (const reply of replies) {
+    const assessed = { ...product(10), needQuestionnaire: 1, questionnaireId: 92 }
+    cart.addCartItem(assessed, 2)
+    cart.updateCartQuestionnaire(assessed, { questionnaireId: 92, answerId: 91 })
+    const revision = cart.getCartEntries()['10:1'].revision
+    const sync = syncModule(undefined, { upsert: async () => ({ id: 700, cartVersion: 3, productId: 10, skuId: 1, ...reply }) })
+    await sync.handleCartRemoteSync('upsert', ['10:1'])
+    t.mock.timers.tick(400)
+    await flush()
+    const entry = cart.getCartEntries()['10:1']
+    if (reply.needQuestionnaire === 0) {
+      assert.equal(entry.needQuestionnaire, 0)
+      assert.equal(entry.questionnaireId, null)
+      assert.equal(entry.answerId, null)
+      assert.equal(entry.questionnairePassed, true)
+    } else {
+      assert.equal(entry.needQuestionnaire, 1)
+      assert.equal(entry.questionnaireId, 92)
+      assert.equal(entry.answerId, reply.answerId === 93 ? 93 : 91)
+      assert.equal(entry.questionnairePassed, true)
+    }
+    assert.equal(entry.quantity, 2)
+    assert.equal(entry.serverCartItemId, '700')
+    assert.equal(entry.serverCartVersion, '3')
+    if (reply.needQuestionnaire === 1 && reply.answerId !== 93) assert.equal(entry.revision, revision)
+    else assert.notEqual(entry.revision, revision)
+    sync.changeSession()
+    cart.clearCart()
+  }
+})
+
+test('未触发同步事件的新答卷、同值重加行和错误行回包也不能被单行旧结果覆盖', async t => {
+  for (const scenario of ['local-edit', 'readded', 'wrong-key']) {
+    const assessed = { ...product(10), needQuestionnaire: 1, questionnaireId: 92 }
+    cart.addCartItem(assessed, 1)
+    cart.updateCartQuestionnaire(assessed, { questionnaireId: 92, answerId: 91 })
+    const reply = deferred(), sync = syncModule(undefined, { upsert: () => reply.promise })
+    await sync.handleCartRemoteSync('upsert', ['10:1'])
+    t.mock.timers.tick(400)
+    if (scenario === 'local-edit') cart.updateCartQuestionnaire(assessed, { questionnaireId: 92, answerId: 93 })
+    if (scenario === 'readded') {
+      cart.removeFromCart('10:1')
+      cart.addCartItem(assessed, 1)
+      cart.updateCartQuestionnaire(assessed, { questionnaireId: 92, answerId: 91 })
+    }
+    reply.finish({ id: 700, cartVersion: 9, productId: scenario === 'wrong-key' ? 20 : 10, skuId: 1,
+      needQuestionnaire: 1, questionnaireId: 92, answerId: null })
+    await flush()
+    assert.equal(cart.getCartEntries()['10:1'].answerId, scenario === 'local-edit' ? 93 : 91)
+    assert.equal(cart.getCartEntries()['10:1'].serverCartItemId, null)
+    assert.equal(cart.getCartEntries()['20:1'], undefined)
+    sync.changeSession()
+    cart.clearCart()
+  }
+})
+
 const editDuringRequest = () => {
   cart.setCartItemQuantity('10:1', 3)
   cart.removeFromCart('20:1')

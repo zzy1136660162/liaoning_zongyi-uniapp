@@ -4,210 +4,227 @@
   支持选择商品和批量下单
 -->
 <template>
-  <view class="page">
-    <!-- 页面头部：医院信息和用户信息 -->
-    <!--      <view class="header-info">
-        <view class="hospital">{{ hospitalName }}</view>
-        <view class="user-info" @click="onSelectUser">
-          {{ currentUserName }}
-        </view>
-      </view>-->
-
-    <!-- 日期选择区域（目前用于占位，后续可扩展筛选功能） -->
-    <!--      <view class="date-section">
-        <view class="date-label">日期选择</view>
-        <view class="date-range" @click="onSelectDate">
-        选择时间范围
-        </view>
-      </view>-->
-
-    <!-- 标签筛选区域（保留布局结构，后续可扩展） -->
-    <view class="filter-tabs">
-      <view class="tab-item active">
-        结算商品
-      </view>
-    </view>
-    <!-- 主要内容区域 -->
-    <view style="padding: 20rpx;">
-      <!-- 可滚动的产品列表区域 -->
-      <scroll-view
-        class="prescription-list"
-        scroll-y
+  <view
+    class="page"
+    :class="{ 'with-footer': selectedCartCount > 0 }"
+  >
+    <view class="page-content">
+      <view
+        v-if="loading"
+        class="load-state"
       >
-        <!-- 全选控制栏 -->
-        <view class="select-all-bar">
-          <view class="select-controls">
-            <!-- 全选按钮：仅在有商品时显示 -->
-            <view
-              v-if="cartItemsList.length > 0"
-              class="select-all"
-              @click="toggleCartSelectAll"
-            >
-              <view
-                class="checkbox"
-                :class="{ checked: isCartAllSelected }"
-              />
-              <text>全选商品</text>
-            </view>
-          </view>
-          <!-- 就诊时间显示：仅在有处方信息时显示 -->
-          <view
-            v-if="currentPrescription"
-            class="consultation-time"
-          >
-            就诊时间: {{ latestConsultationTime }}
-          </view>
-          <view v-if="currentPrescription" class="consultation-time">
-            就诊人:
-            <text v-if="currentPrescription.patientSnapshotAvailable">
-              {{ currentPrescription.patientName }} {{ currentPrescription.patientGender }} {{ currentPrescription.patientAge }}岁
-            </text>
-            <text v-else>历史记录未关联就诊人</text>
-          </view>
+        正在加载本次处方…
+      </view>
+      <view
+        v-else-if="loadError"
+        class="load-state"
+        @click="loadPage"
+      >
+        {{ loadError }}，点击重试
+      </view>
+      <view
+        v-if="currentPrescription"
+        class="consultation-card"
+      >
+        <view class="section-heading">
+          <text class="section-title">
+            就诊信息
+          </text>
         </view>
+        <view class="consultation-row patient-row">
+          <text class="consultation-label">
+            就诊人
+          </text>
+          <view
+            v-if="currentPrescription.patientSnapshotAvailable"
+            class="patient-info"
+          >
+            <text class="patient-name">
+              {{ currentPrescription.patientName }}
+            </text>
+            <text class="patient-meta">
+              {{ currentPrescription.patientGender }} {{ currentPrescription.patientAge ?? '—' }}岁
+            </text>
+          </view>
+          <text
+            v-else
+            class="consultation-value"
+          >
+            历史记录未关联就诊人
+          </text>
+        </view>
+        <view class="consultation-row">
+          <text class="consultation-label">
+            就诊时间
+          </text>
+          <text class="consultation-value">
+            {{ latestConsultationTime || '—' }}
+          </text>
+        </view>
+        <view class="consultation-row">
+          <text class="consultation-label">
+            处方状态
+          </text>
+          <text class="consultation-value">
+            {{ getPrescriptionStatusText(currentPrescription) }}
+          </text>
+        </view>
+      </view>
 
-        <!-- 购物车商品列表：每个商品以处方卡片形式展示 -->
-        <template
+      <view class="list-heading">
+        <text class="section-title list-title">
+          结算商品
+        </text>
+        <text class="list-count">
+          共 {{ cartItemsList.length }} 项
+        </text>
+      </view>
+
+      <view
+        v-if="cartItemsList.length > 0"
+        class="select-all-bar"
+      >
+        <view
+          class="select-all"
+          @click="toggleCartSelectAll"
+        >
+          <view
+            class="checkbox"
+            :class="{ checked: isCartAllSelected }"
+          />
+          <text>全选商品</text>
+        </view>
+        <text class="selection-summary">
+          已选 {{ selectedCartCount }} 项
+        </text>
+      </view>
+
+      <view class="prescription-list">
+        <view
           v-for="cartItem in cartItemsList"
           :key="cartItem.id"
+          class="prescription-item"
         >
-          <view class="prescription-item">
-            <!-- 商品选择框 -->
+          <view
+            class="prescription-checkbox"
+            @click="toggleCartSelect(cartItem.id)"
+          >
             <view
-              class="prescription-checkbox"
-              @click="toggleCartSelect(cartItem.id)"
-            >
+              class="checkbox"
+              :class="{ checked: isCartItemSelected(cartItem.id) }"
+            />
+          </view>
+          <view
+            class="prescription-content"
+            @click="onCartItemClick(cartItem)"
+          >
+            <view class="prescription-header">
+              <text class="product-name">
+                {{ cartItem.name }}
+              </text>
+            </view>
+            <view class="prescription-tags">
+              <view class="tag tag-online">
+                {{ resolveProductTypeLabel(cartItem) }}
+              </view>
               <view
-                class="checkbox"
-                :class="{ checked: isCartItemSelected(cartItem.id) }"
-              />
+                v-if="cartItem.productCategory === 1"
+                class="tag tag-convenient"
+              >
+                便捷配制剂
+              </view>
+            </view>
+            <text
+              v-if="cartItem.skuSpecText || cartItem.specText || cartItem.skuName"
+              class="product-spec"
+            >
+              {{ cartItem.skuSpecText || cartItem.specText || cartItem.skuName }}
+            </text>
+
+            <view
+              v-if="cartItem.productCategory === 1"
+              class="clinical-info"
+            >
+              <view class="prescription-info">
+                <text class="info-label">
+                  本次处方诊断
+                </text>
+                <text class="info-value">
+                  {{ currentPrescription?.diagnosis || '—' }}
+                </text>
+              </view>
+              <view class="prescription-info">
+                <text class="info-label">
+                  医师
+                </text>
+                <text class="info-value">
+                  {{ prescriptionDoctorName }}
+                </text>
+              </view>
             </view>
 
-            <!-- 商品信息内容区域 -->
-            <view
-              class="prescription-content"
-              @click="onCartItemClick(cartItem)"
-            >
-              <!-- 商品名称 -->
-              <view class="prescription-header">
-                <text class="doctor-name">
-                  {{ cartItem.name }}
-                </text>
-              </view>
-
-              <!-- 商品标签 -->
-              <view class="prescription-tags">
-                <!-- <view class="tag">
-                  中药
-                </view> -->
-                <view class="tag tag-online">
-                  {{ resolveProductTypeLabel(cartItem) }}
-                </view>
-                <view
-                  v-if="cartItem.productCategory === 1"
-                  class="tag tag-convenient"
-                >
-                  便捷配制剂
-                </view>
-                <!-- <view class="tag tag-convenient">
-                  便捷配制剂
-                </view> -->
-              </view>
-
-              <!-- 仅制剂展示本次复诊诊断；健康产品和疗法仍保留在同一结算清单。 -->
-              <view
-                v-if="cartItem.productCategory === 1"
-                class="prescription-info"
-              >
-                <text class="info-label">
-                  诊断:
-                </text>
-                <text class="info-value">
-                  {{ cartItem.diagnosis || '复诊调方' }}
-                </text>
-              </view>
-
-              <!-- 健康产品和疗法不附加处方医师要求。 -->
-              <view
-                v-if="cartItem.productCategory === 1"
-                class="prescription-info"
-              >
-                <text class="info-label">
-                  医师:
-                </text>
-                <text class="info-value">
-                  {{ cartItem.doctorName || AI_DOCTOR.name }}
-                </text>
-              </view>
-
-              <!-- 商品说明 -->
-              <!-- <view
-                v-if="cartItem.description"
-                class="prescription-info"
-              >
-                <text class="info-label">
-                  说明:
-                </text>
-                <text class="info-value">
-                  {{ cartItem.description }}
-                </text>
-              </view> -->
-
-              <!-- 商品数量和单价 -->
-              <view class="prescription-info prescription-info-inline">
-                <text class="info-label">
-                  数量:
-                </text>
-                <text class="info-value">
-                  {{ cartItem.quantity }}
-                </text>
-                <text class="info-label info-label-spaced">
-                  单价:
-                </text>
-                <text class="info-value">
-                  ¥{{ cartItem.price.toFixed(2) }}
-                </text>
-              </view>
-
-              <!-- 商品总价和单位 -->
-              <view class="prescription-footer">
-                <view class="prescription-status">
-                  <text class="status-text">
-                    总价：¥{{ (cartItem.price * cartItem.quantity).toFixed(2) }}
-                  </text>
-                  <!-- <text class="status-time">
-                    {{ cartItem.unit || '份' }}
-                  </text> -->
-                </view>
-              </view>
+            <view class="quantity-price-row">
+              <text class="unit-price">
+                单价 ¥{{ cartItem.price.toFixed(2) }}
+              </text>
+              <text class="product-quantity">
+                数量 ×{{ cartItem.quantity }}
+              </text>
+            </view>
+            <view class="prescription-footer">
+              <text class="subtotal-label">
+                商品小计
+              </text>
+              <text class="subtotal-value">
+                ¥{{ (cartItem.price * cartItem.quantity).toFixed(2) }}
+              </text>
             </view>
           </view>
-        </template>
-      </scroll-view>
+        </view>
+      </view>
+
+      <view
+        v-if="!loading && !loadError && cartItemsList.length === 0"
+        class="empty-state"
+      >
+        <view class="empty-icon">
+          <uni-icons
+            type="list"
+            size="36"
+            color="#2a82e4"
+          />
+        </view>
+        <text class="empty-title">
+          暂无结算商品
+        </text>
+        <text class="empty-description">
+          可返回上一页重新选择商品
+        </text>
+      </view>
     </view>
 
-    <!-- 底部操作栏：仅在选中商品时显示 -->
     <view
       v-if="selectedCartCount > 0"
       class="footer"
     >
       <view class="footer-left">
-        <!-- 显示选中的处方数量 -->
-        <view>
+        <view class="total-amount">
+          <text class="total-label">
+            合计
+          </text>
+          <text class="amount-value">
+            ¥{{ selectedCartTotal.toFixed(2) }}
+          </text>
+        </view>
+        <view class="selection-detail">
           已选择 <text class="selected-count">
             {{ selectedCartCount }}
           </text> 种商品
         </view>
-        <!-- 显示选中的商品总金额 -->
-        <view class="total-amount">
-          合计: ¥<text class="amount-value">
-            {{ selectedCartTotal.toFixed(2) }}
-          </text>
-        </view>
       </view>
-      <!-- 下单按钮 -->
       <button
         class="order-btn"
+        :disabled="!canSubmit"
         @click="goToOrder"
       >
         去下单
@@ -216,12 +233,12 @@
   </view>
 </template>
 
-  <script setup>
+<script setup>
 // ==================== 导入依赖 ====================
 // Vue 3 响应式 API
 import { ref, computed, onMounted } from 'vue'
 // uni-app 生命周期钩子
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 // 时间处理库
 import dayjs from 'dayjs'
 
@@ -234,22 +251,22 @@ import {
 import {
   loadCartItems,
   buildOrderInfo,
-  getCartEntries,
   getCurrentCheckoutProductIds,
-  getCartProductQuantity,
   updateProductSelection,
   updateMultipleSelections,
   getSelectedProductIds,
   setCheckoutProductIds,
 } from '@/utils/cart.js'
+import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
 
 // ==================== API 接口 ====================
-import { getConsultationDetail } from '@/api/consultation.js'
-import { parseConsultationContext, requireConsultationPatient } from '@/utils/consultation-checkout.js'
+import { getConsultationDetail, getPrescriptionByConsultation } from '@/api/consultation.js'
+import { parseConsultationContext, requireConsultationPatient, requireCreatedPrescription } from '@/utils/consultation-checkout.js'
 import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
-import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
+import { getDoctorDetail } from '@/api/hospital.js'
+import { getPrescriptionStatusText, resolvePrescriptionDoctorName } from '@/utils/prescription.js'
 
 // ==================== 其他 ====================
 import { logPageView } from '@/api/access-log.js'
@@ -271,12 +288,19 @@ const selectedCartIds = ref([])
  */
   const categories = ref([])
 
-/**
- * 当前显示的处方信息 - 用于显示就诊时间等信息
- */
+const consultation = ref(null)
 const currentPrescription = ref(null)
+const prescriptionDoctorName = ref('')
+const loading = ref(false)
+const loadError = ref('')
 const checkoutContext = ref(null)
+const directPurchase = ref(null)
+const checkoutItemKeys = ref([])
+const checkoutRouteError = ref('')
 const pageSession = getSessionGeneration()
+let pageActive = true
+let refreshId = 0
+onUnload(() => { pageActive = false; refreshId += 1 })
 
 const normalizeCartId = (value) => {
   if (value === undefined || value === null || value === '') {
@@ -310,6 +334,11 @@ const syncSelectedCartState = () => {
     return
   }
 
+  if (directPurchase.value) {
+    selectedCartIds.value = [...cartIds]
+    return
+  }
+
   const checkoutIds = getCurrentCheckoutProductIds()
     .map(id => normalizeCartId(id))
     .filter(Boolean)
@@ -334,14 +363,18 @@ const syncSelectedCartState = () => {
   // ==================== 生命周期钩子 ====================
   /**
    * 页面加载时处理
-   * 支持通过 URL 参数或本地存储获取咨询ID
+   * 本次问诊和就诊人必须由入口明确传入。
    */
   onLoad((options) => {
+    try { directPurchase.value = parseDirectPurchase(options) }
+    catch (error) { checkoutRouteError.value = error.message }
+    if (directPurchase.value && !options?.selectedItems) checkoutRouteError.value = '购买信息无效，请返回商品页重新选择'
     const selectedItems = options?.selectedItems
       ? options.selectedItems.split(',').map(id => normalizeCartId(id)).filter(Boolean)
       : []
     if (selectedItems.length > 0) {
-      setCheckoutProductIds(selectedItems)
+      checkoutItemKeys.value = selectedItems
+      if (!directPurchase.value) setCheckoutProductIds(selectedItems)
     }
 
     checkoutContext.value = parseConsultationContext(options)
@@ -351,89 +384,63 @@ const syncSelectedCartState = () => {
   /**
    * 页面挂载时初始化数据
    */
-  onShow(async () => {
-    if (checkoutContext.value) await loadSingleConsultation(checkoutContext.value.consultationId)
-    await loadProducts()
-    loadSelectedProducts()
-  })
+  onShow(() => loadPage())
   onMounted(() => {
     logPageView('处方列表', '用户进入处方列表页面')
   })
 
-  /**
-   * 加载用户之前选中的产品状态
-   */
-  const loadSelectedProducts = () => {
+  const loadPage = async () => {
+    if (!pageActive) return
+    const requestId = ++refreshId
+    loading.value = true
+    loadError.value = ''
+    consultation.value = null
+    currentPrescription.value = null
+    prescriptionDoctorName.value = ''
+    categories.value = []
+    selectedCartIds.value = []
     try {
-      syncSelectedCartState()
-    } catch (e) {
-      console.error('event=ui_order_prescription_list stage=load_selected_products result=failed reason=operation_incomplete')
-      selectedCartIds.value = []
-    }
-  }
-
-
-  /**
-   * 加载单条咨询详情
-   * 用于从其他页面跳转过来时获取咨询信息
-   * @param {string} consultationId - 咨询ID
-   */
-  const loadSingleConsultation = async (consultationId) => {
-    try {
-      if (!consultationId) {
-        console.warn('event=ui_order_prescription_list stage=consultation_context result=rejected reason=missing_consultation_id')
-        return
-      }
-
-      uni.showLoading({ title: '加载中...' })
-
-      // 调用API获取咨询详情
-      const consultation = await getConsultationDetail(consultationId)
       assertCurrentSession(pageSession)
-      requireConsultationPatient(consultation, checkoutContext.value)
-      console.debug('event=ui_order_prescription_list stage=load_single_consultation result=observed')
+      const context = checkoutContext.value
+      if (!context) throw new Error('缺少本次复诊信息，请返回重新申请')
+      const [record, prescription] = await Promise.all([
+        getConsultationDetail(context.consultationId),
+        getPrescriptionByConsultation(context.consultationId)
+      ])
+      if (!pageActive || requestId !== refreshId) return
+      assertCurrentSession(pageSession)
+      requireConsultationPatient(record, context)
+      requireCreatedPrescription(prescription, context)
 
-      if (consultation) {
-        // 将API返回的数据转换为页面所需的处方格式
-        const apiPrescription = {
-          id: consultation.id || String(1),
-          visitNo: consultation.consultationNo || consultation.id,
-          doctorName: resolveConsultationDoctorName(consultation),
-          department: consultation.department || '便捷配药门诊',
-          consultationTime: consultation.consultationTime || consultation.createdAt,
-          diagnosis: consultation.diagnosis || '待诊断',
-          doses: consultation.doses || 1,
-          details: consultation.symptoms || '详情',
-          tags: consultation.tags || ['在线复诊'],
-          timeLimit: '待处理',
-          hospital: consultation.hospitalName || hospitalName.value,
-          createdAt: consultation.createdAt,
-          productId: consultation.productId,
-          productPrice: consultation.totalAmount || 0,
-          quantity: consultation.quantity || 1,
-          patientName: consultation.patientName || '',
-          patientGender: consultation.patientGender || '',
-          patientAge: consultation.patientAge || 0,
-          patientSnapshotAvailable: consultation.patientSnapshotAvailable === true
-        }
-
-        // 保存当前处方信息，用于显示就诊时间等
-        currentPrescription.value = apiPrescription
-        if (apiPrescription.doctorName && categories.value.length > 0) {
-          categories.value = categories.value.map(category => ({
-            ...category,
-            products: (category.products || []).map(product => ({
-              ...product,
-              doctorName: apiPrescription.doctorName
-            }))
-          }))
+      let doctorName = resolvePrescriptionDoctorName(prescription)
+      if (prescription.doctorId) {
+        try {
+          const doctor = await getDoctorDetail(prescription.doctorId)
+          assertCurrentSession(pageSession)
+          doctorName = resolvePrescriptionDoctorName({ ...prescription, doctorName: doctor.name })
+        } catch (error) {
+          if (error.code === 'SESSION_CHANGED') throw error
         }
       }
-
-      uni.hideLoading()
-    } catch (e) {
-      console.error('event=ui_order_prescription_list stage=load_single_consultation result=failed reason=operation_incomplete')
-      uni.hideLoading()
+      if (!pageActive || requestId !== refreshId) return
+      await loadProducts(requestId)
+      if (!pageActive || requestId !== refreshId) return
+      assertCurrentSession(pageSession)
+      consultation.value = record
+      currentPrescription.value = prescription
+      prescriptionDoctorName.value = doctorName
+      syncSelectedCartState()
+    } catch (error) {
+      if (!pageActive || requestId !== refreshId || error.code === 'SESSION_CHANGED') return
+      consultation.value = null
+      currentPrescription.value = null
+      prescriptionDoctorName.value = ''
+      categories.value = []
+      selectedCartIds.value = []
+      loadError.value = error.message || '本次处方加载失败，请重试'
+      uni.showToast({ title: loadError.value, icon: 'none' })
+    } finally {
+      if (requestId === refreshId) loading.value = false
     }
   }
 
@@ -442,13 +449,14 @@ const syncSelectedCartState = () => {
    * 从本地存储中获取已验证的商品ID，然后批量获取商品详情
    * 每次进入页面都会重新加载，确保数据最新
    */
-  const loadProducts = async () => {
+  const loadProducts = async (requestId) => {
     try {
-      const checkoutIds = getCurrentCheckoutProductIds()
+      if (checkoutRouteError.value) throw new Error(checkoutRouteError.value)
+      const checkoutIds = checkoutItemKeys.value.length ? checkoutItemKeys.value : getCurrentCheckoutProductIds()
       const productIds = checkoutIds.length > 0
         ? checkoutIds
         : getSelectedProductIds()
-      const cartEntries = getCartEntries()
+      const cartEntries = checkoutEntries(productIds, directPurchase.value)
 
       // 如果购物车为空，不需要加载商品数据
       if (productIds.length === 0) {
@@ -466,16 +474,13 @@ const syncSelectedCartState = () => {
         products: []
       }
 
-      cartCategory.products = (await loadCartProducts(productIds, cartEntries, getProductDetail))
-        .map(product => ({ ...product, doctorName: currentPrescriptionDoctorName.value }))
+      cartCategory.products = await loadCartProducts(productIds, cartEntries, getProductDetail)
+      if (!pageActive || requestId !== refreshId) return
       assertCurrentSession(pageSession)
 
       // 更新分类数据，每次都重新计算确保数据准确
       categories.value = [cartCategory]
 
-    } catch (error) {
-      console.error('event=ui_order_prescription_list stage=load_products result=failed reason=operation_incomplete')
-      categories.value = []
     } finally {
       uni.hideLoading()
     }
@@ -487,15 +492,10 @@ const syncSelectedCartState = () => {
  * 获取最新的就诊时间 - 用于显示在页面顶部
  */
   const latestConsultationTime = computed(() => {
-  if (!currentPrescription.value) return ''
-  const time = currentPrescription.value.consultationTime
+  const time = consultation.value?.createdAt
     if (!time) return ''
     const d = dayjs(time)
     return d.isValid() ? d.format('YYYY-MM-DD HH:mm') : time
-  })
-
-  const currentPrescriptionDoctorName = computed(() => {
-    return currentPrescription.value?.doctorName || AI_DOCTOR.name
   })
 
   // ==================== 购物车相关计算属性 ====================
@@ -541,8 +541,14 @@ const syncSelectedCartState = () => {
     }
 
     // 使用工具函数加载购物车数据（包含数量信息）
-    return loadCartItems(categories.value)
+    return loadCartItems(categories.value, false, { entries: checkoutEntries(checkoutItemKeys.value, directPurchase.value), preserveQuantity: true })
   })
+
+  const canSubmit = computed(() => !loading.value && !loadError.value &&
+    !!consultation.value && [0, 1].includes(currentPrescription.value?.status) &&
+    currentPrescription.value.expired === false && selectedCartCount.value > 0 &&
+    cartItemsList.value.filter(item => isCartItemSelected(item.id)).every(item =>
+      !item.loadFailure && item.available !== false && (item.stock == null || item.quantity <= item.stock)))
 
 
   // ==================== 购物车选择相关方法 ====================
@@ -570,8 +576,8 @@ const syncSelectedCartState = () => {
     }
 
     // 持久化到storage
-    updateProductSelection(normalizedId, newSelectedState)
-    setCheckoutProductIds(selectedCartIds.value)
+    if (!directPurchase.value) updateProductSelection(normalizedId, newSelectedState)
+    if (!directPurchase.value) setCheckoutProductIds(selectedCartIds.value)
   }
 
   /**
@@ -594,24 +600,9 @@ const syncSelectedCartState = () => {
     })
 
     // 使用cart.js中的批量更新函数
-    updateMultipleSelections(selectionMap)
-    setCheckoutProductIds(selectedCartIds.value)
+    if (!directPurchase.value) updateMultipleSelections(selectionMap)
+    if (!directPurchase.value) setCheckoutProductIds(selectedCartIds.value)
   }
-
-/**
- * 用户信息点击处理 - 目前显示提示信息
- */
-  const onSelectUser = () => {
-  uni.showToast({ title: '用户信息', icon: 'none' })
-  }
-
-/**
- * 日期选择处理 - 目前显示提示信息
- */
-  const onSelectDate = () => {
-  uni.showToast({ title: '日期选择', icon: 'none' })
-  }
-
 
   /**
    * 购物车商品点击处理
@@ -634,23 +625,16 @@ const syncSelectedCartState = () => {
    * 收集用户选中的商品，构建订单信息并跳转到确认页面
    */
   const goToOrder = () => {
-    if (!checkoutContext.value || !currentPrescription.value) {
-      uni.showToast({ title: '本次复诊信息未就绪，请返回重试', icon: 'none' })
+    if (checkoutRouteError.value) { uni.showToast({ title: checkoutRouteError.value, icon: 'none' }); return }
+    if (!canSubmit.value) {
+      uni.showToast({ title: loadError.value || '本次处方或所选商品不可结算，请检查后重试', icon: 'none' })
       return
     }
-    assertCurrentSession(pageSession)
-    // 检查用户是否选择了商品
-    if (selectedCartIds.value.length === 0) {
-      uni.showToast({
-        title: '请选择处方',
-        icon: 'none'
-      })
-      return
-    }
-
     try {
+      if (!pageActive) return
+      assertCurrentSession(pageSession)
       // 获取完整的购物车数据（包含数量等信息）
-      const cartItems = loadCartItems(categories.value)
+      const cartItems = cartItemsList.value
 
       // 获取用户选中的商品ID列表
       const selectedProductIds = selectedCartIds.value
@@ -662,11 +646,12 @@ const syncSelectedCartState = () => {
       uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo)
 
       // 跳转到订单确认页面
-      setCheckoutProductIds(selectedProductIds)
+      if (!directPurchase.value) setCheckoutProductIds(selectedProductIds)
       uni.navigateTo({
-        url: `/pages/order/confirm?selectedItems=${selectedProductIds.join(',')}&consultationId=${checkoutContext.value.consultationId}&patientId=${checkoutContext.value.patientId}`
+        url: `/pages/order/confirm?selectedItems=${selectedProductIds.join(',')}&consultationId=${checkoutContext.value.consultationId}&patientId=${checkoutContext.value.patientId}${directPurchaseQuery(directPurchase.value)}`
       })
     } catch (e) {
+      if (e.code === 'SESSION_CHANGED') return
       console.error('event=ui_order_prescription_list stage=go_to_order result=failed reason=operation_incomplete')
       uni.showToast({
         title: '构建订单失败，请重试',
@@ -677,314 +662,417 @@ const syncSelectedCartState = () => {
   </script>
 
   <style scoped>
-  /* ==================== 页面布局样式 ==================== */
-  .page {
-  /* 页面背景色 */
-    background: #f6f7fb;
-  /* 最小高度为视窗高度 */
-    min-height: 100vh;
-  /* 底部预留空间给固定定位的底部栏 */
-    padding-bottom: 200rpx;
-  }
-
-  .header-info {
-    background: #fff;
-    padding: 20rpx;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1rpx solid #eee;
-  }
-
-  .hospital {
-    font-size: 28rpx;
-    color: #333;
-  }
-
-  .user-info {
-    font-size: 28rpx;
-    color: #333;
-  }
-
-  .date-section {
-    background: #fff;
-    padding: 20rpx;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1rpx solid #eee;
-  }
-
-  .date-label {
-    font-size: 28rpx;
-    color: #333;
-  }
-
-  .date-range {
-    font-size: 28rpx;
-    color: #666;
-  }
-
-  .filter-tabs {
-    background: #fff;
-    display: flex;
-    padding: 20rpx 0;
-    border-bottom: 1rpx solid #eee;
-  }
-
-  .tab-item {
-    flex: 1;
-    text-align: center;
-    font-size: 28rpx;
-    color: #666;
-    position: relative;
-    padding: 10rpx 0;
-  }
-
-  .tab-item.active {
-    color: #2a82e4;
-    font-weight: 600;
-  }
-
-  .tab-badge {
-    position: absolute;
-    top: -20rpx;
-    right: 20rpx;
-    background: #ff4d4f;
-    color: #fff;
-    font-size: 20rpx;
-    padding: 2rpx 8rpx;
-    border-radius: 20rpx;
-    min-width: 32rpx;
-    text-align: center;
-  }
-
-/* 处方列表滚动容器 */
-  .prescription-list {
-    flex: 1;
-  }
-
-/* 全选控制栏样式 */
-  .select-all-bar {
-    background: #fff;
-    padding: 20rpx;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20rpx;
-    border-radius: 8rpx;
-  /* 阴影效果 */
-  box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.05);
+.page {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
+  background: #f6f7fb;
 }
 
-/* 全选控制按钮组 */
-.select-controls {
-  display: flex;
-  gap: 40rpx;
-  }
+.page.with-footer {
+  padding-bottom: calc(184rpx + env(safe-area-inset-bottom));
+}
 
-  .select-all {
-    display: flex;
-    align-items: center;
-    gap: 12rpx;
-    font-size: 28rpx;
-    color: #333;
-  }
+.page-content {
+  padding: 24rpx;
+}
 
-  .checkbox {
-    width: 36rpx;
-    height: 36rpx;
-    border: 2rpx solid #ddd;
-    border-radius: 50%;
-    position: relative;
-  }
+.load-state {
+  margin-bottom: 24rpx;
+  padding: 24rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: #666;
+  word-break: break-all;
+}
 
-  .checkbox.checked {
-    background: #2a82e4;
-    border-color: #2a82e4;
-  }
-
-  .checkbox.checked::after {
-    content: '✓';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: #fff;
-    font-size: 24rpx;
-  }
-
-  .consultation-time {
-    font-size: 24rpx;
-    color: #999;
-  }
-  .selected-count{
-    color: #ff4d4f;
-    font-size: 36rpx;
-    font-weight:bold;
-  }
-/* ==================== 处方卡片样式 ==================== */
-/* 单个处方卡片容器 */
-  .prescription-item {
-    background: #fff;
-    border-radius: 8rpx;
-    padding: 20rpx;
-    margin-bottom: 20rpx;
-    display: flex;
-    gap: 20rpx;
-  /* 阴影效果 */
+.consultation-card {
+  margin-bottom: 32rpx;
+  padding: 28rpx;
+  border: 1rpx solid #eee;
+  border-radius: 24rpx;
+  background: #fff;
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
-  /* 过渡动画 */
-  transition: all 0.3s ease;
-  }
+}
 
-/* 处方选择框容器 */
-  .prescription-checkbox {
-    display: flex;
-    align-items: flex-start;
-    padding-top: 4rpx;
-  /* 防止选择框被压缩 */
+.section-heading {
+  margin-bottom: 24rpx;
+  padding-left: 16rpx;
+  border-left: 6rpx solid #2a82e4;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #333;
+}
+
+.consultation-row {
+  display: flex;
+  align-items: baseline;
+  margin-top: 18rpx;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
+.consultation-label {
   flex-shrink: 0;
-  }
+  width: 128rpx;
+  color: #999;
+}
 
-  .prescription-content {
-    flex: 1;
-    cursor: pointer;
-  }
+.patient-info {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  min-width: 0;
+}
 
-  .prescription-header {
-    margin-bottom: 12rpx;
-  }
+.patient-name {
+  margin-right: 20rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  word-break: break-all;
+}
 
-  .doctor-name {
-    font-size: 30rpx;
-    font-weight: 600;
-    color: #333;
-  }
+.patient-meta {
+  font-size: 24rpx;
+  color: #666;
+}
 
-  .prescription-tags {
-    display: flex;
-    gap: 12rpx;
-    margin-bottom: 16rpx;
-    flex-wrap: wrap;
-  }
+.consultation-value {
+  flex: 1;
+  min-width: 0;
+  color: #666;
+  word-break: break-all;
+}
 
-  .tag {
-    padding: 4rpx 12rpx;
-    background: #f0f6ff;
-    color: #2a82e4;
-    font-size: 22rpx;
-    border-radius: 4rpx;
-  }
+.list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 4rpx 20rpx;
+}
 
-  /* 蓝底白字标签样式 */
-  .tag-online,
-  .tag-convenient {
-    background: #2a82e4;
-    color: #ffffff;
-  }
+.list-title {
+  font-size: 32rpx;
+}
 
+.list-count,
+.selection-summary {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  font-size: 24rpx;
+  color: #999;
+}
 
-  .prescription-info {
-    margin-bottom: 8rpx;
-    font-size: 26rpx;
-  }
+.select-all-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+  padding: 12rpx 24rpx;
+  border: 1rpx solid #eee;
+  border-radius: 20rpx;
+  background: #fff;
+}
 
-  .prescription-info-inline {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-  }
+.select-all {
+  display: flex;
+  align-items: center;
+  min-height: 64rpx;
+  font-size: 26rpx;
+  color: #333;
+}
 
-  .info-label {
-    color: #666;
-    margin-right: 8rpx;
-  }
+.select-all .checkbox {
+  margin-right: 16rpx;
+}
 
-  .info-label-spaced {
-    margin-left: 20rpx;
-  }
+.checkbox {
+  position: relative;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 40rpx;
+  height: 40rpx;
+  border: 2rpx solid #ddd;
+  border-radius: 50%;
+  background: #fff;
+}
 
-  .info-value {
-    color: #333;
-  }
+.checkbox.checked {
+  border-color: #2a82e4;
+  background: #2a82e4;
+}
 
-  .prescription-footer {
-    padding-right: 30rpx;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 16rpx;
-    padding-top: 16rpx;
-    border-top: 1rpx solid #eee;
-  }
+.checkbox.checked::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 26rpx;
+  line-height: 1;
+  color: #fff;
+  content: '✓';
+}
 
-  .prescription-status {
-    display: flex;
-    flex-direction: column;
-    gap: 4rpx;
-  }
+.prescription-item {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 20rpx;
+  padding: 28rpx 24rpx;
+  border: 1rpx solid #eee;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+}
 
-  .status-text {
-    font-size: 30rpx;
-    color: #ff4d4f;
-    font-weight: bold;
-  }
+.prescription-item:last-child {
+  margin-bottom: 0;
+}
 
-  .status-time {
-    font-size: 24rpx;
-    color: #999;
-  }
+.prescription-checkbox {
+  box-sizing: border-box;
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  width: 64rpx;
+  min-height: 88rpx;
+  padding-top: 2rpx;
+}
 
+.prescription-content {
+  flex: 1;
+  min-width: 0;
+}
 
+.prescription-header {
+  margin-bottom: 16rpx;
+}
 
-/* ==================== 底部操作栏样式 ==================== */
-/* 固定在底部的操作栏 */
-  .footer {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 25px;
-    background: #fff;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20rpx;
-  /* 上阴影 */
+.product-name {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #333;
+  word-break: break-all;
+}
+
+.prescription-tags {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 8rpx;
+}
+
+.tag {
+  margin: 0 12rpx 8rpx 0;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  background: #f0f6ff;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #2a82e4;
+}
+
+.tag-online,
+.tag-convenient {
+  background: #2a82e4;
+  color: #ffffff;
+}
+
+.product-spec {
+  display: block;
+  margin: 8rpx 0 20rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #999;
+  word-break: break-all;
+}
+
+.clinical-info {
+  margin: 16rpx 0 24rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  background: #f6f7fb;
+}
+
+.prescription-info {
+  display: flex;
+  align-items: baseline;
+  padding: 4rpx 0;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
+.info-label {
+  flex-shrink: 0;
+  width: 168rpx;
+  color: #666;
+}
+
+.info-value {
+  flex: 1;
+  min-width: 0;
+  color: #333;
+  word-break: break-all;
+}
+
+.quantity-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-top: 20rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #666;
+}
+
+.product-quantity {
+  margin-left: 16rpx;
+}
+
+.prescription-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-top: 20rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid #eee;
+  line-height: 1.5;
+}
+
+.subtotal-label {
+  font-size: 24rpx;
+  color: #666;
+}
+
+.subtotal-value {
+  margin-left: 12rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #ff4d4f;
+  word-break: break-all;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 96rpx 32rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  text-align: center;
+}
+
+.empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 128rpx;
+  height: 128rpx;
+  margin-bottom: 28rpx;
+  border-radius: 50%;
+  background: #f0f6ff;
+}
+
+.empty-title {
+  margin-bottom: 16rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+  color: #333;
+}
+
+.empty-description {
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: #999;
+}
+
+.footer {
+  position: fixed;
+  z-index: 100;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
+  background: #fff;
   box-shadow: 0 -4rpx 12rpx rgba(0, 0, 0, 0.1);
-  /* 确保在最上层 */
-    z-index: 100;
-  /* 右侧额外内边距 */
-    padding-right: 30rpx;
-  }
+}
 
-/* 底部栏左侧信息区域 */
-  .footer-left {
-    display: flex;
-    flex-direction: column;
-    gap: 8rpx;
-    font-size: 28rpx;
-    color: #333;
-  }
+.footer-left {
+  flex: 1;
+  min-width: 0;
+  margin-right: 24rpx;
+}
 
-  .total-amount {
-    font-size: 24rpx;
-    color: #666;
-  }
+.total-amount {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  line-height: 1.4;
+}
 
-  .amount-value {
-    font-size: 32rpx;
-    font-weight: 600;
-    color: #ff4d4f;
-  }
+.total-label {
+  margin-right: 12rpx;
+  font-size: 24rpx;
+  color: #666;
+}
 
-  .order-btn {
-    margin: 0;
-    background: #2a82e4;
-    color: #fff;
-    font-size: 30rpx;
-    padding: 0rpx 40rpx;
-    border-radius: 50rpx;
-    border: none;
-  }
-  </style>
+.amount-value {
+  font-size: 38rpx;
+  font-weight: 600;
+  color: #ff4d4f;
+  word-break: break-all;
+}
+
+.selection-detail {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.4;
+  color: #333;
+}
+
+.selected-count {
+  font-weight: 600;
+  color: #ff4d4f;
+}
+
+.order-btn {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  min-width: 192rpx;
+  height: 88rpx;
+  margin: 0;
+  padding: 0 36rpx;
+  border: none;
+  border-radius: 44rpx;
+  background: #2a82e4;
+  font-size: 30rpx;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #fff;
+}
+
+.order-btn[disabled] {
+  background: #ddd;
+  color: #999;
+}
+
+.order-btn::after {
+  border: none;
+}
+</style>

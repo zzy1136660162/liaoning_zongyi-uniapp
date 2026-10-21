@@ -85,7 +85,13 @@
         <text class="info-value">
           {{ item.value }}
         </text>
-        <text v-if="item.labelKey === 'orderNo' && item.value" class="copy-order-no" @click.stop="copyOrderNo">复制</text>
+        <text
+          v-if="item.labelKey === 'orderNo' && item.value"
+          class="copy-order-no"
+          @click.stop="copyOrderNo"
+        >
+          复制
+        </text>
       </view>
 
       <!-- 操作按钮 -->
@@ -133,8 +139,9 @@
               <view class="medicine-left">
                 <image
                   class="medicine-thumb"
-                  :src="item.image"
+                  :src="getProductImageUrl(item.image)"
                   mode="aspectFill"
+                  @error="handleProductImageError(item.image)"
                 />
                 <view
                   v-if="Number(item.quantity) > 0"
@@ -257,6 +264,7 @@
   import { wechatSinglePay } from '@/api/payment.js'
   import { checkCanApplyRefund } from '@/api/refund.js'
   import { getImageUrl } from '@/utils/config.js'
+  import { useProductImages } from '@/utils/product-image.js'
   import { logPageView, logButtonClick } from '@/utils/accessLog.js'
   import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
   import { buildItemRedeemVouchers } from '@/utils/order-redeem-vouchers.js'
@@ -265,6 +273,7 @@
 
   export default {
     name: 'OrderDetail',
+    setup: useProductImages,
     data() {
       return {
         order: {

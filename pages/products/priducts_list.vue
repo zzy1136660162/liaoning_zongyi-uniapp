@@ -176,8 +176,11 @@ export default {
     cartCount() {
       return calculateTotalQuantity(this.cartItems)
     },
+    selectedCartItems() {
+      return this.cartItems.filter(item => item.selected !== false && isPurchaseAvailable(item))
+    },
     totalPrice() {
-      return calculateTotalPrice(this.cartItems)
+      return calculateTotalPrice(this.selectedCartItems)
     }
   },
   onLoad() {
@@ -277,7 +280,7 @@ export default {
         const detail = mapProductDetail(await getProductDetail(product.id))
         product = withProductSku(detail, resolveProductSku(detail))
         if (!isPurchaseAvailable(product)) throw new Error('商品已售罄或限购额度已用完')
-        const flow = resolveCartCompatibility(product, { ignoreProductId: product.id })
+        const flow = resolveCartCompatibility(product)
         if (!flow.valid) {
           uni.showToast({ title: flow.message, icon: 'none' })
           return
@@ -334,7 +337,7 @@ export default {
         })
         return
       }
-      if (this.cartItems.length === 0) {
+      if (this.selectedCartItems.length === 0) {
         uni.showToast({ title: '请先选择商品', icon: 'none' })
         return
       }
@@ -348,7 +351,7 @@ export default {
           return
         }
 
-        const selectedIds = this.cartItems.map(item => String(item.id))
+        const selectedIds = this.selectedCartItems.map(item => String(item.id))
         const checkout = prepareCheckout(selectedIds, buildListCartCategories(this.categories, getCartEntries()))
         if (!checkout.valid) {
           if (checkout.questionnaireCheck?.state === 'required') {

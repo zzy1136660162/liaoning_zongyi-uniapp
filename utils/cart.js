@@ -181,6 +181,9 @@ const buildCartEntry = (cartKeyOrProductId, partial = {}) => {
     questionnaireId: needQuestionnaire === 1 ? pickValue(partial.questionnaireId) : null,
     answerId: needQuestionnaire === 1 ? pickValue(partial.answerId) : null,
     questionnairePassed: ['not_required', 'passed'].includes(resolveQuestionnaireState(partial, partial)),
+    serverCartItemId: normalizeId(partial.serverCartItemId) || null,
+    serverCartVersion: normalizeId(partial.serverCartVersion) || null,
+    revision: partial.revision || `legacy:${cartKey}:${partial.timestamp || 0}`,
     timestamp: partial.timestamp ? toNumber(partial.timestamp, Date.now()) : Date.now()
   }
 }
@@ -216,6 +219,9 @@ const triggerRemoteSync = (action, payload) => {
 
 const writeCartData = (cartData, options = {}) => {
   const normalized = normalizeCartData(cartData)
+  for (const key of options.syncProductIds || []) {
+    if (normalized[key]) normalized[key].revision = newCartRevision()
+  }
   uni.setStorageSync(STORAGE_KEY_CART_ITEMS, normalized)
 
   if (!options.silent) {
@@ -235,8 +241,35 @@ const writeCartData = (cartData, options = {}) => {
   }
 }
 
+const newCartRevision = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+const cartUserState = entry => JSON.stringify([
+  entry.quantity, entry.selected, entry.questionnaireId, entry.answerId
+])
+
 export const replaceCartData = (cartData) => {
-  writeCartData(cartData, { suppressSync: true, eventSource: 'server' })
+  const current = readCartData()
+  const next = normalizeCartData(cartData)
+  Object.entries(next).forEach(([key, entry]) => {
+    const previous = current[key]
+    const unchanged = previous && cartUserState(previous) === cartUserState(entry) &&
+      previous.serverCartItemId === entry.serverCartItemId && previous.serverCartVersion === entry.serverCartVersion
+    entry.revision = unchanged && previous.revision ? previous.revision : newCartRevision()
+    if (unchanged) entry.timestamp = previous.timestamp
+  })
+  writeCartData(next, { suppressSync: true, eventSource: 'server' })
+}
+
+/** 只确认本次发送的行；迟到响应不能把旧服务端版本绑定到后来的本地编辑。 */
+export const acknowledgeServerCartItem = (cartKey, revision, serverItem) => {
+  if (!serverItem) return false
+  const server = mapServerCartItemToProduct(serverItem)
+  const current = readCartData()
+  const entry = current[cartKey]
+  if (!entry || entry.revision !== revision || server.cartKey !== cartKey ||
+      !/^[1-9]\d*$/.test(server.serverCartItemId || '') || !/^\d+$/.test(server.serverCartVersion ?? '')) return false
+  current[cartKey] = { ...entry, serverCartItemId: server.serverCartItemId, serverCartVersion: server.serverCartVersion }
+  writeCartData(current, { suppressSync: true, silent: true })
+  return true
 }
 
 const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) => {
@@ -565,6 +598,31 @@ export const removeFromCart = (productIds) => {
   }
 }
 
+/** 支付旧订单只能清理下单时的购物车行，不能删除之后重新加购或编辑的同规格。 */
+export const removePurchasedCartItems = (snapshot = {}) => {
+  try {
+    const current = readCartData()
+    const keys = Object.keys(snapshot).filter(key => {
+      const purchased = snapshot[key], entry = current[key]
+      return purchased?.revision && entry && purchased.revision === entry.revision &&
+        purchased.quantity === entry.quantity && purchased.timestamp === entry.timestamp
+    })
+    if (!keys.length) return true
+    const items = keys.map(key => snapshot[key]).filter(item =>
+      /^[1-9]\d*$/.test(String(item.serverCartItemId || '')) && /^\d+$/.test(String(item.serverCartVersion ?? '')))
+      .map(item => ({ id: item.serverCartItemId, cartVersion: item.serverCartVersion }))
+    keys.forEach(key => { delete current[key] })
+    writeCartData(current, { suppressSync: true })
+    updateCheckoutIdsAfterRemoval(keys)
+    triggerRemoteSync('purchasedCleanup', { keys, items,
+      revisions: Object.fromEntries(keys.map(key => [key, snapshot[key].revision])) })
+    return true
+  } catch (error) {
+    console.error('removePurchasedCartItems failed:', error)
+    return false
+  }
+}
+
 export const clearCart = () => {
   try {
     const removedKeys = Object.keys(readCartData())
@@ -638,13 +696,13 @@ const resolveProductDisplayName = (product = {}, entry = {}, productId = '') => 
   return product.name || product.productName || product.title || entry.name || entry.productName || productId || '商品'
 }
 
-export const validateCheckoutStock = (productIds = [], categories = []) => {
+export const validateCheckoutStock = (productIds = [], categories = [], entries) => {
   const ids = uniqueIds(productIds.length > 0 ? productIds : getCurrentCheckoutProductIds())
   if (!ids.length) {
     return { valid: true, message: '', productId: null }
   }
 
-  const cartData = readCartData()
+  const cartData = entries === undefined ? readCartData() : entries
   for (const cartKey of ids) {
     const entry = cartData[cartKey]
     const product = findProductById(categories, cartKey)
@@ -695,9 +753,9 @@ export const validateCheckoutStock = (productIds = [], categories = []) => {
   return { valid: true, message: '', productId: null }
 }
 
-export const loadCartItems = (categories = [], onlySelected = false) => {
+export const loadCartItems = (categories = [], onlySelected = false, { entries, preserveQuantity = false } = {}) => {
   try {
-    const cartData = readCartData()
+    const cartData = entries === undefined ? readCartData() : { ...entries }
     const cartItems = []
     let needsSave = false
     let quantityChanged = false
@@ -729,7 +787,7 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
       const nextStock = currentMeta.stock
       const nextAvailable = nextStock === 0 ? false : currentMeta.available
       const nextSelected = nextAvailable ? entry.selected !== false : false
-      const nextQuantity = clampQuantityToStock(entry.quantity, nextStock)
+      const nextQuantity = preserveQuantity ? toPositiveInt(entry.quantity, 1) : clampQuantityToStock(entry.quantity, nextStock)
       quantityChanged = quantityChanged || entry.quantity !== nextQuantity
       const productSkuId = normalizeId(product.skuId ?? entry.skuId)
       const productId = normalizeId(product.productId ?? entry.productId ?? splitCartItemKey(cartKey).productId)
@@ -821,7 +879,7 @@ export const loadCartItems = (categories = [], onlySelected = false) => {
       })
     })
 
-    if (needsSave) {
+    if (needsSave && entries === undefined && !preserveQuantity) {
       writeCartData(cartData, { suppressSync: true, silent: !quantityChanged })
     }
 
@@ -842,6 +900,8 @@ export const mapServerCartItemToProduct = (item = {}) => {
     id: cartKey,
     cartKey,
     productId,
+    serverCartItemId: normalizeId(item.id) || null,
+    serverCartVersion: normalizeId(item.cartVersion) || null,
     skuId: skuId || null,
     skuCode: pickText(item.skuCode),
     skuName: pickText(item.skuName),
@@ -959,7 +1019,7 @@ export const buildOrderInfo = (
 // 加购只验证购买分类有效性，不按分类、商户或后续是否复诊互相排斥。
 export const resolveCartCompatibility = product => resolveProductFlow(product ? [product] : [])
 
-export const resolveCheckoutFlow = (productIds = [], categories = []) => {
+export const resolveCheckoutFlow = (productIds = [], categories = [], { entries } = {}) => {
   const ids = uniqueIds(productIds.length > 0 ? productIds : getCurrentCheckoutProductIds())
   if (!ids.length) {
     return {
@@ -971,7 +1031,7 @@ export const resolveCheckoutFlow = (productIds = [], categories = []) => {
   }
 
   const selectedSet = new Set(ids)
-  const items = loadCartItems(categories).filter(item => selectedSet.has(normalizeId(item.id)))
+  const items = loadCartItems(categories, false, { entries, preserveQuantity: true }).filter(item => selectedSet.has(normalizeId(item.id)))
   const flow = resolveProductFlow(items)
 
   return {
@@ -981,8 +1041,8 @@ export const resolveCheckoutFlow = (productIds = [], categories = []) => {
   }
 }
 
-export const prepareCheckout = (productIds = [], categories = []) => {
-  const stockCheck = validateCheckoutStock(productIds, categories)
+export const prepareCheckout = (productIds = [], categories = [], { entries } = {}) => {
+  const stockCheck = validateCheckoutStock(productIds, categories, entries)
   if (!stockCheck.valid) {
     return {
       valid: false,
@@ -996,23 +1056,12 @@ export const prepareCheckout = (productIds = [], categories = []) => {
     }
   }
 
-  const resolved = resolveCheckoutFlow(productIds, categories)
+  const resolved = resolveCheckoutFlow(productIds, categories, { entries })
   if (!resolved.valid) return resolved
   const questionnaireCheck = resolveCheckoutQuestionnaire(resolved.items)
   if (!questionnaireCheck.valid) return { ...resolved, valid: false, message: questionnaireCheck.message, questionnaireCheck }
-  if (resolved.productIds.length > 0) {
+  if (entries === undefined && resolved.productIds.length > 0) {
     setCheckoutProductIdsInternal(resolved.productIds)
   }
   return resolved
-}
-
-export const getCartStatistics = () => {
-  const entries = Object.values(readCartData())
-  const totalCount = entries.length
-  const selectedCount = entries.filter(entry => entry.selected && isCartEntryAvailable(entry)).length
-  return {
-    totalCount,
-    selectedCount,
-    totalPrice: 0
-  }
 }

@@ -4,6 +4,7 @@
 
 import { get, post } from '@/utils/request.js'
 import { API_PATHS } from '@/utils/config.js'
+import { forgetOrderSubmission } from '@/utils/order-submission.js'
 
 /** Idempotent hint only: the server transaction already saved the durable order event. */
 export const triggerOrderInventorySync = (orderId) => post(`/api/orders/${orderId}/his-inventory-sync`, {}, {
@@ -34,7 +35,6 @@ export const createOrderFromPrescription = (data) => {
  * @param {Object} data 订单信息
  * @param {Number} data.addressId 收货地址ID
  * @param {String} data.remark 订单备注
- * @param {Number} data.shippingFee 快递费（元）
  * @param {Array} data.items 商品列表
  * @param {Number} data.items[].productId 商品ID
  * @param {Number} data.items[].quantity 数量
@@ -97,7 +97,7 @@ export const cancelOrder = (id, reason = '') => {
   return post(API_PATHS.ORDER.CANCEL(id), { reason }, {
     needAuth: true,
     showLoading: true
-  })
+  }).then(result => { forgetOrderSubmission(id); return result })
 }
 
 /**

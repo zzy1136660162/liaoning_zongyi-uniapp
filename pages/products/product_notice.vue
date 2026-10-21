@@ -47,6 +47,7 @@ import {
 import { logPageView } from '@/api/access-log.js'
 import { resolveQuestionnaireState, getQuestionnaireStateMessage } from '@/utils/questionnaire-state.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
+import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
 
 export default {
   data() {
@@ -61,6 +62,7 @@ export default {
       productDetail: null,
       productRequestSeq: 0,
       requestedQuantity: 1,
+      directPurchase: null,
       action: 'cart',
       selectedItems: '',
       pageActive: true,
@@ -73,6 +75,14 @@ export default {
     this.skuId = options.skuId || ''
     this.requestedQuantity = Math.max(1, Number(options.quantity) || 1)
     this.action = options.action || 'cart'
+    try {
+      this.directPurchase = parseDirectPurchase(options)
+      if (this.action === 'buy' && !this.directPurchase) throw new Error('缺少本次购买信息，请返回商品详情重试')
+    } catch (error) {
+      this.pageActive = false
+      uni.showToast({ title: error.message, icon: 'none' })
+      return
+    }
     this.selectedItems = decodeURIComponent(options.selectedItems || '')
     if (!this.productId) {
       console.warn('missing productId on notice page')
@@ -100,13 +110,20 @@ export default {
       return buildCartItemKey(detail?.productId || detail?.id || this.productId, detail?.skuId || this.skuId || null)
     },
     getSelectedQuantity() {
-      return Math.max(1, Number(this.requestedQuantity) || 1)
+      return this.directPurchase?.quantity || this.requestedQuantity
     },
     goQuestionnaire(product, action = this.action) {
       const productId = product.productId || product.id
       const skuParam = product.skuId ? `&skuId=${encodeURIComponent(product.skuId)}` : ''
       const selectedParam = this.selectedItems ? `&selectedItems=${encodeURIComponent(this.selectedItems)}` : ''
-      uni.navigateTo({ url: `/pages/products/product_questionnaire?id=${encodeURIComponent(productId)}&quantity=${this.getSelectedQuantity()}&action=${action}${skuParam}${selectedParam}` })
+      uni.navigateTo({
+        url: `/pages/products/product_questionnaire?id=${encodeURIComponent(productId)}&quantity=${this.getSelectedQuantity()}&action=${action}${skuParam}${selectedParam}${directPurchaseQuery(this.directPurchase)}`,
+        success: ({ eventChannel }) => {
+          if (this.directPurchase) eventChannel?.on('directPurchaseQuestionnaireAnswered', answer => {
+            if (this.isNoticeCurrent()) this.getOpenerEventChannel?.()?.emit('directPurchaseQuestionnaireAnswered', answer)
+          })
+        }
+      })
     },
     async loadProductDetail(productId) {
       const requestSeq = ++this.productRequestSeq
@@ -159,7 +176,7 @@ export default {
       const checkout = prepareCheckout(selectedKeys, [{
         id: 'notice_checkout',
         products
-      }])
+      }], this.directPurchase ? { entries: checkoutEntries(selectedKeys, this.directPurchase) } : {})
       if (!checkout.valid) {
         if (checkout.questionnaireCheck?.state === 'required') {
           this.goQuestionnaire(checkout.questionnaireCheck.item, 'checkout')
@@ -176,13 +193,13 @@ export default {
       if (!checkout.requiresConsultation) {
         uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
         uni.navigateTo({
-          url: `/pages/order/confirm?selectedItems=${selectedItems}`
+          url: `/pages/order/confirm?selectedItems=${selectedItems}${directPurchaseQuery(this.directPurchase)}`
         })
         return true
       }
 
       uni.navigateTo({
-        url: `/pages/dispense/apply?selectedItems=${selectedItems}`
+        url: `/pages/dispense/apply?selectedItems=${selectedItems}${directPurchaseQuery(this.directPurchase)}`
       })
       return true
     },
@@ -208,7 +225,7 @@ export default {
 
         const selectedQuantity = this.getSelectedQuantity()
         const saleProduct = this.resolveSelectedProduct(detail)
-        const state = resolveQuestionnaireState(saleProduct, getCartProductInfo(this.productId, saleProduct.skuId))
+        const state = resolveQuestionnaireState(saleProduct, this.directPurchase || getCartProductInfo(this.productId, saleProduct.skuId))
         if (this.action !== 'cart' && state === 'unavailable') throw new Error(getQuestionnaireStateMessage(state))
         // 加购不答题；立即购买/整组结算/补答只进入当前绑定的问卷。
         if (this.action !== 'cart' && state === 'required') {
@@ -221,7 +238,7 @@ export default {
           uni.navigateBack({ delta: 1 })
           return
         }
-        if (this.action === 'checkout') {
+        if (this.action === 'checkout' || this.action === 'buy') {
           await this.goCheckout(saleProduct)
           return
         }
@@ -231,11 +248,6 @@ export default {
             title: '加入购物车失败',
             icon: 'none'
           })
-          return
-        }
-
-        if (this.action === 'buy') {
-          await this.goCheckout(saleProduct)
           return
         }
 

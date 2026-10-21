@@ -26,8 +26,8 @@
 
       <view class="form-item picker-item">
         <view class="label"><text class="required">*</text> 证件类型</view>
-        <picker mode="selector" :range="idTypeOptions" :value="idTypeIndex" @change="onIdTypeChange">
-          <view class="picker-value">{{ formData.idType || '请选择' }}</view>
+        <picker mode="selector" :range="idTypeOptions" range-key="label" :value="idTypeIndex" @change="onIdTypeChange">
+          <view class="picker-value">{{ idTypeOptions[idTypeIndex].label }}</view>
         </picker>
         <text class="arrow">›</text>
       </view>
@@ -104,8 +104,8 @@
 
       <view class="form-item picker-item">
         <view class="label"><text class="required">*</text> 证件类型</view>
-        <picker mode="selector" :range="idTypeOptions" :value="idTypeIndex" @change="onIdTypeChange">
-          <view class="picker-value">{{ formData.idType || '请选择' }}</view>
+        <picker mode="selector" :range="idTypeOptions" range-key="label" :value="idTypeIndex" @change="onIdTypeChange">
+          <view class="picker-value">{{ idTypeOptions[idTypeIndex].label }}</view>
         </picker>
         <text class="arrow">›</text>
       </view>
@@ -190,11 +190,12 @@
         <view class="label">证件类型</view>
         <picker
           mode="selector"
-          :range="idTypeOptions"
+          :range="guardianIdTypeOptions"
+          range-key="label"
           :value="guardianIdTypeIndex"
           @change="onGuardianIdTypeChange"
         >
-          <view class="picker-value picker-value-left">{{ formData.guardianIdType || '请选择' }}</view>
+          <view class="picker-value picker-value-left">{{ guardianIdTypeOptions[guardianIdTypeIndex].label }}</view>
         </picker>
         <text class="arrow">›</text>
       </view>
@@ -228,15 +229,14 @@
 <script setup>
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 const pageSession = getSessionGeneration()
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { addPatient, getPatientDetail, updatePatient } from '@/api/patient.js'
 import { STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
-import { deriveGenderFromId, deriveAgeFromId, patientHisSyncNotice } from '@/utils/patient.js'
+import { ID_TYPE_OPTIONS, deriveGenderFromId, deriveAgeFromId, patientHisSyncNotice } from '@/utils/patient.js'
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
 
-const idTypeOptions = ['身份证', '护照', '港澳通行证', '台胞证']
 const patientId = ref(null)
 const saving = ref(false)
 const now = new Date()
@@ -266,13 +266,20 @@ const formData = reactive({
   detailAddress: '',
   patientType: 'adult',
   guardianName: '',
-  guardianIdType: '身份证',
+  guardianIdType: '',
   guardianIdNumber: '',
   guardianPhone: ''
 })
 
-const idTypeIndex = ref(0)
-const guardianIdTypeIndex = ref(0)
+const buildIdTypeOptions = type => [
+  { value: '', label: '请选择' },
+  ...ID_TYPE_OPTIONS.map(value => ({ value, label: value })),
+  ...(type && !ID_TYPE_OPTIONS.includes(type) ? [{ value: type, label: `${type}（已有类型）` }] : [])
+]
+const idTypeOptions = computed(() => buildIdTypeOptions(formData.idType))
+const guardianIdTypeOptions = computed(() => buildIdTypeOptions(formData.guardianIdType))
+const idTypeIndex = computed(() => idTypeOptions.value.findIndex(item => item.value === formData.idType))
+const guardianIdTypeIndex = computed(() => guardianIdTypeOptions.value.findIndex(item => item.value === formData.guardianIdType))
 const multiRange = ref([[], [], [], []])
 const multiValue = ref([0, 0, 0, 0])
 const DISTRICT_PLACEHOLDER = '请选择区/县'
@@ -324,9 +331,9 @@ watch(
 )
 
 const onIdTypeChange = (event) => {
-  const index = Number(event.detail.value || 0)
-  idTypeIndex.value = index
-  formData.idType = idTypeOptions[index]
+  const option = idTypeOptions.value[Number(event.detail?.value)]
+  if (!option) return
+  formData.idType = option.value
   if (formData.idType !== '身份证') {
     formData.age = 0
   } else {
@@ -335,9 +342,8 @@ const onIdTypeChange = (event) => {
 }
 
 const onGuardianIdTypeChange = (event) => {
-  const index = Number(event.detail.value || 0)
-  guardianIdTypeIndex.value = index
-  formData.guardianIdType = idTypeOptions[index]
+  const option = guardianIdTypeOptions.value[Number(event.detail?.value)]
+  if (option) formData.guardianIdType = option.value
 }
 
 const resetForm = () => {
@@ -356,11 +362,9 @@ const resetForm = () => {
   formData.detailAddress = ''
   formData.patientType = 'adult'
   formData.guardianName = ''
-  formData.guardianIdType = '身份证'
+  formData.guardianIdType = ''
   formData.guardianIdNumber = ''
   formData.guardianPhone = ''
-  idTypeIndex.value = 0
-  guardianIdTypeIndex.value = 0
   multiValue.value = [0, 0, 0, 0]
   initGuardianInfo()
   setDefaultRegion()
@@ -386,16 +390,16 @@ const switchPatientType = (type) => {
 }
 
 const initGuardianInfo = () => {
-  const userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER) || {}
-  formData.guardianName = userInfo.name || userInfo.realName || ''
+  if (!isCurrentSession(pageSession) || patientId.value
+      || [formData.guardianName, formData.guardianIdType, formData.guardianIdNumber, formData.guardianPhone].some(Boolean)) return
+  let userInfo
+  try { userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER) } catch (_) { return }
+  if (!userInfo || typeof userInfo !== 'object' || Array.isArray(userInfo)) return
+  formData.guardianName = userInfo.realName || userInfo.name || ''
   formData.guardianIdNumber = userInfo.idNumber || userInfo.idCard || ''
   formData.guardianPhone = userInfo.phone || userInfo.mobile || ''
   const idType = userInfo.idType || userInfo.idCardType
-  const idx = idTypeOptions.indexOf(idType)
-  if (idx >= 0) {
-    guardianIdTypeIndex.value = idx
-    formData.guardianIdType = idType
-  }
+  formData.guardianIdType = ID_TYPE_OPTIONS.includes(idType) ? idType : ''
 }
 
 const setDefaultRegion = (provinceName = '辽宁省', cityName = '沈阳市') => {
@@ -516,11 +520,12 @@ const restoreRegionSelection = () => {
 const loadPatient = async (id) => {
   try {
     const data = await getPatientDetail(id)
+    if (!isCurrentSession(pageSession)) return
     Object.assign(formData, {
       name: data?.name || '',
       gender: data?.gender || '男',
       birthDate: data?.birthDate || '',
-      idType: data?.idType || '身份证',
+      idType: data?.idType || '',
       idNumber: data?.idNumber || '',
       age: data?.age || calculateAgeFromBirthDate(data?.birthDate),
       phone: data?.phone || '',
@@ -531,7 +536,7 @@ const loadPatient = async (id) => {
       street: data?.street || '',
       detailAddress: data?.detailAddress || '',
       guardianName: data?.guardianName || '',
-      guardianIdType: data?.guardianIdType || '身份证',
+      guardianIdType: data?.guardianIdType || '',
       guardianIdNumber: data?.guardianIdNumber || '',
       guardianPhone: data?.guardianPhone || ''
     })
@@ -541,8 +546,6 @@ const loadPatient = async (id) => {
       formData.district,
       formData.street
     ].filter(Boolean).join(' ')
-    idTypeIndex.value = Math.max(0, idTypeOptions.indexOf(formData.idType))
-    guardianIdTypeIndex.value = Math.max(0, idTypeOptions.indexOf(formData.guardianIdType))
     restoreRegionSelection()
   } catch (error) {
     if (!isCurrentSession(pageSession)) return
@@ -554,6 +557,10 @@ const loadPatient = async (id) => {
 const validateForm = () => {
   if (!formData.name.trim()) {
     uni.showToast({ title: '请输入姓名', icon: 'none' })
+    return false
+  }
+  if (!formData.idType) {
+    uni.showToast({ title: '请选择证件类型', icon: 'none' })
     return false
   }
   if (!formData.idNumber.trim()) {
@@ -588,6 +595,10 @@ const validateForm = () => {
     }
   }
   if (formData.patientType === 'child') {
+    if (!formData.guardianIdType) {
+      uni.showToast({ title: '请选择陪诊人证件类型', icon: 'none' })
+      return false
+    }
     if (!formData.guardianName.trim()) {
       uni.showToast({ title: '请输入陪诊人姓名', icon: 'none' })
       return false
@@ -609,7 +620,7 @@ const validateForm = () => {
 }
 
 const handleSubmit = async () => {
-  if (!validateForm() || saving.value) return
+  if (!isCurrentSession(pageSession) || !validateForm() || saving.value) return
   
   logButtonClick('保存就诊人', 'PATIENT_EDIT', '', {
     patientType: formData.patientType || 'adult',
@@ -624,7 +635,7 @@ const handleSubmit = async () => {
       name: formData.name.trim(),
       gender: formData.gender || '',
       birthDate: formData.birthDate || null,
-      idType: formData.idType || '身份证',
+      idType: formData.idType,
       idNumber: formData.idNumber.trim(),
       phone: formData.phone ? formData.phone.trim() : null,
       patientType: patientType,
@@ -644,6 +655,7 @@ const handleSubmit = async () => {
     const result = patientId.value
       ? await updatePatient(patientId.value, payload)
       : await addPatient(payload)
+    if (!isCurrentSession(pageSession)) return
     uni.$emit('patientChanged', { patientId: result?.id || patientId.value })
     if (isCurrentSession(pageSession)) uni.hideLoading()
     const syncNotice = patientHisSyncNotice(result?.hisBindingStatus)

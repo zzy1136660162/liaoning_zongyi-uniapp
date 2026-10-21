@@ -33,11 +33,11 @@ test('商品接口按当前 camelCase 字段映射，保留库存、规格与限
   assert.equal(isSelfDevelopedProduct(mapped), false)
 })
 
-test('旧商品字段、旧规格列表和旧图集格式不再作为当前数据使用', () => {
+test('旧商品字段和旧规格列表不再作为当前数据使用', () => {
   const mapped = mapProductDetail({ id: 1, product_name: '旧名称', name: '旧视图名称',
     cover_image: '/old.jpg', image: '/old-view.jpg', productImage: '/old-product.jpg',
     skuList: [{ id: 2 }], limit_info: { enabled: true, remaining_quantity: 0 },
-    is_self_developed: 1, galleryImages: '/one.jpg,/two.jpg' })
+    is_self_developed: 1 })
   assert.equal(mapped.name, '')
   assert.equal(mapped.image, '')
   assert.deepEqual(mapped.skus, [])
@@ -47,6 +47,37 @@ test('旧商品字段、旧规格列表和旧图集格式不再作为当前数�
   assert.equal(resolveProductFlowType({ goodsMerchantType: 2 }), 'direct')
   assert.equal(resolveGoodsMerchantType({ productCategory: 2, goodsMerchantType: 1 }), 1)
 })
+
+test('商品图集解析后台逗号路径，兼容 JSON 数组并在空图集时回退主图', () => {
+  for (const [galleryImages, expected] of [
+    ['/one.jpg,/two.jpg', ['/one.jpg', '/two.jpg']],
+    [' /one.jpg , , /two.jpg, ', ['/one.jpg', '/two.jpg']],
+    ['/single.jpg', ['/single.jpg']],
+    ['https://example.com/one.jpg,/profile/two.jpg', ['https://example.com/one.jpg', '/profile/two.jpg']],
+    ['/one%2Ctwo.jpg', ['/one%2Ctwo.jpg']],
+    ['[" /one.jpg ", "", null, 42, {}, "/two.jpg"]', ['/one.jpg', '/two.jpg']],
+    ['[]', ['/cover.jpg']],
+    ['["/broken.jpg"', ['/cover.jpg']],
+    [' , , ', ['/cover.jpg']],
+    ['', ['/cover.jpg']],
+    [null, ['/cover.jpg']]
+  ]) {
+    assert.deepEqual(mapProductDetail({ galleryImages, coverImage: '/cover.jpg' }).images, expected, String(galleryImages))
+  }
+  assert.deepEqual(mapProductDetail({ galleryImages: ' , ' }).images, [])
+})
+
+for (const name of ['medicine_detail', 'therapy_detail']) {
+  test(`${name}: 后台逗号图集进入实际详情轮播`, () => {
+    const page = loadSetup(`pages/products/${name}.vue`, {
+      ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }),
+      getCurrentInstance: () => ({}), onLoad() {}, onShow() {}, onMounted() {}, onUnmounted() {},
+      getImageUrl: value => value
+    }, ['product', 'productImages'])
+    page.product.value = mapProductDetail({ coverImage: '/cover.jpg', galleryImages: '/one.jpg,/two.jpg' })
+    assert.deepEqual(page.productImages.value, ['/one.jpg', '/two.jpg'])
+  })
+}
 
 test('详情只接受商品 id，不从路由中的旧商品对象恢复身份', async () => {
   for (const name of ['medicine_detail', 'therapy_detail']) {

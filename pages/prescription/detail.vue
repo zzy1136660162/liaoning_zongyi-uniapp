@@ -4,19 +4,19 @@
     <view class="top-header">
       <view class="status-main">{{ statusMainText }}</view>
       <view class="status-sub">{{ statusSubText }}</view>
+      <view v-if="orderStatus.logisticsNo" class="status-sub">
+        {{ orderStatus.logisticsCompany || '快递' }}单号：{{ orderStatus.logisticsNo }}
+      </view>
     </view>
 
     <!-- 白色内容卡片（覆盖在蓝色块上） -->
     <view class="card-wrapper">
-      <view class="card">
+      <view v-if="prescriptionError || orderStatusError" class="reload-action">
+        <button size="mini" @tap="reload">重新加载</button>
+      </view>
+      <view v-if="prescriptionLoaded" class="card">
         <!-- 标题 -->
         <view class="card-title">处方单详情</view>
-
-        <!-- 门诊号 -->
-<!--        <view class="field-row">
-          <text class="field-label">门诊号：</text>
-          <text class="field-value">{{ detail.visitNo }}</text>
-        </view>-->
 
         <view class="dash-line"></view>
 
@@ -43,18 +43,13 @@
             <text class="info-label">证件号：</text>
             <text class="info-value">{{ detail.idNumberMasked }}</text>
           </view>
-<!--          <view class="info-col">
+          <view v-if="detail.diagnosis" class="info-col">
             <text class="info-label">临床诊断：</text>
             <text class="info-value">{{ detail.diagnosis }}</text>
           </view>
-
-          <view class="info-col">
-            <text class="info-label">科室：</text>
-            <text class="info-value">{{ detail.department }}</text>
-          </view>-->
           <view class="info-col">
             <text class="info-label">开方医师：</text>
-            <text class="info-value">{{ detail.doctorName || AI_DOCTOR.name }}</text>
+            <text class="info-value">{{ detail.doctorName }}</text>
           </view>
           <view class="info-col">
             <text class="info-label">开方日期：</text>
@@ -81,28 +76,19 @@
                   <text v-if="item.frequency" class="rp-frequency">{{ item.frequency }}</text>
                   <text v-if="item.days" class="rp-days">{{ item.days }}天</text>
                 </view>
-                <!-- 使用/用量说明（来自 lnzy_product.usage_desc） -->
-                <view v-if="item.usageDesc" class="rp-usage-desc">
-                  <text class="usage-label">用法用量说明：</text>
-                  <text class="usage-text">{{ item.usageDesc }}</text>
+                <view v-if="item.remark" class="rp-usage-desc">
+                  <text class="usage-label">处方明细说明：</text>
+                  <text class="usage-text">{{ item.remark }}</text>
                 </view>
               </view>
             </view>
-            <!-- 如果没有药品列表，显示处方名称 -->
             <view v-else class="rp-name-fallback">
-              <text class="rp-name">{{ detail.formulaName }}</text>
+              <text class="rp-name">未提供处方明细</text>
             </view>
           </view>
-
-
-
-          <!-- 签名区域：显示与处方相关的医生、药师签名（若有多个，会各自列出）-->
-          <view class="sign-row">
-            <view class="sign-list" v-if="Object.keys(detail.associatedDoctors || {}).length > 0">
-              <view class="sign-list-title">医生签名</view>
-              <view class="sign-columns">
-              </view>
-            </view>
+          <view v-if="detail.usageNote" class="rp-usage-desc">
+            <text class="usage-label">处方医嘱：</text>
+            <text class="usage-text">{{ detail.usageNote }}</text>
           </view>
 
           <view class="dash-line big-space"></view>
@@ -112,18 +98,17 @@
             <view class="sign-item">
               <text class="sign-label">医师签名：</text>
               <image
+                  v-if="detail.doctorSignatureUrl"
                   class="sign-image"
-                  :src="detail.doctorSignatureUrl || getImageUrl('/profile/liaoning_zongyi/zhongyi_qianming.png')"
+                  :src="detail.doctorSignatureUrl"
                   mode="heightFix"
+                  @error="detail.doctorSignatureUrl = ''"
               />
+              <text v-else class="sign-text">未提供</text>
             </view>
             <view class="sign-item">
               <text class="sign-label">药师签名：</text>
-              <image
-                  class="sign-image"
-                  :src="detail.pharmacistSignatureUrl || getImageUrl('/profile/liaoning_zongyi/zhongyi_qianming.png')"
-                  mode="heightFix"
-              />
+              <text class="sign-text">未提供</text>
             </view>
           </view>
         </view>
@@ -140,11 +125,10 @@
 <script>
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { getPrescriptionDetail, getPrescriptionItems } from '@/api/consultation.js'
-import { AI_DOCTOR } from '@/utils/consultation-mode.js'
-import { getProductDetail } from '@/api/product.js'
 import { getOrderByPrescriptionId, getOrderDetail, getOrderPage } from '@/api/order.js'
 import { getImageUrl } from '@/utils/config.js'
-import { getOrderStatusText } from '@/utils/order-status.js'
+import { canPayOrder, getOrderStatusText } from '@/utils/order-status.js'
+import { canCreatePrescriptionOrder, getPrescriptionStatusText, resolvePrescriptionDoctorName } from '@/utils/prescription.js'
 import { getDoctorDetail } from '@/api/hospital.js'
 import { logPageView } from '@/api/access-log.js'
 
@@ -152,34 +136,36 @@ export default {
   name: 'PrescriptionDetail',
   data() {
     return {
-      AI_DOCTOR,
       sessionGeneration: getSessionGeneration(),
+      pageActive: true,
+      loadGeneration: 0,
       prescriptionLoaded: false,
       orderStatusLoaded: false,
-      prescriptionStatus: null,
+      prescription: null,
+      prescriptionError: '',
+      orderStatusError: '',
       pageOptions: { prescriptionId: null, orderId: null },
       detail: {
-        visitNo: '', name: '', gender: '', age: 0, idNumberMasked: '', patientSnapshotAvailable: false,
-        diagnosis: '', department: '便捷配药门诊', date: '', formulaName: '',
-        doctorName: AI_DOCTOR.name, doctorSignatureUrl: '', pharmacistName: '', pharmacistSignatureUrl: '',
-        prescriptionItems: [], associatedDoctors: {}
+        name: '', gender: '', age: 0, idNumberMasked: '', patientSnapshotAvailable: false,
+        diagnosis: '', usageNote: '', date: '', doctorName: '', doctorSignatureUrl: '', prescriptionItems: []
       },
       orderStatus: { status: null, orderNo: '', logisticsNo: '', logisticsCompany: '', order: null }
     }
   },
   computed: {
     statusMainText() {
-      return this.orderStatus.order ? getOrderStatusText(this.orderStatus.order) : '待下单'
+      return this.prescriptionError ? '处方加载失败' : getPrescriptionStatusText(this.prescription)
     },
     statusSubText() {
-      const order = this.orderStatus.order
-      if (!order) return this.prescriptionLoaded ? '等待下单支付' : '正在加载处方'
-      if (this.orderStatus.logisticsNo) return `${this.orderStatus.logisticsCompany || '快递'}单号：${this.orderStatus.logisticsNo}`
-      return { 0: '等待下单支付', 1: '药品准备中', 2: '药品配送中', 3: '订单已完成', 4: '订单已取消' }[order.orderStatus] || ''
+      if (this.prescriptionError) return this.prescriptionError
+      if (!this.prescriptionLoaded) return '正在加载处方'
+      if (this.orderStatusError) return this.orderStatusError
+      if (!this.orderStatusLoaded) return '正在查询订单状态'
+      return this.orderStatus.order ? `订单：${getOrderStatusText(this.orderStatus.order)}` : '尚未关联订单'
     },
     canBuyMedicine() {
-      return this.prescriptionLoaded && this.orderStatusLoaded && this.prescriptionStatus === 1 &&
-        (!this.orderStatus.order || Number(this.orderStatus.order.payStatus) === 0 && Number(this.orderStatus.order.orderStatus) === 0)
+      if (!this.prescriptionLoaded || !this.orderStatusLoaded) return false
+      return this.orderStatus.order ? canPayOrder(this.orderStatus.order) : canCreatePrescriptionOrder(this.prescription)
     }
   },
   onLoad(options) {
@@ -187,16 +173,30 @@ export default {
     this.pageOptions.orderId = this.isValidPrescriptionId(options.orderId) ? options.orderId : null
     logPageView('处方详情', '用户进入处方详情页面')
   },
-  async onShow() {
-    if (!isCurrentSession(this.sessionGeneration)) return
-    if (this.pageOptions.prescriptionId) {
-      await this.loadPrescriptionById(this.pageOptions.prescriptionId)
-      await this.loadOrderStatus()
-    } else if (this.pageOptions.orderId) await this.loadOrderFromOrderId(this.pageOptions.orderId)
+  onShow() {
+    return this.reload()
+  },
+  onUnload() {
+    this.pageActive = false
+    this.loadGeneration += 1
   },
   methods: {
-    getImageUrl,
     isValidPrescriptionId(value) { return /^[1-9]\d*$/.test(String(value || '')) },
+    isCurrentLoad(generation) {
+      return this.pageActive && generation === this.loadGeneration && isCurrentSession(this.sessionGeneration)
+    },
+    async reload() {
+      if (!this.isCurrentLoad(this.loadGeneration)) return
+      const generation = ++this.loadGeneration
+      if (this.pageOptions.prescriptionId) {
+        await Promise.all([
+          this.loadPrescriptionById(this.pageOptions.prescriptionId, generation),
+          this.loadOrderStatus(generation)
+        ])
+      } else if (this.pageOptions.orderId) {
+        await this.loadOrderFromOrderId(this.pageOptions.orderId, generation)
+      } else this.prescriptionError = '缺少有效的处方标识，请返回重试'
+    },
     applyPatientSnapshot(source = {}) {
       const available = source.patientSnapshotAvailable === true
       this.detail.patientSnapshotAvailable = available
@@ -205,68 +205,54 @@ export default {
       this.detail.age = available ? source.patientAge || 0 : 0
       this.detail.idNumberMasked = available ? source.patientIdNumberMasked || '' : ''
     },
-    resolvePrescriptionDoctorName(source = {}) { return source.doctorId ? source.doctorName || '' : AI_DOCTOR.name },
-    resolvePrescriptionDate(source = {}) { return source.prescriptionTime || source.createdAt || '' },
     formatNullableDate(value) {
       // 后端LocalDateTime直接取日期部分，不依赖微信运行时的时区和字符串日期解析。
       return String(value || '').match(/^\d{4}-\d{2}-\d{2}/)?.[0] || '—'
     },
-    async applyDoctorFromPrescription(prescription) {
-      this.detail.doctorName = this.resolvePrescriptionDoctorName(prescription)
+    async applyDoctorFromPrescription(prescription, generation = this.loadGeneration) {
+      this.detail.doctorName = resolvePrescriptionDoctorName(prescription)
       this.detail.doctorSignatureUrl = ''
-      this.detail.associatedDoctors = {}
       if (!prescription.doctorId) return
-      const doctor = await getDoctorDetail(prescription.doctorId)
-      if (!isCurrentSession(this.sessionGeneration)) return
-      this.detail.doctorName = doctor.name || ''
-      this.detail.department = doctor.department || '便捷配药门诊'
-      this.detail.doctorSignatureUrl = getImageUrl(doctor.signatureUrl || '')
-      this.detail.associatedDoctors = { [prescription.doctorId]: { name: doctor.name, signatureUrl: this.detail.doctorSignatureUrl } }
-    },
-    // 处方患者/医师来自真实处方快照；商品只补用法和药师，不覆盖开方主体。
-    async loadPrescriptionById(id) {
-      this.prescriptionLoaded = false
-      this.orderStatusLoaded = false
-      if (!this.isValidPrescriptionId(id)) return
+      this.detail.doctorName = '医师资料加载中'
       try {
-        const prescription = await getPrescriptionDetail(id)
-        if (!isCurrentSession(this.sessionGeneration)) return
+        const doctor = await getDoctorDetail(prescription.doctorId)
+        if (!this.isCurrentLoad(generation)) return
+        this.detail.doctorName = doctor.name || '医师姓名未提供'
+        this.detail.doctorSignatureUrl = getImageUrl(doctor.signatureUrl || '')
+      } catch (_) {
+        if (this.isCurrentLoad(generation)) this.detail.doctorName = resolvePrescriptionDoctorName(prescription)
+      }
+    },
+    async loadPrescriptionById(id, generation = this.loadGeneration) {
+      if (!this.isCurrentLoad(generation)) return
+      this.prescriptionLoaded = false
+      this.prescription = null
+      this.prescriptionError = ''
+      this.detail.doctorSignatureUrl = ''
+      if (!this.isValidPrescriptionId(id)) {
+        this.prescriptionError = '处方标识不正确，请返回重试'
+        return
+      }
+      try {
+        const [prescription, items] = await Promise.all([getPrescriptionDetail(id), getPrescriptionItems(id)])
+        if (!this.isCurrentLoad(generation)) return
         if (String(prescription?.id) !== String(id)) throw new Error('处方信息不匹配')
+        if (!Array.isArray(items)) throw new Error('处方明细格式不正确')
         this.pageOptions.prescriptionId = prescription.id
-        this.prescriptionStatus = prescription.status
-        this.detail.visitNo = String(prescription.id)
+        this.prescription = prescription
         this.applyPatientSnapshot(prescription)
-        this.detail.date = this.resolvePrescriptionDate(prescription)
+        this.detail.date = prescription.createdAt || ''
         this.detail.diagnosis = prescription.diagnosis || ''
-        this.detail.pharmacistSignatureUrl = ''
-        this.detail.pharmacistName = ''
-        const items = await getPrescriptionItems(id)
-        if (!isCurrentSession(this.sessionGeneration)) return
-        this.detail.prescriptionItems = Array.isArray(items) ? items.map(item => ({ ...item, usageDesc: '' })) : []
-        this.detail.formulaName = this.detail.prescriptionItems.map(item => item.drugName).filter(Boolean).join('、')
-        const productRequests = new Map()
-        for (const item of this.detail.prescriptionItems) {
-          if (!item.productId) continue
-          try {
-            if (!productRequests.has(item.productId)) productRequests.set(item.productId, getProductDetail(item.productId))
-            const product = await productRequests.get(item.productId)
-            if (!isCurrentSession(this.sessionGeneration)) return
-            item.usageDesc = product.usageDesc || ''
-            if (!this.detail.pharmacistSignatureUrl && product.pharmacistId) {
-              const pharmacist = await getDoctorDetail(product.pharmacistId)
-              if (!isCurrentSession(this.sessionGeneration)) return
-              this.detail.pharmacistSignatureUrl = getImageUrl(pharmacist.signatureUrl || '')
-              this.detail.pharmacistName = pharmacist.name || ''
-            }
-          } catch (_) { /* 辅助用法/签名加载失败不丢弃已取得的真实处方明细。 */ }
-        }
-        try { await this.applyDoctorFromPrescription(prescription) } catch (_) { /* 医师资料暂不可用时保留处方医师身份，不改成商品医师。 */ }
-        if (!isCurrentSession(this.sessionGeneration)) return
+        this.detail.usageNote = prescription.usageNote || ''
+        this.detail.prescriptionItems = items
         this.prescriptionLoaded = true
+        await this.applyDoctorFromPrescription(prescription, generation)
       } catch (error) {
-        if (!isCurrentSession(this.sessionGeneration)) return
+        if (!this.isCurrentLoad(generation)) return
+        this.prescription = null
         this.detail.prescriptionItems = []
-        uni.showToast({ title: error.message || '加载处方详情失败', icon: 'none' })
+        this.prescriptionError = error.message || '加载处方详情失败'
+        uni.showToast({ title: this.prescriptionError, icon: 'none' })
       }
     },
     updateDetailFromOrder(order) {
@@ -275,41 +261,57 @@ export default {
         logisticsNo: order.logisticsNo || '', logisticsCompany: order.logisticsCompany || '', order }
     },
     // 查询失败不恢复本地旧订单，也不将“未知”当成可再次购药。
-    async loadOrderStatus() {
+    async loadOrderStatus(generation = this.loadGeneration) {
+      if (!this.isCurrentLoad(generation)) return
       this.orderStatusLoaded = false
+      this.orderStatusError = ''
       this.orderStatus = { status: null, orderNo: '', logisticsNo: '', logisticsCompany: '', order: null }
-      if (!this.isValidPrescriptionId(this.pageOptions.prescriptionId)) return
+      const prescriptionId = this.pageOptions.prescriptionId
+      if (!this.isValidPrescriptionId(prescriptionId)) {
+        this.orderStatusError = '无法核对关联订单，请返回重试'
+        return
+      }
       try {
-        const order = await getOrderByPrescriptionId(this.pageOptions.prescriptionId)
-        if (!isCurrentSession(this.sessionGeneration)) return
+        const order = await getOrderByPrescriptionId(prescriptionId)
+        if (!this.isCurrentLoad(generation)) return
         if (order?.id) this.updateDetailFromOrder(order)
-        else { this.orderStatus.status = 0; this.orderStatusLoaded = true }
+        else this.orderStatusLoaded = true
       } catch (_) {
+        if (!this.isCurrentLoad(generation)) return
         // 主查询暂不可用时仍只向后台按同一处方ID查询，不能读取本地订单草稿。
         try {
-          const { rows } = await getOrderPage({ prescriptionId: this.pageOptions.prescriptionId, pageNum: 1, pageSize: 1 })
-          if (!isCurrentSession(this.sessionGeneration)) return
-          const order = rows.find(row => String(row.prescriptionId) === String(this.pageOptions.prescriptionId))
+          const { rows } = await getOrderPage({ prescriptionId, pageNum: 1, pageSize: 1 })
+          if (!this.isCurrentLoad(generation)) return
+          const order = rows.find(row => String(row.prescriptionId) === String(prescriptionId))
           if (order) this.updateDetailFromOrder(order)
-          else { this.orderStatus.status = 0; this.orderStatusLoaded = true }
+          else this.orderStatusLoaded = true
         } catch (_) {
-          if (isCurrentSession(this.sessionGeneration)) this.prescriptionLoaded = false
+          if (this.isCurrentLoad(generation)) this.orderStatusError = '订单状态读取失败，请重新加载'
         }
       }
     },
-    async loadOrderFromOrderId(orderId) {
+    async loadOrderFromOrderId(orderId, generation = this.loadGeneration) {
+      if (!this.isCurrentLoad(generation)) return
+      this.prescriptionLoaded = false
+      this.prescription = null
+      this.prescriptionError = ''
+      this.orderStatusLoaded = false
+      this.orderStatusError = ''
+      this.orderStatus = { status: null, orderNo: '', logisticsNo: '', logisticsCompany: '', order: null }
       try {
         const order = await getOrderDetail(orderId, { showLoading: false })
-        if (!isCurrentSession(this.sessionGeneration)) return
+        if (!this.isCurrentLoad(generation)) return
         if (!this.isValidPrescriptionId(order?.prescriptionId)) throw new Error('此订单没有关联处方')
-        await this.loadPrescriptionById(order.prescriptionId)
-        if (isCurrentSession(this.sessionGeneration)) this.updateDetailFromOrder(order)
+        await this.loadPrescriptionById(order.prescriptionId, generation)
+        if (this.isCurrentLoad(generation)) this.updateDetailFromOrder(order)
       } catch (error) {
-        if (isCurrentSession(this.sessionGeneration)) uni.showToast({ title: error.message || '加载订单处方失败', icon: 'none' })
+        if (!this.isCurrentLoad(generation)) return
+        this.prescriptionError = error.message || '加载订单处方失败'
+        uni.showToast({ title: this.prescriptionError, icon: 'none' })
       }
     },
     goBuy() {
-      if (!this.canBuyMedicine || !isCurrentSession(this.sessionGeneration)) return
+      if (!this.canBuyMedicine || !this.isCurrentLoad(this.loadGeneration)) return
       // 已有待付订单续付原单，避免为同一处方再次创建订单。
       const order = this.orderStatus.order
       const url = order?.id
@@ -362,6 +364,13 @@ export default {
   box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.06);
 }
 
+.reload-action {
+  margin-bottom: 24rpx;
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 24rpx;
+}
+
 /* 标题 */
 .card-title {
   text-align: center;
@@ -369,25 +378,6 @@ export default {
   font-weight: 600;
   color: #333333;
   margin-bottom: 30rpx;
-}
-
-/* 行样式 */
-.field-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  margin-bottom: 18rpx;
-}
-
-.field-label {
-  font-size: 26rpx;
-  color: #777777;
-  width: 140rpx;
-}
-
-.field-value {
-  font-size: 28rpx;
-  color: #333333;
 }
 
 /* 虚线分割 */
@@ -498,51 +488,6 @@ export default {
   line-height: 1.6;
 }
 
-.sign-row {
-  margin-top: 24rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-}
-
-.sign-list-title {
-  font-size: 26rpx;
-  color: #333;
-  font-weight: 600;
-  margin-bottom: 8rpx;
-}
-
-.sign-columns {
-  display: flex;
-  gap: 16rpx;
-  flex-wrap: wrap;
-}
-
-.sign-item-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8rpx;
-  width: 220rpx;
-}
-
-.sign-label {
-  font-size: 24rpx;
-  color: #666;
-}
-
-.sign-image {
-  height: 48rpx;
-  max-width: 220rpx;
-  object-fit: contain;
-}
-
-.outpatient-sign {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-}
-
 .rp-dosage {
   font-size: 28rpx;
   color: #666666;
@@ -562,23 +507,6 @@ export default {
 
 .rp-name-fallback {
   margin-top: 16rpx;
-}
-
-.rp-usage {
-  margin-top: 40rpx;
-}
-
-.rp-amount {
-  font-size: 30rpx;
-  color: #333333;
-  margin-bottom: 10rpx;
-  display: block;
-}
-
-.rp-desc {
-  font-size: 26rpx;
-  color: #777777;
-  line-height: 1.6;
 }
 
 /* 签名区域 */

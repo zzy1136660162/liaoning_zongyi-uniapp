@@ -41,7 +41,7 @@ const page = loadSetup('pages/order/confirm.vue', {
 
 page.selectedRequiresConsultation.value = false
 page.selectedAddress.value = { id: 10 }
-page.orderInfo.value.items = [{ id: 100, name: 'mock goods', price: 12, quantity: 1 }]
+page.orderInfo.value.items = [{ id: '100:1', productId: 100, skuId: 1, name: 'mock goods', price: 12, quantity: 1 }]
 page.orderInfo.value.cost.medicineCost = 12
 
 patientRows = [{ id: 7, name: '就诊人甲' }, { id: 8, name: '就诊人乙', hisBindingStatus: 'UNKNOWN' }]

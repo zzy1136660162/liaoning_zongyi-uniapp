@@ -270,7 +270,9 @@ import {
   STORAGE_KEY_CURRENT_ORDER,
   STORAGE_KEY_DEFAULT_ADDRESS_ID
 } from '@/utils/storage.js'
-import { buildOrderInfo, getCartEntries, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds, validateCheckoutStock } from '@/utils/cart.js'
+import { buildOrderInfo, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds, validateCheckoutStock } from '@/utils/cart.js'
+import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
+import { getOrderSubmission, rememberCreatedOrder, releaseOrderSubmission, forgetOrderSubmission } from '@/utils/order-submission.js'
 import { createOrder, createOrderFromPrescription, getOrderByPrescriptionId } from '@/api/order.js'
 import { getConsultationDetail, getPrescriptionDetail, getPrescriptionItems } from '@/api/consultation.js'
 import { parseConsultationContext, requireConsultationPatient } from '@/utils/consultation-checkout.js'
@@ -287,13 +289,19 @@ import { queryFreight } from '@/api/express.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
 import { resolveProductFlow } from '@/utils/product-biz.js'
 import { resolveCheckoutQuestionnaire, buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
+import { canCreatePrescriptionOrder } from '@/utils/prescription.js'
+import { canPayOrder } from '@/utils/order-status.js'
 
 const isTherapyOrder = ref(false)
 const checkoutContext = ref(null)
+const directPurchase = ref(null)
+const checkoutRouteError = ref('')
+const selectionEntries = ref({})
 const prescriptionId = ref(null)
 const prescription = ref(null)
 const prescriptionLoadError = ref('')
 const submitting = ref(false)
+const completedOrderId = ref(null)
 const pageSession = getSessionGeneration()
 let pageActive = true
 onUnload(() => {
@@ -334,6 +342,7 @@ const requiresShipping = computed(() => selectedRequiresShipping.value)
 const requiresConsultationPatient = computed(() => selectedRequiresConsultation.value)
 const patientIndex = computed(() => Math.max(0, patients.value.findIndex(patient => String(patient.id) === String(selectedPatient.value?.id))))
 const selectionIssue = computed(() => {
+  if (checkoutRouteError.value) return checkoutRouteError.value
   if (prescriptionLoadError.value) return prescriptionLoadError.value
   const products = categories.value.flatMap(category => category.products || [])
   if (products.some(product => product.selectionInvalid)) return '所选规格已失效或尚未选择，请返回商品页重新选择'
@@ -352,11 +361,16 @@ const canSubmit = computed(() => {
 })
 
 onLoad((options) => {
+  try { directPurchase.value = parseDirectPurchase(options) }
+  catch (error) { checkoutRouteError.value = error.message }
   prescriptionId.value = /^[1-9]\d*$/.test(String(options?.prescriptionId || '')) ? Number(options.prescriptionId) : null
+  if (directPurchase.value && (!options?.selectedItems || prescriptionId.value)) {
+    checkoutRouteError.value = '购买信息无效，请返回商品页重新选择'
+  }
   checkoutContext.value = parseConsultationContext(options)
   if (options?.selectedItems) {
     selectedProductIds.value = options.selectedItems.split(',').filter(id => id.trim())
-    setCheckoutProductIds(selectedProductIds.value)
+    if (!directPurchase.value) setCheckoutProductIds(selectedProductIds.value)
   } else if (!prescriptionId.value) {
     selectedProductIds.value = getCurrentCheckoutProductIds()
   }
@@ -407,6 +421,7 @@ const managePatients = () => uni.navigateTo({ url: '/pages/user/patient_list' })
 // 加载产品数据（只加载购物车中选中的商品）
 const loadProducts = async () => {
   if (!isCurrentSession(pageSession)) return []
+  if (checkoutRouteError.value) { categories.value = []; return [] }
   if (prescriptionId.value) return loadPrescriptionProducts()
   try {
     const currentSelectedIds = selectedProductIds.value.length > 0
@@ -418,7 +433,7 @@ const loadProducts = async () => {
       categories.value = []
       return []
     }
-    setCheckoutProductIds(currentSelectedIds)
+    if (!directPurchase.value) setCheckoutProductIds(currentSelectedIds)
 
     console.debug('event=ui_order_confirm stage=products result=started source=server')
     uni.showLoading({ title: '加载商品...' })
@@ -429,12 +444,13 @@ const loadProducts = async () => {
       name: '订单商品',
       products: []
     }
-    const cartEntries = getCartEntries()
+    const cartEntries = checkoutEntries(currentSelectedIds, directPurchase.value)
 
     cartCategory.products = await loadCartProducts(currentSelectedIds, cartEntries, getProductDetail)
 
     if (!pageActive) return []
     assertCurrentSession(pageSession)
+    selectionEntries.value = cartEntries
     categories.value = [cartCategory]
     const flow = resolveProductFlow(cartCategory.products)
     if (!flow.valid) {
@@ -465,6 +481,7 @@ const loadPrescriptionProducts = async () => {
     if (Number(detail?.id) !== prescriptionId.value || detail.status !== 1 || !detail.patientId || !detail.consultationId) {
       throw new Error('处方尚未审核通过或就诊信息不完整')
     }
+    if (!canCreatePrescriptionOrder(detail)) throw new Error('处方已过期或有效性未确认，请重新复诊')
     const context = { consultationId: Number(detail.consultationId), patientId: Number(detail.patientId) }
     requireConsultationPatient(await getConsultationDetail(context.consultationId), context)
     assertCurrentSession(pageSession)
@@ -511,7 +528,8 @@ const loadOrderInfo = () => {
     const saved = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
     const cartItems = prescriptionId.value
       ? categories.value.flatMap(category => category.products || [])
-      : categories.value.length > 0 ? loadCartItems(categories.value) : []
+      : categories.value.length > 0 ? loadCartItems(categories.value, false,
+        { entries: selectionEntries.value, preserveQuantity: true }) : []
     const currentSelectedIds = cartItems.map(item => String(item.id))
     const distributor = !selectedRequiresConsultation.value
       ? '健康产品服务'
@@ -715,21 +733,57 @@ const submitOrder = async () => {
   submitting.value = true
   try {
     assertCurrentSession(pageSession)
+    if (completedOrderId.value) {
+      uni.redirectTo({ url: `/pages/order/payment_success?orderId=${completedOrderId.value}` })
+      return
+    }
     // 记录按钮点击日志
     logButtonClick('下单页面', '用户点击下单按钮')
 
     console.debug('event=ui_order_confirm stage=submit_order result=started')
 
+    // 已生成订单按订单状态续付，不受处方此后过期或商品变更影响。
+    if (prescriptionId.value) {
+      if (checkoutRouteError.value) throw new Error(checkoutRouteError.value)
+      const existing = await getOrderByPrescriptionId(prescriptionId.value)
+      if (!pageActive) return
+      assertCurrentSession(pageSession)
+      if (existing?.id) {
+        if (canPayOrder(existing)) {
+          uni.redirectTo({ url: `/pages/order/order-detail?orderId=${existing.id}` })
+        } else uni.showToast({ title: '此处方已有订单，请到订单列表查看', icon: 'none' })
+        return
+      }
+    }
+
+    const displayedItems = orderInfo.value.items
     await loadProducts()
     if (!pageActive) return
+    if (checkoutRouteError.value) throw new Error(checkoutRouteError.value)
+    if (!prescriptionId.value && displayedItems.some(item => {
+      const entry = selectionEntries.value[item.cartKey || item.id]
+      return !entry || Number(entry.quantity) !== Number(item.quantity)
+    })) {
+      loadOrderInfo()
+      uni.showToast({ title: '购买数量已变化，请核对后重新提交', icon: 'none' })
+      return
+    }
     // 提交前按最新商品绑定再检查一次；混合结算仍只验证最小商品 ID 的问卷。
     if (!prescriptionId.value) {
-      const questionnaireCheck = resolveCheckoutQuestionnaire(loadCartItems(categories.value))
+      const questionnaireCheck = resolveCheckoutQuestionnaire(loadCartItems(categories.value, false,
+        { entries: selectionEntries.value, preserveQuantity: true }))
       if (!questionnaireCheck.valid) {
         if (questionnaireCheck.state === 'required') {
           uni.navigateTo({ url: buildQuestionnaireNoticeUrl(questionnaireCheck.item, {
             // 答完返回本确认页，保留已选患者、备注及已完成的复诊。
-            action: 'repair'
+            action: 'repair', quantity: directPurchase.value?.quantity
+          }) + directPurchaseQuery(directPurchase.value),
+          success: result => result.eventChannel?.on('directPurchaseQuestionnaireAnswered', answer => {
+            if (!pageActive || !isCurrentSession(pageSession) || !directPurchase.value) return
+            const key = `${answer.productId}:${answer.skuId}`
+            if (selectedProductIds.value.length === 1 && selectedProductIds.value[0] === key) {
+              directPurchase.value = { ...directPurchase.value, questionnaireId: answer.questionnaireId, answerId: answer.answerId }
+            }
           }) })
         } else uni.showToast({ title: questionnaireCheck.message, icon: 'none' })
         return
@@ -761,7 +815,7 @@ const submitOrder = async () => {
 
     const stockCheck = prescriptionId.value
       ? { valid: !!prescription.value && !selectionIssue.value, message: selectionIssue.value }
-      : validateCheckoutStock(selectedProductIds.value, categories.value)
+      : validateCheckoutStock(selectedProductIds.value, categories.value, selectionEntries.value)
     if (!stockCheck.valid) {
       console.warn('category=CHECKOUT_STOCK_GUARD action=submit_order result=blocked reason=%s productId=%s quantity=%s latestStock=%s',
         stockCheck.reason,
@@ -780,18 +834,6 @@ const submitOrder = async () => {
     }
 
     try {
-      // 从旧链接进入确认页也先核实已有订单；待付续付原单，已付款不重复创建。
-      if (prescriptionId.value) {
-        const existing = await getOrderByPrescriptionId(prescriptionId.value)
-        if (!pageActive) return
-        assertCurrentSession(pageSession)
-        if (existing?.id) {
-          if (Number(existing.payStatus) === 0 && Number(existing.orderStatus) === 0) {
-            uni.redirectTo({ url: `/pages/order/order-detail?orderId=${existing.id}` })
-          } else uni.showToast({ title: '此处方已有订单，请到订单列表查看', icon: 'none' })
-          return
-        }
-      }
       uni.showLoading({ title: '获取支付信息...' })
 
       if (selectedRequiresConsultation.value) {
@@ -813,13 +855,11 @@ const submitOrder = async () => {
 
       // ✅ 调用后端API创建订单
       const orderData = {
-        shippingFee: 0,
         patientId: selectedPatient.value.id,
         items: orderInfo.value.items.map(item => ({
           productId: item.productId,
           skuId: item.skuId || null,
-          quantity: item.quantity || 1,
-          price: item.price
+          quantity: item.quantity
         })),
         remark: orderRemark.value.trim(),
       }
@@ -831,9 +871,19 @@ const submitOrder = async () => {
       }
       console.debug('event=ui_order_confirm stage=order_create_request result=prepared')
       assertCurrentSession(pageSession)
+      const requestData = prescriptionId.value
+        ? { prescriptionId: prescriptionId.value, addressId: selectedAddress.value.id, remark: orderRemark.value.trim() }
+        : orderData
+      const cartSnapshot = prescriptionId.value || directPurchase.value ? null
+        : Object.fromEntries(orderInfo.value.items.map(item => {
+          const key = item.cartKey || item.id, entry = selectionEntries.value[key]
+          return [key, { revision: entry.revision, quantity: entry.quantity, timestamp: entry.timestamp,
+            serverCartItemId: entry.serverCartItemId, serverCartVersion: entry.serverCartVersion }]
+        }))
+      const attempt = getOrderSubmission(prescriptionId.value ? 'prescription' : 'goods', requestData, cartSnapshot)
       const order = prescriptionId.value
-        ? await createOrderFromPrescription({ prescriptionId: prescriptionId.value, addressId: selectedAddress.value.id, remark: orderRemark.value.trim() })
-        : await createOrder(orderData)
+        ? await createOrderFromPrescription({ ...requestData, requestId: attempt.requestId })
+        : await createOrder({ ...requestData, requestId: attempt.requestId })
       if (!pageActive) return
       assertCurrentSession(pageSession)
 
@@ -842,6 +892,18 @@ const submitOrder = async () => {
       uni.hideLoading()
 
       const orderId = order.id
+      rememberCreatedOrder(orderId, attempt)
+      if (Number(order.orderStatus) === 4) {
+        forgetOrderSubmission(orderId)
+        uni.showToast({ title: '原订单已取消，请重新提交', icon: 'none' })
+        return
+      }
+      if (Number(order.payStatus) === 1) {
+        releaseOrderSubmission(orderId)
+        completedOrderId.value = orderId
+        uni.redirectTo({ url: `/pages/order/payment_success?orderId=${orderId}` })
+        return
+      }
       // 创建成功后的应付金额以后台成交金额为准，支付页仍需确认服务端支付状态。
       orderInfo.value.total = Number(order.payableAmount ?? orderInfo.value.total)
 
@@ -880,7 +942,6 @@ const submitOrder = async () => {
           .filter(([, value]) => value !== undefined && value !== null && value !== '')
           .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
           .join('&')
-        console.debug('event=ui_order_confirm stage=payment_navigation result=prepared')
         console.debug('event=ui_order_confirm stage=payment_navigation result=prepared')
         uni.redirectTo({
           url: paymentSuccessUrl,

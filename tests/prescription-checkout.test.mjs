@@ -11,7 +11,7 @@ const harness = (overrides = {}) => {
     onLoad: callback => { onLoad = callback }, onShow() {}, onMounted() {},
     getSessionGeneration: () => 1, isCurrentSession: () => true, assertCurrentSession() {},
     parseConsultationContext, requireConsultationPatient,
-    getPrescriptionDetail: async () => ({ id: 7, consultationId: 30, patientId: 8, status: 1 }),
+    getPrescriptionDetail: async () => ({ id: 7, consultationId: 30, patientId: 8, status: 1, expired: false }),
     getPrescriptionItems: async () => [{ id: 70, productId: 20, days: 7 }],
     getOrderByPrescriptionId: async () => null,
     getConsultationDetail: async () => ({ id: 30, patientId: 8 }),
@@ -50,7 +50,9 @@ test('真实处方固定原患者，按每条明细一件和默认真实SKU展�
   assert.equal(page.orderInfo.value.items[0].skuId, 1)
   assert.equal(page.orderInfo.value.total, 12)
   await page.submitOrder()
-  assert.deepEqual(orders, [{ prescriptionId: 7, addressId: 10, remark: '' }])
+  assert.deepEqual(orders.map(({ prescriptionId, addressId, remark }) => ({ prescriptionId, addressId, remark })),
+    [{ prescriptionId: 7, addressId: 10, remark: '' }])
+  if ('requestId' in orders[0]) assert.match(orders[0].requestId, /^\S+$/)
   assert.equal(payments[0].totalAmount, 18)
   assert.ok(writes.every(write => ['current_order', 'default_address'].includes(write.key)), '不写虚拟购物车或旧数量键')
 })
@@ -73,13 +75,69 @@ test('处方患者或问诊关联不匹配拒绝下单', async () => {
   assert.match(page.selectionIssue.value, /就诊人不一致/)
 })
 
+test('过期或未明确确认有效的处方不能创建新订单', async () => {
+  for (const expired of [true, undefined, null, 'false']) {
+    const { page, orders, payments, routes } = harness({
+      getPrescriptionDetail: async () => ({ id: 7, consultationId: 30, patientId: 8, status: 1, expired })
+    })
+    await page.submitOrder()
+    assert.equal(orders.length, 0)
+    assert.equal(payments.length, 0)
+    assert.equal(routes.length, 0)
+    assert.deepEqual(page.categories.value, [])
+    assert.match(page.selectionIssue.value, /过期|有效性/)
+  }
+})
+
+test('处方后来过期仍先续付原订单，不重新读取商品或创建新单', async () => {
+  let prescriptionReads = 0
+  const { page, orders, payments, routes } = harness({
+    getOrderByPrescriptionId: async () => ({ id: 42, payStatus: 0, orderStatus: 0 }),
+    getPrescriptionDetail: async () => {
+      prescriptionReads++
+      return { id: 7, consultationId: 30, patientId: 8, status: 1, expired: true }
+    },
+    getProductDetail: async () => { throw new Error('旧订单续付不依赖当前商品') }
+  })
+  await page.submitOrder()
+  assert.equal(prescriptionReads, 0)
+  assert.equal(orders.length, 0)
+  assert.equal(payments.length, 0)
+  assert.deepEqual(routes, ['/pages/order/order-detail?orderId=42'])
+})
+
+test('原订单支付状态未知、存在履约异常或退款申请时不开放续付', async () => {
+  for (const existing of [{ id: 42, orderStatus: 0 },
+    { id: 42, payStatus: 0, orderStatus: 0, paymentFulfillmentStatus: 'PENDING' },
+    { id: 42, payStatus: 0, orderStatus: 0, refundApplicationId: 9 }]) {
+    const { page, orders, payments, routes } = harness({ getOrderByPrescriptionId: async () => existing })
+    await page.submitOrder()
+    assert.equal(orders.length, 0)
+    assert.equal(payments.length, 0)
+    assert.deepEqual(routes, [])
+  }
+})
+
+test('已有处方订单状态查询失败时停止提交，不继续查处方或创建订单', async () => {
+  let prescriptionReads = 0
+  const { page, orders, payments, routes } = harness({
+    getOrderByPrescriptionId: async () => { throw new Error('fixture order unavailable') },
+    getPrescriptionDetail: async () => { prescriptionReads++; return {} }
+  })
+  await page.submitOrder()
+  assert.equal(prescriptionReads, 0)
+  assert.equal(orders.length, 0)
+  assert.equal(payments.length, 0)
+  assert.deepEqual(routes, [])
+})
+
 test('处方已加载但订单查询尚未完成时不开放购药入口', async () => {
   let finish
   const definition = loadOptions('pages/prescription/detail.vue', {
     getSessionGeneration: () => 1, isCurrentSession: () => true, AI_DOCTOR: { name: 'fixture' }, getImageUrl: value => value,
     getOrderByPrescriptionId: () => new Promise(resolve => { finish = resolve })
   })
-  const page = { ...definition.data(), ...definition.methods, prescriptionLoaded: true, prescriptionStatus: 1 }
+  const page = { ...definition.data(), ...definition.methods, prescriptionLoaded: true, prescription: { status: 1, expired: false } }
   page.pageOptions.prescriptionId = 7
   const pending = page.loadOrderStatus()
   assert.equal(definition.computed.canBuyMedicine.call(page), false)
@@ -104,11 +162,14 @@ test('处方详情已有待付订单只进原单，无订单才进真实处方�
     getSessionGeneration: () => 1, isCurrentSession: () => true, AI_DOCTOR: { name: 'fixture' }, getImageUrl: value => value,
     uni: { navigateTo: route => routes.push(route.url) }
   })
-  const page = { ...definition.data(), ...definition.methods, prescriptionLoaded: true, orderStatusLoaded: true, prescriptionStatus: 1 }
+  const page = { ...definition.data(), ...definition.methods, prescriptionLoaded: true, orderStatusLoaded: true,
+    prescription: { status: 1, expired: false } }
   Object.defineProperty(page, 'canBuyMedicine', { get: () => definition.computed.canBuyMedicine.call(page) })
   page.pageOptions.prescriptionId = 7
   page.orderStatus.order = { id: 42, payStatus: 0, orderStatus: 0 }
+  page.prescription.expired = true
   page.goBuy()
+  page.prescription.expired = false
   page.orderStatus.order = null
   page.goBuy()
   page.orderStatusLoaded = false

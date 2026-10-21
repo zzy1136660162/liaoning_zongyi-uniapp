@@ -220,8 +220,10 @@ import {
 
 const userInfo = ref({
   realName: '',
+  idType: '',
   phone: '',
-  idNumber: ''
+  idNumber: '',
+  verifyCode: ''
 })
 
 const avatarSrc = computed(() => getImageUrl('/profile/liaoning_zongyi/zaixian_mingyi_logo.png'))
@@ -247,8 +249,10 @@ const loadUserProfile = async () => {
     if (userData) {
       userInfo.value = {
         realName: userData.userName || '',
+        idType: userData.idType || '',
         phone: userData.phone || '',
-        idNumber: userData.idCardNo || ''
+        idNumber: userData.idCardNo || '',
+        verifyCode: ''
       }
 
       uni.setStorageSync(STORAGE_KEY_USER_REGISTER, userInfo.value)

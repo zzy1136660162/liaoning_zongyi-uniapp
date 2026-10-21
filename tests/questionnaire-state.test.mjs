@@ -143,7 +143,7 @@ test('须知页整组结算将所选规格透传到问卷，补答不改变任�
 test('须知连续点击只查一次，同账号退页后的响应不加购也不跳转', async () => {
   let finish, calls = 0
   const waiting = new Promise(resolve => { finish = resolve })
-  const { definition, page } = createNotice({ action: 'buy' }, { getProductDetail: () => { calls++; return waiting } })
+  const { definition, page } = createNotice({ action: 'buy', buyQuantity: '1' }, { getProductDetail: () => { calls++; return waiting } })
   const first = page.startQuestionnaire()
   await page.startQuestionnaire()
   assert.equal(calls, 1)

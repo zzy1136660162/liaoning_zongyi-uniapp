@@ -2,11 +2,12 @@ import { splitCartItemKey } from './cart-key.js'
 import {
   deleteCartItem,
   deleteCartItems,
+  cleanupPurchasedCartItems,
   syncCart,
   upsertCartItem
 } from '@/api/cart.js'
 import { getToken } from '@/utils/request.js'
-import { getCartEntries, replaceCartData, mapServerCartItemToProduct } from '@/utils/cart.js'
+import { getCartEntries, replaceCartData, mapServerCartItemToProduct, acknowledgeServerCartItem } from '@/utils/cart.js'
 import { buildCartSyncPayload } from '@/utils/cart-sync-payload.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from './session.js'
 
@@ -15,12 +16,14 @@ const pushTimers = new Map()
 const inFlightKeys = new Map()
 const mutationVersions = new Map()
 const confirmedVersions = new Map()
+const purchasedCleanupKeys = new Map()
 onSessionChanged(() => {
   pushTimers.forEach(timer => clearTimeout(timer))
   pushTimers.clear()
   inFlightKeys.clear()
   mutationVersions.clear()
   confirmedVersions.clear()
+  purchasedCleanupKeys.clear()
 })
 
 const isLoggedIn = () => Boolean(getToken())
@@ -37,6 +40,10 @@ const trackMutation = async (keys, action) => {
   try {
     const result = await action()
     if (isCurrentSession(session)) keys.forEach(key => {
+      if (purchasedCleanupKeys.has(String(key)) && !getCartEntries()[String(key)]) {
+        confirmedVersions.set(key, mutationVersions.get(key) || 0)
+        return
+      }
       const sentVersion = sentVersions.get(key)
       if (sentVersion < (mutationVersions.get(key) || 0)) {
         // 旧写晚成功可能把后台改回旧值；最新操作重新变为未确认，并合并补推一次。
@@ -110,7 +117,8 @@ export const applyServerCartToLocal = (items = [], preserveMissing = false, requ
   const changedKeys = requestCart ? [...new Set([
     ...Object.keys(requestCart), ...Object.keys(currentCart),
     ...requestSnapshot.pendingKeys, ...pushTimers.keys(), ...inFlightKeys.keys(), ...mutationVersions.keys()
-  ])].filter(key => requestSnapshot.pendingKeys.includes(key) || unconfirmed.has(key) || pushTimers.has(key) || inFlightKeys.has(key) ||
+  ])].filter(key => !(purchasedCleanupKeys.has(String(key)) && !currentCart[key]))
+    .filter(key => requestSnapshot.pendingKeys.includes(key) || unconfirmed.has(key) || pushTimers.has(key) || inFlightKeys.has(key) ||
     (requestSnapshot.versions.get(key) || 0) !== (mutationVersions.get(key) || 0) ||
     editState(requestCart[key]) !== editState(currentCart[key])) : []
   changedKeys.forEach(key => {
@@ -167,11 +175,43 @@ const pushSingleItem = async (cartKey) => {
 
   const entry = getCartEntries()[String(cartKey)]
   if (!entry) {
+    if (purchasedCleanupKeys.has(String(cartKey))) return
     await trackMutation([cartKey], () => deleteCartItem(cartKey)).catch(() => {})
     return
   }
 
-  if (entry.skuId) await trackMutation([cartKey], () => upsertCartItem(buildCartSyncPayload(cartKey, entry)))
+  if (!entry.skuId) return
+  const session = getSessionGeneration()
+  const version = mutationVersions.get(cartKey) || 0
+  const sentState = editState(entry)
+  const result = await trackMutation([cartKey], () => upsertCartItem(buildCartSyncPayload(cartKey, entry)))
+  if (!isCurrentSession(session)) return
+  const key = String(cartKey)
+  // 付款已清掉原行时，迟到写回只按返回的精确服务端版本清理，不能退回按 SKU 删除。
+  if (result && purchasedCleanupKeys.get(key) === entry.revision && !getCartEntries()[key]) {
+    const server = mapServerCartItemToProduct(result)
+    if (server.cartKey === key && /^[1-9]\d*$/.test(server.serverCartItemId || '') &&
+        /^\d+$/.test(server.serverCartVersion ?? '')) {
+      await cleanupPurchasedCartItems([{ id: server.serverCartItemId, cartVersion: server.serverCartVersion }])
+    }
+    return
+  }
+  if ((mutationVersions.get(cartKey) || 0) !== version || !result) return
+  const current = getCartEntries()
+  if (!current[key] || current[key].revision !== entry.revision || editState(current[key]) !== sentState) return
+  const product = mapServerCartItemToProduct(result)
+  if (product.cartKey !== key) return
+  // 身份确认本身保留 revision；旧后台省略问卷字段时仍须记录服务端行版本。
+  acknowledgeServerCartItem(key, entry.revision, result)
+  if (result.questionnaireId === undefined || result.answerId === undefined) return
+  const acknowledged = getCartEntries()
+  const latest = acknowledged[key]
+  if (latest.needQuestionnaire !== product.needQuestionnaire || latest.questionnaireId !== product.questionnaireId ||
+      latest.answerId !== product.answerId) {
+    acknowledged[key] = { ...latest, needQuestionnaire: product.needQuestionnaire,
+      questionnaireId: product.questionnaireId, answerId: product.answerId }
+    replaceCartData(acknowledged)
+  }
 }
 
 // 连续增减只合并后台请求，本地数量即时保存；换账号时取消旧账号尚未发送的请求。
@@ -198,7 +238,8 @@ export const schedulePushCartItem = (cartKey) => {
 }
 
 export const pushCartRemoval = async (productIds = []) => {
-  const ids = Array.isArray(productIds) ? productIds : [productIds]
+  const ids = (Array.isArray(productIds) ? productIds : [productIds])
+    .filter(key => !purchasedCleanupKeys.has(String(key)))
   if (!isLoggedIn() || !ids.length) {
     return
   }
@@ -231,8 +272,27 @@ export const handleCartRemoteSync = async (action, payload) => {
     return
   }
 
+  if (action === 'purchasedCleanup') {
+    const keys = payload?.keys || []
+    keys.forEach(value => {
+      const key = String(value)
+      purchasedCleanupKeys.set(key, payload.revisions?.[key])
+      clearTimeout(pushTimers.get(key))
+      pushTimers.delete(key)
+      confirmedVersions.set(key, mutationVersions.get(key) || 0)
+    })
+    if (payload?.items?.length) {
+      try { await cleanupPurchasedCartItems(payload.items) }
+      catch (error) { console.warn('purchased cart cleanup failed:', error) }
+    }
+    return
+  }
+
   const keys = Array.isArray(payload) ? payload : payload ? [payload] : []
-  keys.forEach(key => mutationVersions.set(String(key), (mutationVersions.get(String(key)) || 0) + 1))
+  keys.forEach(key => {
+    purchasedCleanupKeys.delete(String(key))
+    mutationVersions.set(String(key), (mutationVersions.get(String(key)) || 0) + 1)
+  })
 
   switch (action) {
     case 'upsert':

@@ -19,9 +19,11 @@ export const getRefundStageText = (detail = {}) => {
   if (detail.status === 0) return '申请已提交，等待审核'
   if (detail.status === 2) return '申请未通过审核'
   if (detail.status === 5) return '申请已关闭'
+  if (detail.paymentRefundStatus === 'FAILED') return getPaymentRefundStatusText('FAILED')
   const needsReturn = !String(detail.refundScene || '').startsWith('THERAPY_') && detail.refundScene !== 'FORMULATION_PRE_SHIP'
-  if (needsReturn && detail.status === 1) return '待填写退货物流'
-  if (needsReturn && detail.status === 3 && !detail.returnReceivedAt) return '等待商家收货处理'
+  const hasReturnLogistics = !!(detail.returnLogisticsCompany && detail.returnLogisticsNo)
+  if (needsReturn && detail.status === 1 && !hasReturnLogistics) return '待填写退货物流'
+  if (needsReturn && (detail.status === 1 || detail.status === 3) && !detail.returnReceivedAt) return '等待商家收货处理'
   return '等待执行退款'
 }
 

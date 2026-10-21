@@ -65,9 +65,11 @@ const parseGalleryImages = (galleryImages, coverImage) => {
   if (typeof galleryImages === 'string' && galleryImages.trim()) {
     const raw = galleryImages.trim()
     try {
-      const parsed = JSON.parse(raw)
+      const parsed = raw.startsWith('[') ? JSON.parse(raw) : raw.split(',')
       if (Array.isArray(parsed)) {
-        return parsed.map(item => getImageUrl(item)).filter(Boolean)
+        const images = parsed.filter(item => typeof item === 'string')
+          .map(item => getImageUrl(item.trim())).filter(Boolean)
+        if (images.length) return images
       }
     } catch (_) { /* 图集 JSON 无效时显示商品主图。 */ }
   }

@@ -1,135 +1,271 @@
 <template>
-  <view class="page">
-    <!-- 顶部导航 -->
-    <!-- <view class="nav-bar">
-      <view class="nav-left" @tap="goBack">
-        <uni-icons type="back" size="20" color="#333"></uni-icons>
-      </view>
-      <view class="nav-title">退货详情</view>
-      <view class="nav-right"></view>
-    </view> -->
-
-    <!-- 申请信息卡片 -->
-    <view class="detail-card">
-      <!-- 申请状态 -->
+  <view
+    class="page"
+    :class="{ 'with-actions': showActionButton }"
+  >
+    <view class="status-card">
       <view class="status-section">
-        <view class="status-icon" :class="'status-' + detail.status">
-          <uni-icons :type="getStatusIcon(detail.status)" size="48" :color="getStatusColor(detail.status)"></uni-icons>
+        <view
+          class="status-icon"
+          :class="'status-' + detail.status"
+        >
+          <uni-icons
+            :type="getStatusIcon(detail.status)"
+            size="30"
+            :color="getStatusColor(detail.status)"
+          />
         </view>
         <view class="status-info">
-          <text class="status-text">{{ getRefundStageText(detail) }}</text>
-          <text class="status-desc">{{ detail.refundLastError || getRefundStageText(detail) }}</text>
+          <text class="status-label">
+            售后进度
+          </text>
+          <text class="status-text">
+            {{ getRefundStageText(detail) }}
+          </text>
         </view>
       </view>
-
-      <!-- 基本信息 -->
-      <view class="info-section">
-        <view class="info-row">
-          <text class="info-label">退货申请单号</text>
-          <text class="info-value">{{ detail.refundNo }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">申请时间</text>
-          <text class="info-value">{{ formatDateTime(detail.createdAt) }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">退货金额</text>
-          <text class="info-value amount">¥{{ detail.refundAmount }}</text>
+      <view
+        v-if="detail.refundLastError"
+        class="status-notice"
+      >
+        <text>{{ detail.refundLastError }}</text>
+      </view>
+      <view class="amount-section">
+        <text class="amount-label">
+          申请退款金额
+        </text>
+        <view class="amount-value">
+          <text class="currency">
+            ¥
+          </text>
+          <text>{{ formatAmount(detail.refundAmount) }}</text>
         </view>
       </view>
+    </view>
 
-      <!-- 订单信息 -->
-      <view class="order-section" v-if="detail.orderInfo">
-        <view class="section-title">订单信息</view>
-        <view class="info-row">
-          <text class="info-label">订单号</text>
-          <text class="info-value">{{ detail.orderInfo.orderNo }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">完成时间</text>
-          <text class="info-value">{{ formatDateTime(detail.orderInfo.completeTime) }}</text>
-        </view>
+    <view class="detail-card products-section">
+      <view class="section-header">
+        <text class="section-title">
+          售后商品
+        </text>
+        <text
+          v-if="detail.items && detail.items.length"
+          class="section-caption"
+        >
+          {{ detail.items.length }} 项商品
+        </text>
       </view>
-
-      <!-- 退货商品 -->
-      <view class="products-section">
-        <view class="section-title">退货商品</view>
-        <view class="product-list">
-          <view class="product-item" v-for="item in detail.items" :key="item.id">
-            <image class="product-image" :src="item.productImage" mode="aspectFill" />
-            <view class="product-info">
-              <text class="product-name">{{ item.productName }}</text>
-              <view class="product-meta">
-                <text class="price">¥{{ item.price }}</text>
-                <text class="quantity">×{{ item.quantity }}</text>
-                <text class="subtotal">¥{{ item.subtotalAmount }}</text>
-              </view>
+      <view class="product-list">
+        <view
+          v-for="item in detail.items"
+          :key="item.id"
+          class="product-item"
+        >
+          <image
+            class="product-image"
+            :src="getProductImageUrl(item.productImage)"
+            mode="aspectFill"
+            @error="handleProductImageError(item.productImage)"
+          />
+          <view class="product-info">
+            <text class="product-name">
+              {{ item.productName }}
+            </text>
+            <view class="product-meta">
+              <text class="price">
+                单价 ¥{{ formatAmount(item.price) }}
+              </text>
+              <text class="quantity">
+                ×{{ item.quantity }}
+              </text>
             </view>
-          </view>
-        </view>
-      </view>
-
-      <!-- 退货原因 -->
-      <view class="reason-section">
-        <view class="section-title">退货原因</view>
-        <view class="reason-content">
-          <text class="reason-text">{{ detail.refundReason }}</text>
-          <text class="description" v-if="detail.refundDescription">{{ detail.refundDescription }}</text>
-        </view>
-      </view>
-
-      <!-- 退货物流 -->
-      <view class="logistics-section" v-if="detail.returnLogisticsCompany">
-        <view class="section-title">退货物流信息</view>
-        <view class="logistics-info">
-          <view class="info-row">
-            <text class="info-label">物流公司</text>
-            <text class="info-value">{{ detail.returnLogisticsCompany }}</text>
-          </view>
-          <view class="info-row">
-            <text class="info-label">物流单号</text>
-            <text class="info-value">{{ detail.returnLogisticsNo }}</text>
-          </view>
-          <view class="info-row" v-if="detail.returnTime">
-            <text class="info-label">发货时间</text>
-            <text class="info-value">{{ formatDateTime(detail.returnTime) }}</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- 审核信息 -->
-      <view class="audit-section" v-if="detail.status >= 1">
-        <view class="section-title">审核信息</view>
-        <view class="audit-info">
-          <view class="info-row" v-if="detail.reviewTime">
-            <text class="info-label">审核时间</text>
-            <text class="info-value">{{ formatDateTime(detail.reviewTime) }}</text>
-          </view>
-          <view class="info-row" v-if="detail.reviewRemark">
-            <text class="info-label">审核备注</text>
-            <text class="info-value">{{ detail.reviewRemark }}</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- 退款信息 -->
-      <view class="refund-section" v-if="detail.status === 4 && detail.refundTime">
-        <view class="section-title">退款信息</view>
-        <view class="refund-info">
-          <view class="info-row">
-            <text class="info-label">退款时间</text>
-            <text class="info-value">{{ formatDateTime(detail.refundTime) }}</text>
-          </view>
-          <view class="info-row">
-            <text class="info-label">退款金额</text>
-            <text class="info-value amount">¥{{ detail.refundAmount }}</text>
+            <view class="product-subtotal">
+              <text class="subtotal-label">
+                申请小计
+              </text>
+              <text class="subtotal">
+                ¥{{ formatAmount(item.subtotalAmount) }}
+              </text>
+            </view>
           </view>
         </view>
       </view>
     </view>
 
-    <!-- 底部操作按钮 -->
-    <view class="bottom-bar" v-if="showActionButton">
+    <view class="detail-card">
+      <view class="section-header">
+        <text class="section-title">
+          申请信息
+        </text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">
+          申请单号
+        </text>
+        <text
+          class="info-value number-value"
+          selectable
+        >
+          {{ detail.refundNo || '—' }}
+        </text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">
+          申请时间
+        </text>
+        <text class="info-value">
+          {{ formatDateTime(detail.createdAt) || '—' }}
+        </text>
+      </view>
+      <view
+        v-if="detail.orderInfo"
+        class="info-row"
+      >
+        <text class="info-label">
+          订单编号
+        </text>
+        <text
+          class="info-value number-value"
+          selectable
+        >
+          {{ detail.orderInfo.orderNo || '—' }}
+        </text>
+      </view>
+      <view
+        v-if="detail.orderInfo && detail.orderInfo.completeTime"
+        class="info-row"
+      >
+        <text class="info-label">
+          订单完成时间
+        </text>
+        <text class="info-value">
+          {{ formatDateTime(detail.orderInfo.completeTime) }}
+        </text>
+      </view>
+      <view class="reason-block">
+        <text class="reason-label">
+          申请原因
+        </text>
+        <text class="reason-text">
+          {{ detail.refundReason || '未填写' }}
+        </text>
+        <text
+          v-if="detail.refundDescription"
+          class="description"
+        >
+          {{ detail.refundDescription }}
+        </text>
+      </view>
+    </view>
+
+    <view
+      v-if="detail.returnLogisticsCompany"
+      class="detail-card"
+    >
+      <view class="section-header">
+        <text class="section-title">
+          退货物流
+        </text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">
+          物流公司
+        </text>
+        <text class="info-value">
+          {{ detail.returnLogisticsCompany }}
+        </text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">
+          物流单号
+        </text>
+        <text
+          class="info-value number-value"
+          selectable
+        >
+          {{ detail.returnLogisticsNo || '—' }}
+        </text>
+      </view>
+      <view
+        v-if="detail.returnTime"
+        class="info-row"
+      >
+        <text class="info-label">
+          发货时间
+        </text>
+        <text class="info-value">
+          {{ formatDateTime(detail.returnTime) }}
+        </text>
+      </view>
+    </view>
+
+    <view
+      v-if="detail.status >= 1 && (detail.reviewTime || detail.reviewRemark)"
+      class="detail-card"
+    >
+      <view class="section-header">
+        <text class="section-title">
+          审核信息
+        </text>
+      </view>
+      <view
+        v-if="detail.reviewTime"
+        class="info-row"
+      >
+        <text class="info-label">
+          审核时间
+        </text>
+        <text class="info-value">
+          {{ formatDateTime(detail.reviewTime) }}
+        </text>
+      </view>
+      <view
+        v-if="detail.reviewRemark"
+        class="remark-block"
+      >
+        <text class="reason-label">
+          审核备注
+        </text>
+        <text class="remark-text">
+          {{ detail.reviewRemark }}
+        </text>
+      </view>
+    </view>
+
+    <view
+      v-if="detail.status === 4 && detail.refundTime"
+      class="detail-card"
+    >
+      <view class="section-header">
+        <text class="section-title">
+          退款记录
+        </text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">
+          退款时间
+        </text>
+        <text class="info-value">
+          {{ formatDateTime(detail.refundTime) }}
+        </text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">
+          退款金额
+        </text>
+        <text class="info-value refund-amount">
+          ¥{{ formatAmount(detail.refundAmount) }}
+        </text>
+      </view>
+    </view>
+
+    <view
+      v-if="showActionButton"
+      class="bottom-bar"
+    >
+      <text class="action-tip">
+        寄回商品后，请填写退货物流信息
+      </text>
       <button
         class="action-btn"
         :class="getActionButtonClass()"
@@ -142,15 +278,18 @@
 </template>
 
 <script>
-import { getPaymentRefundStatusText, getRefundStageText } from '@/utils/refund.js'
+import { getRefundStageText } from '@/utils/refund.js'
 import dayjs from 'dayjs'
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { getRefundDetail } from '@/api/refund.js'
-import { getImageUrl } from '@/utils/config.js'
-import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+import { useProductImages } from '@/utils/product-image.js'
+import { logPageView } from '@/utils/accessLog.js'
 
 export default {
   name: 'RefundDetail',
+  setup() {
+    return useProductImages()
+  },
   data() {
     return {
       refundApplicationId: null,
@@ -162,7 +301,7 @@ export default {
   computed: {
     showActionButton() {
       // 审核通过状态且未填写物流信息时显示操作按钮
-      return this.detail.status === 1 && !['PROCESSING', 'UNKNOWN', 'SUCCESS'].includes(this.detail.paymentRefundStatus) &&
+      return this.detail.status === 1 && (!this.detail.paymentRefundStatus || this.detail.paymentRefundStatus === 'PENDING') &&
         !String(this.detail.refundScene || '').startsWith('THERAPY_') && this.detail.refundScene !== 'FORMULATION_PRE_SHIP' &&
         (!this.detail.returnLogisticsCompany || !this.detail.returnLogisticsNo)
     }
@@ -186,7 +325,6 @@ export default {
   onShow() { if (this.refundApplicationId && isCurrentSession(this.sessionGeneration)) this.loadDetail() },
 
   methods: {
-    getPaymentRefundStatusText,
     getRefundStageText,
     async loadDetail() {
       try {
@@ -195,17 +333,6 @@ export default {
         const detail = await getRefundDetail(this.refundApplicationId)
         if (!isCurrentSession(this.sessionGeneration)) return
         this.detail = detail || {}
-
-        // 处理商品图片URL（如果后端没有返回，使用占位图）
-        if (this.detail.items && this.detail.items.length > 0) {
-          this.detail.items = this.detail.items.map(item => ({
-            ...item,
-            productImage: item.productImage 
-              ? getImageUrl(item.productImage) 
-              : '/static/images/product-placeholder.png' // 占位图
-          }))
-        }
-
       } catch (error) {
         if (!isCurrentSession(this.sessionGeneration) || error.code === 'SESSION_CHANGED') return
         console.error('event=ui_order_refund_detail stage=load_detail result=failed reason=operation_incomplete')
@@ -219,12 +346,14 @@ export default {
     },
 
     getStatusIcon(status) {
+      if (['PROCESSING', 'UNKNOWN'].includes(this.detail.paymentRefundStatus)) return 'spinner-cycle'
+      if (this.detail.paymentRefundStatus === 'SUCCESS') return 'checkbox-filled'
       const iconMap = {
-        0: 'clock',      // 待审核
-        1: 'checkmark',  // 审核通过
+        0: 'spinner-cycle', // 待审核
+        1: 'checkmarkempty', // 审核通过
         2: 'close',      // 审核拒绝
-        3: 'truck',      // 退货中
-        4: 'checkmark',  // 已退货
+        3: 'paperplane', // 退货中
+        4: 'checkbox-filled', // 已退货
         5: 'close'       // 退货失败
       }
       return iconMap[status] || 'help'
@@ -240,18 +369,6 @@ export default {
         5: '#8e8e93'  // 退货失败 - 灰色
       }
       return colorMap[status] || '#666'
-    },
-
-    getStatusDesc(status) {
-      const descMap = {
-        0: '您的退货申请已提交，等待商家审核',
-        1: '退货申请审核通过，请填写退货物流信息',
-        2: '退货申请审核未通过',
-        3: '退货物流信息已提交，等待商家处理',
-        4: '退货完成，款项已退回您的账户',
-        5: '退货申请失败'
-      }
-      return descMap[status] || ''
     },
 
     getActionButtonText() {
@@ -299,6 +416,12 @@ export default {
       this.safeNavigateBack()
     },
 
+    formatAmount(value) {
+      if (value === null || value === undefined || String(value).trim() === '') return '—'
+      const amount = Number(value)
+      return Number.isFinite(amount) ? amount.toFixed(2) : '—'
+    },
+
     formatDateTime(dateTime) {
       if (!dateTime) return ''
       const date = dayjs(dateTime)
@@ -310,246 +433,316 @@ export default {
 
 <style lang="scss" scoped>
 .page {
+  box-sizing: border-box;
   min-height: 100vh;
-  background: #f5f5f5;
-  padding-bottom: 180rpx;
-}
+  padding: 24rpx 24rpx calc(32rpx + env(safe-area-inset-bottom));
+  background: #f5f6f8;
+  color: #252a34;
 
-// 导航栏
-.nav-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 88rpx;
-  background: #fff;
-  padding: 0 32rpx;
-  border-bottom: 1rpx solid #e5e5e5;
-
-  .nav-left {
-    width: 80rpx;
-    height: 80rpx;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .nav-title {
-    font-size: 32rpx;
-    font-weight: 600;
-    color: #333;
-  }
-
-  .nav-right {
-    width: 80rpx;
+  &.with-actions {
+    padding-bottom: calc(220rpx + env(safe-area-inset-bottom));
   }
 }
 
-// 详情卡片
+.status-card,
 .detail-card {
+  padding: 32rpx;
+  border: 1rpx solid #edf0f3;
+  border-radius: 24rpx;
   background: #fff;
-  margin: 20rpx;
-  border-radius: 16rpx;
-  overflow: hidden;
 }
 
-// 状态section
+.status-card {
+  margin-bottom: 24rpx;
+  background: linear-gradient(145deg, #fff8f2 0%, #fff 75%);
+  border-color: #fae9dc;
+}
+
+.detail-card {
+  margin-bottom: 20rpx;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
 .status-section {
   display: flex;
   align-items: center;
-  padding: 40rpx 32rpx;
-  background: linear-gradient(135deg, #fff, #fafafa);
+}
 
-  .status-icon {
-    width: 96rpx;
-    height: 96rpx;
-    border-radius: 50%;
-    background: rgba(255, 107, 53, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 24rpx;
+.status-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 88rpx;
+  height: 88rpx;
+  margin-right: 24rpx;
+  border-radius: 28rpx;
+  background: #eef1f5;
 
-    &.status-0 { background: rgba(255, 107, 53, 0.1); }
-    &.status-1 { background: rgba(0, 122, 255, 0.1); }
-    &.status-2 { background: rgba(255, 59, 48, 0.1); }
-    &.status-3 { background: rgba(255, 149, 0, 0.1); }
-    &.status-4 { background: rgba(52, 199, 89, 0.1); }
-    &.status-5 { background: rgba(142, 142, 147, 0.1); }
-  }
+  &.status-0 { background: #fff0e6; }
+  &.status-1 { background: #eaf3ff; }
+  &.status-2 { background: #fff0ee; }
+  &.status-3 { background: #fff4e5; }
+  &.status-4 { background: #e8f7ee; }
+}
 
-  .status-info {
-    flex: 1;
+.status-info {
+  flex: 1;
+  min-width: 0;
+}
 
-    .status-text {
-      display: block;
-      font-size: 32rpx;
-      font-weight: 600;
-      color: #333;
-      margin-bottom: 8rpx;
-    }
+.status-label,
+.status-text {
+  display: block;
+}
 
-    .status-desc {
-      display: block;
-      font-size: 26rpx;
-      color: #666;
-      line-height: 1.4;
-    }
+.status-label {
+  margin-bottom: 8rpx;
+  font-size: 24rpx;
+  color: #858b96;
+}
+
+.status-text {
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.status-notice {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 16rpx;
+  background: #fff3e8;
+  font-size: 24rpx;
+  line-height: 1.7;
+  color: #a9612b;
+  word-break: break-all;
+}
+
+.amount-section {
+  margin-top: 28rpx;
+  padding-top: 28rpx;
+  border-top: 1rpx solid #f1e9e2;
+}
+
+.amount-label {
+  font-size: 26rpx;
+  color: #747b87;
+}
+
+.amount-value {
+  display: flex;
+  align-items: baseline;
+  margin-top: 10rpx;
+  font-size: 60rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #e76b2d;
+  word-break: break-all;
+
+  .currency {
+    margin-right: 6rpx;
+    font-size: 32rpx;
   }
 }
 
-// 通用section样式
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
 .section-title {
   font-size: 30rpx;
   font-weight: 600;
-  color: #333;
-  padding: 32rpx 32rpx 0;
+  line-height: 1.5;
 }
 
-.info-section,
-.order-section,
-.audit-section,
-.refund-section,
-.logistics-section {
-  padding: 32rpx;
-  border-top: 1rpx solid #f0f0f0;
+.section-caption {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  font-size: 24rpx;
+  color: #939aa5;
+}
 
-  .info-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16rpx 0;
+.info-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12rpx 0;
+  font-size: 26rpx;
+  line-height: 1.65;
+}
 
-    .info-label {
-      font-size: 28rpx;
-      color: #666;
-    }
+.info-label {
+  flex-shrink: 0;
+  width: 184rpx;
+  padding-right: 16rpx;
+  color: #858b96;
+}
 
-    .info-value {
-      font-size: 28rpx;
-      color: #333;
-      text-align: right;
-      max-width: 400rpx;
+.info-value {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  word-break: break-all;
+}
 
-      &.amount {
-        color: #ff6b35;
-        font-weight: 600;
-        font-size: 32rpx;
-      }
-    }
+.number-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.product-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 24rpx 0;
+  border-top: 1rpx solid #f0f2f5;
+
+  &:first-child {
+    padding-top: 0;
+    border-top: none;
+  }
+
+  &:last-child {
+    padding-bottom: 0;
   }
 }
 
-// 商品列表
-.products-section {
-  padding: 32rpx;
-  border-top: 1rpx solid #f0f0f0;
-
-  .product-list {
-    .product-item {
-      display: flex;
-      align-items: center;
-      padding: 24rpx 0;
-      border-bottom: 1rpx solid #f0f0f0;
-
-      &:last-child {
-        border-bottom: none;
-      }
-
-      .product-image {
-        width: 120rpx;
-        height: 120rpx;
-        border-radius: 8rpx;
-        margin-right: 24rpx;
-        flex-shrink: 0;
-      }
-
-      .product-info {
-        flex: 1;
-
-        .product-name {
-          display: block;
-          font-size: 28rpx;
-          color: #333;
-          margin-bottom: 12rpx;
-          line-height: 1.4;
-        }
-
-        .product-meta {
-          display: flex;
-          align-items: center;
-          gap: 16rpx;
-
-          .price {
-            font-size: 26rpx;
-            color: #666;
-          }
-
-          .quantity {
-            font-size: 26rpx;
-            color: #666;
-          }
-
-          .subtotal {
-            font-size: 28rpx;
-            color: #ff6b35;
-            font-weight: 600;
-          }
-        }
-      }
-    }
-  }
+.product-image {
+  flex-shrink: 0;
+  width: 128rpx;
+  height: 128rpx;
+  margin-right: 24rpx;
+  border-radius: 16rpx;
+  background: #f5f6f8;
 }
 
-// 退货原因
-.reason-section {
-  padding: 32rpx;
-  border-top: 1rpx solid #f0f0f0;
-
-  .reason-content {
-    .reason-text {
-      display: block;
-      font-size: 28rpx;
-      color: #333;
-      margin-bottom: 16rpx;
-    }
-
-    .description {
-      display: block;
-      font-size: 26rpx;
-      color: #666;
-      line-height: 1.5;
-    }
-  }
+.product-info {
+  flex: 1;
+  min-width: 0;
 }
 
-// 底部按钮
+.product-name {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 500;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.product-meta,
+.product-subtotal {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #858b96;
+}
+
+.quantity {
+  margin-left: 16rpx;
+}
+
+.subtotal {
+  margin-left: 12rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #3d4654;
+}
+
+.reason-block {
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid #f0f2f5;
+}
+
+.reason-label,
+.reason-text,
+.description,
+.remark-text {
+  display: block;
+  font-size: 26rpx;
+  line-height: 1.7;
+  word-break: break-all;
+}
+
+.reason-label {
+  margin-bottom: 12rpx;
+  color: #858b96;
+}
+
+.description {
+  margin-top: 12rpx;
+  color: #737c8a;
+}
+
+.remark-block {
+  margin-top: 16rpx;
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: #f7f8fa;
+}
+
+.refund-amount {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #e76b2d;
+}
+
 .bottom-bar {
   position: fixed;
+  z-index: 10;
+  right: 0;
   bottom: 0;
   left: 0;
-  right: 0;
+  padding: 20rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #edf0f3;
   background: #fff;
-  padding: 24rpx 32rpx;
-  border-top: 1rpx solid #e5e5e5;
-  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+}
 
-  .action-btn {
-    width: 100%;
-    height: 88rpx;
+.action-tip {
+  display: block;
+  margin-bottom: 16rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  text-align: center;
+  color: #858b96;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 88rpx;
+  margin: 0;
+  padding: 0 24rpx;
+  border: none;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.5;
+
+  &::after {
     border: none;
-    border-radius: 44rpx;
-    font-size: 32rpx;
-    font-weight: 600;
+  }
 
-    &.primary-btn {
-      background: linear-gradient(135deg, #ff6b35, #ff8c42);
-      color: #fff;
-    }
+  &.primary-btn {
+    background: linear-gradient(100deg, #ff7c3b, #ff9b50);
+    color: #fff;
+  }
 
-    &.default-btn {
-      background: #f5f5f5;
-      color: #666;
-    }
+  &.default-btn {
+    background: #f1f3f6;
+    color: #737c8a;
   }
 }
 </style>

@@ -46,7 +46,6 @@ import {
   addCartItem,
   buildCartItemKey,
   getCartEntries,
-  getCartProductQuantity,
   prepareCheckout,
   resolveCartCompatibility,
   updateCartQuestionnaire
@@ -55,6 +54,7 @@ import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId, submitQuestionnaire } from '@/api/questionnaire.js'
 import { logPageView } from '@/api/access-log.js'
+import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
 
 export default {
   components: { SingleChoiceQuestion },
@@ -76,6 +76,7 @@ export default {
       loading: false,
       questions: [],
       requestedQuantity: 1,
+      directPurchase: null,
       action: 'cart',
       selectedItems: [],
       productDetail: null
@@ -95,6 +96,14 @@ export default {
     this.skuId = options.skuId || ''
     this.requestedQuantity = Math.max(1, Number(options.quantity) || 1)
     this.action = options.action || 'cart'
+    try {
+      this.directPurchase = parseDirectPurchase(options)
+      if (this.action === 'buy' && !this.directPurchase) throw new Error('缺少本次购买信息，请返回商品详情重试')
+    } catch (error) {
+      this.pageActive = false
+      uni.showToast({ title: error.message, icon: 'none' })
+      return
+    }
     this.selectedItems = decodeURIComponent(options.selectedItems || '').split(',').filter(Boolean)
     logPageView('PRODUCT_QUESTIONNAIRE', this.productId)
   },
@@ -123,7 +132,7 @@ export default {
       return buildCartItemKey(detail?.productId || detail?.id || this.productId, detail?.skuId || this.skuId || null)
     },
     getSelectedQuantity() {
-      return Math.max(1, Number(this.requestedQuantity) || getCartProductQuantity(this.productId, 1, this.skuId) || 1)
+      return this.directPurchase?.quantity || this.requestedQuantity
     },
     async ensureCartCompatible(detail) {
       const target = detail || this.productDetail || await getProductDetail(this.productId)
@@ -131,9 +140,7 @@ export default {
         return false
       }
       const saleProduct = this.resolveSelectedProduct(target)
-      const flow = resolveCartCompatibility(saleProduct, {
-        ignoreCartKey: this.getCartKey(saleProduct)
-      })
+      const flow = resolveCartCompatibility(saleProduct)
       if (!flow.valid) {
         uni.showToast({
           title: flow.message,
@@ -220,7 +227,7 @@ export default {
       const checkout = prepareCheckout(selectedKeys, [{
         id: 'questionnaire_checkout',
         products
-      }])
+      }], this.directPurchase ? { entries: checkoutEntries(selectedKeys, this.directPurchase) } : {})
       if (!checkout.valid) {
         uni.showToast({
           title: checkout.message,
@@ -233,13 +240,13 @@ export default {
       if (!checkout.requiresConsultation) {
         uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
         uni.navigateTo({
-          url: `/pages/order/confirm?selectedItems=${selectedItems}`
+          url: `/pages/order/confirm?selectedItems=${selectedItems}${directPurchaseQuery(this.directPurchase)}`
         })
         return true
       }
 
       uni.navigateTo({
-        url: `/pages/dispense/apply?selectedItems=${selectedItems}`
+        url: `/pages/dispense/apply?selectedItems=${selectedItems}${directPurchaseQuery(this.directPurchase)}`
       })
       return true
     },
@@ -332,6 +339,19 @@ export default {
             questionnaireId: this.questionnaireId,
             answerId: result.answerId
           }
+          if (this.directPurchase) {
+            this.directPurchase = { quantity: this.directPurchase.quantity, questionnaireId: this.questionnaireId, answerId: result.answerId }
+            if (this.action === 'repair') {
+              this.getOpenerEventChannel?.()?.emit('directPurchaseQuestionnaireAnswered', {
+                productId: saleProduct.productId || saleProduct.id,
+                skuId: saleProduct.skuId,
+                ...this.directPurchase
+              })
+              this.submissionCompleted = true
+              uni.navigateBack({ delta: 2 })
+            } else this.submissionCompleted = await this.goCheckout(saleProduct, sequence)
+            return
+          }
           // 混合结算只补最小商品 ID 的问卷凭据，不改原购物车数量或勾选。
           const success = this.action === 'repair' || this.action === 'checkout'
             ? updateCartQuestionnaire(saleProduct, submission)
@@ -344,7 +364,7 @@ export default {
             return
           }
 
-          if (this.action === 'buy' || this.action === 'checkout') {
+          if (this.action === 'checkout') {
             this.submissionCompleted = await this.goCheckout(saleProduct, sequence)
             return
           }

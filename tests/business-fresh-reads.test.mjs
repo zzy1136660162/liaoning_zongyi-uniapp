@@ -114,6 +114,7 @@ test('处方详情接口失败不会读写旧处方响应副本', async () => {
   const options = loadOptions('pages/prescription/detail.vue', {
     ...reactive, AI_DOCTOR: { name: 'fixture doctor' }, getImageUrl: value => value, console: quiet,
     getPrescriptionDetail: async () => { throw new Error('offline') },
+    getPrescriptionItems: async () => [],
     uni: { showLoading() {}, hideLoading() {}, showToast() {},
       getStorageSync() { throw new Error('must not read saved prescription response') },
       setStorageSync() { throw new Error('must not save prescription response') } }

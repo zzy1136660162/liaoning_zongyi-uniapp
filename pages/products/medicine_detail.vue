@@ -241,9 +241,30 @@
       </view>
       <view class="select-value">
         <text>{{ selectedSpec }}</text>
-        <text class="select-num">
-          ×{{ quantity }}
+      </view>
+      <view class="quantity-stepper">
+        <button
+          class="quantity-button"
+          :disabled="!canDecreaseQuantity"
+          aria-label="减少数量"
+          @click="decreaseQuantity"
+        >
+          −
+        </button>
+        <text
+          class="quantity-value"
+          selectable="true"
+        >
+          {{ quantity }}
         </text>
+        <button
+          class="quantity-button"
+          :disabled="!canIncreaseQuantity"
+          aria-label="增加数量"
+          @click="increaseQuantity"
+        >
+          +
+        </button>
       </view>
     </view>
 
@@ -830,7 +851,8 @@
 </template>
 
 <script setup>
-import { isPurchaseAvailable, normalizePurchaseQuantity } from '@/utils/purchase-quantity.js'
+import { isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit } from '@/utils/purchase-quantity.js'
+import { checkoutEntries, directPurchaseQuery } from '@/utils/checkout.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { resolveQuestionnaireState, getQuestionnaireStateMessage, buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 import { computed, getCurrentInstance, onMounted, onUnmounted, ref } from 'vue'
@@ -948,6 +970,12 @@ const skuList = computed(() => Array.isArray(product.value.skus) ? product.value
 const selectedSku = computed(() => {
   try { return resolveProductSku(product.value, selectedSkuId.value) } catch (_) { return null }
 })
+const canDecreaseQuantity = computed(() => isPurchaseAvailable(withSelectedSku()) && quantity.value > 1)
+const canIncreaseQuantity = computed(() => {
+  const saleProduct = withSelectedSku()
+  const limit = resolvePurchaseQuantityLimit(saleProduct)
+  return isPurchaseAvailable(saleProduct) && (limit === null || quantity.value < limit)
+})
 const selectedSpec = computed(() => {
   const sku = selectedSku.value
   if (skuList.value.length && !sku) return '所选规格已失效，请重新选择'
@@ -1047,15 +1075,15 @@ const selectSku = (sku) => {
     return
   }
   selectedSkuId.value = sku.id
-  loadQuantityFromStorage()
+  quantity.value = 1
 }
 
-const loadQuantityFromStorage = () => {
-  if (!product.value.id) {
-    quantity.value = 1
-    return
-  }
-  quantity.value = getCartProductQuantity(product.value.id, 1, selectedSku.value?.id)
+const decreaseQuantity = () => {
+  if (canDecreaseQuantity.value) quantity.value--
+}
+
+const increaseQuantity = () => {
+  if (canIncreaseQuantity.value) quantity.value++
 }
 
 const loadRecommendCartQuantities = () => {
@@ -1083,7 +1111,7 @@ const applyProduct = (source, { preserveQuantity = false } = {}) => {
   try { selectedSkuId.value = resolveProductSku(product.value, selectedSkuId.value)?.id || null }
   catch (error) { uni.showToast({ title: error.message, icon: 'none' }) }
   if (preserveQuantity) quantity.value = normalizePurchaseQuantity(withSelectedSku(), quantity.value)
-  else loadQuantityFromStorage()
+  else quantity.value = 1
   loadRecommendCartQuantities()
 }
 
@@ -1128,9 +1156,7 @@ const ensureLogin = () => {
 }
 
 const ensureCartCompatible = (targetProduct) => {
-  const result = resolveCartCompatibility(targetProduct, {
-    ignoreCartKey: getSelectedCartKey(targetProduct)
-  })
+  const result = resolveCartCompatibility(targetProduct)
   if (!result.valid) {
     uni.showToast({
       title: result.message,
@@ -1141,14 +1167,14 @@ const ensureCartCompatible = (targetProduct) => {
   return true
 }
 
-const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart') => {
+const navigateToNotice = (targetProduct, selectedQuantity, action = 'cart', purchase = null) => {
   uni.navigateTo({
-    url: buildQuestionnaireNoticeUrl(targetProduct, { quantity: selectedQuantity, action })
+    url: buildQuestionnaireNoticeUrl(targetProduct, { quantity: selectedQuantity, action }) + directPurchaseQuery(purchase)
   })
   return false
 }
 
-const goCheckout = (targetProduct) => {
+const goCheckout = (targetProduct, purchase) => {
   const cartKey = getSelectedCartKey(targetProduct)
   const checkoutProduct = {
     ...targetProduct,
@@ -1159,7 +1185,7 @@ const goCheckout = (targetProduct) => {
   const checkout = prepareCheckout([cartKey], [{
     id: 'detail_checkout',
     products: [checkoutProduct]
-  }])
+  }], { entries: checkoutEntries([cartKey], purchase) })
 
   if (!checkout.valid) {
     uni.showToast({
@@ -1173,13 +1199,13 @@ const goCheckout = (targetProduct) => {
   if (!checkout.requiresConsultation) {
     uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
     uni.navigateTo({
-      url: `/pages/order/confirm?selectedItems=${selectedItems}`
+      url: `/pages/order/confirm?selectedItems=${selectedItems}${directPurchaseQuery(purchase)}`
     })
     return true
   }
 
   uni.navigateTo({
-    url: `/pages/dispense/apply?selectedItems=${selectedItems}`
+    url: `/pages/dispense/apply?selectedItems=${selectedItems}${directPurchaseQuery(purchase)}`
   })
   return true
 }
@@ -1202,15 +1228,29 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
     uni.showToast({ title: '商品已售罄或限购额度已用完', icon: 'none' })
     return false
   }
-  const nextQuantity = Math.max(1, Number(selectedQuantity) || 1)
-  const questionnaireState = resolveQuestionnaireState(saleProduct, getCartProductInfo(saleProduct.productId || saleProduct.id, saleProduct.skuId))
+  const nextQuantity = Math.max(1, Math.floor(Number(selectedQuantity) || 1))
+  if (normalizePurchaseQuantity(saleProduct, nextQuantity) !== nextQuantity) {
+    uni.showToast({ title: '已达到可购买数量上限', icon: 'none' })
+    return false
+  }
+  const purchase = mode === 'buy' ? { quantity: nextQuantity } : null
+  if (purchase) {
+    const entry = getCartProductInfo(saleProduct.productId || saleProduct.id, saleProduct.skuId)
+    if (resolveQuestionnaireState(saleProduct, entry) === 'passed') {
+      purchase.questionnaireId = saleProduct.questionnaireId
+      purchase.answerId = entry.answerId
+    }
+  }
+  const questionnaireState = resolveQuestionnaireState(saleProduct, purchase || {})
   if (mode === 'buy' && questionnaireState === 'unavailable') {
     uni.showToast({ title: getQuestionnaireStateMessage(questionnaireState), icon: 'none' })
     return false
   }
   if (mode === 'buy' && questionnaireState === 'required') {
-    return navigateToNotice(saleProduct, nextQuantity, mode)
+    return navigateToNotice(saleProduct, nextQuantity, mode, purchase)
   }
+
+  if (mode === 'buy') return goCheckout(saleProduct, purchase)
 
   const saved = addCartItem(saleProduct, nextQuantity)
   if (!saved) {
@@ -1223,14 +1263,6 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
 
   loadCartCount()
   loadRecommendCartQuantities()
-  if (String(saleProduct.productId || saleProduct.id) === String(product.value.id)) {
-    loadQuantityFromStorage()
-  }
-
-  if (mode === 'buy') {
-    return goCheckout(saleProduct)
-  }
-
   uni.showToast({
     title: '已加入购物车',
     icon: 'success'
@@ -1239,7 +1271,8 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
 }
 
 const addCart = async () => {
-  await handlePurchaseAction('cart', product.value, quantity.value)
+  await handlePurchaseAction('cart', product.value,
+    getCartProductQuantity(product.value.id, 0, selectedSku.value?.id) + quantity.value)
 }
 
 const buyNow = async () => {
@@ -1365,6 +1398,7 @@ onLoad((options) => {
   unsubscribeSession?.()
   logPageView('MEDICINE_DETAIL', options?.id || '')
   product.value = createEmptyProduct()
+  quantity.value = 1
   selectedSkuId.value = options.skuId || null
   routeProductId.value = options.id || ''
   unsubscribeSession = onSessionChanged(() => {
@@ -1390,7 +1424,6 @@ let unsubscribeCartUpdated = null
 onMounted(() => {
   unsubscribeCartUpdated = subscribeCartUpdated(() => {
     loadCartCount()
-    loadQuantityFromStorage()
     loadRecommendCartQuantities()
   })
 })
@@ -1881,10 +1914,47 @@ onShow(async () => {
   flex: 1;
   font-size: 28rpx;
   color: #222;
+  min-width: 0;
+  padding-right: 20rpx;
 }
 
-.select-num {
-  color: #ff4b4b;
+.quantity-stepper {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 16rpx;
+}
+
+.quantity-button {
+  width: 52rpx;
+  height: 52rpx;
+  margin: 0;
+  padding: 0;
+  border: 1rpx solid #d9d9d9;
+  border-radius: 50%;
+  background: #fff;
+  color: #222;
+  font-size: 32rpx;
+  line-height: 48rpx;
+  text-align: center;
+}
+
+.quantity-button::after {
+  border: none;
+}
+
+.quantity-button[disabled] {
+  border-color: #eee;
+  background: #f7f7f7;
+  color: #bbb;
+}
+
+.quantity-value {
+  min-width: 48rpx;
+  color: #222;
+  font-size: 28rpx;
+  font-weight: 600;
+  text-align: center;
 }
 
 .select-arrow {

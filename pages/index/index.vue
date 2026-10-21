@@ -66,7 +66,7 @@ export default {
 				assertCurrentSession(session)
 				uni.setStorageSync(STORAGE_KEY_USER_INFO, { ...profile, userId: profile.id })
 				uni.setStorageSync(STORAGE_KEY_USER_REGISTER, {
-					realName: profile.userName || '', idType: profile.idType || '身份证',
+					realName: profile.userName || '', idType: profile.idType || '',
 					idNumber: profile.idCardNo || '', phone: profile.phone || '', verifyCode: ''
 				})
 				uni.setStorageSync(STORAGE_KEY_USER_LOGIN_STATUS, true)

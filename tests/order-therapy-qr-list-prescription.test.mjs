@@ -42,7 +42,7 @@ assert.match(orderListPage, /@scrolltolower="loadMoreOrders"/)
 assert.doesNotMatch(orderListPage, /class="therapy-qr-image"/)
 
 assert.match(prescriptionDetailPage, /resolvePrescriptionDoctorName/)
-assert.match(prescriptionDetailPage, /resolvePrescriptionDate/)
+assert.doesNotMatch(prescriptionDetailPage, /prescriptionTime|resolvePrescriptionDate/)
 assert.match(prescriptionDetailPage, /isValidPrescriptionId/)
 assert.match(prescriptionDetailPage, /loadOrderFromOrderId/)
 assert.match(prescriptionDetailPage, /pageOptions\.orderId/)

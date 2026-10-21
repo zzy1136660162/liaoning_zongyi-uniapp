@@ -29,7 +29,7 @@
 					class="picker-wrapper"
 				>
 					<view class="picker-display">
-						<text class="picker-text">{{ formData.idType || '身份证' }}</text>
+						<text class="picker-text">{{ formData.idType || '请选择' }}</text>
 						<text class="picker-arrow">v</text>
 					</view>
 				</picker>
@@ -117,7 +117,7 @@ import { redirectToWithFallback } from '@/utils/navigate.js'
 import { logPageView } from '@/api/access-log.js'
 import { syncCartOnLogin } from '@/utils/cart-sync.js'
 import { assertCurrentSession, getSessionGeneration } from '@/utils/session.js'
-import { patientHisSyncNotice } from '@/utils/patient.js'
+import { ID_TYPE_OPTIONS, patientHisSyncNotice } from '@/utils/patient.js'
 
 export default {
 	data() {
@@ -129,7 +129,7 @@ export default {
 				phone: '',
 				verifyCode: ''
 			},
-			idTypeList: ['身份证', '护照', '港澳通行证', '台胞证', '军官证', '士兵证', '户口簿', '出生医学证明', '外国人居留证'],
+			idTypeList: ID_TYPE_OPTIONS,
 			idTypeIndex: 0,
 			isAgreed: false,
 			countdown: 0,
@@ -170,12 +170,18 @@ export default {
 		loadSavedData() {
 			try {
 				const savedData = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-				if (savedData) {
+				if (savedData && typeof savedData === 'object' && !Array.isArray(savedData)) {
 					this.formData = { ...this.formData, ...savedData }
 					// 鎭㈠璇佷欢绫诲瀷绱㈠紩
 					const index = this.idTypeList.indexOf(savedData.idType)
 					if (index !== -1) {
 						this.idTypeIndex = index
+					} else if (this.formData.idNumber || savedData.idType) {
+						this.formData.idType = ''
+						this.idTypeList = ['请选择', ...ID_TYPE_OPTIONS]
+						this.idTypeIndex = 0
+					} else {
+						this.formData.idType = '身份证'
 					}
 				}
 				
@@ -202,7 +208,8 @@ export default {
 		// 璇佷欢绫诲瀷閫夋嫨
 		onIdTypeChange(e) {
 			this.idTypeIndex = e.detail.value
-			this.formData.idType = this.idTypeList[this.idTypeIndex]
+			const idType = this.idTypeList[this.idTypeIndex]
+			this.formData.idType = ID_TYPE_OPTIONS.includes(idType) ? idType : ''
 			this.saveFormData()
 		},
 		

@@ -1,3 +1,7 @@
+export const ID_TYPE_OPTIONS = [
+  '身份证', '护照', '港澳通行证', '台胞证', '军官证', '士兵证', '户口簿', '出生医学证明', '外国人居留证'
+]
+
 /**
  * 根据身份证号推导性别
  * @param {string} idNumber

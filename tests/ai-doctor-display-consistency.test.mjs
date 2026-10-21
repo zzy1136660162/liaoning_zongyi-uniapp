@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { AI_DOCTOR } from '../utils/consultation-mode.js'
+import { resolvePrescriptionDoctorName } from '../utils/prescription.js'
 
 const testDir = path.dirname(fileURLToPath(import.meta.url))
 const uniappRoot = path.resolve(testDir, '..')
@@ -16,9 +18,13 @@ const relatedPagePaths = [
 
 for (const pagePath of relatedPagePaths) {
   const source = read(pagePath)
-  assert.match(source, /AI_DOCTOR/, `${pagePath} 应统一使用 AI_DOCTOR 展示名`)
+  assert.match(source, /AI_DOCTOR|resolvePrescriptionDoctorName/, `${pagePath} 应使用统一医生身份规则`)
   assert.doesNotMatch(source, /线上医生|线上名医/, `${pagePath} 不应保留旧的医生兜底文案`)
 }
+
+assert.equal(resolvePrescriptionDoctorName({ doctorId: null }), AI_DOCTOR.name)
+assert.equal(resolvePrescriptionDoctorName({ doctorId: 100 }), '医师资料暂不可用')
+assert.equal(resolvePrescriptionDoctorName({ doctorId: 100, doctorName: '真实医师' }), '真实医师')
 
 const prescriptionListSource = read('pages/order/prescription_list.vue')
 assert.doesNotMatch(

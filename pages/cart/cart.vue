@@ -80,8 +80,9 @@
           <view class="item-content">
             <image
               class="item-image"
-              :src="getImageUrl(item.image)"
+              :src="getProductImageUrl(item.image)"
               mode="aspectFill"
+              @error="handleProductImageError(item.image)"
               @click="goToProductDetail(item)"
             />
             <view class="item-info">
@@ -222,6 +223,7 @@ import {
   subscribeCartUpdated
 } from '@/utils/cart-events.js'
 import { getImageUrl } from '@/utils/config.js'
+import { useProductImages } from '@/utils/product-image.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { BASE_URL } from '@/utils/config.js'
@@ -259,6 +261,7 @@ export default {
   components: {
     TabBar
   },
+  setup: useProductImages,
   data() {
     return {
       cartItems: [],

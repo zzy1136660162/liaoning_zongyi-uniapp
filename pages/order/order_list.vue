@@ -46,7 +46,13 @@
             <text class="order-no">
               订单号: {{ order.orderNo }}
             </text>
-            <text v-if="order.orderNo" class="copy-order-no" @click.stop="copyOrderNo(order.orderNo)">复制</text>
+            <text
+              v-if="order.orderNo"
+              class="copy-order-no"
+              @click.stop="copyOrderNo(order.orderNo)"
+            >
+              复制
+            </text>
           </view>
           <text
             class="order-status"
@@ -75,8 +81,9 @@
             <view class="product-main">
               <image
                 class="product-image"
-                :src="'https://shop.lntcm.com/assets_files' + item.productImage"
+                :src="getProductImageUrl(item.productImage)"
                 mode="aspectFill"
+                @error="handleProductImageError(item.productImage)"
               />
               <view class="product-text">
                 <text class="product-name">{{ item.productName }}</text>
@@ -98,7 +105,10 @@
         </view>
         <view v-else class="order-products-empty">暂无商品明细</view>
 
-        <view v-if="hasRedeemEntitlement(order)" class="order-redeem-summary">
+        <view
+          v-if="hasRedeemEntitlement(order)"
+          class="order-redeem-summary"
+        >
           {{ redeemSummaryText(order) }}
         </view>
 
@@ -191,8 +201,10 @@ import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
 import { canPayOrder, getOrderStatusText } from '@/utils/order-status.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
+import { useProductImages } from '@/utils/product-image.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
+const { getProductImageUrl, handleProductImageError } = useProductImages()
 const activeTab = ref('all')
 const orders = ref([])
 const pageNum = ref(0)
@@ -426,14 +438,14 @@ const canOrderApplyRefund = (order = {}) => {
   if (Number.isFinite(refundStatus) && refundStatus > 0) {
     return false
   }
-  if (isTherapyOrder(order) || hasRedeemVouchers(order)) {
+  if (isTherapyOrder(order) || hasRedeemEntitlement(order)) {
     return Number(order.payStatus) === 1 && Number(order.status) !== 4
   }
   return Number(order.status) === 1
 }
 
 const refundActionText = (order = {}) => {
-  return isTherapyOrder(order) || hasRedeemVouchers(order) ? '申请退款' : '申请退货'
+  return isTherapyOrder(order) || hasRedeemEntitlement(order) ? '申请退款' : '申请退货'
 }
 
 // 切换标签
@@ -448,7 +460,7 @@ const getStatusText = (status, order = null) => {
   return getOrderStatusText({
     ...(order || {}),
     orderStatus: status,
-    hasRedeemVouchers: order ? hasRedeemVouchers(order) : false
+    hasRedeemVouchers: order ? hasRedeemEntitlement(order) : false
   })
 }
 

@@ -4,6 +4,7 @@ import { resolveProductSku, withProductSku } from '../utils/product-sku.js'
 import { isPurchaseAvailable } from '../utils/purchase-quantity.js'
 import { normalizePurchaseQuantity, resolvePurchaseQuantityLimit } from '../utils/purchase-quantity.js'
 import { loadSetup } from './sfc-harness.mjs'
+import { checkoutEntries, parseDirectPurchase } from '../utils/checkout.js'
 
 const storage = new Map(), navigation = [], messages = []
 globalThis.uni = { getStorageSync: k => storage.get(k), setStorageSync: (k, v) => storage.set(k, v), removeStorageSync: k => storage.delete(k),
@@ -62,8 +63,11 @@ test('questionnaire route and direct checkout retain the actual SKU', async () =
   assert.match(navigation.at(-1).url, /quantity=2/)
   product.needQuestionnaire = 0; page.applyProduct(product); await page.buyNow()
   assert.match(navigation.at(-1).url, /confirm\?selectedItems=101:11/)
-  const entries = cart.loadCartItems([{ products: [page.saleProduct.value] }])
+  const options = Object.fromEntries(new URL(navigation.at(-1).url, 'https://fixture.invalid').searchParams)
+  const entries = cart.loadCartItems([{ products: [page.saleProduct.value] }], false,
+    { entries: checkoutEntries(['101:11'], parseDirectPurchase(options)), preserveQuantity: true })
   assert.equal(cart.buildOrderItems(entries, ['101:11'])[0].skuId, '11')
+  assert.deepEqual(cart.getCartEntries(), {})
 })
 
 test('one available SKU does not allow buying an unavailable or expired selected SKU', async () => {

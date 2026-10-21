@@ -374,19 +374,6 @@
         </view>
       </view>
 
-      <!-- <view class="cart-bar">
-        <view class="cart-icon-wrapper" @click="showCart" id="cart-icon-target">
-          <view class="cart-icon">
-            <uni-icons type="cart" size="30" color="#ffffff"></uni-icons>
-          </view>
-          <view class="cart-badge" v-if="cartCount > 0">{{ cartCount }}</view>
-        </view>
-        <view class="cart-info">
-          <text class="cart-total">￥ {{ totalPrice.toFixed(2) }}</text>
-          <text class="cart-tip">不含复诊费，实际金额以结算为准</text>
-        </view>
-        <button class="submit-btn" @click="handleSubmit">提交</button>
-      </view> -->
     </view>
 
     <TabBar
@@ -407,7 +394,6 @@
 </template>
 
 <script>
-import { STORAGE_KEY_CURRENT_CONSULTATION_ID, STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
 import { getCategoryList, getCategoryProducts, getProductDetail, mapProductDetail, mapProductListItem } from '@/api/product.js'
 import {
   addCartItem,
@@ -415,11 +401,8 @@ import {
   getCartProductInfo,
   getCartProductQuantity,
   loadCartItems,
-  calculateTotalPrice,
-  calculateTotalQuantity,
   setCartItemQuantity,
   removeFromCart,
-  prepareCheckout,
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
@@ -428,7 +411,6 @@ import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 import { buildListCartCategories, getProductCartLines } from '@/utils/product-list-cart.js'
 import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
-import { buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { buildCategoryTree, normalizeCategoryId } from '@/utils/category-tree.js'
@@ -498,12 +480,6 @@ export default {
         products = products.filter(product => normalizeCategoryId(product.categoryId) === currentSubCategoryId)
       }
       return products
-    },
-    cartCount() {
-      return calculateTotalQuantity(this.cartItems)
-    },
-    totalPrice() {
-      return calculateTotalPrice(this.cartItems)
     }
   },
   onLoad() {
@@ -995,9 +971,7 @@ export default {
       return false
     },
     ensureCartCompatible(product) {
-      const result = resolveCartCompatibility(product, {
-        ignoreProductId: product?.id
-      })
+      const result = resolveCartCompatibility(product)
       if (!result.valid) {
         uni.showToast({
           title: result.message,
@@ -1085,60 +1059,6 @@ export default {
     },
     showCart() {
       uni.navigateTo({ url: '/pages/cart/cart' })
-    },
-    handleSubmit() {
-      if (!getToken()) {
-        uni.navigateTo({
-          url: '/pages/register/register?redirect=/pages/products/medicine_list'
-        })
-        return
-      }
-      if (this.cartItems.length === 0) {
-        uni.showToast({ title: '请先选择商品', icon: 'none' })
-        return
-      }
-
-      try {
-        const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-        if (!userRegisterInfo || !userRegisterInfo.realName) {
-          uni.navigateTo({
-            url: '/pages/register/register?redirect=/pages/products/medicine_list'
-          })
-          return
-        }
-
-        const selectedIds = this.cartItems.map(item => String(item.id))
-        const checkout = prepareCheckout(selectedIds, buildListCartCategories(this.categories, getCartEntries()))
-        if (!checkout.valid) {
-          if (checkout.questionnaireCheck?.state === 'required') {
-            uni.navigateTo({ url: buildQuestionnaireNoticeUrl(checkout.questionnaireCheck.item,
-              { action: 'checkout', selectedItems: checkout.productIds }) })
-            return
-          }
-          uni.showToast({
-            title: checkout.message,
-            icon: 'none'
-          })
-          return
-        }
-
-        if (!checkout.requiresConsultation) {
-          uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
-          uni.navigateTo({
-            url: `/pages/order/confirm?selectedItems=${checkout.productIds.join(',')}`
-          })
-          return
-        }
-
-        uni.navigateTo({
-          url: `/pages/dispense/apply?selectedItems=${checkout.productIds.join(',')}`
-        })
-      } catch (error) {
-        console.error('handleSubmit failed:', error)
-        uni.navigateTo({
-          url: '/pages/register/register?redirect=/pages/products/medicine_list'
-        })
-      }
     },
     goToHistory() {
       uni.navigateTo({ url: '/pages/order/order_list' })

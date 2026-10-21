@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { loadOptions } from './sfc-harness.mjs'
 import { beginSession, endSession, getSessionGeneration, isCurrentSession, onSessionChanged } from '../utils/session.js'
 import { get } from '../utils/request.js'
+import { getRefundStageText } from '../utils/refund.js'
 
 const values = new Map()
 let lists, requests, modals, toasts, subscriptions
@@ -19,7 +20,7 @@ const page = (rows, pageNum = 1, hasMore = false, total = rows.length) => ({ row
 const createList = (tab = 'all') => {
   const pageCalls = [], statsCalls = [], cancelCalls = []
   const definition = loadOptions('pages/order/refund_list.vue', {
-    getSessionGeneration, isCurrentSession,
+    getSessionGeneration, isCurrentSession, getRefundStageText,
     onSessionChanged: callback => {
       subscriptions++
       const unsubscribe = onSessionChanged(callback)

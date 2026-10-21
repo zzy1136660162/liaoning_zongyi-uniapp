@@ -243,11 +243,12 @@ import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import {
   calculateTotalPrice,
   calculateTotalQuantity,
-  getCartEntries,
   getCurrentCheckoutProductIds,
   loadCartItems,
   setCheckoutProductIds,
+  setCartItemQuantity,
 } from '@/utils/cart.js'
+import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
 import { getPatientList, deletePatient } from '@/api/patient.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
@@ -255,7 +256,6 @@ import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
 import { resolveProductFlow } from '@/utils/product-biz.js'
 import {
-  AI_DOCTOR,
   CONSULTATION_MODE_AI,
   CONSULTATION_MODE_MANUAL,
   getConsultationDoctorByMode
@@ -264,68 +264,56 @@ import {
 const cartItems = ref([])
 const categories = ref([])
 const selectedItems = ref([])
+const directPurchase = ref(null)
+const checkoutRouteError = ref('')
 const patients = ref([])
 const selectedPatient = ref(null)
 const selectedRequiresConsultation = ref(true)
 const agreementChecked = ref(false)
 const showAgreement = ref(false)
 const consultationMode = ref(CONSULTATION_MODE_AI)
+let pageActive = true
+let patientRefreshId = 0
+let preferredPatientId = null
 
 const totalPrice = computed(() => calculateTotalPrice(cartItems.value))
 const totalQuantity = computed(() => calculateTotalQuantity(cartItems.value))
 
-const loadPatientsFromAPI = async (preferredPatientId = null) => {
+const loadPatientsFromAPI = async (preferredId = null) => {
+  if (!pageActive || !isCurrentSession(pageSession)) return
+  const requestId = ++patientRefreshId
   try {
     uni.showLoading({ title: '加载中...' })
-    const currentSelectedId = preferredPatientId || selectedPatient.value?.id
     const patientList = await getPatientList()
-
-    if (patientList && patientList.length > 0) {
-      patients.value = patientList.map(p => ({
-        id: p.id,
-        name: p.name || p.patientName,
-        phone: p.phoneMasked,
-        idNumber: p.idNumberMasked,
-        idType: p.idType,
-        gender: p.gender,
-        age: p.age,
-        patientType: p.patientType
-      }))
-
-      if (currentSelectedId !== null && currentSelectedId !== undefined) {
-        const found = patients.value.find(p => p.id === currentSelectedId)
-        selectedPatient.value = found || patients.value[0] || null
-      } else {
-        selectedPatient.value = patients.value[0] || null
-      }
-    } else {
-      patients.value = []
-      selectedPatient.value = null
-    }
+    if (!pageActive || requestId !== patientRefreshId) return
+    assertCurrentSession(pageSession)
+    const currentSelectedId = preferredId ?? selectedPatient.value?.id
+    patients.value = Array.isArray(patientList) ? patientList : []
+    selectedPatient.value = patients.value.find(p => p.id === currentSelectedId) || patients.value[0] || null
+    if (preferredPatientId === preferredId) preferredPatientId = null
   } catch (error) {
-    if (!isCurrentSession(pageSession)) return
+    if (!pageActive || requestId !== patientRefreshId || !isCurrentSession(pageSession)) return
     console.error('loadPatientsFromAPI failed:', error)
     patients.value = []
     selectedPatient.value = null
     uni.showToast({ title: error?.message || '就诊人加载失败', icon: 'none' })
   } finally {
-    if (isCurrentSession(pageSession)) uni.hideLoading()
+    if (pageActive && requestId === patientRefreshId && isCurrentSession(pageSession)) uni.hideLoading()
   }
 }
 
 const handlePatientChanged = (payload = {}) => {
-  setTimeout(() => {
-    if (!isCurrentSession(pageSession)) return
-    loadPatientsFromAPI(payload.patientId)
-  }, 100)
+  if (pageActive && isCurrentSession(pageSession)) preferredPatientId = payload.patientId ?? null
 }
 
 const loadProducts = async () => {
+  if (!pageActive || !isCurrentSession(pageSession)) return
   try {
+    if (checkoutRouteError.value) throw new Error(checkoutRouteError.value)
     const requestedIds = selectedItems.value.length > 0 ? selectedItems.value : getCurrentCheckoutProductIds()
     if (requestedIds.length === 0) {
       uni.showToast({ title: '购物车为空', icon: 'none' })
-      setTimeout(() => { if (isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
+      setTimeout(() => { if (pageActive && isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
       return
     }
 
@@ -336,8 +324,9 @@ const loadProducts = async () => {
     }
 
     uni.showLoading({ title: '加载商品...' })
-    const cartEntries = getCartEntries()
+    const cartEntries = checkoutEntries(requestedIds, directPurchase.value)
     checkoutCategory.products = await loadCartProducts(requestedIds, cartEntries, getProductDetail)
+    if (!pageActive) return
     assertCurrentSession(pageSession)
     if (checkoutCategory.products.some(product => product.loadFailure || product.available === false)) {
       throw new Error('所选商品或规格已失效，请返回购物车核对')
@@ -345,42 +334,45 @@ const loadProducts = async () => {
 
     categories.value = [checkoutCategory]
     const selectedSet = new Set(requestedIds.map(id => String(id)))
-    cartItems.value = loadCartItems(categories.value).filter(item => selectedSet.has(String(item.id)))
+    cartItems.value = loadCartItems(categories.value, false,
+      { entries: cartEntries, preserveQuantity: true }).filter(item => selectedSet.has(String(item.id)))
 
     if (cartItems.value.length === 0) {
       uni.showToast({ title: '购物车为空', icon: 'none' })
-      setTimeout(() => { if (isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
+      setTimeout(() => { if (pageActive && isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
       return
     }
 
     const flow = resolveProductFlow(cartItems.value)
     if (!flow.valid) {
       uni.showToast({ title: flow.message, icon: 'none' })
-      setTimeout(() => { if (isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
+      setTimeout(() => { if (pageActive && isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
       return
     }
     selectedRequiresConsultation.value = flow.requiresConsultation
     if (!flow.requiresConsultation) {
       const directItemIds = cartItems.value.map(item => String(item.id))
-      setCheckoutProductIds(directItemIds)
+      if (!directPurchase.value) setCheckoutProductIds(directItemIds)
       uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
       uni.redirectTo({
-        url: `/pages/order/confirm?selectedItems=${directItemIds.join(',')}`
+        url: `/pages/order/confirm?selectedItems=${directItemIds.join(',')}${directPurchaseQuery(directPurchase.value)}`
       })
     }
   } catch (error) {
-    if (!isCurrentSession(pageSession)) return
+    if (!pageActive || !isCurrentSession(pageSession)) return
     console.error('loadProducts failed:', error)
     uni.showToast({ title: '加载商品失败', icon: 'none' })
   } finally {
-    if (isCurrentSession(pageSession)) uni.hideLoading()
+    if (pageActive && isCurrentSession(pageSession)) uni.hideLoading()
   }
 }
 
 const onQuantityChange = (item, val) => {
-  if (item) {
-    item.quantity = val
-  }
+  const quantity = Number(val)
+  if (!item || !Number.isSafeInteger(quantity) || quantity < 1) return
+  if (directPurchase.value) directPurchase.value = { ...directPurchase.value, quantity }
+  else if (!setCartItemQuantity(item.cartKey || item.id, quantity)) return
+  item.quantity = quantity
 }
 
 const selectPatient = (patient) => {
@@ -391,28 +383,31 @@ const selectPatient = (patient) => {
 }
 
 const onDeletePatient = (patientId) => {
+  if (!pageActive || !isCurrentSession(pageSession)) return
   logButtonClick('删除就诊人', 'DISPENSE_APPLY', patientId.toString())
   uni.showModal({
     title: '提示',
     content: '确定要删除此就诊人吗？',
     success: async (res) => {
-      if (!res.confirm) {
+      if (!res.confirm || !pageActive || !isCurrentSession(pageSession)) {
         return
       }
       try {
         uni.showLoading({ title: '删除中...' })
         await deletePatient(patientId)
+        if (!pageActive) return
+        assertCurrentSession(pageSession)
         uni.showToast({ title: '删除成功', icon: 'success' })
         await loadPatientsFromAPI()
       } catch (error) {
-        if (!isCurrentSession(pageSession)) return
+        if (!pageActive || !isCurrentSession(pageSession)) return
         console.error('onDeletePatient failed:', error)
         uni.showToast({
           title: error.message || '删除失败',
           icon: 'none'
         })
       } finally {
-        if (isCurrentSession(pageSession)) uni.hideLoading()
+        if (pageActive && isCurrentSession(pageSession)) uni.hideLoading()
       }
     }
   })
@@ -507,22 +502,19 @@ const navigateToConsultation = (selectedItemIds, mode) => {
     `patientId=${encodeURIComponent(selectedPatient.value.id)}`
   ]
 
-  if (mode === CONSULTATION_MODE_MANUAL) {
-    const doctor = getConsultationDoctorByMode(CONSULTATION_MODE_MANUAL)
-    query.push(`doctorId=${doctor.id}`)
-    query.push(`doctorName=${encodeURIComponent(doctor.name)}`)
-    query.push(`doctorAvatar=${encodeURIComponent(doctor.avatar)}`)
-  } else {
-    query.push(`doctorName=${encodeURIComponent(AI_DOCTOR.name)}`)
-    query.push(`doctorAvatar=${encodeURIComponent(AI_DOCTOR.avatar)}`)
-  }
+  const doctor = getConsultationDoctorByMode(mode)
+  if (doctor.id !== null) query.push(`doctorId=${doctor.id}`)
+  query.push(`doctorName=${encodeURIComponent(doctor.name)}`)
+  query.push(`doctorAvatar=${encodeURIComponent(doctor.avatar)}`)
 
   uni.navigateTo({
-    url: `/pages/dispense/consultation?${query.join('&')}`
+    url: `/pages/dispense/consultation?${query.join('&')}${directPurchaseQuery(directPurchase.value)}`
   })
 }
 
 const onSubmit = () => {
+  if (!pageActive || !isCurrentSession(pageSession)) return
+  if (checkoutRouteError.value) { uni.showToast({ title: checkoutRouteError.value, icon: 'none' }); return }
   if (selectedRequiresConsultation.value && !selectedPatient.value?.id) {
     uni.showToast({ title: '请先选择就诊人', icon: 'none' })
     return
@@ -536,12 +528,12 @@ const onSubmit = () => {
   const selectedItemIds = selectedItems.value.length > 0
     ? selectedItems.value
     : cartItems.value.map(item => String(item.id))
-  setCheckoutProductIds(selectedItemIds)
+  if (!directPurchase.value) setCheckoutProductIds(selectedItemIds)
 
   if (!selectedRequiresConsultation.value) {
     uni.removeStorageSync(STORAGE_KEY_CURRENT_CONSULTATION_ID)
     uni.navigateTo({
-      url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}`
+      url: `/pages/order/confirm?selectedItems=${selectedItemIds.join(',')}${directPurchaseQuery(directPurchase.value)}`
     })
     return
   }
@@ -555,7 +547,10 @@ onMounted(() => {
 
   const pages = getCurrentPages()
   const currentPage = pages[pages.length - 1]
+  try { directPurchase.value = parseDirectPurchase(currentPage.options) }
+  catch (error) { checkoutRouteError.value = error.message }
   const selectedItemsParam = currentPage.options.selectedItems
+  if (directPurchase.value && !selectedItemsParam) checkoutRouteError.value = '购买信息无效，请返回商品页重新选择'
   if (selectedItemsParam) {
     selectedItems.value = selectedItemsParam.split(',').filter(id => id.trim())
   } else {
@@ -563,17 +558,17 @@ onMounted(() => {
   }
 
   if (selectedItems.value.length > 0) {
-    setCheckoutProductIds(selectedItems.value)
+    if (!directPurchase.value) setCheckoutProductIds(selectedItems.value)
   }
 
   loadProducts()
 })
 
-onShow(() => {
-  loadPatientsFromAPI()
-})
+onShow(() => loadPatientsFromAPI(preferredPatientId))
 
 onUnmounted(() => {
+  pageActive = false
+  patientRefreshId += 1
   uni.$off('patientChanged', handlePatientChanged)
 })
 </script>
