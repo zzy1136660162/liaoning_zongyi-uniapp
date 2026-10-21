@@ -1,23 +1,77 @@
 <template>
   <view class="page">
     <view class="content">
-      <view class="success-header">
-        <view class="success-icon-wrapper">
-          <view class="success-icon">
-            <uni-icons :type="paymentOutcome.state === 'success' ? 'checkmarkempty' : 'info'" size="60" :color="paymentOutcome.state === 'success' ? '#07c160' : '#ff9900'"></uni-icons>
+      <view class="result-card" :class="{ 'result-card--pending': paymentOutcome.state !== 'success' }">
+        <view class="result-heading">
+          <view class="result-icon">
+            <uni-icons :type="paymentOutcome.state === 'success' ? 'checkmarkempty' : 'info'" size="28" color="#ffffff" />
+          </view>
+          <view class="result-copy">
+            <text class="success-text">{{ paymentOutcome.title }}</text>
+            <text class="result-caption">{{ syncing ? '正在确认订单状态，请稍候' : paymentInfo.primaryTip }}</text>
           </view>
         </view>
-        <text class="success-text">{{ paymentOutcome.title }}</text>
-        <text v-if="syncing" class="sync-hint">正在确认订单状态...</text>
+        <view class="amount-section">
+          <text class="amount-label">{{ paymentOutcome.state === 'success' ? '实付金额' : '订单金额' }}</text>
+          <view class="amount-main" v-if="!loading && paymentInfo.hasOrder">
+            <text class="currency">¥</text><text class="amount-value">{{ paymentInfo.amount.toFixed(2) }}</text>
+          </view>
+          <text class="amount-placeholder" v-else>{{ loading ? '确认中…' : '—' }}</text>
+        </view>
+        <view class="receipt-decoration" aria-hidden="true">
+          <view class="receipt-paper"><view /><view /><view /></view>
+          <view class="receipt-seal"><uni-icons type="checkmarkempty" size="18" color="#ffffff" /></view>
+        </view>
       </view>
 
-      <view class="amount-section">
-        <text class="amount-label">支付金额</text>
-        <text class="amount-value" v-if="!loading">¥{{ (paymentInfo.amount || 0).toFixed(2) }}</text>
-        <text class="amount-value" v-else>加载中...</text>
+      <view class="info-card products-card" v-if="paymentInfo.hasOrder">
+        <view class="card-heading">
+          <text class="card-title">购买商品</text>
+          <text class="card-note">共 {{ paymentInfo.itemCount }} 件</text>
+        </view>
+        <view class="purchased-item" v-for="item in paymentInfo.items" :key="item.id || item.productId + ':' + item.skuId">
+          <image class="product-image" :src="getProductImageUrl(item.productImage)" mode="aspectFill"
+            @error="handleProductImageError(item.productImage)" />
+          <view class="product-info">
+            <text class="product-name">{{ item.productName || '订单商品' }}</text>
+            <text class="product-meta">{{ formatOrderItemMeta(item) || '规格以订单详情为准' }}</text>
+            <view class="product-bottom">
+              <text class="product-price">¥{{ orderItemSubtotal(item).toFixed(2) }}</text>
+              <text class="product-quantity">×{{ item.quantity }}</text>
+            </view>
+          </view>
+        </view>
+        <text v-if="!paymentInfo.items.length" class="empty-detail">商品明细暂未获取，请在订单详情查看</text>
+        <view class="goods-total"><text>商品金额</text><text>¥{{ paymentInfo.goodsAmount.toFixed(2) }}</text></view>
       </view>
 
-      <view class="info-card">
+      <view class="info-card delivery-card" v-if="paymentInfo.hasOrder">
+        <view class="card-heading">
+          <view class="card-title-with-icon"><uni-icons :type="paymentInfo.requiresShipping ? 'paperplane' : 'shop'" size="20" color="#15856f" />
+            <text class="card-title">{{ paymentInfo.requiresShipping ? '配送与收货' : '到院服务' }}</text>
+          </view>
+          <text class="delivery-tag">{{ paymentInfo.requiresShipping ? '快递配送' : '无需配送' }}</text>
+        </view>
+        <template v-if="paymentInfo.requiresShipping">
+          <view class="delivery-method"><text>{{ paymentInfo.shippingMethod }}</text><text class="freight-note">{{ paymentInfo.shippingFeeText }}</text></view>
+          <view class="address-block" v-if="paymentInfo.receiverName || paymentInfo.receiverPhone || paymentInfo.addressText">
+            <view class="address-icon"><uni-icons type="location-filled" size="19" color="#15856f" /></view>
+            <view class="address-content">
+              <view class="receiver"><text>{{ paymentInfo.receiverName || '收货人' }}</text><text>{{ paymentInfo.receiverPhone }}</text></view>
+              <text class="address-text">{{ paymentInfo.addressText || '收货地址暂未获取，请在订单详情查看' }}</text>
+            </view>
+          </view>
+          <text v-else class="empty-detail">收货信息暂未获取，请在订单详情查看</text>
+          <view v-if="paymentInfo.hasTherapy" class="service-note">本单还包含到院服务，请在订单详情查看核销券。</view>
+        </template>
+        <view v-else class="therapy-note">
+          <text>传统疗法到院核销，无需物流配送</text>
+          <text>可在订单详情查看服务项目及核销信息。</text>
+        </view>
+      </view>
+
+      <view class="info-card" v-if="paymentInfo.hasOrder">
+        <view class="card-heading"><text class="card-title">订单信息</text></view>
         <view class="info-row">
           <text class="info-label">订单状态</text>
           <text class="info-value">{{ paymentInfo.orderStatusLabel }}</text>
@@ -28,41 +82,28 @@
         </view>
         <view class="info-row">
           <text class="info-label">订单号</text>
-          <text class="info-value order-no">{{ paymentInfo.orderNo }}</text>
+          <view class="order-number"><text class="info-value order-no">{{ paymentInfo.orderNo || '暂未获取' }}</text>
+            <text v-if="paymentInfo.orderNo" class="copy-link" role="button" @click.stop="copyOrderNo">复制</text>
+          </view>
         </view>
         <view class="info-row">
           <text class="info-label">下单时间</text>
-          <text class="info-value">{{ paymentInfo.createdTime }}</text>
+          <text class="info-value">{{ paymentInfo.createdTime || '—' }}</text>
         </view>
-        <view class="info-row">
+        <view class="info-row" v-if="paymentInfo.paymentTime">
           <text class="info-label">支付时间</text>
           <text class="info-value">{{ paymentInfo.paymentTime }}</text>
         </view>
       </view>
 
-      <view class="info-card">
-        <view class="info-row">
-          <text class="info-label">商品金额</text>
-          <text class="info-value">¥{{ paymentInfo.goodsAmount.toFixed(2) }}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">商品数量</text>
-          <text class="info-value">{{ paymentInfo.itemCount }} 件</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">运费说明</text>
-          <text class="info-value">{{ paymentInfo.shippingFeeText }}</text>
-        </view>
-      </view>
-
       <view class="tip-section">
-        <text class="tip-text">{{ paymentInfo.primaryTip }}</text>
-        <text class="tip-text" v-if="paymentInfo.secondaryTip">{{ paymentInfo.secondaryTip }}</text>
+        <text class="tip-text">{{ paymentInfo.secondaryTip || '付款与订单进度请以订单详情为准' }}</text>
       </view>
     </view>
 
     <view class="footer">
-      <button class="complete-btn" @click="goHome">完成</button>
+      <button class="list-btn" @click="goOrderList">订单列表</button>
+      <button class="complete-btn" @click="goToOrder">{{ paymentOutcome.state === 'success' ? '查看已支付订单' : '查看订单进度' }}</button>
     </view>
   </view>
 </template>
@@ -75,24 +116,34 @@ import { getOrderDetail } from '@/api/order.js'
 import { syncPaymentByOrder } from '@/api/payment.js'
 import { buildCartItemKey, removeFromCart } from '@/utils/cart.js'
 import { logPageView, logButtonClick } from '@/api/access-log.js'
-import { isTherapyOrder } from '@/utils/therapy.js'
-import { getPaymentOutcome } from '@/utils/order-status.js'
+import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
+import { getPaymentOutcome, getOrderStatusText } from '@/utils/order-status.js'
+import { useProductImages } from '@/utils/product-image.js'
 import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
 
 const pageSession = getSessionGeneration()
 let pageActive = true
 const paymentOutcome = ref(getPaymentOutcome())
+const { getProductImageUrl, handleProductImageError } = useProductImages()
 onUnload(() => { pageActive = false })
 
 const paymentInfo = ref({
   amount: 0,
+  hasOrder: false,
+  items: [],
   goodsAmount: 0,
   itemCount: 0,
-  paymentMethod: '在线支付',
+  paymentMethod: '微信支付',
   orderStatusLabel: '待支付确认',
   orderNo: '',
   createdTime: '',
   paymentTime: '',
+  requiresShipping: true,
+  hasTherapy: false,
+  shippingMethod: '',
+  receiverName: '',
+  receiverPhone: '',
+  addressText: '',
   shippingFeeText: '运费到付，由快递员收取，以实际支付为准',
   primaryTip: '订单已提交，我们将尽快为您处理',
   secondaryTip: '运费到付，由快递员收取，以实际支付为准'
@@ -127,6 +178,10 @@ const sumItemCount = (items = []) => {
   }, 0)
 }
 
+const formatOrderItemMeta = (item = {}) => [item.skuSpecText || item.specText || item.skuName, item.unit].filter(Boolean).join(' / ')
+
+const orderItemSubtotal = (item = {}) => item.subtotalAmount != null
+  ? toAmount(item.subtotalAmount) : toAmount(item.price) * (Number(item.quantity) || 1)
 
 const uniqueStringIds = (ids = []) => {
   const seen = new Set()
@@ -141,7 +196,7 @@ const uniqueStringIds = (ids = []) => {
 }
 
 const resolveOrderStatusLabel = (orderData = {}) => {
-  return getPaymentOutcome(orderData).title
+  return getOrderStatusText(orderData)
 }
 
 const resolveShippingFeeText = (orderData = {}) => {
@@ -192,20 +247,25 @@ const applyOrderData = (orderData) => {
   assertCurrentSession(pageSession)
   if (!pageActive) return
   paymentOutcome.value = getPaymentOutcome(orderData)
+  paymentInfo.value.hasOrder = true
+  paymentInfo.value.items = Array.isArray(orderData.items) ? orderData.items : []
   paymentInfo.value.amount = toAmount(orderData.paidAmount ?? orderData.payableAmount ?? orderData.totalAmount, 0)
   paymentInfo.value.goodsAmount = toAmount(orderData.totalAmount ?? paymentInfo.value.amount, 0)
   paymentInfo.value.itemCount = sumItemCount(orderData.items)
   paymentInfo.value.orderStatusLabel = resolveOrderStatusLabel(orderData)
-  paymentInfo.value.orderNo = orderData.orderNo || currentOrderId || ''
+  paymentInfo.value.orderNo = orderData.orderNo || ''
   paymentInfo.value.createdTime = formatTime(orderData.createdAt)
   paymentInfo.value.shippingFeeText = resolveShippingFeeText(orderData)
+  paymentInfo.value.requiresShipping = !isTherapyOrder(orderData)
+  paymentInfo.value.hasTherapy = hasTherapyEntitlement(orderData)
+  paymentInfo.value.shippingMethod = orderData.shippingCompany || '快递配送'
+  // 使用下单时保存的收货快照，地址簿后续修改不能改变购买回执。
+  paymentInfo.value.receiverName = orderData.receiverName || ''
+  paymentInfo.value.receiverPhone = orderData.receiverPhone || ''
+  paymentInfo.value.addressText = [orderData.province, orderData.city, orderData.district, orderData.addressDetail].filter(Boolean).join(' ')
 
   const payTime = orderData.payTime
   paymentInfo.value.paymentTime = formatTime(payTime)
-
-  if (orderData.paymentType) {
-    paymentInfo.value.paymentMethod = orderData.paymentType === 'single' ? '在线支付' : orderData.paymentType
-  }
 
   clearPaidCartItems(orderData)
 
@@ -303,12 +363,6 @@ onLoad(async (options) => {
 
   logPageView('支付成功页面', '用户进入支付成功页面', orderId)
 
-  if (options.paymentMethod) {
-    paymentInfo.value.paymentMethod = decodeURIComponent(options.paymentMethod)
-  } else if (options.paymentType === 'single') {
-    paymentInfo.value.paymentMethod = '在线支付'
-  }
-
   if (orderId) {
     await loadOrderInfo(orderId, outTradeNo)
   } else {
@@ -320,188 +374,108 @@ onLoad(async (options) => {
   }
 })
 
-const goHome = () => {
-  logButtonClick('支付成功页面', '用户点击完成按钮', paymentInfo.value.orderNo)
+const goOrderList = () => {
+  if (pageActive) uni.redirectTo({ url: '/pages/order/order_list' })
+}
 
-  uni.redirectTo({
-    url: '/pages/products/medicine_list'
-  })
+const goToOrder = () => {
+  if (!pageActive) return
+  logButtonClick('支付成功页面', '查看订单')
+  // 保留当前这笔订单的状态与履约信息，不能跳回商品列表或猜一个订单筛选状态。
+  if (currentOrderId) uni.redirectTo({ url: `/pages/order/order-detail?orderId=${encodeURIComponent(currentOrderId)}` })
+  else goOrderList()
+}
+
+const copyOrderNo = () => {
+  if (!paymentInfo.value.orderNo || !pageActive) return
+  uni.setClipboardData({ data: paymentInfo.value.orderNo,
+    success: () => uni.showToast({ title: '订单号已复制', icon: 'success' }) })
 }
 </script>
 
 <style scoped>
 .page {
-  background: #f5f7fb;
+  --brand: #11856e;
+  --ink: #1b3330;
+  --muted: #7b8987;
+  --line: #edf1ef;
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: calc(112rpx + env(safe-area-inset-bottom));
-
-  --brand: #16a34a;
-  --brand-dark: #15803d;
-  --text: #0f172a;
-  --text-2: #64748b;
-  --border: #e8edf5;
-  --card: #ffffff;
+  background: #f3f7f5;
+  color: var(--ink);
+  padding-bottom: calc(126rpx + env(safe-area-inset-bottom));
 }
-
-.content {
-  flex: 1;
-  padding: 48rpx 32rpx;
-}
-
-.success-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 56rpx;
-  padding-top: 24rpx;
-}
-
-.success-icon-wrapper {
+.content { padding: 28rpx 26rpx 16rpx; }
+.result-card {
+  position: relative;
+  overflow: hidden;
+  padding: 32rpx;
   margin-bottom: 24rpx;
+  border-radius: 28rpx;
+  background: linear-gradient(125deg, #dff4e9, #edf8f2 75%);
+  border: 1rpx solid #d4eade;
 }
-
-.success-icon {
-  width: 132rpx;
-  height: 132rpx;
-  border-radius: 66rpx;
-  background: linear-gradient(135deg, #ecfdf3 0%, #dcfce7 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 10rpx 26rpx rgba(22, 163, 74, 0.12);
-  animation: scaleIn 0.45s ease-out;
-}
-
-@keyframes scaleIn {
-  0% { transform: scale(0.92); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-.success-text {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: 1rpx;
-}
-
-.sync-hint {
-  margin-top: 16rpx;
-  font-size: 24rpx;
-  color: var(--text-2);
-}
-
-.amount-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 56rpx;
-  padding: 20rpx 0 8rpx;
-}
-
-.amount-label {
-  font-size: 26rpx;
-  color: var(--text-2);
-  margin-bottom: 18rpx;
-}
-
-.amount-value {
-  font-size: 68rpx;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: 1rpx;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-}
-
-.info-card {
-  background: var(--card);
-  border-radius: 20rpx;
-  padding: 28rpx 28rpx;
-  margin-bottom: 28rpx;
-  border: 1rpx solid var(--border);
-  box-shadow: 0 10rpx 28rpx rgba(15, 23, 42, 0.06);
-}
-
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 22rpx 0;
-  border-bottom: 1rpx solid #f2f5fa;
-}
-
-.info-row:last-child {
-  border-bottom: none;
-}
-
-.info-label {
-  font-size: 26rpx;
-  color: var(--text-2);
-}
-
-.info-value {
-  font-size: 26rpx;
-  color: var(--text);
-  font-weight: 600;
-  max-width: 420rpx;
-  text-align: right;
-  overflow: visible;
-  white-space: normal;
-  word-break: break-all;
-}
-
-.order-no {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
-  letter-spacing: 0.5rpx;
-}
-
-.tip-section {
-  text-align: center;
-  padding: 12rpx 0;
-}
-
-.tip-text {
-  display: block;
-  font-size: 24rpx;
-  color: #94a3b8;
-  line-height: 1.7;
-}
-
-.footer {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.96);
-  padding: 18rpx 32rpx;
-  padding-bottom: calc(18rpx + env(safe-area-inset-bottom));
-  border-top: 1rpx solid var(--border);
-  box-shadow: 0 -10rpx 26rpx rgba(15, 23, 42, 0.06);
-}
-
-.complete-btn {
-  width: 100%;
-  height: 88rpx;
-  line-height: 88rpx;
-  background: #10b981;
-  color: #fff;
-  font-size: 30rpx;
-  font-weight: 700;
-  border-radius: 9999px;
-  border: none;
-  margin: 0;
-  padding: 0;
-  box-shadow: 0 14rpx 24rpx rgba(16, 185, 129, 0.18);
-}
-
-.complete-btn:active {
-  transform: translateY(1rpx);
-  opacity: 0.92;
-}
-
-.complete-btn::after {
-  border: none;
-}
+.result-heading { display: flex; align-items: center; gap: 18rpx; position: relative; z-index: 1; }
+.result-icon { width: 64rpx; height: 64rpx; flex-shrink: 0; border-radius: 50%; background: var(--brand); display: flex; align-items: center; justify-content: center; }
+.result-copy { flex: 1; min-width: 0; }
+.success-text { display: block; font-size: 38rpx; line-height: 1.4; font-weight: 700; letter-spacing: 1rpx; }
+.result-caption { display: block; margin-top: 6rpx; font-size: 23rpx; line-height: 1.65; color: #547b6d; }
+.amount-section { position: relative; z-index: 1; margin: 30rpx 120rpx 0 82rpx; }
+.amount-label { display: block; font-size: 23rpx; color: #547b6d; margin-bottom: 4rpx; }
+.amount-main { display: flex; align-items: baseline; }
+.currency { font-size: 32rpx; font-weight: 600; margin-right: 6rpx; }
+.amount-value { font-size: 64rpx; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; letter-spacing: -1rpx; }
+.amount-placeholder { font-size: 38rpx; line-height: 1.6; }
+.receipt-decoration { position: absolute; width: 110rpx; height: 136rpx; right: 34rpx; bottom: 25rpx; transform: rotate(10deg); opacity: .85; }
+.receipt-paper { position: absolute; width: 82rpx; height: 108rpx; top: 0; right: 8rpx; border: 3rpx solid #a8d3bc; border-radius: 9rpx; background: #ffffff; padding: 24rpx 12rpx; box-sizing: border-box; }
+.receipt-paper view { height: 4rpx; border-radius: 4rpx; background: #cce5d6; margin-bottom: 12rpx; }
+.receipt-paper view:last-child { width: 60%; }
+.receipt-seal { position: absolute; bottom: 6rpx; right: 0; width: 46rpx; height: 46rpx; border-radius: 50%; background: #4ba381; border: 6rpx solid #e9f7ef; display: flex; align-items: center; justify-content: center; }
+.result-card--pending { background: #fff6e6; border-color: #f2e4c5; }
+.result-card--pending .result-icon { background: #c78b28; }
+.result-card--pending .result-caption, .result-card--pending .amount-label { color: #95773f; }
+.result-card--pending .receipt-decoration { display: none; }
+.info-card { background: #fff; border: 1rpx solid #e8efea; border-radius: 24rpx; padding: 28rpx; margin-bottom: 22rpx; }
+.card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-bottom: 26rpx; }
+.card-title { font-size: 29rpx; font-weight: 650; }
+.card-title-with-icon { display: flex; align-items: center; gap: 12rpx; }
+.card-note { color: var(--muted); font-size: 23rpx; flex-shrink: 0; }
+.purchased-item { display: flex; gap: 22rpx; margin-bottom: 26rpx; }
+.product-image { width: 128rpx; height: 128rpx; flex-shrink: 0; border-radius: 12rpx; background: #f2f5f2; }
+.product-info { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.product-name { font-size: 28rpx; line-height: 1.45; font-weight: 600; word-break: break-all; }
+.product-meta { font-size: 23rpx; color: var(--muted); line-height: 1.5; margin-top: 8rpx; }
+.product-bottom { display: flex; align-items: baseline; justify-content: space-between; gap: 12rpx; margin-top: auto; padding-top: 10rpx; }
+.product-price { font-size: 28rpx; font-weight: 600; }
+.product-quantity { font-size: 24rpx; color: var(--muted); }
+.goods-total { border-top: 1rpx solid var(--line); padding-top: 24rpx; display: flex; justify-content: space-between; font-size: 25rpx; }
+.goods-total text:last-child { font-weight: 600; }
+.delivery-tag { font-size: 22rpx; padding: 6rpx 14rpx; background: #edf7f2; color: var(--brand); border-radius: 6rpx; flex-shrink: 0; }
+.delivery-method { font-size: 26rpx; display: flex; flex-direction: column; gap: 12rpx; padding-bottom: 22rpx; border-bottom: 1rpx solid var(--line); }
+.freight-note { color: var(--muted); font-size: 23rpx; line-height: 1.6; }
+.address-block { display: flex; gap: 14rpx; padding-top: 24rpx; }
+.address-icon { padding-top: 2rpx; flex-shrink: 0; }
+.address-content { min-width: 0; flex: 1; }
+.receiver { display: flex; flex-wrap: wrap; gap: 8rpx 22rpx; font-size: 27rpx; font-weight: 600; line-height: 1.5; }
+.receiver text:last-child { font-weight: 400; }
+.address-text { display: block; margin-top: 12rpx; font-size: 25rpx; line-height: 1.7; color: #586c65; word-break: break-all; }
+.service-note { margin-top: 22rpx; padding: 16rpx; border-radius: 8rpx; background: #f3f8f5; color: #648174; font-size: 23rpx; line-height: 1.6; }
+.therapy-note text { display: block; font-size: 26rpx; line-height: 1.8; }
+.therapy-note text:last-child { color: var(--muted); font-size: 23rpx; }
+.empty-detail { display: block; padding: 12rpx 0; font-size: 24rpx; color: var(--muted); line-height: 1.6; }
+.info-card > .card-heading:last-child { margin-bottom: 0; }
+.info-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 22rpx; padding: 18rpx 0; border-bottom: 1rpx solid var(--line); line-height: 1.6; }
+.info-row:last-child { padding-bottom: 0; border-bottom: none; }
+.info-label { font-size: 24rpx; color: var(--muted); flex-shrink: 0; }
+.info-value { font-size: 24rpx; color: #334b43; text-align: right; word-break: break-all; }
+.order-number { display: flex; align-items: flex-start; justify-content: flex-end; gap: 12rpx; min-width: 0; }
+.order-no { font-variant-numeric: tabular-nums; }
+.copy-link { color: var(--brand); font-size: 23rpx; flex-shrink: 0; padding: 0 4rpx; line-height: 1.7; }
+.tip-section { padding: 0 16rpx 16rpx; text-align: center; }
+.tip-text { font-size: 22rpx; line-height: 1.7; color: #90a098; }
+.footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; gap: 20rpx; padding: 20rpx 28rpx; padding-bottom: calc(20rpx + env(safe-area-inset-bottom)); background: #fff; border-top: 1rpx solid #e8efea; }
+.footer button { margin: 0; padding: 0 20rpx; height: 84rpx; line-height: 84rpx; font-size: 27rpx; font-weight: 600; border-radius: 16rpx; }
+.footer button::after { border: none; }
+.list-btn { width: 208rpx; flex-shrink: 0; background: #f1f6f2; color: #4b6f5e; }
+.complete-btn { flex: 1; background: var(--brand); color: #fff; }
+.footer button:active { opacity: .8; }
 </style>
