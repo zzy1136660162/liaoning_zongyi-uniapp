@@ -124,8 +124,8 @@
         </view>
         <view class="medicines-list">
           <view
-            v-for="item in allCartItems"
-            :key="item.id"
+            v-for="item in displayCartItems"
+            :key="item.orderItemId || item.id"
             class="medicine-item"
           >
             <view class="medicine-content">
@@ -169,7 +169,7 @@
               >
                 <view class="therapy-voucher-head">
                   <text class="therapy-voucher-title">
-                    核销券 {{ voucher.sequenceNo || voucherIndex + 1 }}
+                    核销券 {{ voucher.displayNo }}
                   </text>
                   <text
                     class="therapy-voucher-status"
@@ -332,6 +332,17 @@
       this.paymentPageActive = false
     },
     computed: {
+      displayCartItems() {
+        let displayNo = 0
+        return this.allCartItems.map(item => ({
+          ...item,
+          // sequenceNo 属于单条商品明细；页面按整单顺序连续编号。
+          redeemVouchers: (item.redeemVouchers || []).map(voucher => ({
+            ...voucher,
+            displayNo: ++displayNo
+          }))
+        }))
+      },
       canPay() {
         return this.orderLoaded && canPayOrder(this.order)
       },
