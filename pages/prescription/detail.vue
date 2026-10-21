@@ -1,123 +1,319 @@
 <template>
-  <view class="page">
-    <!-- 顶部蓝色状态条 -->
+  <view
+    class="page"
+    :class="{ 'has-bottom-bar': canBuyMedicine }"
+  >
     <view class="top-header">
-      <view class="status-main">{{ statusMainText }}</view>
-      <view class="status-sub">{{ statusSubText }}</view>
-      <view v-if="orderStatus.logisticsNo" class="status-sub">
-        {{ orderStatus.logisticsCompany || '快递' }}单号：{{ orderStatus.logisticsNo }}
+      <view class="status-heading">
+        <view class="status-content">
+          <text class="status-label">
+            处方状态
+          </text>
+          <text class="status-main">
+            {{ statusMainText }}
+          </text>
+          <text class="status-sub">
+            {{ statusSubText }}
+          </text>
+        </view>
+        <view class="status-mark">
+          Rp
+        </view>
+      </view>
+      <view
+        v-if="orderStatus.logisticsNo"
+        class="logistics-info"
+      >
+        <text class="logistics-label">
+          {{ orderStatus.logisticsCompany || '快递' }}单号
+        </text>
+        <text
+          class="logistics-value"
+          selectable
+        >
+          {{ orderStatus.logisticsNo }}
+        </text>
       </view>
     </view>
 
-    <!-- 白色内容卡片（覆盖在蓝色块上） -->
     <view class="card-wrapper">
-      <view v-if="prescriptionError || orderStatusError" class="reload-action">
-        <button size="mini" @tap="reload">重新加载</button>
+      <view
+        v-if="prescriptionError || orderStatusError"
+        class="card reload-action"
+      >
+        <view class="reload-copy">
+          <text class="reload-title">
+            信息暂未完整加载
+          </text>
+          <text class="reload-description">
+            请重试以获取最新处方与订单状态
+          </text>
+        </view>
+        <button
+          class="reload-btn"
+          @tap="retryReload"
+        >
+          重新加载
+        </button>
       </view>
-      <view v-if="prescriptionLoaded" class="card">
-        <!-- 标题 -->
-        <view class="card-title">处方单详情</view>
 
-        <view class="dash-line"></view>
+      <view
+        v-if="!prescriptionLoaded && !prescriptionError"
+        class="card loading-card"
+      >
+        <text class="loading-text">
+          正在加载处方详情…
+        </text>
+        <view class="loading-line" />
+        <view class="loading-line loading-line-short" />
+      </view>
 
-        <view v-if="!detail.patientSnapshotAvailable" class="snapshot-empty">
+      <view
+        v-if="prescriptionLoaded"
+        class="card patient-card"
+      >
+        <view class="section-header">
+          <text class="section-title">
+            就诊信息
+          </text>
+        </view>
+
+        <view
+          v-if="detail.patientSnapshotAvailable"
+          class="patient-summary"
+        >
+          <view class="patient-heading">
+            <text class="patient-name">
+              {{ detail.name || '姓名未提供' }}
+            </text>
+            <view class="patient-tags">
+              <text
+                v-if="detail.gender"
+                class="patient-tag"
+              >
+                {{ detail.gender }}
+              </text>
+              <text class="patient-tag">
+                {{ detail.age }}岁
+              </text>
+            </view>
+          </view>
+          <view
+            v-if="detail.idNumberMasked"
+            class="patient-id"
+          >
+            <text class="patient-id-label">
+              证件号
+            </text>
+            <text class="patient-id-value">
+              {{ detail.idNumberMasked }}
+            </text>
+          </view>
+        </view>
+        <view
+          v-else
+          class="snapshot-empty"
+        >
           历史记录未关联就诊人
         </view>
 
-        <!-- 基本信息两列布局 -->
-        <view class="info-grid">
-          <view v-if="detail.patientSnapshotAvailable" class="info-col">
-            <text class="info-label">姓名：</text>
-            <text class="info-value">{{ detail.name }}</text>
+        <view class="info-list">
+          <view class="info-row">
+            <text class="info-label">
+              开方医师
+            </text>
+            <text class="info-value">
+              {{ detail.doctorName || '未提供' }}
+            </text>
           </view>
-          <view v-if="detail.patientSnapshotAvailable" class="info-col">
-            <text class="info-label">性别：</text>
-            <text class="info-value">{{ detail.gender }}</text>
-          </view>
-
-          <view v-if="detail.patientSnapshotAvailable" class="info-col">
-            <text class="info-label">年龄：</text>
-            <text class="info-value">{{ detail.age }}岁</text>
-          </view>
-          <view v-if="detail.patientSnapshotAvailable && detail.idNumberMasked" class="info-col">
-            <text class="info-label">证件号：</text>
-            <text class="info-value">{{ detail.idNumberMasked }}</text>
-          </view>
-          <view v-if="detail.diagnosis" class="info-col">
-            <text class="info-label">临床诊断：</text>
-            <text class="info-value">{{ detail.diagnosis }}</text>
-          </view>
-          <view class="info-col">
-            <text class="info-label">开方医师：</text>
-            <text class="info-value">{{ detail.doctorName }}</text>
-          </view>
-          <view class="info-col">
-            <text class="info-label">开方日期：</text>
-            <text class="info-value">{{ formatNullableDate(detail.date) }}</text>
+          <view class="info-row">
+            <text class="info-label">
+              开方日期
+            </text>
+            <text class="info-value">
+              {{ formatNullableDate(detail.date) }}
+            </text>
           </view>
         </view>
-
-        <view class="dash-line big-space"></view>
-
-        <!-- Rp 区域 -->
-        <view class="rp-block">
-          <text class="rp-title">Rp</text>
-          <view class="rp-content">
-            <!-- 显示处方药品列表 -->
-            <view v-if="detail.prescriptionItems && detail.prescriptionItems.length > 0" class="rp-items">
-              <view
-                  v-for="item in detail.prescriptionItems"
-                  :key="item.id"
-                  class="rp-item"
-              >
-                <view class="rp-item-main">
-                  <text class="rp-drug-name">{{ item.drugName }}</text>
-                  <text class="rp-dosage">{{ item.dosage }}</text>
-                  <text v-if="item.frequency" class="rp-frequency">{{ item.frequency }}</text>
-                  <text v-if="item.days" class="rp-days">{{ item.days }}天</text>
-                </view>
-                <view v-if="item.remark" class="rp-usage-desc">
-                  <text class="usage-label">处方明细说明：</text>
-                  <text class="usage-text">{{ item.remark }}</text>
-                </view>
-              </view>
-            </view>
-            <view v-else class="rp-name-fallback">
-              <text class="rp-name">未提供处方明细</text>
-            </view>
-          </view>
-          <view v-if="detail.usageNote" class="rp-usage-desc">
-            <text class="usage-label">处方医嘱：</text>
-            <text class="usage-text">{{ detail.usageNote }}</text>
-          </view>
-
-          <view class="dash-line big-space"></view>
-
-          <!-- 签名区域 -->
-          <view class="sign-row">
-            <view class="sign-item">
-              <text class="sign-label">医师签名：</text>
-              <image
-                  v-if="detail.doctorSignatureUrl"
-                  class="sign-image"
-                  :src="detail.doctorSignatureUrl"
-                  mode="heightFix"
-                  @error="detail.doctorSignatureUrl = ''"
-              />
-              <text v-else class="sign-text">未提供</text>
-            </view>
-            <view class="sign-item">
-              <text class="sign-label">药师签名：</text>
-              <text class="sign-text">未提供</text>
-            </view>
-          </view>
+        <view
+          v-if="detail.diagnosis"
+          class="diagnosis-block"
+        >
+          <text class="block-label">
+            临床诊断
+          </text>
+          <text class="block-text">
+            {{ detail.diagnosis }}
+          </text>
         </view>
       </view>
 
-      <!-- 底部按钮 -->
+      <view
+        v-if="prescriptionLoaded"
+        class="card prescription-card"
+      >
+        <view class="section-header">
+          <view class="prescription-heading">
+            <text class="rp-title">
+              Rp
+            </text>
+            <text class="section-title section-title-plain">
+              处方明细
+            </text>
+          </view>
+          <text class="section-caption">
+            共 {{ detail.prescriptionItems.length }} 项
+          </text>
+        </view>
+
+        <view
+          v-if="detail.prescriptionItems.length > 0"
+          class="rp-items"
+        >
+          <view
+            v-for="(item, index) in detail.prescriptionItems"
+            :key="item.id"
+            class="rp-item"
+          >
+            <view class="rp-item-heading">
+              <text class="rp-index">
+                {{ index + 1 }}
+              </text>
+              <text class="rp-drug-name">
+                {{ item.drugName || '药品名称未提供' }}
+              </text>
+            </view>
+            <view
+              v-if="item.dosage || item.frequency || item.days"
+              class="rp-meta"
+            >
+              <view
+                v-if="item.dosage"
+                class="rp-meta-item"
+              >
+                <text class="rp-meta-label">
+                  用量
+                </text>
+                <text class="rp-meta-value">
+                  {{ item.dosage }}
+                </text>
+              </view>
+              <view
+                v-if="item.frequency"
+                class="rp-meta-item"
+              >
+                <text class="rp-meta-label">
+                  频次
+                </text>
+                <text class="rp-meta-value">
+                  {{ item.frequency }}
+                </text>
+              </view>
+              <view
+                v-if="item.days"
+                class="rp-meta-item"
+              >
+                <text class="rp-meta-label">
+                  天数
+                </text>
+                <text class="rp-meta-value">
+                  {{ item.days }}天
+                </text>
+              </view>
+            </view>
+            <view
+              v-if="item.remark"
+              class="rp-usage-desc"
+            >
+              <text class="usage-label">
+                明细说明
+              </text>
+              <text class="usage-text">
+                {{ item.remark }}
+              </text>
+            </view>
+          </view>
+        </view>
+        <view
+          v-else
+          class="rp-empty"
+        >
+          未提供处方明细
+        </view>
+      </view>
+
+      <view
+        v-if="prescriptionLoaded && detail.usageNote"
+        class="card instruction-card"
+      >
+        <view class="section-header">
+          <text class="section-title">
+            处方医嘱
+          </text>
+        </view>
+        <text class="instruction-text">
+          {{ detail.usageNote }}
+        </text>
+      </view>
+
+      <view
+        v-if="prescriptionLoaded"
+        class="card signature-card"
+      >
+        <view class="section-header">
+          <text class="section-title">
+            签名信息
+          </text>
+        </view>
+        <view class="sign-row">
+          <view class="sign-item">
+            <text class="sign-label">
+              医师签名
+            </text>
+            <image
+              v-if="detail.doctorSignatureUrl"
+              class="sign-image"
+              :src="detail.doctorSignatureUrl"
+              mode="aspectFit"
+              @error="detail.doctorSignatureUrl = ''"
+            />
+            <text
+              v-else
+              class="sign-text"
+            >
+              未提供
+            </text>
+          </view>
+          <view class="sign-item">
+            <text class="sign-label">
+              药师签名
+            </text>
+            <text class="sign-text">
+              未提供
+            </text>
+          </view>
+        </view>
+      </view>
     </view>
-    <view class="bottom-bar" v-if="canBuyMedicine">
-      <button class="bottom-btn" @tap="goBuy">去购药</button>
+
+    <view
+      v-if="canBuyMedicine"
+      class="bottom-bar"
+    >
+      <view class="bottom-copy">
+        <text class="bottom-title">
+          处方购药
+        </text>
+        <text class="bottom-description">
+          核对处方后继续购药
+        </text>
+      </view>
+      <button
+        class="bottom-btn"
+        @tap="goBuy"
+      >
+        去购药
+      </button>
     </view>
   </view>
 </template>
@@ -130,7 +326,9 @@ import { getImageUrl } from '@/utils/config.js'
 import { canPayOrder, getOrderStatusText } from '@/utils/order-status.js'
 import { canCreatePrescriptionOrder, getPrescriptionStatusText, resolvePrescriptionDoctorName } from '@/utils/prescription.js'
 import { getDoctorDetail } from '@/api/hospital.js'
-import { logPageView } from '@/api/access-log.js'
+import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'PRESCRIPTION', accessType: '处方', pageType: 'PRESCRIPTION_DETAIL', requestUri: '/pages/prescription/detail' }
 
 export default {
   name: 'PrescriptionDetail',
@@ -171,9 +369,9 @@ export default {
   onLoad(options) {
     this.pageOptions.prescriptionId = this.isValidPrescriptionId(options.prescriptionId) ? options.prescriptionId : null
     this.pageOptions.orderId = this.isValidPrescriptionId(options.orderId) ? options.orderId : null
-    logPageView('处方详情', '用户进入处方详情页面')
   },
   onShow() {
+    if (this.isCurrentLoad(this.loadGeneration)) logPageView({ ...PAGE_LOG, pageId: this.pageOptions.prescriptionId || '', actionCode: 'PRESCRIPTION_DETAIL_VIEW', accessTitle: '处方详情', accessDescription: '进入处方详情，查看处方与关联订单状态', extraData: { orderId: this.pageOptions.orderId || '' } })
     return this.reload()
   },
   onUnload() {
@@ -181,6 +379,11 @@ export default {
     this.loadGeneration += 1
   },
   methods: {
+    retryReload() {
+      if (!this.isCurrentLoad(this.loadGeneration)) return
+      logButtonClick({ ...PAGE_LOG, pageId: this.pageOptions.prescriptionId || '', actionCode: 'PRESCRIPTION_RETRY', accessTitle: '重新加载处方', accessDescription: '处方加载未完成，用户主动重新加载', extraData: { orderId: this.pageOptions.orderId || '' } })
+      return this.reload()
+    },
     isValidPrescriptionId(value) { return /^[1-9]\d*$/.test(String(value || '')) },
     isCurrentLoad(generation) {
       return this.pageActive && generation === this.loadGeneration && isCurrentSession(this.sessionGeneration)
@@ -314,6 +517,7 @@ export default {
       if (!this.canBuyMedicine || !this.isCurrentLoad(this.loadGeneration)) return
       // 已有待付订单续付原单，避免为同一处方再次创建订单。
       const order = this.orderStatus.order
+      logButtonClick({ ...PAGE_LOG, pageId: this.pageOptions.prescriptionId || '', actionCode: 'PRESCRIPTION_BUY', accessTitle: '去购药', accessDescription: order?.id ? '从处方详情进入已有订单，继续查看或付款' : '从处方详情进入确认订单页面', extraData: { orderId: order?.id || '', destination: order?.id ? 'EXISTING_ORDER' : 'NEW_CHECKOUT' } })
       const url = order?.id
         ? `/pages/order/order-detail?orderId=${order.id}`
         : `/pages/order/confirm?prescriptionId=${this.pageOptions.prescriptionId}`
@@ -326,244 +530,523 @@ export default {
 <style scoped lang="scss">
 .page {
   min-height: 100vh;
-  background-color: #f7f7f7;
-  padding-bottom: 140rpx; // 预留底部按钮空间
+  padding-bottom: 32rpx;
   box-sizing: border-box;
+  background: #f5f7fb;
+  color: #293447;
 }
 
-/* 顶部蓝色渐变块 */
+.page.has-bottom-bar {
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+}
+
 .top-header {
-  height: 220rpx;
-  padding: 40rpx 40rpx 0;
-  box-sizing: border-box;
-  background: linear-gradient(180deg, #4a8cff, #4aa0ff);
-  color: #ffffff;
+  padding: 36rpx 32rpx 76rpx;
+  background: linear-gradient(135deg, #4a8cff, #4aa0ff);
+  color: #fff;
+}
+
+.status-heading {
+  display: flex;
+  align-items: center;
+}
+
+.status-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.status-label,
+.status-main,
+.status-sub {
+  display: block;
+}
+
+.status-label {
+  margin-bottom: 12rpx;
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .status-main {
-  font-size: 32rpx;
+  font-size: 42rpx;
+  line-height: 1.4;
   font-weight: 600;
+  word-break: break-all;
 }
 
 .status-sub {
-  margin-top: 8rpx;
-  font-size: 26rpx;
-  opacity: 0.9;
+  margin-top: 12rpx;
+  font-size: 25rpx;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.92);
+  word-break: break-all;
 }
 
-/* 白卡片整体往上“顶”一点，形成悬浮感 */
+.status-mark {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100rpx;
+  height: 100rpx;
+  margin-left: 24rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.25);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.12);
+  font-family: Georgia, serif;
+  font-size: 52rpx;
+  font-style: italic;
+}
+
+.logistics-info {
+  margin-top: 24rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 16rpx;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.logistics-label {
+  display: block;
+  margin-bottom: 4rpx;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.logistics-value {
+  display: block;
+  word-break: break-all;
+}
+
 .card-wrapper {
-  margin-top: -60rpx;
+  position: relative;
+  margin-top: -40rpx;
   padding: 0 24rpx;
 }
 
 .card {
-  background-color: #ffffff;
-  border-radius: 24rpx;
-  padding: 40rpx 32rpx 32rpx;
-  box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.06);
-}
-
-.reload-action {
   margin-bottom: 24rpx;
-  padding: 24rpx;
-  background: #fff;
+  padding: 28rpx;
+  border: 1rpx solid #edf1f7;
   border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 4rpx 18rpx rgba(43, 74, 123, 0.035);
 }
 
-/* 标题 */
-.card-title {
-  text-align: center;
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333333;
-  margin-bottom: 30rpx;
+.card:last-child {
+  margin-bottom: 0;
 }
 
-/* 虚线分割 */
-.dash-line {
-  border-bottom: 1px dashed #e0e0e0;
-  margin: 18rpx 0;
-}
-
-.big-space {
-  margin-top: 40rpx;
-}
-
-.snapshot-empty {
-  padding: 12rpx 0 20rpx;
-  font-size: 26rpx;
-  color: #999999;
-}
-
-/* 两列信息 */
-.info-grid {
-  display: flex;
-  flex-wrap: wrap;
-  margin-top: 10rpx;
-}
-
-.info-col {
-  width: 50%;
-  flex-direction: row;
-  display: flex;
-  margin-bottom: 16rpx;
-}
-
-.info-label {
-  font-size: 26rpx;
-  color: #777777;
-}
-
-.info-value {
-  font-size: 28rpx;
-  color: #333333;
-}
-
-/* Rp 区域 */
-.rp-block {
-  margin-top: 20rpx;
-}
-
-.rp-title {
-  font-size: 40rpx;
-  font-weight: 600;
-  color: #333333;
-}
-
-.rp-content {
-  margin-top: 24rpx;
-}
-
-.rp-name {
-  font-size: 30rpx;
-  color: #333333;
-}
-
-.rp-items {
-  margin-top: 16rpx;
-}
-
-.rp-item {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 12rpx;
-  padding: 16rpx;
-  background-color: #f8f9fa;
-  border-radius: 8rpx;
-}
-
-.rp-drug-name {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333333;
-  margin-bottom: 8rpx;
-}
-
-.rp-item-main {
+.section-header {
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
+.section-title {
+  padding-left: 16rpx;
+  border-left: 6rpx solid #4a8cff;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.section-title-plain {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.section-caption {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  font-size: 24rpx;
+  color: #8b96a8;
+}
+
+.patient-summary {
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: #f3f7ff;
+}
+
+.patient-heading {
+  display: flex;
+  align-items: center;
   flex-wrap: wrap;
 }
 
-.rp-usage-desc {
-  margin-top: 10rpx;
-  padding: 12rpx;
-  background: #ffffff;
-  border-radius: 6rpx;
-  border: 1rpx solid #f0f0f0;
+.patient-name {
+  max-width: 100%;
+  margin-right: 20rpx;
+  padding: 4rpx 0;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: break-all;
 }
 
-.usage-label {
-  font-size: 26rpx;
-  color: #666;
-  margin-right: 8rpx;
-  font-weight: 500;
+.patient-tags {
+  display: flex;
+  flex-wrap: wrap;
 }
 
-.usage-text {
-  font-size: 26rpx;
-  color: #333;
+.patient-tag {
+  margin: 4rpx 12rpx 4rpx 0;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  background: #e7efff;
+  color: #5275ac;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.patient-id {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 14rpx;
+  font-size: 24rpx;
   line-height: 1.6;
 }
 
-.rp-dosage {
-  font-size: 28rpx;
-  color: #666666;
-  margin-bottom: 4rpx;
-}
-
-.rp-frequency {
-  font-size: 26rpx;
-  color: #888888;
+.patient-id-label {
+  flex-shrink: 0;
   margin-right: 20rpx;
+  color: #8391a8;
 }
 
-.rp-days {
+.patient-id-value {
+  flex: 1;
+  min-width: 0;
+  color: #61718b;
+  word-break: break-all;
+}
+
+.snapshot-empty,
+.rp-empty {
+  padding: 32rpx 24rpx;
+  border-radius: 16rpx;
+  background: #f7f9fc;
+  color: #8b96a8;
   font-size: 26rpx;
-  color: #888888;
+  line-height: 1.6;
+  text-align: center;
 }
 
-.rp-name-fallback {
+.info-list {
   margin-top: 16rpx;
 }
 
-/* 签名区域 */
-.sign-row {
-  margin-top: 40rpx;
+.info-row {
   display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12rpx 0;
+  font-size: 26rpx;
+  line-height: 1.6;
 }
 
-.sign-item {
+.info-label {
+  flex: 0 0 132rpx;
+  color: #8390a3;
+}
+
+.info-value {
   flex: 1;
+  min-width: 0;
+  text-align: right;
+  word-break: break-all;
+}
+
+.diagnosis-block {
+  margin-top: 12rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid #edf1f7;
+}
+
+.block-label {
+  display: block;
+  margin-bottom: 12rpx;
+  color: #8390a3;
+  font-size: 26rpx;
+}
+
+.block-text,
+.instruction-text {
+  display: block;
+  font-size: 28rpx;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.prescription-heading {
   display: flex;
-  flex-direction: row;
   align-items: center;
 }
 
-.sign-label {
+.rp-title {
+  margin-right: 14rpx;
+  color: #4a8cff;
+  font-family: Georgia, serif;
+  font-size: 38rpx;
+  font-weight: 600;
+  font-style: italic;
+  line-height: 1;
+}
+
+.rp-item {
+  padding: 24rpx;
+  border: 1rpx solid #edf1f7;
+  border-radius: 16rpx;
+  background: #f8faff;
+}
+
+.rp-item + .rp-item {
+  margin-top: 20rpx;
+}
+
+.rp-item-heading {
+  display: flex;
+  align-items: flex-start;
+}
+
+.rp-index {
+  flex-shrink: 0;
+  min-width: 36rpx;
+  margin: 4rpx 14rpx 0 0;
+  padding: 0 4rpx;
+  box-sizing: border-box;
+  border-radius: 8rpx;
+  background: #e8f0ff;
+  color: #4a8cff;
+  font-size: 22rpx;
+  line-height: 36rpx;
+  text-align: center;
+}
+
+.rp-drug-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.rp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 12rpx;
+}
+
+.rp-meta-item {
+  display: flex;
+  align-items: flex-start;
+  max-width: 100%;
+  margin: 8rpx 24rpx 0 0;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.rp-meta-label {
+  flex-shrink: 0;
+  margin-right: 10rpx;
+  color: #8b96a8;
+}
+
+.rp-meta-value {
+  min-width: 0;
+  color: #53627a;
+  word-break: break-all;
+}
+
+.rp-usage-desc {
+  margin-top: 20rpx;
+  padding-top: 18rpx;
+  border-top: 1rpx dashed #dfe6f1;
+}
+
+.usage-label {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: 23rpx;
+  color: #8b96a8;
+}
+
+.usage-text {
+  display: block;
+  color: #58677d;
   font-size: 26rpx;
-  color: #777777;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.instruction-text {
+  padding: 22rpx 24rpx;
+  border-radius: 16rpx;
+  background: #f3f7ff;
+  color: #4c6183;
+}
+
+.sign-row {
+  display: flex;
+}
+
+.sign-item {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  padding: 20rpx 12rpx;
+  border-radius: 16rpx;
+  background: #f7f9fc;
+}
+
+.sign-item + .sign-item {
+  margin-left: 20rpx;
+}
+
+.sign-label {
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #8390a3;
 }
 
 .sign-image {
-  height: 40rpx;
-  margin-left: 12rpx;
+  width: 100%;
+  max-width: 220rpx;
+  height: 88rpx;
+  margin-top: 12rpx;
 }
 
 .sign-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  margin-top: 12rpx;
   font-size: 26rpx;
-  color: #333333;
-  margin-left: 12rpx;
+  color: #a2adbc;
 }
 
-/* 底部按钮条 */
+.reload-action {
+  display: flex;
+  align-items: center;
+}
+
+.reload-copy {
+  flex: 1;
+  min-width: 0;
+  margin-right: 20rpx;
+}
+
+.reload-title,
+.reload-description {
+  display: block;
+  word-break: break-all;
+}
+
+.reload-title {
+  font-size: 27rpx;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.reload-description {
+  margin-top: 8rpx;
+  font-size: 23rpx;
+  line-height: 1.6;
+  color: #8390a3;
+}
+
+.reload-btn {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0 22rpx;
+  border-radius: 32rpx;
+  background: #edf4ff;
+  color: #4a8cff;
+  font-size: 24rpx;
+  line-height: 64rpx;
+}
+
+.loading-text {
+  display: block;
+  margin-bottom: 24rpx;
+  color: #8390a3;
+  font-size: 26rpx;
+}
+
+.loading-line {
+  height: 24rpx;
+  margin-top: 20rpx;
+  border-radius: 8rpx;
+  background: #f0f3f8;
+}
+
+.loading-line-short {
+  width: 60%;
+}
+
 .bottom-bar {
   position: fixed;
+  z-index: 10;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 16rpx 40rpx 40rpx;
+  display: flex;
+  align-items: center;
+  padding: 20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #edf1f7;
   box-sizing: border-box;
-  background-color: #f7f7f7;
+  background: #fff;
+  box-shadow: 0 -4rpx 20rpx rgba(43, 74, 123, 0.04);
+}
+
+.bottom-copy {
+  flex: 1;
+  min-width: 0;
+  margin-right: 24rpx;
+}
+
+.bottom-title,
+.bottom-description {
+  display: block;
+}
+
+.bottom-title {
+  font-size: 28rpx;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.bottom-description {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #8b96a8;
 }
 
 .bottom-btn {
-  width: 100%;
+  flex-shrink: 0;
+  width: 264rpx;
   height: 88rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 44rpx;
+  background: #4a8cff;
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 500;
   line-height: 88rpx;
   text-align: center;
-  font-size: 30rpx;
-  color: #ffffff;
-  border-radius: 999rpx;
-  background-color: #4a8cff;
-  border: none;
 }
 
-.bottom-btn::after {
+.bottom-btn::after,
+.reload-btn::after {
   border: none;
 }
 </style>

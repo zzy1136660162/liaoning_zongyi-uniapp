@@ -1,17 +1,4 @@
-import { getSessionToken } from './session.js'
-import { STORAGE_KEY_USER_INFO } from './storage.js'
-
-export const getQuestionnaireDraftAccountId = () => {
-  try {
-    if (!getSessionToken()) return ''
-    const user = uni.getStorageSync(STORAGE_KEY_USER_INFO) || {}
-    const id = user.userId ?? user.id
-    return id === null || id === undefined ? '' : String(id)
-  } catch (_) {
-    return ''
-  }
-}
-
+// 这里只持久化未提交答案；accountId 必须由调用页从当前账户接口取得，禁止读取用户资料缓存。
 const draftKey = (accountId, productId, questionnaireId) => {
   if (!accountId || !productId || !questionnaireId) throw new Error('问卷暂存信息不完整')
   return `questionnaire_draft:${[accountId, productId, questionnaireId].map(value => encodeURIComponent(String(value))).join(':')}`

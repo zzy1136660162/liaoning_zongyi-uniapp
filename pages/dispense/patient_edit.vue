@@ -1,6 +1,12 @@
 <template>
   <view class="page">
     <view class="top-banner">隐私保护，以下信息仅对接诊医生可见</view>
+    <view
+      v-if="profileNotice"
+      class="profile-notice"
+    >
+      {{ profileNotice }}，请补充资料并保存。
+    </view>
 
     <view class="patient-typeTabs">
       <view class="type-label">就诊人类型</view>
@@ -182,6 +188,7 @@
         <input
           class="input"
           v-model="formData.guardianName"
+          @input="markGuardianEdited"
           placeholder="请填写陪诊人姓名"
           maxlength="20"
         />
@@ -204,6 +211,7 @@
         <input
           class="input"
           v-model="formData.guardianIdNumber"
+          @input="markGuardianEdited"
           placeholder="请填写证件号码"
           maxlength="30"
         />
@@ -213,6 +221,7 @@
         <input
           class="input"
           v-model="formData.guardianPhone"
+          @input="markGuardianEdited"
           type="number"
           placeholder="请填写手机号码"
           maxlength="11"
@@ -227,32 +236,32 @@
 </template>
 
 <script setup>
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'PATIENT', accessType: '就诊人管理', pageType: 'PATIENT_EDIT', requestUri: '/pages/dispense/patient_edit', pageId: '' }
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+import { createPageReturn } from '@/utils/page-return.js'
 const pageSession = getSessionGeneration()
+const pageReturn = createPageReturn(() => isCurrentSession(pageSession))
 import { computed, reactive, ref, watch } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { addPatient, getPatientDetail, updatePatient } from '@/api/patient.js'
-import { STORAGE_KEY_USER_REGISTER } from '@/utils/storage.js'
-import { ID_TYPE_OPTIONS, deriveGenderFromId, deriveAgeFromId, patientHisSyncNotice } from '@/utils/patient.js'
-import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+import { fetchAccountProfile } from '@/utils/account.js'
+import { ID_TYPE_OPTIONS, deriveGenderFromId, deriveAgeFromId, deriveBirthDateFromId, getPatientProfileNotice, patientHisSyncNotice } from '@/utils/patient.js'
 import { getImageUrl } from '@/utils/config.js'
 
 const patientId = ref(null)
+const profileNotice = ref('')
 const saving = ref(false)
+let pageActive = true
+let guardianRequestSeq = 0
+let guardianEdited = false
 const now = new Date()
 const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
-const extractBirthFromId = (idNumber = '') => {
-  if (!/^\d{17}[\dXx]$/.test(idNumber)) return ''
-  const y = idNumber.slice(6, 10)
-  const m = idNumber.slice(10, 12)
-  const d = idNumber.slice(12, 14)
-  return `${y}-${m}-${d}`
-}
-
 const formData = reactive({
   name: '',
-  gender: '男',
+  gender: '',
   birthDate: '',
   idType: '身份证',
   idNumber: '',
@@ -315,11 +324,14 @@ const initRegionData = () => {
 }
 
 const updateFieldsFromId = () => {
-  if (formData.idType === '身份证') {
-    formData.gender = deriveGenderFromId(formData.idNumber)
+  if (formData.idType !== '身份证') return
+
+  const gender = deriveGenderFromId(formData.idNumber)
+  if (gender !== '未知') formData.gender = gender
+  const birthDate = deriveBirthDateFromId(formData.idNumber)
+  if (birthDate) {
+    formData.birthDate = birthDate
     formData.age = deriveAgeFromId(formData.idNumber)
-    const birth = extractBirthFromId(formData.idNumber)
-    if (birth) formData.birthDate = birth
   }
 }
 
@@ -342,13 +354,16 @@ const onIdTypeChange = (event) => {
 }
 
 const onGuardianIdTypeChange = (event) => {
+  markGuardianEdited()
   const option = guardianIdTypeOptions.value[Number(event.detail?.value)]
   if (option) formData.guardianIdType = option.value
 }
 
 const resetForm = () => {
+  guardianRequestSeq += 1
+  guardianEdited = false
   formData.name = ''
-  formData.gender = '男'
+  formData.gender = ''
   formData.birthDate = ''
   formData.idType = '身份证'
   formData.idNumber = ''
@@ -371,35 +386,51 @@ const resetForm = () => {
 }
 
 onLoad(async (options = {}) => {
+  pageReturn.bind()
+  const id = Number(options.id)
+  patientId.value = Number.isInteger(id) && id > 0 ? id : null
   await initRegionData()
   if (!isCurrentSession(pageSession)) return
   resetForm()
-  const id = Number(options.id)
-  if (Number.isInteger(id) && id > 0) {
-    patientId.value = id
+  if (patientId.value) {
     uni.setNavigationBarTitle({ title: '编辑就诊人' })
     await loadPatient(id)
   }
 })
 
 const switchPatientType = (type) => {
+  guardianRequestSeq += 1
   formData.patientType = type
   if (type === 'child') {
-    initGuardianInfo()
+    return initGuardianInfo()
   }
 }
 
-const initGuardianInfo = () => {
-  if (!isCurrentSession(pageSession) || patientId.value
-      || [formData.guardianName, formData.guardianIdType, formData.guardianIdNumber, formData.guardianPhone].some(Boolean)) return
-  let userInfo
-  try { userInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER) } catch (_) { return }
-  if (!userInfo || typeof userInfo !== 'object' || Array.isArray(userInfo)) return
-  formData.guardianName = userInfo.realName || userInfo.name || ''
-  formData.guardianIdNumber = userInfo.idNumber || userInfo.idCard || ''
-  formData.guardianPhone = userInfo.phone || userInfo.mobile || ''
-  const idType = userInfo.idType || userInfo.idCardType
-  formData.guardianIdType = ID_TYPE_OPTIONS.includes(idType) ? idType : ''
+const markGuardianEdited = () => {
+  guardianEdited = true
+  guardianRequestSeq += 1
+}
+
+const canPrefillGuardian = () => pageActive && isCurrentSession(pageSession) && !patientId.value
+  && formData.patientType === 'child' && !guardianEdited
+  && ![formData.guardianName, formData.guardianIdType, formData.guardianIdNumber, formData.guardianPhone].some(Boolean)
+
+const initGuardianInfo = async () => {
+  const requestSeq = ++guardianRequestSeq
+  if (!canPrefillGuardian()) return
+  try {
+    const profile = await fetchAccountProfile()
+    if (requestSeq !== guardianRequestSeq || !canPrefillGuardian()) return
+    // 仅用账号资料接口的 DTO 预填，表单内容不作为当前账号身份来源。
+    formData.guardianName = profile.userName || ''
+    formData.guardianIdNumber = profile.idCardNo || ''
+    formData.guardianPhone = profile.phone || ''
+    formData.guardianIdType = ID_TYPE_OPTIONS.includes(profile.idType) ? profile.idType : ''
+  } catch (_) {
+    if (requestSeq === guardianRequestSeq && canPrefillGuardian()) {
+      uni.showToast({ title: '账号资料获取失败，可手动填写陪诊人信息', icon: 'none' })
+    }
+  }
 }
 
 const setDefaultRegion = (provinceName = '辽宁省', cityName = '沈阳市') => {
@@ -489,9 +520,13 @@ const onBirthDateChange = (event) => {
 
 const calculateAgeFromBirthDate = (birthDate) => {
   if (!birthDate) return 0
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return null
   const birth = new Date(`${birthDate}T00:00:00`)
-  if (Number.isNaN(birth.getTime())) return 0
+  const [year, month, day] = birthDate.split('-').map(Number)
   const current = new Date()
+  current.setHours(0, 0, 0, 0)
+  if (Number.isNaN(birth.getTime()) || birth.getFullYear() !== year || birth.getMonth() !== month - 1
+      || birth.getDate() !== day || birth > current) return null
   let age = current.getFullYear() - birth.getFullYear()
   const beforeBirthday = current.getMonth() < birth.getMonth()
     || (current.getMonth() === birth.getMonth() && current.getDate() < birth.getDate())
@@ -521,9 +556,10 @@ const loadPatient = async (id) => {
   try {
     const data = await getPatientDetail(id)
     if (!isCurrentSession(pageSession)) return
+    profileNotice.value = getPatientProfileNotice(data)
     Object.assign(formData, {
       name: data?.name || '',
-      gender: data?.gender || '男',
+      gender: data?.gender || '',
       birthDate: data?.birthDate || '',
       idType: data?.idType || '',
       idNumber: data?.idNumber || '',
@@ -540,6 +576,7 @@ const loadPatient = async (id) => {
       guardianIdNumber: data?.guardianIdNumber || '',
       guardianPhone: data?.guardianPhone || ''
     })
+    updateFieldsFromId()
     formData.regionText = [
       formData.province,
       formData.city,
@@ -550,7 +587,7 @@ const loadPatient = async (id) => {
   } catch (error) {
     if (!isCurrentSession(pageSession)) return
     uni.showToast({ title: error?.message || '就诊人加载失败', icon: 'none' })
-    setTimeout(() => { if (isCurrentSession(pageSession)) uni.navigateBack() }, 1200)
+    pageReturn.schedule(() => uni.navigateBack(), 1200)
   }
 }
 
@@ -571,11 +608,20 @@ const validateForm = () => {
     uni.showToast({ title: '身份证格式不正确', icon: 'none' })
     return false
   }
+  updateFieldsFromId()
   if (!formData.birthDate) {
     uni.showToast({ title: '请选择出生日期', icon: 'none' })
     return false
   }
   const age = calculateAgeFromBirthDate(formData.birthDate)
+  if (age == null) {
+    uni.showToast({ title: '请选择有效的出生日期', icon: 'none' })
+    return false
+  }
+  if (!['男', '女'].includes(formData.gender)) {
+    uni.showToast({ title: '请选择性别', icon: 'none' })
+    return false
+  }
   if (formData.patientType === 'adult' && age < 16) {
     uni.showToast({ title: '成人就诊人年龄需满16岁', icon: 'none' })
     return false
@@ -620,12 +666,14 @@ const validateForm = () => {
 }
 
 const handleSubmit = async () => {
-  if (!isCurrentSession(pageSession) || !validateForm() || saving.value) return
+  if (!isCurrentSession(pageSession) || saving.value) return
   
-  logButtonClick('保存就诊人', 'PATIENT_EDIT', '', {
-    patientType: formData.patientType || 'adult',
-    name: formData.name
-  })
+  const actionLog = { ...PAGE_LOG, actionCode: 'SAVE_PATIENT', accessTitle: '保存就诊人', accessDescription: '用户提交新增或修改的就诊人资料', pageId: patientId.value || '', extraData: { mode: patientId.value ? 'edit' : 'create', patientType: formData.patientType || 'adult' } }
+  logButtonClick(actionLog)
+  if (!validateForm()) {
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', accessTitle: '就诊人资料校验未通过', accessDescription: '表单未满足保存条件，未发送保存请求', extraData: { ...actionLog.extraData, reason: 'INVALID_PATIENT_FORM' } })
+    return
+  }
   
   try {
     saving.value = true
@@ -656,16 +704,15 @@ const handleSubmit = async () => {
       ? await updatePatient(patientId.value, payload)
       : await addPatient(payload)
     if (!isCurrentSession(pageSession)) return
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', accessTitle: '就诊人资料保存成功', accessDescription: '服务端已保存就诊人资料，医院同步状态按响应单独展示', extraData: { ...actionLog.extraData, patientId: result?.id || patientId.value } })
     uni.$emit('patientChanged', { patientId: result?.id || patientId.value })
     if (isCurrentSession(pageSession)) uni.hideLoading()
     const syncNotice = patientHisSyncNotice(result?.hisBindingStatus)
     uni.showToast({ title: syncNotice || (patientId.value ? '修改成功' : '添加成功'), icon: syncNotice ? 'none' : 'success', duration: syncNotice ? 2500 : 1200 })
-    setTimeout(() => {
-      if (!isCurrentSession(pageSession)) return
-      uni.navigateBack()
-    }, syncNotice ? 2500 : 1200)
+    pageReturn.schedule(() => uni.navigateBack(), syncNotice ? 2500 : 1200)
   } catch (error) {
     if (!isCurrentSession(pageSession)) return
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), accessTitle: '就诊人资料保存未完成', accessDescription: '本次保存未取得明确成功结果', extraData: { ...actionLog.extraData, reason: 'save_incomplete' } })
     console.error('保存就诊人失败:', error)
     if (isCurrentSession(pageSession)) uni.hideLoading()
     const errMsg = error?.message || error?.data?.message || '保存失败，请稍后再试'
@@ -674,9 +721,35 @@ const handleSubmit = async () => {
     saving.value = false
   }
 }
+onShow(() => {
+  pageActive = true
+  pageReturn.show()
+  logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问就诊人信息', accessDescription: '进入就诊人资料页面，准备新增或修改资料', pageId: patientId.value || '' })
+  return initGuardianInfo()
+})
+onHide(() => {
+  pageActive = false
+  guardianRequestSeq += 1
+  pageReturn.hide()
+})
+onUnload(() => {
+  pageActive = false
+  guardianRequestSeq += 1
+  pageReturn.dispose()
+})
 </script>
 
 <style scoped>
+.profile-notice {
+  margin: 20rpx 24rpx;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  color: #a15c00;
+  background: #fff3dc;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
 .page {
   min-height: 100vh;
   background: #f6f7fb;

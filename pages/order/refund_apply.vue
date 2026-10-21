@@ -12,34 +12,115 @@
     <!-- 订单信息卡片 -->
     <view class="order-card">
       <view class="card-header">
-        <text class="order-no">订单号：{{ orderInfo.orderNo }}</text>
-        <text class="order-time">{{ formatDateTime(orderInfo.completeTime) }}</text>
+        <text class="order-no">
+          订单号：{{ orderInfo.orderNo }}
+        </text>
+        <text class="order-time">
+          {{ formatDateTime(orderInfo.completeTime) }}
+        </text>
       </view>
 
+      <view
+        v-if="refundGroups.length > 1"
+        class="refund-groups"
+      >
+        <button
+          v-for="group in refundGroups"
+          :key="group.key"
+          class="group-btn"
+          :class="{ active: activeRefundGroup === group.key }"
+          :disabled="formLocked"
+          @tap="selectRefundGroup(group.key)"
+        >
+          {{ group.label }}
+        </button>
+        <text class="group-tip">
+          实物商品与疗法次数分别申请，每次提交一组。
+        </text>
+      </view>
+      <view
+        v-if="pendingSubmission"
+        class="submission-notice"
+      >
+        申请结果尚未确认，请重试确认本次申请，或到退款记录查看进度。
+      </view>
+
+      <view class="refund-policy-tip">
+        制剂、健康产品未发货时可直接申请原路退款，发货后请线下联系客服。
+      </view>
       <!-- 商品列表 -->
       <view class="products-section">
-        <view class="section-title">退款商品</view>
+        <view class="section-title">
+          退款商品
+        </view>
         <view class="product-list">
-          <view class="product-item" v-for="(item, index) in allProducts" :key="item.id">
+          <view
+            v-for="item in visibleProducts"
+            :key="item.id"
+            class="product-item"
+          >
             <view class="product-left">
-              <image class="product-image" :src="item.image" mode="aspectFill" />
+              <image
+                class="product-image"
+                :src="item.image"
+                mode="aspectFill"
+              />
               <view class="product-info">
-                <text class="product-name">{{ item.name }}</text>
-                <text class="product-spec" v-if="item.specText">{{ item.specText }}</text>
-                <text class="product-price">¥{{ item.price }}</text>
-                <text class="product-refund-tip" v-if="Number(item.refundableQuantity || 0) <= 0">
+                <text class="product-name">
+                  {{ item.name }}
+                </text>
+                <text
+                  v-if="item.specText"
+                  class="product-spec"
+                >
+                  {{ item.specText }}
+                </text>
+                <text class="product-price">
+                  ¥{{ item.price }}
+                </text>
+                <text class="product-refund-tip">
+                  购买 {{ item.quantity }} {{ item.refundGroup === 'THERAPY' ? '次' : '件' }}
+                  <template v-if="item.refundGroup === 'THERAPY'">
+                    ，已用 {{ item.redeemedQuantity }} 次
+                  </template>
+                  ，退款中 {{ item.refundFrozenQuantity }} {{ item.refundGroup === 'THERAPY' ? '次' : '件' }}
+                </text>
+                <text v-if="item.refundCompletedQuantity > 0" class="product-refund-tip">
+                  已退款 {{ item.refundCompletedQuantity }} {{ item.refundGroup === 'THERAPY' ? '次' : '件' }}
+                </text>
+                <text
+                  v-if="Number(item.refundableQuantity || 0) <= 0"
+                  class="product-refund-tip"
+                >
                   {{ item.refundBlockedReason || '已无可退数量' }}
                 </text>
-                <text class="product-refund-tip" v-else>
-                  可退 {{ item.refundableQuantity }} 件，已占用 {{ item.refundedQuantity || 0 }} 件
+                <text
+                  v-else
+                  class="product-refund-tip"
+                >
+                  可退 {{ item.refundableQuantity }} {{ item.refundGroup === 'THERAPY' ? '次' : '件' }}
                 </text>
               </view>
             </view>
             <view class="product-right">
               <view class="quantity-control">
-                <button class="qty-btn" :disabled="Number(item.selectedQuantity || 0) <= 0" @tap="decreaseQuantity(index)">-</button>
-                <text class="qty-text">{{ item.selectedQuantity }}</text>
-                <button class="qty-btn" :disabled="Number(item.selectedQuantity || 0) >= Number(item.refundableQuantity || 0)" @tap="increaseQuantity(index)">+</button>
+                <button
+                  class="qty-btn"
+                  :disabled="formLocked || Number(item.selectedQuantity || 0) <= 0"
+                  @tap="decreaseQuantity(item)"
+                >
+                  -
+                </button>
+                <text class="qty-text">
+                  {{ item.selectedQuantity }}
+                </text>
+                <button
+                  class="qty-btn"
+                  :disabled="formLocked || Number(item.selectedQuantity || 0) >= Number(item.refundableQuantity || 0)"
+                  @tap="increaseQuantity(item)"
+                >
+                  +
+                </button>
               </view>
             </view>
           </view>
@@ -48,12 +129,14 @@
 
       <!-- 退款原因 -->
       <view class="reason-section">
-        <view class="section-title">退款原因</view>
+        <view class="section-title">
+          退款原因（必选）
+        </view>
         <view class="reason-options">
           <view
-            class="reason-item"
             v-for="reason in reasonOptions"
             :key="reason"
+            class="reason-item"
             :class="{ active: form.refundReason === reason }"
             @tap="selectReason(reason)"
           >
@@ -61,8 +144,9 @@
           </view>
         </view>
         <textarea
-          class="reason-input"
           v-model="form.refundDescription"
+          class="reason-input"
+          :disabled="formLocked"
           placeholder="请详细描述退款原因（可选）"
           maxlength="200"
         />
@@ -70,35 +154,71 @@
 
       <!-- 上传图片 -->
       <view class="upload-section">
-        <view class="section-title">上传凭证（可选）</view>
+        <view class="section-title">
+          上传凭证（可选）
+        </view>
         <view class="upload-area">
-          <view class="image-item" v-for="(image, index) in form.refundImages" :key="index">
-            <image :src="image" mode="aspectFill" />
-            <view class="delete-btn" @tap="removeImage(index)">
-              <uni-icons type="close" size="16" color="#fff"></uni-icons>
+          <view
+            v-for="(image, index) in form.refundImages"
+            :key="index"
+            class="image-item"
+          >
+            <image
+              :src="image"
+              mode="aspectFill"
+            />
+            <view
+              v-if="!formLocked"
+              class="delete-btn"
+              @tap="removeImage(index)"
+            >
+              <uni-icons
+                type="close"
+                size="16"
+                color="#fff"
+              />
             </view>
           </view>
-          <view class="upload-btn" v-if="form.refundImages.length < 6" @tap="chooseImage">
-            <uni-icons type="plus" size="24" color="#999"></uni-icons>
+          <view
+            v-if="!formLocked && form.refundImages.length < 6"
+            class="upload-btn"
+            @tap="chooseImage"
+          >
+            <uni-icons
+              type="plus"
+              size="24"
+              color="#999"
+            />
             <text>上传图片</text>
           </view>
         </view>
-        <text class="upload-tip">最多可上传6张图片，支持jpg、png格式</text>
+        <text class="upload-tip">
+          最多可上传6张图片，支持jpg、png格式
+        </text>
       </view>
 
       <!-- 退款金额预览 -->
       <view class="amount-section">
         <view class="amount-row">
-          <text class="amount-label">退款金额</text>
-          <text class="amount-value">¥{{ refundAmount.toFixed(2) }}</text>
+          <text class="amount-label">
+            退款金额
+          </text>
+          <text class="amount-value">
+            ¥{{ refundAmount.toFixed(2) }}
+          </text>
         </view>
       </view>
     </view>
 
     <!-- 底部按钮 -->
     <view class="bottom-bar">
-      <button class="submit-btn" @tap="submitRefund" :disabled="!canSubmit">
-        提交申请
+      <button
+        class="submit-btn"
+        :class="{ disabled: !canSubmit }"
+        :disabled="!canSubmit"
+        @tap="submitRefund"
+      >
+        {{ submitting ? '提交中...' : pendingSubmission ? '重试确认申请' : '提交申请' }}
       </button>
     </view>
   </view>
@@ -106,71 +226,108 @@
 
 <script>
 import { getSessionGeneration, isCurrentSession, assertCurrentSession } from '@/utils/session.js'
+import { createPageReturn } from '@/utils/page-return.js'
 import { getOrderDetail } from '@/api/order.js'
 import { applyRefund, checkCanApplyRefund } from '@/api/refund.js'
 import { uploadFile } from '@/api/common.js'
 import { getImageUrl } from '@/utils/config.js'
-import { logPageView, logButtonClick } from '@/utils/accessLog.js'
-import { hasMixedTherapyAndNormalRefundItems, resolveRefundType, createRefundRequestId } from '@/utils/refund.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'REFUND', accessType: '退款售后', pageType: 'REFUND_APPLY', requestUri: '/pages/order/refund_apply' }
+import { hasMixedTherapyAndNormalRefundItems, isTherapyRefundItem, resolveRefundType, createRefundRequestId } from '@/utils/refund.js'
 
 export default {
   name: 'RefundApply',
   data() {
+    const pageSession = getSessionGeneration()
     return {
       orderId: null,
-      pageSession: getSessionGeneration(),
+      pageSession,
+      pageReturn: createPageReturn(() => isCurrentSession(pageSession)),
       requestId: createRefundRequestId(),
+      pendingSubmission: null,
+      loading: false,
+      uploading: false,
+      pageActive: true,
+      detailRequestSequence: 0,
       submitting: false,
       submitted: false,
       orderInfo: {},
       allProducts: [], // 订单所有商品
-      selectedProducts: [], // 选中的退款商品
+      activeRefundGroup: '',
       form: {
-        refundType: 2, // 1全单退款 2部分退款
         refundReason: '',
         refundDescription: '',
         refundImages: []
-      },
-      reasonOptions: [
-        '商品质量问题',
-        '商品与描述不符',
-        '包装损坏',
-        '错发/漏发',
-        '个人原因不想要了',
-        '其他'
-      ]
+      }
     }
   },
 
   computed: {
+    formLocked() {
+      return this.loading || this.uploading || this.submitting || this.submitted || Boolean(this.pendingSubmission)
+    },
+
+    refundGroups() {
+      return [
+        { key: 'PHYSICAL', label: '实物商品' },
+        { key: 'THERAPY', label: '疗法次数' }
+      ].filter(group => this.allProducts.some(item => item.refundGroup === group.key))
+    },
+
+    visibleProducts() {
+      return this.allProducts.filter(item => item.refundGroup === this.activeRefundGroup)
+    },
+
+    reasonOptions() {
+      return this.activeRefundGroup === 'THERAPY'
+        ? ['未使用的疗法次数不再需要', '行程或时间安排变化', '疗法服务问题', '其他']
+        : ['商品质量问题', '商品与描述不符', '包装损坏', '错发/漏发', '个人原因不想要了', '其他']
+    },
+
     refundAmount() {
+      if (this.pendingSubmission) return this.pendingSubmission.amount
       return this.allProducts.reduce((total, item) => {
         return total + (item.price * Number(item.selectedQuantity || 0))
       }, 0)
     },
 
     canSubmit() {
-      return !this.submitting && !this.submitted && this.allProducts.some(item => Number(item.selectedQuantity || 0) > 0) &&
-             this.form.refundReason &&
-             this.refundAmount > 0
+      return !this.loading && !this.uploading && !this.submitting && !this.submitted
     }
   },
 
   onLoad(options) {
+    this.pageReturn.bind()
     this.orderId = options.orderId
-    if (this.orderId) {
-      this.loadOrderDetail()
-    } else {
+    if (!this.orderId) {
       uni.showToast({
         title: '参数错误',
         icon: 'none'
       })
-      setTimeout(() => {
-        this.safeNavigateBack()
-      }, 1500)
+      this.pageReturn.schedule(() => this.safeNavigateBack(), 1500)
     }
 
-    logPageView('退款申请', 'REFUND_APPLY')
+  },
+
+  onShow() {
+    this.pageReturn.show()
+    if (!isCurrentSession(this.pageSession)) return
+    logPageView({ ...PAGE_LOG, pageId: this.orderId || '', actionCode: 'REFUND_APPLY_VIEW', accessTitle: '申请退款', accessDescription: '进入退款申请页，选择退款商品并填写申请' })
+    if (this.orderId) this.loadOrderDetail()
+  },
+
+  onHide() {
+    this.pageReturn.hide()
+  },
+
+  onUnload() {
+    this.pageReturn.dispose()
+    // 页面离开时收起自己开启的加载提示，迟到响应不能再操作新页面的提示。
+    if (this.loading && isCurrentSession(this.pageSession)) uni.hideLoading()
+    this.loading = false
+    this.pageActive = false
+    this.detailRequestSequence += 1
   },
 
   methods: {
@@ -187,76 +344,122 @@ export default {
       }
     },
 
-    async loadOrderDetail() {
+    async loadOrderDetail({ silent = false } = {}) {
+      // 超时请求必须原样重试，不能刷新表单后把新内容复用到旧 requestId。
+      if (this.formLocked || !this.pageActive || !isCurrentSession(this.pageSession)) return
+      const sequence = ++this.detailRequestSequence
+      const isCurrent = () => this.pageActive && sequence === this.detailRequestSequence && isCurrentSession(this.pageSession)
+      this.loading = true
       try {
-        uni.showLoading({ title: '加载中...' })
+        if (!silent) uni.showLoading({ title: '加载中...' })
 
         // 检查是否可以申请退款
         const checkResult = await checkCanApplyRefund(this.orderId)
+        if (!isCurrent()) return
         if (!checkResult) {
+          this.allProducts = []
           uni.showModal({
             title: '提示',
             content: '该订单不符合退款条件',
             showCancel: false,
             success: () => {
-              this.safeNavigateBack()
+              if (isCurrent()) this.safeNavigateBack()
             }
           })
           return
         }
 
         // 获取订单详情
-        const order = await getOrderDetail(this.orderId)
-
-        this.orderInfo = {
-          orderNo: order.orderNo,
-          completeTime: order.completeTime,
-          doctorName: order.doctorName,
-          prescriptionDiagnosis: order.prescriptionDiagnosis
-        }
-
-        // 处理商品数据
-        this.allProducts = (order.items || []).map(item => ({
-          id: item.id, // 订单项ID，用于提交退款申请
-          productId: item.productId, // 商品ID
-          name: item.productName, // 商品名称
-          price: parseFloat(item.price || 0), // 商品价格
-          quantity: item.quantity || 1, // 购买数量
-          purchasedQuantity: item.quantity || 1,
-          refundedQuantity: Number(item.refundedQuantity || 0),
-          refundableQuantity: Number(item.refundableQuantity || 0),
-          selectedQuantity: Number(item.refundableQuantity || 0),
-          refundable: Boolean(item.refundable),
-          refundBlockedReason: item.refundBlockedReason || '',
-          image: getImageUrl(item.productImage || item.coverImage || item.image || ''), // 商品图片
-          skuId: item.skuId || null,
-          skuCode: item.skuCode || '',
-          skuName: item.skuName || '',
-          specText: item.skuSpecText || item.specText || '',
-          unit: item.unit,
-          redeemVouchers: item.redeemVouchers || []
-        }))
-        this.selectedProducts = this.allProducts
-          .filter(item => Number(item.selectedQuantity || 0) > 0)
-          .map(item => ({ ...item, quantity: item.selectedQuantity }))
+        const order = await getOrderDetail(this.orderId, { showLoading: false })
+        if (!isCurrent()) return
+        this.applyOrderData(order)
 
       } catch (error) {
+        if (!isCurrent()) return
         console.error('event=ui_order_refund_apply stage=load_order_detail result=failed reason=operation_incomplete')
-        uni.showToast({
+        if (!silent) uni.showToast({
           title: error.message || '加载失败',
           icon: 'none'
         })
       } finally {
-        uni.hideLoading()
+        if (isCurrent()) {
+          this.loading = false
+          if (!silent) uni.hideLoading()
+        }
       }
     },
 
+    applyOrderData(order) {
+      const previous = new Map(this.allProducts.map(item => [String(item.id), item]))
+      this.orderInfo = {
+        orderNo: order.orderNo,
+        orderType: order.orderType,
+        completeTime: order.completeTime,
+        doctorName: order.doctorName,
+        prescriptionDiagnosis: order.prescriptionDiagnosis
+      }
+
+      // 金额、购买快照和次数均来自订单接口，不读取现商品分类，也不自行推算可退上限。
+      this.allProducts = (order.items || []).map(item => ({
+        id: item.id, // 退款传订单明细 ID，同一商品的不同明细不能混用。
+        productId: item.productId,
+        name: item.productName,
+        price: parseFloat(item.price || 0),
+        quantity: item.quantity || 1,
+        refundedQuantity: Number(item.refundedQuantity || 0),
+        refundCompletedQuantity: Number(item.refundCompletedQuantity || 0),
+        redeemedQuantity: Number(item.redeemedQuantity || 0),
+        refundFrozenQuantity: Number(item.refundFrozenQuantity || 0),
+        refundableQuantity: Number(item.refundableQuantity || 0),
+        selectedQuantity: 0,
+        refundable: Boolean(item.refundable),
+        refundBlockedReason: item.refundBlockedReason || '',
+        image: getImageUrl(item.productImage || item.coverImage || item.image || ''),
+        skuId: item.skuId || null,
+        skuCode: item.skuCode || '',
+        skuName: item.skuName || '',
+        specText: item.skuSpecText || item.specText || '',
+        unit: item.unit,
+        productCategorySnapshot: item.productCategorySnapshot,
+        redeemRequiredSnapshot: item.redeemRequiredSnapshot,
+        refundGroup: isTherapyRefundItem(item, order) ? 'THERAPY' : 'PHYSICAL',
+        redeemVouchers: item.redeemVouchers || []
+      }))
+
+      const availableGroups = ['PHYSICAL', 'THERAPY'].filter(group =>
+        this.allProducts.some(item => item.refundGroup === group && item.refundableQuantity > 0))
+      if (!availableGroups.includes(this.activeRefundGroup)) {
+        this.activeRefundGroup = availableGroups[0] || this.allProducts[0]?.refundGroup || ''
+        this.form.refundReason = ''
+      }
+      let adjusted = false
+      this.allProducts.forEach(item => {
+        const old = previous.get(String(item.id))
+        if (item.refundGroup !== this.activeRefundGroup) return
+        const requested = old ? Number(old.selectedQuantity || 0) : previous.size ? 0 : item.refundableQuantity
+        item.selectedQuantity = Math.min(requested, item.refundableQuantity)
+        if (old && requested !== item.selectedQuantity) adjusted = true
+      })
+      if (adjusted) uni.showToast({ title: '可退数量已变化，请重新确认', icon: 'none' })
+    },
+
+    selectRefundGroup(group) {
+      if (this.formLocked || group === this.activeRefundGroup) return
+      this.activeRefundGroup = group
+      this.form.refundReason = ''
+      // 不自动拆成两笔请求；切换后只选当前组，另一组可在本次成功后继续申请。
+      this.allProducts.forEach(item => {
+        item.selectedQuantity = item.refundGroup === group ? item.refundableQuantity : 0
+      })
+    },
+
     selectReason(reason) {
+      if (this.formLocked) return
       this.form.refundReason = reason
     },
 
-    increaseQuantity(index) {
-      const product = this.allProducts[index]
+    increaseQuantity(product) {
+      if (this.formLocked || product.refundGroup !== this.activeRefundGroup) return
       const maxQuantity = Number(product.refundableQuantity || 0)
 
       if (Number(product.selectedQuantity || 0) < maxQuantity) {
@@ -264,31 +467,36 @@ export default {
       }
     },
 
-    decreaseQuantity(index) {
-      const product = this.allProducts[index]
+    decreaseQuantity(product) {
+      if (this.formLocked || product.refundGroup !== this.activeRefundGroup) return
       if (Number(product.selectedQuantity || 0) > 0) {
         product.selectedQuantity = Number(product.selectedQuantity || 0) - 1
       }
     },
 
     async chooseImage() {
+      if (this.formLocked) return
+      this.uploading = true
       try {
         const result = await uni.chooseImage({
           count: 6 - this.form.refundImages.length,
           sizeType: ['compressed'],
           sourceType: ['album', 'camera']
         })
+        if (!this.pageActive || !isCurrentSession(this.pageSession)) return
 
         uni.showLoading({ title: '上传凭证中...' })
         for (const tempFilePath of result.tempFilePaths) {
           console.info('event=ui_order_refund_apply stage=evidence_upload result=started')
           const uploaded = await uploadFile(tempFilePath)
+          if (!this.pageActive || !isCurrentSession(this.pageSession)) return
           this.form.refundImages.push(uploaded.url)
           console.info('event=ui_order_refund_apply stage=evidence_upload result=success')
         }
         uni.hideLoading()
 
       } catch (error) {
+        if (!this.pageActive || !isCurrentSession(this.pageSession)) return
         uni.hideLoading()
         if (error?.errMsg && error.errMsg.includes('cancel')) {
           console.info('event=ui_order_refund_apply stage=evidence_choose result=cancelled')
@@ -299,58 +507,75 @@ export default {
           title: error.message || '凭证上传失败，请重试',
           icon: 'none'
         })
+      } finally {
+        this.uploading = false
+        uni.hideLoading()
       }
     },
 
     removeImage(index) {
+      if (this.formLocked) return
       this.form.refundImages.splice(index, 1)
     },
 
     async submitRefund() {
-      if (!this.canSubmit) {
+      if (!this.pageActive || !isCurrentSession(this.pageSession) || !this.canSubmit) return
+      const validationMessage = this.pendingSubmission ? ''
+        : !this.allProducts.some(item => Number(item.selectedQuantity || 0) > 0) ? '请选择退款商品'
+          : !this.form.refundReason ? '请选择退款原因'
+            : !(this.refundAmount > 0) ? '退款金额须大于0' : ''
+      if (validationMessage) {
+        logAccess({ ...PAGE_LOG, pageId: this.orderId || '', actionType: 'BEHAVIOR', actionCode: 'REFUND_SUBMIT_RESULT', actionResult: 'FAILED', accessTitle: '提交退款申请', accessDescription: '退款申请表单校验未通过，尚未提交', extraData: { reason: 'INVALID_FORM' } })
         uni.showToast({
-          title: '请完善退款信息',
+          title: validationMessage,
           icon: 'none'
         })
         return
       }
 
       this.submitting = true
+      let refreshAfterFailure = false
       try {
         assertCurrentSession(this.pageSession)
-        logButtonClick('提交退款申请', 'REFUND_APPLY', this.orderId?.toString())
+        logButtonClick({ ...PAGE_LOG, pageId: this.orderId || '', actionCode: 'REFUND_SUBMIT', accessTitle: '提交退款申请', accessDescription: '提交所选商品的原路退款请求，最终结果以渠道进度为准', extraData: { itemCount: this.allProducts.filter(item => Number(item.selectedQuantity || 0) > 0).length } })
 
-        const selectedProducts = this.allProducts
-          .filter(item => Number(item.selectedQuantity || 0) > 0)
-          .map(item => ({ ...item, quantity: Number(item.selectedQuantity || 0) }))
+        if (!this.pendingSubmission) {
+          const selectedProducts = this.allProducts
+            .filter(item => Number(item.selectedQuantity || 0) > 0)
+            .map(item => ({ ...item, quantity: Number(item.selectedQuantity || 0) }))
 
-        if (hasMixedTherapyAndNormalRefundItems(selectedProducts)) {
-          uni.showToast({
-            title: '传统疗法退款和普通商品退货请分开申请',
-            icon: 'none'
-          })
-          return
+          if (hasMixedTherapyAndNormalRefundItems(selectedProducts, this.orderInfo)) {
+            logAccess({ ...PAGE_LOG, pageId: this.orderId || '', actionType: 'BEHAVIOR', actionCode: 'REFUND_SUBMIT_RESULT', actionResult: 'FAILED', accessTitle: '提交退款申请', accessDescription: '传统疗法与普通商品需要分开申请，尚未提交退款', extraData: { reason: 'MIXED_REFUND_SCENES' } })
+            uni.showToast({ title: '传统疗法退款和实物商品退款请分开申请', icon: 'none' })
+            return
+          }
+
+          // 保存本次提交内容；超时只说明没收到结果，重试不能改变数量、原因或幂等编号。
+          this.pendingSubmission = {
+            amount: this.refundAmount,
+            data: {
+              orderId: this.orderId,
+              requestId: this.requestId,
+              refundType: resolveRefundType(this.allProducts, selectedProducts),
+              refundReason: this.form.refundReason,
+              refundDescription: this.form.refundDescription,
+              refundImages: [...this.form.refundImages],
+              items: selectedProducts.map(item => ({
+                orderItemId: item.id,
+                quantity: item.quantity,
+                refundReason: this.form.refundReason
+              }))
+            }
+          }
         }
 
         uni.showLoading({ title: '提交中...' })
-
-        const submitData = {
-          orderId: this.orderId,
-          requestId: this.requestId,
-          refundType: resolveRefundType(this.allProducts, selectedProducts),
-          refundReason: this.form.refundReason,
-          refundDescription: this.form.refundDescription,
-          refundImages: this.form.refundImages,
-          items: selectedProducts.map(item => ({
-            orderItemId: item.id,
-            quantity: item.quantity,
-            refundReason: this.form.refundReason
-          }))
-        }
-
-        await applyRefund(submitData)
+        await applyRefund(this.pendingSubmission.data)
         assertCurrentSession(this.pageSession)
+        if (!this.pageActive) return
+        logAccess({ ...PAGE_LOG, pageId: this.orderId || '', actionType: 'BEHAVIOR', actionCode: 'REFUND_SUBMIT_RESULT', actionResult: 'SUCCESS', accessTitle: '退款申请已提交', accessDescription: '服务端已受理退款申请，退款资金结果仍以申请进度为准', extraData: { itemCount: this.pendingSubmission.data.items.length } })
         this.submitted = true
+        this.pendingSubmission = null
 
         uni.hideLoading()
         uni.showToast({
@@ -359,20 +584,26 @@ export default {
         })
 
         // 返回上一页
-        setTimeout(() => {
-          if (isCurrentSession(this.pageSession)) this.safeNavigateBack()
-        }, 1500)
+        this.pageReturn.schedule(() => this.safeNavigateBack(), 1500)
 
       } catch (error) {
-        if (error.code === 'SESSION_CHANGED') return
+        if (!this.pageActive || error.code === 'SESSION_CHANGED' || !isCurrentSession(this.pageSession)) return
+        if (getActionFailureResult(error) === 'FAILED') {
+          // 明确拒绝后才能编辑新申请；新内容必须使用新的 requestId。
+          this.pendingSubmission = null
+          this.requestId = createRefundRequestId()
+          refreshAfterFailure = true
+        }
+        logAccess({ ...PAGE_LOG, pageId: this.orderId || '', actionType: 'BEHAVIOR', actionCode: 'REFUND_SUBMIT_RESULT', actionResult: getActionFailureResult(error), accessTitle: '提交退款申请', accessDescription: '退款申请未获得服务端受理确认', extraData: { reason: 'SUBMISSION_NOT_CONFIRMED' } })
         console.error('event=ui_order_refund_apply stage=submit_refund result=failed reason=operation_incomplete')
         uni.hideLoading()
         uni.showToast({
-          title: error.message || '提交失败',
+          title: this.pendingSubmission ? '申请结果未确认，请重试确认' : error.message || '提交失败',
           icon: 'none'
         })
       } finally {
         this.submitting = false
+        if (refreshAfterFailure) this.loadOrderDetail({ silent: true })
       }
     },
 
@@ -432,7 +663,48 @@ export default {
   }
 }
 
+.refund-policy-tip {
+  padding: 24rpx 32rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #666;
+}
+
 // 订单卡片
+.refund-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  padding: 24rpx 32rpx;
+
+  .group-btn {
+    flex: 1;
+    margin: 0;
+    font-size: 28rpx;
+    background: #f5f5f5;
+    color: #666;
+
+    &.active {
+      background: #e8f5ee;
+      color: #258654;
+    }
+  }
+
+  .group-tip {
+    width: 100%;
+    font-size: 24rpx;
+    color: #888;
+  }
+}
+
+.submission-notice {
+  padding: 24rpx 32rpx;
+  font-size: 26rpx;
+  line-height: 1.6;
+  background: #fff7e8;
+  color: #96651c;
+}
+
 .order-card {
   background: #fff;
   margin: 20rpx;
@@ -707,7 +979,7 @@ export default {
     border-radius: 44rpx;
     border: none;
 
-    &:disabled {
+    &.disabled {
       background: #ddd;
       color: #999;
     }

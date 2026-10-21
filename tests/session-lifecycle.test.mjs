@@ -6,6 +6,7 @@ import { handleAuthenticationFailure } from '../utils/auth-failure.js'
 import { uploadFile } from '../api/common.js'
 import { logout } from '../api/logout.js'
 import { getRefundStageText } from '../utils/refund.js'
+import { ID_TYPE_OPTIONS } from '../utils/patient.js'
 import { loadOptions, loadSetup } from './sfc-harness.mjs'
 const values = new Map()
 let calls = [], redirects = 0, prompts = 0
@@ -23,7 +24,7 @@ test('退款详情重新显示时只在原账号会话有效时读取', () => {
   const definition = loadOptions('pages/order/refund_detail.vue', { isCurrentSession: value => value === 1,
     getPaymentRefundStatusText() {}, getRefundStageText() {}, getImageUrl: value => value })
   let reads = 0
-  const page = { refundApplicationId: 8, sessionGeneration: 1, loadDetail: () => { reads++ } }
+  const page = { ...definition.data(), refundApplicationId: 8, sessionGeneration: 1, loadDetail: () => { reads++ } }
   definition.onShow.call(page)
   page.sessionGeneration = 0
   definition.onShow.call(page)
@@ -84,25 +85,105 @@ test('注销失败只重试一次，并固定使用退出前凭证', async () =>
   retry.fail({}); assert.deepEqual(await p, { confirmed: false, attempts: 2 })
   mock.timers.tick(5000); assert.equal(calls.length, 0); assert.equal(getSessionToken(), 'fixture-B')
 })
-test('首页旧凭证失效后只恢复一次登录并重新取得自己的资料', async () => {
+test('首页旧凭证失效后只恢复一次登录，新会话资料由业务页按需读取', async () => {
   let loginCount = 0, profileCount = 0
   const page = loadOptions('pages/index/index.vue', {
     getSessionGeneration, isCurrentSession, isExplicitlyLoggedOut, assertCurrentSession,
-    getToken: getSessionToken, saveToken: beginSession, getWeChatLoginCode: async () => 'fixture-fresh-code',
-    loginByWeChatCode: async () => { loginCount++; return { token: 'fixture-B' } }, syncCartOnLogin() {},
-    getUserProfile: async () => {
+    getToken: getSessionToken, establishAccountSession: result => { beginSession(result.token); return getSessionGeneration() },
+    getWeChatLoginCode: async () => 'fixture-fresh-code',
+    loginByWeChatCode: async () => { loginCount++; return { token: 'fixture-B' } },
+    fetchAccountProfile: async options => {
+      assert.deepEqual(options, { authRedirect: false })
       profileCount++
       if (profileCount === 1) throw handleAuthenticationFailure({ generation: getSessionGeneration(), token: getSessionToken(), required: true, redirect: false })
       return { id: 7, userName: 'fixture' }
-    }, STORAGE_KEY_USER_INFO: 'user_info', STORAGE_KEY_USER_REGISTER: 'user_register_info', STORAGE_KEY_USER_LOGIN_STATUS: 'user_login_status'
+    }
   })
   await page.methods.loadCurrentUser.call({})
-  assert.equal(loginCount, 1); assert.equal(profileCount, 2); assert.equal(getSessionToken(), 'fixture-B')
-  assert.equal(values.get('user_info').id, 7)
+  assert.equal(loginCount, 1); assert.equal(profileCount, 1); assert.equal(getSessionToken(), 'fixture-B')
+  assert.equal(values.has('user_info'), false); assert.equal(values.has('user_register_info'), false)
+  assert.equal(redirects, 0); assert.equal(prompts, 0)
 })
-test('退款详情优先展示真实阶段，待处理金额状态不掩盖退货物流步骤', () => {
-  assert.equal(getRefundStageText({ status: 1, refundScene: 'FORMULATION_RETURN', paymentRefundStatus: 'PENDING' }), '待填写退货物流')
-  assert.equal(getRefundStageText({ status: 3, refundScene: 'FORMULATION_RETURN', paymentRefundStatus: 'PENDING' }), '等待商家收货处理')
+
+test('首页新登录无需资料初始化，主动退出不自动登录，旧微信授权不能建立后来会话', async () => {
+  let loginCount = 0, profileCount = 0, finishCode
+  const mocks = {
+    getSessionGeneration, isCurrentSession, isExplicitlyLoggedOut, assertCurrentSession, getToken: getSessionToken,
+    establishAccountSession: result => { beginSession(result.token); return getSessionGeneration() },
+    getWeChatLoginCode: async () => 'fixture-code',
+    loginByWeChatCode: async () => { loginCount++; return { token: 'fixture-B' } },
+    fetchAccountProfile: async () => { profileCount++; throw new Error('must not initialize profile') }
+  }
+  endSession({ explicit: false })
+  await loadOptions('pages/index/index.vue', mocks).methods.loadCurrentUser.call({})
+  assert.equal(loginCount, 1); assert.equal(profileCount, 0); assert.equal(getSessionToken(), 'fixture-B')
+  endSession()
+  await loadOptions('pages/index/index.vue', mocks).methods.loadCurrentUser.call({})
+  assert.equal(loginCount, 1)
+  endSession({ explicit: false })
+  const page = loadOptions('pages/index/index.vue', { ...mocks,
+    getWeChatLoginCode: () => new Promise(resolve => { finishCode = resolve }) })
+  const pending = page.methods.loadCurrentUser.call({})
+  beginSession('fixture-C'); finishCode('old-code'); await pending
+  assert.equal(loginCount, 1); assert.equal(getSessionToken(), 'fixture-C')
+})
+
+test('注册登录保留授权拒绝后的身份登录和会话保护，延迟跳转不能影响后来账号', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] })
+  const options = loadOptions('pages/register/register.vue', {
+    ID_TYPE_OPTIONS,
+    getSessionGeneration, assertCurrentSession,
+    getWeChatLoginCode: async () => 'fixture-code',
+    getWeChatUserProfile: async () => { throw new Error('authorization denied') },
+    login: async payload => { assert.equal(payload.avatarUrl, ''); return { token: 'fixture-B' } },
+    establishAccountSession: result => { beginSession(result.token); return getSessionGeneration() },
+    patientHisSyncNotice: () => '', redirectToWithFallback: () => { redirects++ }
+  })
+  const page = { ...options.data(), ...options.methods, canSubmit: true }
+  await page.handleLogin()
+  assert.equal(getSessionToken(), 'fixture-B')
+  assert.equal(values.has('user_info'), false); assert.equal(values.has('user_register_info'), false)
+  beginSession('fixture-C'); mock.timers.tick(1500)
+  assert.equal(redirects, 0)
+})
+test('注册页凭证保存失败即使已推进会话代次仍展示失败且不跳转', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] })
+  const toasts = [], logs = []
+  const initialGeneration = getSessionGeneration()
+  let cartRefreshes = 0
+  const options = loadOptions('pages/register/register.vue', {
+    ID_TYPE_OPTIONS, getSessionGeneration, assertCurrentSession,
+    getWeChatLoginCode: async () => 'fixture-code', getWeChatUserProfile: async () => ({}),
+    login: async () => ({ token: 'fixture-B' }),
+    establishAccountSession: () => {
+      endSession({ explicit: false })
+      throw Object.assign(new Error('登录凭证保存失败，请重试'), {
+        code: 'SESSION_STORAGE_FAILED', sessionGeneration: getSessionGeneration()
+      })
+    },
+    refreshCart: async () => { cartRefreshes++; return [] },
+    logAccess: entry => logs.push(entry),
+    redirectToWithFallback: () => { redirects++ },
+    uni: { ...uni, showToast: toast => toasts.push(toast) }
+  })
+  const page = { ...options.data(), ...options.methods, canSubmit: true }
+
+  await page.handleLogin()
+
+  assert.ok(getSessionGeneration() > initialGeneration)
+  assert.deepEqual(toasts, [{ title: '登录凭证保存失败，请重试', icon: 'none' }])
+  assert.equal(logs.length, 1)
+  assert.equal(logs[0].accessTitle, '注册登录未完成')
+  assert.equal(logs[0].extraData.reason, 'login_incomplete')
+  assert.equal(page.loggingIn, false)
+  assert.equal(cartRefreshes, 0)
+  mock.timers.tick(10000)
+  assert.equal(redirects, 0)
+})
+
+test('退款详情优先展示真实渠道阶段，历史实物退货提示线下处理', () => {
+  assert.equal(getRefundStageText({ status: 1, refundScene: 'FORMULATION_RETURN', paymentRefundStatus: 'PENDING' }), '请线下联系客服处理退款')
+  assert.equal(getRefundStageText({ status: 3, refundScene: 'FORMULATION_RETURN', paymentRefundStatus: 'PENDING' }), '请线下联系客服处理退款')
   assert.equal(getRefundStageText({ status: 3, refundScene: 'FORMULATION_PRE_SHIP', paymentRefundStatus: 'PENDING' }), '等待执行退款')
   assert.equal(getRefundStageText({ status: 3, paymentRefundStatus: 'UNKNOWN' }), '退款结果确认中')
 })
@@ -139,18 +220,16 @@ for (const name of ['signature', 'signature_landscape']) {
   })
 }
 
-test('退货物流默认今天，空白、超长和渠道处理中均不能提交', () => {
+test('历史退货物流入口不再读写物流，账号变化后不能查看原账号申请', () => {
   const options = loadOptions('pages/order/refund_logistics.vue', { getSessionGeneration, isCurrentSession })
   const page = { ...options.data(), ...options.methods }
-  page.initDateRange()
-  assert.equal(page.form.returnTime, page.formatDate(new Date()))
-  page.refundDetail = { status: 1, paymentRefundStatus: 'PENDING' }
-  page.form.logisticsCompany = ' SF '; page.form.logisticsNo = ' waybill '
-  assert.ok(options.computed.canSubmit.call(page))
-  page.form.logisticsNo = '   '; assert.equal(Boolean(options.computed.canSubmit.call(page)), false)
-  page.form.logisticsNo = 'x'.repeat(65); assert.equal(Boolean(options.computed.canSubmit.call(page)), false)
-  page.form.logisticsNo = 'waybill'; page.refundDetail.paymentRefundStatus = 'UNKNOWN'
-  assert.equal(Boolean(options.computed.canSubmit.call(page)), false)
+  options.onLoad.call(page, { refundApplicationId: 8 })
+  assert.equal(calls.length, 0)
+  beginSession('fixture-B')
+  uni.redirectTo = () => { redirects++ }
+  page.viewRefundDetail()
+  assert.equal(redirects, 0)
+  assert.equal(calls.length, 0)
 })
 
 
@@ -174,14 +253,16 @@ test('个人资料旧异步结果不能写入新账号，旧退出弹窗也不�
     getSessionGeneration, isCurrentSession, getSessionToken, endSession,
     ref: value => ({ value }), computed: fn => ({ get value() { return fn() } }),
     onMounted() {}, onShow() {}, onUnmounted() {},
-    getUserProfile: () => new Promise(resolve => { finish = resolve }),
+    fetchAccountProfile: () => new Promise(resolve => { finish = resolve }),
     STORAGE_KEY_USER_REGISTER: 'user_register_info', logout: () => { throw new Error('old modal must not revoke') }
-  }, ['loadUserProfile', 'handleLogout'])
+  }, ['loadUserProfile', 'handleLogout', 'userInfo', 'profileError'])
   uni.showModal = options => { modal = options }
   const loading = page.loadUserProfile(); page.handleLogout()
   beginSession('fixture-B'); values.set('user_register_info', { realName: 'B' })
   finish({ userName: 'A' }); await loading; await modal.success({ confirm: true })
   assert.deepEqual(values.get('user_register_info'), { realName: 'B' })
+  assert.equal(page.userInfo.value.realName, '')
+  assert.equal(page.profileError.value, '')
   assert.equal(getSessionToken(), 'fixture-B'); assert.equal(redirects, 0)
 })
 

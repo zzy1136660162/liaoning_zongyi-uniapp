@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import * as cart from '../utils/cart.js'
+import { readFileSync } from 'node:fs'
+import * as cart from './cart-api-fixture.mjs'
 import * as mode from '../utils/consultation-mode.js'
 import { loadSetup } from './sfc-harness.mjs'
 
@@ -9,6 +10,14 @@ const product = id => ({ id, productName: `商品${id}`, productCategory: Number
   goodsMerchantType: 1, status: 1, delSign: 0, available: true, stock: 20,
   skus: [{ id: 1, specText: `规格${id}`, price: Number(id), stock: 20, status: 1, delSign: 0 }] })
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve() }
+
+test('订单申请的就诊人列表仅展示脱敏证件，移除不会接入全局删除接口', async () => {
+  const source = readFileSync(new URL('../pages/dispense/apply.vue', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /\bdeletePatient\b|onDeletePatient/)
+  assert.match(source, /可选就诊人/)
+  assert.match(source, /idNumberMasked/)
+  assert.match(source, /当前账号下同一身份证无需重复添加/)
+})
 
 const harness = (overrides = {}, route = {}) => {
   let mount, show, unmount, currentSession = true, patientCalls = 0
@@ -47,7 +56,7 @@ const harness = (overrides = {}, route = {}) => {
     STORAGE_KEY_CURRENT_CONSULTATION_ID: 'current_consultation_id', uni,
     console: { debug() {}, warn() {}, error() {} }, ...overrides
   }, ['loadPatientsFromAPI', 'loadProducts', 'patients', 'selectedPatient', 'cartItems',
-    'selectedItems', 'directPurchase', 'onSubmit', 'onDeletePatient', 'selectPatient', 'onQuantityChange',
+    'selectedItems', 'directPurchase', 'onSubmit', 'removeSelectedPatient', 'selectPatient', 'onQuantityChange',
     'showAgreementDialog', 'showAgreement', 'agreementChecked', 'selectConsultationMode', 'consultationMode',
     'totalPrice', 'totalQuantity'])
   return { ...page, storage, listeners, routes, toasts, modals, deleted,
@@ -63,9 +72,10 @@ test('申请页保留混购、数量修改、协议弹窗和AI问诊路由', asy
   await page.show()
   assert.equal(page.totalPrice.value, 49)
   assert.equal(page.totalQuantity.value, 6)
-  assert.equal(page.selectedPatient.value.id, 8)
+  assert.equal(page.selectedPatient.value, null, '多位就诊人必须主动选择')
+  page.selectPatient(page.patients.value[0])
   assert.deepEqual(page.cartItems.value.map(item => item.id), keys)
-  page.onQuantityChange(page.cartItems.value[0], 4)
+  await page.onQuantityChange(page.cartItems.value[0], 4)
   assert.equal(page.totalPrice.value, 63)
   assert.equal(page.totalQuantity.value, 8)
   assert.equal(cart.getCartEntries()['7:1'].quantity, 4)
@@ -88,6 +98,7 @@ test('人工问诊仍在提交时随机分配一次，ID姓名头像保持同一
   await page.mount()
   await page.show()
   t.mock.method(Math, 'random', () => { randoms++; return 0 })
+  page.selectPatient(page.patients.value[0])
   page.selectConsultationMode(mode.CONSULTATION_MODE_MANUAL)
   page.agreementChecked.value = true
   page.onSubmit()
@@ -171,21 +182,105 @@ test('请求等待期间新增的优先患者不能被旧请求消费', async ()
   assert.equal(page.selectedPatient.value.id, 11)
 })
 
-test('患者默认选择和删除后的回落策略沿用原行为', async () => {
+test('本次移除仅清空单选，保留全部可选就诊人且刷新不会自动选回', async () => {
   const page = harness()
   await page.mount()
   await page.show()
-  page.onDeletePatient(8)
-  assert.equal(page.modals[0].content, '确定要删除此就诊人吗？')
-  await page.modals[0].success({ confirm: false })
+  page.selectPatient(page.patients.value[0])
+  page.selectPatient(page.patients.value[1])
+  assert.equal(page.selectedPatient.value.id, 9, '再次点选替换本次就诊人')
+  page.removeSelectedPatient()
+  assert.equal(page.selectedPatient.value, null)
+  assert.deepEqual(page.patients.value.map(patient => patient.id), [8, 9])
   assert.deepEqual(page.deleted, [])
-  await page.modals[0].success({ confirm: true })
-  assert.deepEqual(page.deleted, [8])
-  assert.ok(page.toasts.some(toast => toast.title === '删除成功'))
-  assert.equal(page.selectedPatient.value.id, 9)
+  assert.deepEqual(page.modals, [])
+  page.onSubmit()
+  assert.equal(page.toasts.at(-1).title, '请先选择就诊人')
+  assert.deepEqual(page.routes, [])
+  await page.show()
+  assert.equal(page.selectedPatient.value, null)
+  page.selectPatient(page.patients.value[0])
+  assert.equal(page.selectedPatient.value.id, 8, '移除后仍可重新选择同一人')
   page.changePatients([])
   await page.show()
   assert.equal(page.selectedPatient.value, null)
+})
+
+test('初次仅有一人可自动选择，移除后单人刷新也保持未选', async () => {
+  const page = harness()
+  page.changePatients([{ id: 8, name: '患者甲' }])
+  await page.show()
+  assert.equal(page.selectedPatient.value.id, 8)
+  page.removeSelectedPatient()
+  await page.show()
+  assert.equal(page.selectedPatient.value, null)
+  assert.equal(page.patients.value.length, 1)
+  assert.deepEqual(page.deleted, [])
+})
+
+test('缺少资料时提示去管理完善，补全返回后可继续下单', async () => {
+  const page = harness()
+  page.changePatients([{
+    id: 8,
+    name: '待完善就诊人',
+    profileComplete: false,
+    profileIncompleteReason: '请完善出生日期和性别'
+  }])
+  await page.mount()
+  await page.show()
+  page.onSubmit()
+  assert.equal(page.modals.at(-1).title, '请完善就诊人信息')
+  assert.match(page.modals.at(-1).content, /出生日期和性别/)
+  assert.deepEqual(page.routes, [])
+  page.modals.at(-1).success({ confirm: true })
+  assert.equal(page.routes.at(-1), '/pages/user/patient_list')
+
+  page.changePatients([{ id: 8, name: '已完善就诊人', profileComplete: true }])
+  page.patientChanged(8)
+  await page.show()
+  page.onSubmit()
+  assert.match(page.routes.at(-1), /\/pages\/dispense\/consultation\?/)
+})
+
+test('完善资料弹窗返回前切换账号，不跳转旧账号管理页', async () => {
+  const page = harness()
+  page.changePatients([{ id: 8, profileComplete: false }])
+  await page.show()
+  page.onSubmit()
+  page.changeSession()
+  page.modals.at(-1).success({ confirm: true })
+  assert.deepEqual(page.routes, [])
+})
+
+test('优先患者及当前选择按相同ID匹配，不受数字或字符串影响', async () => {
+  const page = harness()
+  await page.mount()
+  await page.show()
+  page.patientChanged('9')
+  await page.show()
+  assert.equal(page.selectedPatient.value.id, 9)
+  page.changePatients([{ id: '8', name: '患者甲' }, { id: '9', name: '患者乙' }])
+  await page.show()
+  assert.equal(page.selectedPatient.value.id, '9')
+})
+
+test('旧刷新携带的优先患者不能覆盖等待期间的移除或新选择', async () => {
+  for (const replaceSelection of [false, true]) {
+    let resolve, calls = 0
+    const rows = [{ id: 8, name: '患者甲' }, { id: 9, name: '患者乙' }]
+    const page = harness({ getPatientList: () => ++calls === 1
+      ? Promise.resolve(rows) : new Promise(done => { resolve = done }) })
+    await page.mount()
+    await page.show()
+    page.selectPatient(page.patients.value[0])
+    page.patientChanged(8)
+    const pending = page.show()
+    page.removeSelectedPatient()
+    if (replaceSelection) page.selectPatient(page.patients.value[1])
+    resolve(rows)
+    await pending
+    assert.equal(page.selectedPatient.value?.id ?? null, replaceSelection ? 9 : null)
+  }
 })
 
 test('切换账号或卸载后忽略迟到患者响应并移除事件监听', async () => {
@@ -227,17 +322,19 @@ test('患者接口失败沿用原错误提示并清空选择', async () => {
   assert.equal(page.toasts[0].title, 'fixture-patients-offline')
 })
 
-test('删除等待期间切换账号或卸载，不显示旧账号成功提示或刷新患者', async () => {
+test('切换账号或卸载后不能通过点击修改旧页面的就诊人', async () => {
   for (const action of ['changeSession', 'unmount']) {
-    let resolve
-    const page = harness({ deletePatient: () => new Promise(done => { resolve = done }) })
-    page.onDeletePatient(8)
-    const pending = page.modals[0].success({ confirm: true })
+    const page = harness()
+    await page.mount()
+    await page.show()
+    page.selectPatient(page.patients.value[0])
     page[action]()
-    resolve()
-    await pending
+    page.selectPatient(page.patients.value[1])
+    page.removeSelectedPatient()
+    assert.equal(page.selectedPatient.value.id, 8)
     assert.deepEqual(page.toasts, [])
-    assert.equal(page.patientCalls(), 0)
+    assert.deepEqual(page.deleted, [])
+    assert.equal(page.patientCalls(), 1)
   }
 })
 
@@ -261,8 +358,9 @@ test('立即购买数量和问卷凭据沿用独立条目，不覆盖购物车�
   const before = structuredClone(cart.getCartEntries())
   await page.mount()
   await page.show()
+  page.selectPatient(page.patients.value[0])
   assert.equal(page.cartItems.value[0].quantity, 3)
-  page.onQuantityChange(page.cartItems.value[0], 4)
+  await page.onQuantityChange(page.cartItems.value[0], 4)
   page.agreementChecked.value = true
   page.onSubmit()
   const query = new URL(page.routes[0], 'https://fixture.invalid').searchParams

@@ -1,6 +1,5 @@
 import { normalizeCartId as normalizeId, splitCartItemKey, buildCartItemKey } from './cart-key.js'
 import {
-  STORAGE_KEY_CART_ITEMS,
   STORAGE_KEY_CHECKOUT_PRODUCT_IDS
 } from './storage.js'
 import {
@@ -9,9 +8,87 @@ import {
   resolveProductTypeLabel
 } from './product-biz.js'
 import { inventoryFields } from './inventory.js'
+import { resolvePurchaseQuantityLimit } from './purchase-quantity.js'
 import { resolveQuestionnaireState, resolveCheckoutQuestionnaire } from './questionnaire-state.js'
 
-const CART_REMOTE_SYNC_EVENT = 'cartRemoteSync'
+import { getCartList, upsertCartItem, updateCartItem, deleteCartItem, deleteCartItems, cleanupPurchasedCartItems } from '../api/cart.js'
+import { buildCartSyncPayload } from './cart-sync-payload.js'
+import { getSessionToken, getSessionGeneration, assertCurrentSession, onSessionChanged } from './session.js'
+
+let confirmedCart = {}
+let cartLoaded = false
+let requestQueue = Promise.resolve()
+
+onSessionChanged(() => {
+  confirmedCart = {}
+  cartLoaded = false
+  requestQueue = Promise.resolve()
+  uni.$emit?.('cartUpdated', { source: 'session' })
+})
+
+// 同一客户端的读写按顺序执行，增量在执行时读取最新确认数量，旧账号响应不能回写。
+const requestCart = action => {
+  const session = getSessionGeneration()
+  const pending = requestQueue.then(async () => {
+    assertCurrentSession(session)
+    const result = await action(session)
+    assertCurrentSession(session)
+    return result
+  })
+  requestQueue = pending.catch(() => {
+    if (getSessionGeneration() === session) cartLoaded = false
+  })
+  return pending
+}
+
+const requireCartLogin = () => {
+  if (!getSessionToken()) throw new Error('请先登录后操作购物车')
+}
+
+const serverCartEntry = item => {
+  if (!item || typeof item !== 'object') throw new Error('购物车响应不完整，请刷新后重试')
+  const product = mapServerCartItemToProduct(item)
+  if (!/^[1-9]\d*$/.test(product.productId) || (product.skuId && !/^[1-9]\d*$/.test(product.skuId)) ||
+      !/^[1-9]\d*$/.test(product.serverCartItemId || '') || !/^\d+$/.test(product.serverCartVersion ?? '') ||
+      !Number.isInteger(item.quantity) || item.quantity < 1 || ![0, 1].includes(item.checked)) {
+    throw new Error('购物车响应不完整，请刷新后重试')
+  }
+  return { ...product, quantity: item.quantity, selected: item.checked === 1,
+    timestamp: item.updatedAt ? new Date(item.updatedAt).getTime() : Date.now() }
+}
+
+const applyServerItem = (cartKey, item) => {
+  const entry = serverCartEntry(item)
+  if (entry.cartKey !== cartKey) throw new Error('购物车规格已变化，请刷新后重试')
+  replaceCartData({ ...readCartData(), [cartKey]: entry })
+}
+
+const fetchCart = async session => {
+  const items = await getCartList()
+  assertCurrentSession(session)
+  if (!Array.isArray(items)) throw new Error('购物车响应不完整，请刷新后重试')
+  const entries = Object.fromEntries(items.map(item => {
+    const entry = serverCartEntry(item)
+    return [entry.cartKey, entry]
+  }))
+  replaceCartData(entries)
+  return entries
+}
+
+const ensureCartLoaded = async session => {
+  requireCartLogin()
+  if (!cartLoaded) await fetchCart(session)
+  assertCurrentSession(session)
+}
+
+export const refreshCart = () => requestCart(async session => {
+  if (!getSessionToken()) {
+    replaceCartData({})
+    return []
+  }
+  await fetchCart(session)
+  return Object.values(readCartData())
+})
 
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value)
@@ -148,7 +225,7 @@ const buildCartEntry = (cartKeyOrProductId, partial = {}) => {
 
   const stock = resolveStockValue(partial, null)
   const available = !skuId || stock === 0 ? false : resolveAvailableFlag(partial, true)
-  const quantity = clampQuantityToStock(toPositiveInt(partial.quantity, 1), stock)
+  const quantity = toPositiveInt(partial.quantity, 1)
   const needQuestionnaire = toNumber(partial.needQuestionnaire, 0)
 
   return {
@@ -199,46 +276,12 @@ const normalizeCartData = (rawData) => {
   return normalized
 }
 
-const readCartData = () => {
-  const raw = uni.getStorageSync(STORAGE_KEY_CART_ITEMS) || {}
-  return normalizeCartData(raw)
-}
-
-// 本地写入立即通知页面/角标；后台推送独立防抖，不能阻塞用户增减数量。
-const emitCartUpdated = (source = 'local') => {
-  uni.$emit('cartUpdated', { source })
-}
-
-const triggerRemoteSync = (action, payload) => {
-  try {
-    uni.$emit(CART_REMOTE_SYNC_EVENT, { action, payload })
-  } catch (error) {
-    console.warn('cart remote sync dispatch failed:', error)
-  }
-}
-
-const writeCartData = (cartData, options = {}) => {
-  const normalized = normalizeCartData(cartData)
-  for (const key of options.syncProductIds || []) {
-    if (normalized[key]) normalized[key].revision = newCartRevision()
-  }
-  uni.setStorageSync(STORAGE_KEY_CART_ITEMS, normalized)
-
-  if (!options.silent) {
-    emitCartUpdated(options.eventSource || 'local')
-  }
-
-  if (!options.suppressSync) {
-    if (options.syncProductIds?.length) {
-      triggerRemoteSync('upsert', options.syncProductIds)
-    }
-    if (options.syncRemoveIds?.length) {
-      triggerRemoteSync('remove', options.syncRemoveIds)
-    }
-    if (options.syncClear) {
-      triggerRemoteSync('clear', options.syncClear)
-    }
-  }
+// 购物车只保留接口确认的内存快照，不读取或持久化 cart_items。
+const readCartData = () => normalizeCartData(confirmedCart)
+const writeCartData = (cartData) => {
+  confirmedCart = normalizeCartData(cartData)
+  cartLoaded = true
+  uni.$emit('cartUpdated', { source: 'server' })
 }
 
 const newCartRevision = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
@@ -256,20 +299,7 @@ export const replaceCartData = (cartData) => {
     entry.revision = unchanged && previous.revision ? previous.revision : newCartRevision()
     if (unchanged) entry.timestamp = previous.timestamp
   })
-  writeCartData(next, { suppressSync: true, eventSource: 'server' })
-}
-
-/** 只确认本次发送的行；迟到响应不能把旧服务端版本绑定到后来的本地编辑。 */
-export const acknowledgeServerCartItem = (cartKey, revision, serverItem) => {
-  if (!serverItem) return false
-  const server = mapServerCartItemToProduct(serverItem)
-  const current = readCartData()
-  const entry = current[cartKey]
-  if (!entry || entry.revision !== revision || server.cartKey !== cartKey ||
-      !/^[1-9]\d*$/.test(server.serverCartItemId || '') || !/^\d+$/.test(server.serverCartVersion ?? '')) return false
-  current[cartKey] = { ...entry, serverCartItemId: server.serverCartItemId, serverCartVersion: server.serverCartVersion }
-  writeCartData(current, { suppressSync: true, silent: true })
-  return true
+  writeCartData(next)
 }
 
 const resolveCartMetaFromProduct = (product = {}, existing = {}, options = {}) => {
@@ -465,215 +495,129 @@ export const getCartTotalQuantity = () => {
   return Object.values(readCartData()).reduce((sum, entry) => sum + toPositiveInt(entry.quantity, 1), 0)
 }
 
-export const addCartItem = (productOrId, quantity = 1, options = {}) => {
-  try {
-    const cartKey = resolveCartItemKey(productOrId, options)
-    if (!cartKey) {
-      return false
-    }
-
-    const productId = resolveProductId(productOrId)
-    const skuId = resolveSkuId(productOrId, options)
-    if (!skuId) return false
-    const cartData = readCartData()
-    const existing = cartData[cartKey] || {}
-    const meta = resolveCartMetaFromProduct(productOrId, existing, options)
-    const product = productOrId && typeof productOrId === 'object' ? productOrId : {}
-
-    cartData[cartKey] = {
-      ...existing,
-      productId,
-      skuId: skuId || null,
-      skuCode: pickText(options.skuCode, product.skuCode, existing.skuCode),
-      skuName: pickText(options.skuName, product.skuName, existing.skuName),
-      skuSpecText: pickText(options.skuSpecText, product.skuSpecText, product.specText, existing.skuSpecText),
-      productName: pickText(product.productName, product.name, existing.productName),
-      coverImage: pickText(product.coverImage, product.image, existing.coverImage),
-      price: product.price !== undefined && product.price !== null && product.price !== ''
-        ? Number(product.price)
-        : (existing.price ?? null),
-      unit: pickText(product.unit, existing.unit),
-      selected: meta.available !== false && meta.stock !== 0
-        ? (options.selected !== undefined ? toFlag(options.selected, true) : (existing.selected !== undefined ? toFlag(existing.selected, true) : true))
-        : false,
-      quantity: clampQuantityToStock(quantity, meta.stock),
-      available: meta.stock === 0 ? false : meta.available,
-      stock: meta.stock,
-      ...inventoryFields(meta),
-      goodsMerchantType: meta.goodsMerchantType,
-      productCategory: meta.productCategory,
-      isPrescription: meta.isPrescription,
-      categoryId: meta.categoryId,
-      categoryCode: meta.categoryCode,
-      needQuestionnaire: meta.needQuestionnaire,
-      questionnaireId: meta.questionnaireId,
-      answerId: meta.answerId,
-      questionnairePassed: meta.questionnairePassed,
-      timestamp: existing.timestamp || Date.now()
-    }
-
-    writeCartData(cartData, { syncProductIds: [cartKey] })
-    return true
-  } catch (error) {
-    console.error('addCartItem failed:', error)
-    return false
+/** 加入指定件数，服务端接口接收的绝对数量在队列中计算。 */
+export const addCartItem = (product, quantity = 1, options = {}) => requestCart(async session => {
+  await ensureCartLoaded(session)
+  const cartKey = resolveCartItemKey(product, options)
+  if (!cartKey || !resolveSkuId(product, options) || !Number.isInteger(Number(quantity)) || Number(quantity) < 1) {
+    throw new Error('请选择有效商品规格和数量')
   }
-}
+  const existing = readCartData()[cartKey]
+  const nextQuantity = (existing?.quantity || 0) + Number(quantity)
+  const limit = resolvePurchaseQuantityLimit(product)
+  if (limit !== null && nextQuantity > limit) throw new Error('已达到可购买数量上限')
+  const meta = resolveCartMetaFromProduct(product, existing, options)
+  const payload = buildCartSyncPayload(cartKey, { ...meta,
+    quantity: nextQuantity, selected: existing?.selected !== false })
+  const item = await upsertCartItem(payload)
+  assertCurrentSession(session)
+  applyServerItem(cartKey, item)
+  return true
+})
 
-
-/** 补答只更新原行的问卷凭据；期间数量、勾选和删除操作均以当前购物车为准。 */
-export const updateCartQuestionnaire = (product, submission) => {
+/** 补答仅更新已有规格行的问卷凭据，不重建已被删除的条目。 */
+export const updateCartQuestionnaire = (product, submission) => requestCart(async session => {
+  await ensureCartLoaded(session)
   if (resolveQuestionnaireState(product, submission) !== 'passed') return false
   const cartKey = resolveCartItemKey(product)
-  const data = readCartData()
-  if (!resolveSkuId(product) || !data[cartKey]) return false
-  data[cartKey] = { ...data[cartKey], needQuestionnaire: 1, questionnaireId: product.questionnaireId,
-    answerId: submission.answerId, questionnairePassed: true }
-  writeCartData(data, { syncProductIds: [cartKey] })
+  if (!resolveSkuId(product) || !readCartData()[cartKey]) return false
+  const item = await updateCartItem(cartKey, { questionnaireId: product.questionnaireId, answerId: submission.answerId })
+  assertCurrentSession(session)
+  applyServerItem(cartKey, item)
+  return true
+})
+
+const removeCartKeys = async (ids, session) => {
+  if (!ids.length) return true
+  if (ids.length === 1) await deleteCartItem(ids[0])
+  else await deleteCartItems(ids)
+  assertCurrentSession(session)
+  const cart = readCartData()
+  ids.forEach(id => {
+    const { productId, skuId } = splitCartItemKey(id)
+    Object.keys(cart).forEach(key => {
+      if (key === id || (!skuId && cart[key].productId === productId)) delete cart[key]
+    })
+  })
+  writeCartData(cart)
+  updateCheckoutIdsAfterRemoval(ids)
   return true
 }
 
-export const setCartItemQuantity = (productId, quantity) => {
-  try {
-    const cartKey = resolveCartItemKey(productId)
-    if (!cartKey) {
-      return false
-    }
-
-    if (toNumber(quantity, 0) <= 0) {
-      return removeFromCart(cartKey)
-    }
-
-    const cartData = readCartData()
-    const existing = cartData[cartKey]
-    if (!existing?.skuId) return false
-    const entry = buildCartEntry(cartKey, existing)
-    if (!entry) {
-      return false
-    }
-    cartData[cartKey] = {
-      ...entry,
-      quantity: clampQuantityToStock(quantity, existing.stock)
-    }
-    writeCartData(cartData, { syncProductIds: [cartKey] })
-    return true
-  } catch (error) {
-    console.error('setCartItemQuantity failed:', error)
-    return false
-  }
+const setCartQuantity = async (cartKey, quantity, session) => {
+  if (!readCartData()[cartKey]?.skuId) throw new Error('购物车商品已变化，请刷新后重试')
+  if (!Number.isInteger(Number(quantity))) throw new Error('购物车数量必须是整数')
+  if (Number(quantity) <= 0) return removeCartKeys([cartKey], session)
+  const item = await updateCartItem(cartKey, { quantity: Number(quantity) })
+  assertCurrentSession(session)
+  applyServerItem(cartKey, item)
+  return true
 }
 
-export const removeFromCart = (productIds) => {
-  try {
-    const ids = uniqueIds(productIds)
-    if (!ids.length) {
-      return true
-    }
+export const setCartItemQuantity = (productId, quantity) => requestCart(async session => {
+  await ensureCartLoaded(session)
+  return setCartQuantity(resolveCartItemKey(productId), quantity, session)
+})
 
-    const cartData = readCartData()
-    ids.forEach((id) => {
-      const cartKey = resolveCartItemKey(id)
-      if (cartData[cartKey]) {
-        delete cartData[cartKey]
-        return
-      }
-      const { productId, skuId } = splitCartItemKey(cartKey)
-      if (!skuId && productId) {
-        Object.keys(cartData).forEach((existingKey) => {
-          const entry = cartData[existingKey]
-          const existingProductId = normalizeId(entry?.productId || splitCartItemKey(existingKey).productId)
-          if (existingProductId === productId) {
-            delete cartData[existingKey]
-          }
-        })
-      }
-    })
+export const changeCartItemQuantity = (productId, delta) => requestCart(async session => {
+  await ensureCartLoaded(session)
+  if (!Number.isInteger(delta)) throw new Error('购物车数量变化必须是整数')
+  const cartKey = resolveCartItemKey(productId)
+  const entry = readCartData()[cartKey]
+  if (!entry) throw new Error('购物车商品已变化，请刷新后重试')
+  return setCartQuantity(cartKey, entry.quantity + delta, session)
+})
 
-    writeCartData(cartData, { syncRemoveIds: ids })
-    updateCheckoutIdsAfterRemoval(ids)
-    return true
-  } catch (error) {
-    console.error('removeFromCart failed:', error)
-    return false
-  }
+export const removeFromCart = productIds => requestCart(async session => {
+  await ensureCartLoaded(session)
+  return removeCartKeys(uniqueIds(productIds), session)
+})
+
+/** 付款清理只提交下单时的服务端行及版本；重启后也不依赖内存匹配或按 SKU 猜测删除。 */
+export const removePurchasedCartItems = (snapshot = {}) => requestCart(async session => {
+  requireCartLogin()
+  const items = Object.values(snapshot).filter(item =>
+    /^[1-9]\d*$/.test(String(item.serverCartItemId || '')) && /^\d+$/.test(String(item.serverCartVersion ?? '')))
+    .map(item => ({ id: item.serverCartItemId, cartVersion: item.serverCartVersion }))
+  if (!items.length) return true
+  await cleanupPurchasedCartItems(items)
+  assertCurrentSession(session)
+  await fetchCart(session)
+  updateCheckoutIdsAfterRemoval(Object.keys(snapshot).filter(key => !readCartData()[key]))
+  return true
+})
+
+export const clearCart = () => requestCart(async session => {
+  requireCartLogin()
+  await deleteCartItems()
+  assertCurrentSession(session)
+  writeCartData({})
+  clearCheckoutProductIds()
+  return true
+})
+
+const setSelection = async (cartKey, selected, session) => {
+  const entry = readCartData()[cartKey]
+  if (!entry) return false
+  const checked = selected && isCartEntryAvailable(entry) ? 1 : 0
+  const item = await updateCartItem(cartKey, { checked })
+  assertCurrentSession(session)
+  applyServerItem(cartKey, item)
+  return !selected || readCartData()[cartKey].selected
 }
 
-/** 支付旧订单只能清理下单时的购物车行，不能删除之后重新加购或编辑的同规格。 */
-export const removePurchasedCartItems = (snapshot = {}) => {
-  try {
-    const current = readCartData()
-    const keys = Object.keys(snapshot).filter(key => {
-      const purchased = snapshot[key], entry = current[key]
-      return purchased?.revision && entry && purchased.revision === entry.revision &&
-        purchased.quantity === entry.quantity && purchased.timestamp === entry.timestamp
-    })
-    if (!keys.length) return true
-    const items = keys.map(key => snapshot[key]).filter(item =>
-      /^[1-9]\d*$/.test(String(item.serverCartItemId || '')) && /^\d+$/.test(String(item.serverCartVersion ?? '')))
-      .map(item => ({ id: item.serverCartItemId, cartVersion: item.serverCartVersion }))
-    keys.forEach(key => { delete current[key] })
-    writeCartData(current, { suppressSync: true })
-    updateCheckoutIdsAfterRemoval(keys)
-    triggerRemoteSync('purchasedCleanup', { keys, items,
-      revisions: Object.fromEntries(keys.map(key => [key, snapshot[key].revision])) })
-    return true
-  } catch (error) {
-    console.error('removePurchasedCartItems failed:', error)
-    return false
-  }
-}
+export const updateProductSelection = (productId, selected) => requestCart(async session => {
+  await ensureCartLoaded(session)
+  return setSelection(resolveCartItemKey(productId), selected, session)
+})
 
-export const clearCart = () => {
-  try {
-    const removedKeys = Object.keys(readCartData())
-    writeCartData({}, { syncClear: removedKeys })
-    clearCheckoutProductIds()
-    return true
-  } catch (error) {
-    console.error('clearCart failed:', error)
-    return false
+export const updateMultipleSelections = (selectionMap = {}) => requestCart(async session => {
+  await ensureCartLoaded(session)
+  for (const [productId, selected] of Object.entries(selectionMap)) {
+    await setSelection(resolveCartItemKey(productId), selected, session)
   }
-}
-
-export const updateProductSelection = (productId, selected) => {
-  try {
-    const cartKey = resolveCartItemKey(productId)
-    const cartData = readCartData()
-    if (!cartData[cartKey]) {
-      return false
-    }
-
-    cartData[cartKey].selected = isCartEntryAvailable(cartData[cartKey])
-      ? toFlag(selected, true)
-      : false
-    writeCartData(cartData, { syncProductIds: [cartKey] })
-    return selected ? cartData[cartKey].selected : true
-  } catch (error) {
-    console.error('updateProductSelection failed:', error)
-    return false
-  }
-}
-
-export const updateMultipleSelections = (selectionMap = {}) => {
-  try {
-    const cartData = readCartData()
-    const changedIds = []
-    Object.entries(selectionMap).forEach(([productId, selected]) => {
-      const cartKey = resolveCartItemKey(productId)
-      if (cartData[cartKey]) {
-        cartData[cartKey].selected = isCartEntryAvailable(cartData[cartKey])
-          ? toFlag(selected, true)
-          : false
-        changedIds.push(cartKey)
-      }
-    })
-    writeCartData(cartData, { syncProductIds: changedIds })
-    return true
-  } catch (error) {
-    console.error('updateMultipleSelections failed:', error)
-    return false
-  }
-}
+  return true
+})
 
 export const getSelectedProductIds = () => {
   return Object.entries(readCartData())
@@ -753,12 +697,10 @@ export const validateCheckoutStock = (productIds = [], categories = [], entries)
   return { valid: true, message: '', productId: null }
 }
 
-export const loadCartItems = (categories = [], onlySelected = false, { entries, preserveQuantity = false } = {}) => {
+export const loadCartItems = (categories = [], onlySelected = false, { entries, preserveQuantity = true } = {}) => {
   try {
     const cartData = entries === undefined ? readCartData() : { ...entries }
     const cartItems = []
-    let needsSave = false
-    let quantityChanged = false
 
     Object.entries(cartData).forEach(([cartKey, entry]) => {
       if (onlySelected && !entry.selected) {
@@ -788,7 +730,6 @@ export const loadCartItems = (categories = [], onlySelected = false, { entries, 
       const nextAvailable = nextStock === 0 ? false : currentMeta.available
       const nextSelected = nextAvailable ? entry.selected !== false : false
       const nextQuantity = preserveQuantity ? toPositiveInt(entry.quantity, 1) : clampQuantityToStock(entry.quantity, nextStock)
-      quantityChanged = quantityChanged || entry.quantity !== nextQuantity
       const productSkuId = normalizeId(product.skuId ?? entry.skuId)
       const productId = normalizeId(product.productId ?? entry.productId ?? splitCartItemKey(cartKey).productId)
       const skuSpecText = pickText(product.skuSpecText, product.specText, entry.skuSpecText)
@@ -798,48 +739,6 @@ export const loadCartItems = (categories = [], onlySelected = false, { entries, 
         : (entry.price ?? 0)
 
       const nextInventory = inventoryFields(product, entry)
-      if (
-        entry.inventoryMode !== nextInventory.inventoryMode ||
-        entry.inventoryStatus !== nextInventory.inventoryStatus ||
-        entry.inventoryReason !== nextInventory.inventoryReason ||
-        entry.inventoryCheckedAt !== nextInventory.inventoryCheckedAt ||
-        entry.goodsMerchantType !== nextGoodsMerchantType ||
-        entry.productCategory !== nextProductCategory ||
-        entry.isPrescription !== nextIsPrescription ||
-        entry.categoryId !== nextCategoryId ||
-        entry.categoryCode !== nextCategoryCode ||
-        entry.needQuestionnaire !== nextNeedQuestionnaire ||
-        entry.questionnaireId !== nextQuestionnaireId ||
-        entry.answerId !== nextAnswerId ||
-        entry.questionnairePassed !== nextQuestionnairePassed ||
-        entry.available !== nextAvailable ||
-        entry.stock !== nextStock ||
-        entry.selected !== nextSelected ||
-        entry.quantity !== nextQuantity
-      ) {
-        cartData[cartKey] = {
-          ...entry,
-          productId,
-          skuId: productSkuId || null,
-          skuName,
-          skuSpecText,
-          selected: nextSelected,
-          quantity: nextQuantity,
-          stock: nextStock,
-          ...nextInventory,
-          available: nextAvailable,
-          goodsMerchantType: nextGoodsMerchantType,
-          productCategory: nextProductCategory,
-          isPrescription: nextIsPrescription,
-          categoryId: nextCategoryId,
-          categoryCode: nextCategoryCode,
-          needQuestionnaire: nextNeedQuestionnaire,
-          questionnaireId: nextQuestionnaireId,
-          answerId: nextAnswerId,
-          questionnairePassed: nextQuestionnairePassed
-        }
-        needsSave = true
-      }
 
       if (onlySelected && !nextSelected) {
         return
@@ -878,10 +777,6 @@ export const loadCartItems = (categories = [], onlySelected = false, { entries, 
         timestamp: entry.timestamp || Date.now()
       })
     })
-
-    if (needsSave && entries === undefined && !preserveQuantity) {
-      writeCartData(cartData, { suppressSync: true, silent: !quantityChanged })
-    }
 
     return cartItems.sort((a, b) => toNumber(a.timestamp, 0) - toNumber(b.timestamp, 0))
   } catch (error) {

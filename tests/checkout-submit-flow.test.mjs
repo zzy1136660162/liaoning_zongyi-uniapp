@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
-import * as cart from '../utils/cart.js'
+import * as cart from './cart-api-fixture.mjs'
 import * as checkout from '../utils/checkout.js'
 import * as submission from '../utils/order-submission.js'
 import * as session from '../utils/session.js'
@@ -21,14 +21,14 @@ globalThis.uni = {
   },
   navigateBack() {}, showModal() {}
 }
-beforeEach(() => {
+beforeEach(async () => {
   storage.clear(); messages.length = 0; navigations.length = 0; redirects.length = 0; channels.clear()
   session.beginSession('account-A')
 })
 const product = (extra = {}, stock = 8) => ({ id: 10, productName: '测试商品', productCategory: 2,
   goodsMerchantType: 1, status: 1, delSign: 0, price: 10, stock, available: true, needQuestionnaire: 0,
   skus: [{ id: 11, status: 1, delSign: 0, price: 10, stock, defaultFlag: 1 }], ...extra })
-const addToCart = (quantity = 5) => { const detail = product(); cart.addCartItem(withProductSku(detail, detail.skus[0]), quantity) }
+const addToCart = async (quantity = 5) => { const detail = product(); await cart.addCartItem(withProductSku(detail, detail.skus[0]), quantity) }
 const deferred = () => {
   let resolve
   const promise = new Promise(finish => { resolve = finish })
@@ -53,12 +53,12 @@ async function confirm({ route = {}, readProduct = async () => product(), create
     'patients', 'orderRemark', 'directPurchase', 'selectionEntries', 'selectionIssue', 'submitting', 'canSubmit'])
   hooks.load({ selectedItems: '10:11', ...route })
   await hooks.show()
-  page.selectPatient({ detail: { value: '0' } })
+  page.selectPatient(page.patients.value[0])
   return { ...page, orders, payments, show: hooks.show, unload: hooks.unload }
 }
 
 test('确认页显示5件后库存降至2件，实际submit拒绝且不截量或创建订单', async () => {
-  addToCart(5)
+  await addToCart(5)
   let stock = 8
   const page = await confirm({ readProduct: async () => product({}, stock) })
   assert.equal(page.orderInfo.value.items[0].quantity, 5)
@@ -72,7 +72,7 @@ test('确认页显示5件后库存降至2件，实际submit拒绝且不截量或
 })
 
 test('直接购买3件时真实提交3件，同SKU购物车已有5件保持原样', async () => {
-  addToCart(5)
+  await addToCart(5)
   const original = cart.getCartEntries()
   const page = await confirm({ route: { buyQuantity: '3' } })
   assert.equal(page.orderInfo.value.items[0].quantity, 3)
@@ -84,9 +84,9 @@ test('直接购买3件时真实提交3件，同SKU购物车已有5件保持原�
 })
 
 test('购物车数量在展示后改变，首次提交要求核对，第二次才按新数量创建', async () => {
-  addToCart(5)
+  await addToCart(5)
   const page = await confirm()
-  cart.setCartItemQuantity('10:11', 3)
+  await cart.setCartItemQuantity('10:11', 3)
   await page.submitOrder()
   assert.equal(page.orders.length, 0)
   assert.equal(page.orderInfo.value.items[0].quantity, 3)
@@ -97,7 +97,7 @@ test('购物车数量在展示后改变，首次提交要求核对，第二次�
 })
 
 test('提交前商品读取失败时保留原购物车且不创建订单', async () => {
-  addToCart(5)
+  await addToCart(5)
   let offline = false
   const page = await confirm({ readProduct: async () => { if (offline) throw new Error('fixture offline'); return product() } })
   const original = cart.getCartEntries()
@@ -109,7 +109,7 @@ test('提交前商品读取失败时保留原购物车且不创建订单', async
 })
 
 test('商品读取期间切换账号，旧确认页不得创建订单', async () => {
-  addToCart(5)
+  await addToCart(5)
   const waiting = deferred()
   let delay = false
   const page = await confirm({ readProduct: () => delay ? waiting.promise : Promise.resolve(product()) })
@@ -124,12 +124,12 @@ test('商品读取期间切换账号，旧确认页不得创建订单', async ()
 })
 
 test('直接购买补答通过EventChannel更新凭据，返回原页保留患者与备注', async () => {
-  addToCart(5)
+  await addToCart(5)
   let needsQuestionnaire = false
   const page = await confirm({ route: { buyQuantity: '3' }, readProduct: async () => product(
     needsQuestionnaire ? { needQuestionnaire: 1, questionnaireId: 90 } : {}) })
   const original = cart.getCartEntries()
-  page.selectPatient({ detail: { value: '1' } })
+  page.selectPatient(page.patients.value[1])
   page.orderRemark.value = '保留这条备注'
   needsQuestionnaire = true
   await page.submitOrder()
@@ -154,7 +154,7 @@ test('直接购买补答通过EventChannel更新凭据，返回原页保留患�
 })
 
 test('弱网丢失创建响应后再次提交相同内容，实际payload沿用requestId', async () => {
-  addToCart(5)
+  await addToCart(5)
   const page = await confirm({ create: async (_data, call) => {
     if (call === 1) throw new Error('fixture response lost')
     return { id: 100, payableAmount: 50 }
@@ -170,7 +170,7 @@ test('弱网丢失创建响应后再次提交相同内容，实际payload沿用r
 })
 
 test('重放订单已取消时不支付且释放旧请求，再提交相同内容使用新requestId', async () => {
-  addToCart(5)
+  await addToCart(5)
   const original = cart.getCartEntries()
   const page = await confirm({ create: async (_data, call) => {
     if (call === 1) throw new Error('fixture response lost')
@@ -194,7 +194,7 @@ test('重放订单已取消时不支付且释放旧请求，再提交相同内�
 })
 
 test('重放已付款订单跳付款结果且保留receipt清理快照，同页重复点击不再创建，新页面可再次购买', async () => {
-  addToCart(5)
+  await addToCart(5)
   const original = cart.getCartEntries()
   const page = await confirm({ create: async (_data, call) => {
     if (call === 1) throw new Error('fixture response lost')

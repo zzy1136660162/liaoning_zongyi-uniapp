@@ -1,7 +1,6 @@
 <template>
   <view
     class="page"
-    :class="{ 'with-actions': showActionButton }"
   >
     <view class="status-card">
       <view class="status-section">
@@ -25,10 +24,10 @@
         </view>
       </view>
       <view
-        v-if="detail.refundLastError"
+        v-if="statusNotice"
         class="status-notice"
       >
-        <text>{{ detail.refundLastError }}</text>
+        <text>{{ statusNotice }}</text>
       </view>
       <view class="amount-section">
         <text class="amount-label">
@@ -258,22 +257,6 @@
         </text>
       </view>
     </view>
-
-    <view
-      v-if="showActionButton"
-      class="bottom-bar"
-    >
-      <text class="action-tip">
-        寄回商品后，请填写退货物流信息
-      </text>
-      <button
-        class="action-btn"
-        :class="getActionButtonClass()"
-        @tap="handleAction"
-      >
-        {{ getActionButtonText() }}
-      </button>
-    </view>
   </view>
 </template>
 
@@ -281,9 +264,12 @@
 import { getRefundStageText } from '@/utils/refund.js'
 import dayjs from 'dayjs'
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+import { createPageReturn } from '@/utils/page-return.js'
 import { getRefundDetail } from '@/api/refund.js'
 import { useProductImages } from '@/utils/product-image.js'
 import { logPageView } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'REFUND', accessType: '退款售后', pageType: 'REFUND_DETAIL', requestUri: '/pages/order/refund_detail' }
 
 export default {
   name: 'RefundDetail',
@@ -291,57 +277,90 @@ export default {
     return useProductImages()
   },
   data() {
+    const sessionGeneration = getSessionGeneration()
     return {
       refundApplicationId: null,
       detail: {},
-      sessionGeneration: getSessionGeneration()
+      pageActive: true,
+      detailRequestSequence: 0,
+      detailLoading: false,
+      sessionGeneration,
+      pageReturn: createPageReturn(() => isCurrentSession(sessionGeneration))
     }
   },
 
   computed: {
-    showActionButton() {
-      // 审核通过状态且未填写物流信息时显示操作按钮
-      return this.detail.status === 1 && (!this.detail.paymentRefundStatus || this.detail.paymentRefundStatus === 'PENDING') &&
-        !String(this.detail.refundScene || '').startsWith('THERAPY_') && this.detail.refundScene !== 'FORMULATION_PRE_SHIP' &&
-        (!this.detail.returnLogisticsCompany || !this.detail.returnLogisticsNo)
+    statusNotice() {
+      const { status, paymentRefundStatus, refundLastError } = this.detail
+      // 与阶段标题保持一致：渠道仍在处理或确认时，不能提前展示完成说明。
+      if (['PROCESSING', 'UNKNOWN'].includes(paymentRefundStatus)) return refundLastError || ''
+      // 成功结果优先于历史提示，兼容仅有数字状态的旧退款记录。
+      if (paymentRefundStatus === 'SUCCESS' || status === 4) {
+        return '退款已完成，请查看原支付账户的到账记录。'
+      }
+      return refundLastError || ''
     }
   },
 
   onLoad(options) {
+    this.pageReturn.bind()
     this.refundApplicationId = options.refundApplicationId
     if (!this.refundApplicationId) {
       uni.showToast({
         title: '参数错误',
         icon: 'none'
       })
-      setTimeout(() => {
-        if (isCurrentSession(this.sessionGeneration)) this.safeNavigateBack()
-      }, 1500)
+      this.pageReturn.schedule(() => this.safeNavigateBack(), 1500)
     }
 
-    logPageView('退货详情', 'REFUND_DETAIL')
   },
 
-  onShow() { if (this.refundApplicationId && isCurrentSession(this.sessionGeneration)) this.loadDetail() },
+  onShow() {
+    this.pageReturn.show()
+    if (!this.pageActive || !isCurrentSession(this.sessionGeneration)) return
+    logPageView({ ...PAGE_LOG, pageId: this.refundApplicationId || '', actionCode: 'REFUND_DETAIL_VIEW', accessTitle: '退款详情', accessDescription: '进入退款详情，查看审核、退货与资金退款进度' })
+    if (this.refundApplicationId) this.loadDetail()
+  },
+
+  onHide() {
+    this.pageReturn.hide()
+  },
+
+  onUnload() {
+    this.pageReturn.dispose()
+    if (this.detailLoading && isCurrentSession(this.sessionGeneration)) uni.hideLoading()
+    this.detailLoading = false
+    this.pageActive = false
+    this.detailRequestSequence++
+  },
 
   methods: {
     getRefundStageText,
+    isDetailRequestCurrent(sequence) {
+      return this.pageActive && sequence === this.detailRequestSequence && isCurrentSession(this.sessionGeneration)
+    },
     async loadDetail() {
+      if (!this.pageActive || !isCurrentSession(this.sessionGeneration)) return
+      const sequence = ++this.detailRequestSequence
+      this.detailLoading = true
       try {
         uni.showLoading({ title: '加载中...' })
 
-        const detail = await getRefundDetail(this.refundApplicationId)
-        if (!isCurrentSession(this.sessionGeneration)) return
+        const detail = await getRefundDetail(this.refundApplicationId, { showLoading: false, silent: true })
+        if (!this.isDetailRequestCurrent(sequence)) return
         this.detail = detail || {}
       } catch (error) {
-        if (!isCurrentSession(this.sessionGeneration) || error.code === 'SESSION_CHANGED') return
+        if (!this.isDetailRequestCurrent(sequence) || error.code === 'SESSION_CHANGED') return
         console.error('event=ui_order_refund_detail stage=load_detail result=failed reason=operation_incomplete')
         uni.showToast({
           title: error.message || '加载失败',
           icon: 'none'
         })
       } finally {
-        if (isCurrentSession(this.sessionGeneration)) uni.hideLoading()
+        if (this.isDetailRequestCurrent(sequence)) {
+          this.detailLoading = false
+          uni.hideLoading()
+        }
       }
     },
 
@@ -369,34 +388,6 @@ export default {
         5: '#8e8e93'  // 退货失败 - 灰色
       }
       return colorMap[status] || '#666'
-    },
-
-    getActionButtonText() {
-      if (this.detail.status === 1) {
-        return '填写物流信息'
-      }
-      return '操作'
-    },
-
-    getActionButtonClass() {
-      if (this.detail.status === 1) {
-        return 'primary-btn'
-      }
-      return 'default-btn'
-    },
-
-    async handleAction() {
-      if (this.detail.status === 1) {
-        // 跳转到物流填写页面或弹窗填写
-        this.showLogisticsDialog()
-      }
-    },
-
-    showLogisticsDialog() {
-      // 这里可以跳转到专门的物流填写页面，或者使用弹窗
-      uni.navigateTo({
-        url: `/pages/order/refund_logistics?refundApplicationId=${this.refundApplicationId}`
-      })
     },
 
     // 安全返回上一页，如果是首页则跳转到订单列表
@@ -439,9 +430,6 @@ export default {
   background: #f5f6f8;
   color: #252a34;
 
-  &.with-actions {
-    padding-bottom: calc(220rpx + env(safe-area-inset-bottom));
-  }
 }
 
 .status-card,
@@ -697,52 +685,4 @@ export default {
   color: #e76b2d;
 }
 
-.bottom-bar {
-  position: fixed;
-  z-index: 10;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  padding: 20rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
-  border-top: 1rpx solid #edf0f3;
-  background: #fff;
-}
-
-.action-tip {
-  display: block;
-  margin-bottom: 16rpx;
-  font-size: 24rpx;
-  line-height: 1.5;
-  text-align: center;
-  color: #858b96;
-}
-
-.action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 88rpx;
-  margin: 0;
-  padding: 0 24rpx;
-  border: none;
-  border-radius: 44rpx;
-  font-size: 30rpx;
-  font-weight: 600;
-  line-height: 1.5;
-
-  &::after {
-    border: none;
-  }
-
-  &.primary-btn {
-    background: linear-gradient(100deg, #ff7c3b, #ff9b50);
-    color: #fff;
-  }
-
-  &.default-btn {
-    background: #f1f3f6;
-    color: #737c8a;
-  }
-}
 </style>

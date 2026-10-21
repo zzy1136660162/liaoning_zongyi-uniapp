@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import * as cart from '../utils/cart.js'
+import * as cart from './cart-api-fixture.mjs'
 import { parseConsultationContext, requireConsultationPatient } from '../utils/consultation-checkout.js'
 import { loadSetup } from './sfc-harness.mjs'
 
@@ -18,7 +18,7 @@ for (const combination of combinations) {
       showToast() {}, redirectTo() {}, navigateBack() {} }
     globalThis.uni = uni
     for (const product of products) {
-      assert.equal(cart.addCartItem({ ...product, skuId: product.skus[0].id, price: product.skus[0].price }, 2), true)
+      assert.equal(await cart.addCartItem({ ...product, skuId: product.skus[0].id, price: product.skus[0].price }, 2), true)
     }
     const keys = Object.keys(cart.getCartEntries())
     let onLoad

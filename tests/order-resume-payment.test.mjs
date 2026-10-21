@@ -118,7 +118,7 @@ test('支付期间账号变化或页面关闭后不继续付款或跳转', async
 test('列表的去支付跳转同一订单详情，已付款订单不会跳转', () => {
   const navigations = []
   const list = loadSetup('pages/order/order_list.vue', {
-    ref: value => ({ value }), onMounted() {}, onUnmounted() {}, onShow() {},
+    ref: value => ({ value }), onLoad() {}, onUnmounted() {}, onShow() {},
     canPayOrder, logButtonClick() {},
     uni: { navigateTo: options => navigations.push(options) }
   }, ['handlePayOrder', 'mapOrderListItem'])

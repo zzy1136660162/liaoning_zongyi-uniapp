@@ -196,19 +196,15 @@
 </template>
 
 <script>
-import { getCartList } from '@/api/cart.js'
-import { getProductDetail } from '@/api/product.js'
-import {
-  STORAGE_KEY_CURRENT_CONSULTATION_ID,
-  STORAGE_KEY_USER_REGISTER
-} from '@/utils/storage.js'
+import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
+import { fetchAccountProfile } from '@/utils/account.js'
 import {
   getCartEntries,
-  getCartTotalQuantity,
-  buildCategoriesFromServerCart,
+  refreshCart,
+  changeCartItemQuantity,
+  calculateTotalQuantity,
   loadCartItems,
   calculateTotalPrice,
-  setCartItemQuantity,
   prepareCheckout,
   removeFromCart,
   splitCartItemKey,
@@ -216,8 +212,6 @@ import {
   updateMultipleSelections
 } from '@/utils/cart.js'
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
-import { loadCartProducts } from '@/utils/cart-products.js'
-import { applyServerCartToLocal, captureCartSyncSnapshot } from '@/utils/cart-sync.js'
 import {
   shouldReloadCartFromServer,
   subscribeCartUpdated
@@ -226,35 +220,15 @@ import { getImageUrl } from '@/utils/config.js'
 import { useProductImages } from '@/utils/product-image.js'
 import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
-import { BASE_URL } from '@/utils/config.js'
-import { logPageView } from '@/utils/accessLog.js'
+import { logPageView, logButtonClick, logAccess } from '@/utils/accessLog.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 import { buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 
-const parseCartLoadError = (error) => {
-  const statusCode = error?.statusCode
-  const bizCode = error?.code
-  const message = error?.message || error?.errMsg || ''
 
-  if (statusCode === 404) {
-    return {
-      reason: 'API_NOT_FOUND',
-      hint: '后端未部署 GET /api/cart（常见：生产环境 springboot 未更新）。已自动改用本地购物车。'
-    }
-  }
-  if (statusCode === 401 || bizCode === 401) {
-    return { reason: 'UNAUTHORIZED', hint: '登录态失效，将使用本地购物车' }
-  }
-  if (statusCode === 500 || bizCode === 500) {
-    return { reason: 'SERVER_ERROR', hint: '服务端 500，请查看 springboot 日志' }
-  }
-  if (String(message).includes('timeout') || String(message).includes('fail')) {
-    return { reason: 'NETWORK', hint: `网络异常(${BASE_URL})，将使用本地购物车` }
-  }
-  return {
-    reason: 'UNKNOWN',
-    hint: message || '未知错误，将使用本地购物车'
-  }
+const PAGE_LOG = {
+  pageId: '', moduleCode: 'CART', accessType: '购物车', pageType: 'CART',
+  requestUri: '/pages/cart/cart', actionCode: 'VIEW_CART',
+  accessTitle: '访问购物车', accessDescription: '用户查看购物车商品并准备调整或结算'
 }
 
 export default {
@@ -269,16 +243,16 @@ export default {
       selectedItems: [],
       isEditMode: false,
       currentTab: 'cart',
+      selectionSaving: false,
       loading: false,
       // 加载期间再次进入页面，只排队一次后续查询，避免丢掉最新后台状态。
       pendingServerRefresh: false,
-      suppressNextServerCartEvent: false,
       unsubscribeCartUpdated: null
     }
   },
   computed: {
     cartCount() {
-      return getCartTotalQuantity()
+      return calculateTotalQuantity(this.cartItems)
     },
     selectedItemCount() {
       return this.selectedItems.length
@@ -295,14 +269,6 @@ export default {
   onLoad() {
     this.currentTab = 'cart'
     this.unsubscribeCartUpdated = subscribeCartUpdated((event = {}) => {
-      if (event.source === 'local') {
-        this.loadCartData()
-        return
-      }
-      if (event.source === 'server' && this.suppressNextServerCartEvent) {
-        this.suppressNextServerCartEvent = false
-        return
-      }
       if (shouldReloadCartFromServer(event)) {
         this.loadCartPageData({ queueIfLoading: true })
         return
@@ -311,8 +277,8 @@ export default {
     })
   },
   onShow() {
+    logPageView({ ...PAGE_LOG })
     this.loadCartPageData({ queueIfLoading: true })
-    logPageView('CART')
   },
   onUnload() {
     if (this.unsubscribeCartUpdated) {
@@ -350,48 +316,12 @@ export default {
       }
 
       const requestSession = getSessionGeneration()
-      const hasToken = Boolean(getToken())
       this.loading = true
-      console.log('[cart] loadCartPageData start', { hasToken, baseUrl: BASE_URL })
-
       try {
-        if (hasToken) {
-          await this.loadCartFromServer()
-          console.log('[cart] loadCartPageData done (server)', {
-            itemCount: this.cartItems.length,
-            cartCount: this.cartCount
-          })
-          return
-        }
-
-        console.log('[cart] loadCartPageData: no token, use local fallback')
-        await this.loadLocalCartFallback()
-        console.log('[cart] loadCartPageData done (local)', {
-          itemCount: this.cartItems.length,
-          cartCount: this.cartCount
-        })
+        await this.loadCartFromServer()
       } catch (error) {
-        if (!isCurrentSession(requestSession) || error.code === 'SESSION_CHANGED') return
-        const { reason, hint } = parseCartLoadError(error)
-        console.warn('[cart] loadCartPageData server path failed, fallback to local', {
-          reason,
-          hint,
-          statusCode: error?.statusCode,
-          bizCode: error?.code,
-          message: error?.message || error?.errMsg
-        })
-
-        try {
-          await this.loadLocalCartFallback()
-          console.log('[cart] loadCartPageData fallback ok', {
-            itemCount: this.cartItems.length,
-            cartCount: this.cartCount
-          })
-        } catch (fallbackError) {
-          console.error('[cart] loadCartPageData fallback failed', fallbackError)
-          this.categories = []
-          this.cartItems = []
-          this.selectedItems = []
+        if (isCurrentSession(requestSession) && error.code !== 'SESSION_CHANGED') {
+          uni.showToast({ title: error.message || '购物车加载失败，请重试', icon: 'none' })
         }
       } finally {
         this.loading = false
@@ -402,63 +332,12 @@ export default {
       }
     },
     async loadCartFromServer() {
-      const requestSession = getSessionGeneration()
-      const startedAt = Date.now()
-      const requestSnapshot = captureCartSyncSnapshot()
-      const serverItems = await getCartList()
-      if (!isCurrentSession(requestSession)) return
-      const normalizedItems = Array.isArray(serverItems) ? serverItems : []
-
-      if (!Array.isArray(serverItems)) {
-        console.warn('[cart] loadCartFromServer: response is not array, use empty list', serverItems)
-      }
-
-      console.log('[cart] loadCartFromServer apply', {
-        ms: Date.now() - startedAt,
-        count: normalizedItems.length
-      })
-
-      // 本次结果还需先更新商品快照，忽略自身发出的 server 事件，最后统一投影一次。
-      this.suppressNextServerCartEvent = true
-      const cartData = applyServerCartToLocal(normalizedItems, false, requestSnapshot)
-      if (this.suppressNextServerCartEvent) {
-        this.suppressNextServerCartEvent = false
-      }
-      this.categories = buildCategoriesFromServerCart(Object.values(cartData))
+      await refreshCart()
       this.loadCartData()
     },
-    async loadLocalCartFallback() {
-      const requestSession = getSessionGeneration()
-      try {
-        const cartEntries = getCartEntries()
-        const itemKeys = Object.keys(cartEntries)
-        console.log('[cart] loadLocalCartFallback', { itemKeys })
-
-        if (itemKeys.length === 0) {
-          this.categories = []
-          this.loadCartData()
-          return
-        }
-
-        const cartCategory = {
-          id: 'cart_items',
-          name: '购物车商品',
-          products: []
-        }
-
-        cartCategory.products = await loadCartProducts(itemKeys, cartEntries, getProductDetail)
-        if (!isCurrentSession(requestSession)) return
-
-        this.categories = [cartCategory]
-        this.loadCartData()
-      } catch (error) {
-        if (!isCurrentSession(requestSession) || error.code === 'SESSION_CHANGED') return
-        console.error('loadLocalCartFallback failed:', error)
-        this.categories = []
-        this.loadCartData()
-      }
-    },
     loadCartData() {
+      const entries = getCartEntries()
+      this.categories = [{ id: 'cart_items', name: '购物车商品', products: Object.values(entries) }]
       this.cartItems = loadCartItems(this.categories)
       this.selectedItems = this.cartItems
         .filter(item => item.selected !== false && this.isItemSelectable(item))
@@ -467,118 +346,163 @@ export default {
     toggleEditMode() {
       this.isEditMode = !this.isEditMode
     },
-    toggleItemSelection(itemId) {
+    async toggleItemSelection(itemId) {
+      if (this.selectionSaving) return
       const normalizedId = itemId
       const item = this.cartItems.find(cartItem => cartItem.id === normalizedId)
       if (!this.isItemSelectable(item)) {
         uni.showToast({ title: '商品已下架或库存不足', icon: 'none' })
         return
       }
-      updateProductSelection(normalizedId, !this.selectedItems.includes(normalizedId))
+      this.selectionSaving = true
+      try {
+        await updateProductSelection(normalizedId, !this.selectedItems.includes(normalizedId))
+        this.loadCartData()
+      } catch (error) { this.showCartError(error) }
+      finally { this.selectionSaving = false }
     },
-    toggleSelectAll() {
+    async toggleSelectAll() {
+      if (this.selectionSaving) return
       const nextSelected = !this.isAllSelected
       const selectionMap = {}
       this.cartItems.forEach(item => {
         selectionMap[item.id] = this.isItemSelectable(item) ? nextSelected : false
       })
-      updateMultipleSelections(selectionMap)
+      this.selectionSaving = true
+      try {
+        await updateMultipleSelections(selectionMap)
+        this.loadCartData()
+      } catch (error) { this.loadCartData(); this.showCartError(error) }
+      finally { this.selectionSaving = false }
     },
-    increaseQuantity(item) {
-      if (!this.isItemSelectable(item)) {
-        return
-      }
+    showCartError(error) {
+      if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '购物车操作失败', icon: 'none' })
+    },
+    async increaseQuantity(item) {
+      if (!this.isItemSelectable(item)) return
       if (this.isQuantityAtStockLimit(item)) {
         uni.showToast({ title: '已达库存上限', icon: 'none' })
         return
       }
-      setCartItemQuantity(item.id, Number(item.quantity || 1) + 1)
-    },
-    decreaseQuantity(item) {
-      const nextQuantity = Number(item.quantity || 1) - 1
-      if (nextQuantity <= 0) {
-        removeFromCart(item.id)
-        return
+      const actionLog = { ...PAGE_LOG, actionCode: 'CHANGE_CART_QUANTITY', accessTitle: '修改购物车数量', accessDescription: '增加当前购物车规格的购买数量', extraData: { cartKey: item.id } }
+      logButtonClick(actionLog)
+      try {
+        await changeCartItemQuantity(item.id, 1)
+        this.loadCartData()
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
+      } catch (error) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED' })
+        this.showCartError(error)
       }
-      setCartItemQuantity(item.id, nextQuantity)
+    },
+    async decreaseQuantity(item) {
+      const actionLog = { ...PAGE_LOG, actionCode: 'CHANGE_CART_QUANTITY', accessTitle: '修改购物车数量', accessDescription: '减少当前购物车规格的购买数量，减至零时移除该行', extraData: { cartKey: item.id } }
+      logButtonClick(actionLog)
+      try {
+        await changeCartItemQuantity(item.id, -1)
+        this.loadCartData()
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
+      } catch (error) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED' })
+        this.showCartError(error)
+      }
     },
     removeItem(itemId) {
+      const session = getSessionGeneration()
+      const actionLog = { ...PAGE_LOG, actionCode: 'REMOVE_CART_ITEM', accessTitle: '删除购物车商品', accessDescription: '通过确认弹窗删除指定商品规格', extraData: { cartKey: itemId } }
+      logButtonClick(actionLog)
       uni.showModal({
-        title: '确认删除',
-        content: '确定要删除这个商品吗？',
-        success: (res) => {
-          if (!res.confirm) {
-            return
+        title: '确认删除', content: '确定要删除这个商品吗？',
+        success: async (res) => {
+          if (!isCurrentSession(session)) return
+          if (!res.confirm) { logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'CANCELLED' }); return }
+          try {
+            await removeFromCart(itemId)
+            this.loadCartData()
+            logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
+            uni.showToast({ title: '删除成功', icon: 'success' })
+          } catch (error) {
+            if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED' })
+            this.showCartError(error)
           }
-          const success = removeFromCart(itemId)
-          if (!success) {
-            uni.showToast({ title: '删除失败', icon: 'none' })
-            return
-          }
-          uni.showToast({ title: '删除成功', icon: 'success' })
         }
       })
     },
     goToProductDetail(item) {
       const page = isTraditionalTherapyProduct(item) ? 'therapy_detail' : 'medicine_detail'
       const productId = item.productId || splitCartItemKey(item.id).productId || item.id
+      logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PRODUCT_DETAIL', accessTitle: '查看购物车商品', accessDescription: '用户从购物车进入对应商品详情', extraData: { productId, cartKey: item.id } })
       console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=CART targetPage=%s productId=%s cartKey=%s', page, productId, item.id)
       uni.navigateTo({
         url: `/pages/products/${page}?id=${productId}`
       })
     },
     goShopping() {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_MEDICINE_LIST', accessTitle: '去商城选购', accessDescription: '用户从购物车进入制剂商品列表继续选购' })
       uni.navigateTo({
         url: '/pages/products/medicine_list'
       })
     },
-    goToCheckout() {
+    async goToCheckout() {
+      if (this.selectionSaving) return
+      const session = getSessionGeneration()
+      const actionLog = { ...PAGE_LOG, actionCode: this.isEditMode ? 'REMOVE_CART_ITEMS' : 'START_CHECKOUT', accessTitle: this.isEditMode ? '批量删除购物车商品' : '发起购物车结算', accessDescription: this.isEditMode ? '用户确认移除购物车中选中的商品规格' : '用户按选中商品发起问卷、复诊或订单确认流程', extraData: { selectedCount: this.selectedItems.length } }
+      logButtonClick(actionLog)
       if (this.isEditMode) {
         if (this.selectedItems.length === 0) {
+          logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'NO_SELECTION' } })
           uni.showToast({ title: '请选择要删除的商品', icon: 'none' })
           return
         }
         uni.showModal({
           title: '确认删除',
           content: '确定要删除选中的 ' + this.selectedItems.length + ' 个商品吗？',
-          success: (res) => {
+          success: async (res) => {
             if (!res.confirm) {
+              if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'CANCELLED' })
               return
             }
-            const success = removeFromCart(this.selectedItems)
-            if (!success) {
-              uni.showToast({ title: '删除失败', icon: 'none' })
-              return
+            if (!isCurrentSession(session)) return
+            try {
+              await removeFromCart(this.selectedItems)
+              this.loadCartData()
+              this.isEditMode = false
+              logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
+              uni.showToast({ title: '删除成功', icon: 'success' })
+            } catch (error) {
+              if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED' })
+              this.showCartError(error)
             }
-            this.isEditMode = false
-            uni.showToast({ title: '删除成功', icon: 'success' })
           }
         })
         return
       }
 
       if (this.selectedItems.length === 0) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'NO_SELECTION' } })
         uni.showToast({ title: '请选择要结算的商品', icon: 'none' })
         return
       }
 
       const unavailableSelected = this.cartItems.filter(item => this.selectedItems.includes(item.id) && !this.isItemSelectable(item))
       if (unavailableSelected.length > 0) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'PRODUCT_UNAVAILABLE' } })
         uni.showToast({ title: '所选商品含已下架商品', icon: 'none' })
         return
       }
 
       if (!getToken()) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
         uni.navigateTo({ url: '/pages/register/register' })
         return
       }
 
       try {
-        const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-        if (!userRegisterInfo || !userRegisterInfo.realName) {
-          uni.navigateTo({ url: '/pages/register/register' })
-          return
-        }
+        await refreshCart()
+        this.loadCartData()
+        // 结算账户以资料接口确认，不用本地表单或姓名推断注册状态。
+        await fetchAccountProfile()
+        if (!isCurrentSession(session)) return
 
         const checkout = prepareCheckout(this.selectedItems, this.categories)
         if (!checkout.valid) {
@@ -588,6 +512,7 @@ export default {
             return
           }
           uni.showToast({ title: checkout.message, icon: 'none' })
+          logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'CHECKOUT_REJECTED' } })
           return
         }
 
@@ -605,7 +530,7 @@ export default {
         })
       } catch (error) {
         console.error('goToCheckout failed:', error)
-        uni.navigateTo({ url: '/pages/register/register' })
+        this.showCartError(error)
       }
     },
     handleTabChange(tab) {

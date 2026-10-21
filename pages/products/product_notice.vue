@@ -41,13 +41,21 @@ import {
   buildCartItemKey,
   getCartProductInfo,
   getCartEntries,
+  refreshCart,
   prepareCheckout,
   resolveCartCompatibility
 } from '@/utils/cart.js'
-import { logPageView } from '@/api/access-log.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { resolveQuestionnaireState, getQuestionnaireStateMessage } from '@/utils/questionnaire-state.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
+
+
+const PAGE_LOG = {
+  pageId: '', moduleCode: 'PURCHASE', accessType: '购前确认', pageType: 'PRODUCT_NOTICE',
+  requestUri: '/pages/products/product_notice', actionCode: 'VIEW_PRODUCT_NOTICE',
+  accessTitle: '访问商品须知', accessDescription: '用户查看商品使用须知并准备继续购买流程'
+}
 
 export default {
   data() {
@@ -88,10 +96,15 @@ export default {
       console.warn('missing productId on notice page')
       return
     }
-    logPageView('PRODUCT_NOTICE', this.productId)
   },
-  onShow() {
-    if (this.productId) this.loadProductDetail(this.productId)
+  async onShow() {
+    logPageView({ ...PAGE_LOG, pageId: this.productId, extraData: { skuId: this.skuId, quantity: this.getSelectedQuantity(), flowAction: this.action } })
+    try {
+      if (!this.directPurchase) await refreshCart()
+      if (this.productId && this.isNoticeCurrent()) await this.loadProductDetail(this.productId)
+    } catch (error) {
+      if (this.isNoticeCurrent()) uni.showToast({ title: error.message || '购物车加载失败', icon: 'none' })
+    }
   },
   onUnload() {
     this.pageActive = false
@@ -205,7 +218,10 @@ export default {
     },
     async startQuestionnaire() {
       if (this.continuing || !this.isNoticeCurrent()) return
+      const actionLog = { ...PAGE_LOG, pageId: this.productId, actionCode: 'CONTINUE_PRODUCT_NOTICE', accessTitle: '继续商品购前流程', accessDescription: '用户确认商品须知后继续加购、问卷或结算校验流程', extraData: { skuId: this.skuId, quantity: this.getSelectedQuantity(), flowAction: this.action } }
+      logButtonClick(actionLog)
       if (!this.productId) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'PRODUCT_REQUIRED' } })
         uni.showToast({
           title: '缺少商品信息',
           icon: 'none'
@@ -214,11 +230,13 @@ export default {
       }
 
       this.continuing = true
+      let validationRejected = false
       uni.showLoading({ title: '校验中...' })
       try {
         const detail = await getProductDetail(this.productId)
         if (!this.isNoticeCurrent()) return
         if (!(await this.ensureCartCompatible(detail))) {
+          if (this.isNoticeCurrent()) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'CART_INCOMPATIBLE' } })
           return
         }
         if (!this.isNoticeCurrent()) return
@@ -226,23 +244,31 @@ export default {
         const selectedQuantity = this.getSelectedQuantity()
         const saleProduct = this.resolveSelectedProduct(detail)
         const state = resolveQuestionnaireState(saleProduct, this.directPurchase || getCartProductInfo(this.productId, saleProduct.skuId))
-        if (this.action !== 'cart' && state === 'unavailable') throw new Error(getQuestionnaireStateMessage(state))
+        if (this.action !== 'cart' && state === 'unavailable') {
+          validationRejected = true
+          throw new Error(getQuestionnaireStateMessage(state))
+        }
         // 加购不答题；立即购买/整组结算/补答只进入当前绑定的问卷。
         if (this.action !== 'cart' && state === 'required') {
+          logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', extraData: { ...actionLog.extraData, nextStep: 'QUESTIONNAIRE' } })
           this.goQuestionnaire(saleProduct)
           return
         }
 
         if (!this.isNoticeCurrent()) return
         if (this.action === 'repair') {
+          logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', extraData: { ...actionLog.extraData, nextStep: 'RETURN' } })
           uni.navigateBack({ delta: 1 })
           return
         }
         if (this.action === 'checkout' || this.action === 'buy') {
-          await this.goCheckout(saleProduct)
+          const accepted = await this.goCheckout(saleProduct)
+          if (this.isNoticeCurrent()) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: accepted ? 'SUCCESS' : 'FAILED', extraData: { ...actionLog.extraData, nextStep: 'CHECKOUT', reason: accepted ? 'CHECKOUT_VALIDATED' : 'CHECKOUT_NOT_COMPLETED' } })
           return
         }
-        const success = addCartItem(saleProduct, selectedQuantity)
+        const success = await addCartItem(saleProduct, selectedQuantity)
+        if (!this.isNoticeCurrent()) return
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionCode: 'SAVE_NOTICE_CART', accessTitle: '须知页加购结果', accessDescription: '商品须知校验后将当前规格和数量加入购物车', actionResult: success ? 'SUCCESS' : 'FAILED' })
         if (!success) {
           uni.showToast({
             title: '加入购物车失败',
@@ -267,6 +293,7 @@ export default {
         }, 1200)
       } catch (error) {
         if (!this.isNoticeCurrent()) return
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: validationRejected ? 'FAILED' : getActionFailureResult(error), extraData: { ...actionLog.extraData, reason: validationRejected ? 'QUESTIONNAIRE_UNAVAILABLE' : 'PURCHASE_FLOW_UNAVAILABLE' } })
         console.error('startQuestionnaire failed:', error)
         uni.showToast({
           title: error.message || '请求失败，请稍后重试',

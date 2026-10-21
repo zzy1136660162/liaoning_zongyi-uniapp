@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
-import * as cart from '../utils/cart.js'
+import * as cart from './cart-api-fixture.mjs'
 import { checkoutEntries, directPurchaseQuery, parseDirectPurchase } from '../utils/checkout.js'
 import { loadOptions } from './sfc-harness.mjs'
 
@@ -10,13 +10,14 @@ globalThis.uni = {
   removeStorageSync: key => storage.delete(key), $emit: (...args) => events.push(args),
   navigateTo: value => navigations.push(value), showToast: value => messages.push(value)
 }
-beforeEach(() => { storage.clear(); navigations.length = 0; messages.length = 0; events.length = 0 })
+beforeEach(async () => { storage.clear(); navigations.length = 0; messages.length = 0; events.length = 0 })
 const product = (id = 10, extra = {}) => ({ id, productId: id, skuId: 1, name: `商品${id}`, price: 10,
   stock: 8, available: true, goodsMerchantType: 1, productCategory: 2, ...extra })
 const categories = products => [{ products: products.map(item => ({ ...item, id: `${item.productId}:${item.skuId}` })) }]
+const flush = async () => { for (let index = 0; index < 30; index++) await Promise.resolve() }
 
-test('直接购买路由严格解析数量及问卷凭据，不从购物车补数量或答案', () => {
-  cart.addCartItem(product(10, { needQuestionnaire: 1, questionnaireId: 90 }), 7,
+test('直接购买路由严格解析数量及问卷凭据，不从购物车补数量或答案', async () => {
+  await cart.addCartItem(product(10, { needQuestionnaire: 1, questionnaireId: 90 }), 7,
     { questionnaireId: 90, answerId: 91 })
   const before = structuredClone(cart.getCartEntries())
   const purchase = parseDirectPurchase({ buyQuantity: '2', buyQuestionnaireId: '90', buyAnswerId: '92' })
@@ -43,8 +44,8 @@ test('直接购买路由严格解析数量及问卷凭据，不从购物车补�
   }
 })
 
-test('提交投影保留原数量，库存下降时阻断，购物车展示仍可修正数量', () => {
-  cart.addCartItem(product(), 5)
+test('提交投影保留原数量，库存下降时阻断，购物车投影不反写服务端确认数量', async () => {
+  await cart.addCartItem(product(), 5)
   const entries = checkoutEntries(['10:1'], null), before = structuredClone(entries)
   const latest = categories([product(10, { stock: 2 })])
   assert.equal(cart.loadCartItems(latest, false, { entries, preserveQuantity: true })[0].quantity, 5)
@@ -53,10 +54,10 @@ test('提交投影保留原数量，库存下降时阻断，购物车展示仍�
   assert.equal(checkout.stockCheck.reason, 'stock_shortage')
   assert.deepEqual(entries, before)
   assert.deepEqual(cart.getCartEntries(), before)
-  assert.equal(cart.loadCartItems(latest)[0].quantity, 2)
+  assert.equal(cart.loadCartItems(latest)[0].quantity, 5)
 })
 
-test('独立立即购买可完成商品及问卷校验，投影不创建购物车条目', () => {
+test('独立立即购买可完成商品及问卷校验，投影不创建购物车条目', async () => {
   cart.setCheckoutProductIds(['20:1'])
   const purchase = parseDirectPurchase({ buyQuantity: 3, buyQuestionnaireId: 90, buyAnswerId: 91 })
   const entries = checkoutEntries(['10:1'], purchase), before = structuredClone(entries)
@@ -71,49 +72,51 @@ test('独立立即购买可完成商品及问卷校验，投影不创建购物�
   assert.equal(events.length, 0)
 })
 
-test('旧订单只删除快照仍匹配的行，保留重新加购、改量和其他商品', () => {
-  cart.addCartItem(product(10), 2)
-  cart.addCartItem(product(20), 1)
+test('旧订单只删除快照仍匹配的行，保留重新加购、改量和其他商品', async () => {
+  await cart.addCartItem(product(10), 2)
+  await cart.addCartItem(product(20), 1)
   const original = structuredClone(cart.getCartEntries())
-  cart.setCartItemQuantity('10:1', 3)
-  cart.setCartItemQuantity('10:1', 2)
-  assert.equal(cart.removePurchasedCartItems({ '10:1': original['10:1'] }), true)
+  await cart.setCartItemQuantity('10:1', 3)
+  await cart.setCartItemQuantity('10:1', 2)
+  assert.equal(await cart.removePurchasedCartItems({ '10:1': original['10:1'] }), true)
   assert.equal(cart.getCartEntries()['10:1'].quantity, 2)
-  cart.removeFromCart('10:1')
-  cart.addCartItem(product(10), 2)
-  cart.removePurchasedCartItems({ '10:1': original['10:1'] })
+  await cart.removeFromCart('10:1')
+  await cart.addCartItem(product(10), 2)
+  await cart.removePurchasedCartItems({ '10:1': original['10:1'] })
   assert.equal(cart.getCartEntries()['10:1'].quantity, 2)
   const current = cart.getCartEntries()
-  cart.removePurchasedCartItems({ '10:1': current['10:1'] })
+  await cart.removePurchasedCartItems({ '10:1': current['10:1'] })
   assert.deepEqual(Object.keys(cart.getCartEntries()), ['20:1'])
 })
 
-test('正常后台刷新保留下单行身份；后台数量变化和旧行升级有稳定身份', () => {
-  storage.set('cart_items', { '10:1': { ...product(), quantity: 2, selected: true, timestamp: 123 } })
+test('正常后台刷新保留下单行身份；后台数量变化和旧行升级有稳定身份', async () => {
+  cart.replaceCartData({ '10:1': { ...product(), quantity: 2, selected: true, timestamp: 123 } })
   const original = cart.getCartEntries()['10:1']
   assert.ok(original.revision)
   assert.equal(cart.getCartEntries()['10:1'].revision, original.revision)
   cart.replaceCartData({ '10:1': { ...original, revision: undefined, timestamp: 456, price: 99 } })
   assert.equal(cart.getCartEntries()['10:1'].revision, original.revision)
   assert.equal(cart.getCartEntries()['10:1'].timestamp, 123)
-  cart.removePurchasedCartItems({ '10:1': original })
+  await cart.removePurchasedCartItems({ '10:1': original })
   assert.deepEqual(cart.getCartEntries(), {})
-  cart.addCartItem(product(), 2)
+  await cart.addCartItem(product(), 2)
   const beforeChange = cart.getCartEntries()['10:1']
-  cart.replaceCartData({ '10:1': { ...beforeChange, quantity: 3 } })
+  await cart.setCartItemQuantity('10:1', 3)
   assert.notEqual(cart.getCartEntries()['10:1'].revision, beforeChange.revision)
-  cart.removePurchasedCartItems({ '10:1': beforeChange })
+  await cart.removePurchasedCartItems({ '10:1': beforeChange })
   assert.equal(cart.getCartEntries()['10:1'].quantity, 3)
 })
 
 for (const name of ['priducts_list', 'priducts_list2']) {
-  test(`${name} 金额与结算只含已勾选可售行，空选不跳转`, () => {
+  test(`${name} 金额与结算只含已勾选可售行，空选不跳转`, async () => {
     const products = [product(10), product(20), product(30, { available: false, stock: 0 })]
-    for (const item of products) cart.addCartItem(item, 2)
-    cart.updateProductSelection('10:1', false)
-    storage.set('user_register_info', { realName: '测试' })
+    for (const item of products.filter(item => item.available)) await cart.addCartItem(item, 2)
+    cart.replaceCartData({ ...cart.getCartEntries(), '30:1': { ...products[2], quantity: 2, selected: false } })
+    await cart.updateProductSelection('10:1', false)
+    let profileRequests = 0
     const definition = loadOptions(`pages/products/${name}.vue`, { ...cart,
-      STORAGE_KEY_USER_REGISTER: 'user_register_info', STORAGE_KEY_CURRENT_CONSULTATION_ID: 'current_consultation_id',
+      STORAGE_KEY_CURRENT_CONSULTATION_ID: 'current_consultation_id',
+      fetchAccountProfile: async () => { profileRequests++; return { id: 7, userName: '' } },
       getToken: () => 'fixture', TabBar: {}, getImageUrl: value => value })
     const page = { ...definition.data(), ...definition.methods,
       categories: [{ products }], cartItems: cart.loadCartItems(categories(products)) }
@@ -121,14 +124,61 @@ for (const name of ['priducts_list', 'priducts_list2']) {
       Object.defineProperty(page, key, { get: () => getter.call(page) })
     }
     assert.equal(page.totalPrice, 20)
-    page.handleSubmit()
+    await page.handleSubmit()
+    assert.equal(profileRequests, 1)
     assert.equal(navigations.at(-1).url, '/pages/order/confirm?selectedItems=20:1')
-    cart.updateProductSelection('20:1', false)
+    await cart.updateProductSelection('20:1', false)
     page.cartItems = cart.loadCartItems(categories(products))
     assert.equal(page.totalPrice, 0)
     const count = navigations.length
-    page.handleSubmit()
+    await page.handleSubmit()
     assert.equal(navigations.length, count)
     assert.equal(messages.at(-1).title, '请先选择商品')
+  })
+}
+
+for (const name of ['cart/cart', 'products/priducts_list', 'products/priducts_list2']) {
+  test(`${name} 结算只确认接口账户，资料失败不导航，换号后的迟到结果不跳转`, async () => {
+    await cart.addCartItem(product(), 2)
+    let generation = 1
+    let profileRequest
+    const definition = loadOptions(`pages/${name}.vue`, { ...cart,
+      STORAGE_KEY_CURRENT_CONSULTATION_ID: 'current_consultation_id',
+      getToken: () => 'fixture', TabBar: {}, getImageUrl: value => value,
+      getSessionGeneration: () => generation, isCurrentSession: session => session === generation,
+      fetchAccountProfile: () => new Promise((resolve, reject) => { profileRequest = { resolve, reject } }) })
+    const page = { ...definition.data(), ...definition.methods,
+      categories: name === 'cart/cart' ? categories([product()]) : [{ products: [product()] }],
+      cartItems: cart.loadCartItems(categories([product()])), selectedItems: ['10:1'] }
+    for (const [key, getter] of Object.entries(definition.computed)) {
+      Object.defineProperty(page, key, { get: () => getter.call(page) })
+    }
+    const submit = () => name === 'cart/cart' ? page.goToCheckout() : page.handleSubmit()
+    const failure = submit()
+    await flush()
+    assert.ok(profileRequest)
+    assert.equal(navigations.length, 0)
+    profileRequest.reject(new Error('账户资料暂不可用'))
+    await failure
+    assert.equal(navigations.length, 0)
+    assert.equal(messages.at(-1).title, '账户资料暂不可用')
+
+    profileRequest = null
+    const stale = submit()
+    await flush()
+    assert.ok(profileRequest)
+    generation++
+    profileRequest.resolve({ id: 7, userName: '' })
+    await stale
+    assert.equal(navigations.length, 0)
+
+    profileRequest = null
+    const valid = submit()
+    await flush()
+    assert.ok(profileRequest)
+    profileRequest.resolve({ id: 8, userName: '' })
+    await valid
+    assert.equal(navigations.at(-1).url, '/pages/order/confirm?selectedItems=10:1')
+    assert.equal(storage.has('user_register_info'), false)
   })
 }

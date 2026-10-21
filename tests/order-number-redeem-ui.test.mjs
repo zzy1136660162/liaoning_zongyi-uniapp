@@ -15,7 +15,7 @@ const createPages = (order = {}) => {
     showLoading() {}, hideLoading() {}
   }
   const list = loadSetup('pages/order/order_list.vue', {
-    ref: value => ({ value }), onMounted() {}, onUnmounted() {}, onShow() {},
+    ref: value => ({ value }), onLoad() {}, onUnmounted() {}, onShow() {},
     hasTherapyEntitlement, isTherapyOrder, uni
   }, ['copyOrderNo', 'hasRedeemEntitlement', 'redeemSummaryText', 'mapOrderListItem'])
   const definition = loadOptions('pages/order/order-detail.vue', {

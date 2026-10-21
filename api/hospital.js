@@ -30,10 +30,11 @@ export const getDoctorsByHospital = (hospitalName) => {
  * 获取医生详情
  * @param {Number} id 医生ID
  */
-export const getDoctorDetail = (id) => {
+export const getDoctorDetail = (id, { showLoading = true, silent = false } = {}) => {
   return get(API_PATHS.DOCTOR.DETAIL(id), {}, {
     needAuth: false,
-    showLoading: true
+    showLoading,
+    silent
   })
 }
 

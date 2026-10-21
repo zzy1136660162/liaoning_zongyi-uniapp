@@ -58,10 +58,10 @@ test('回执主按钮打开当前已支付订单详情，副按钮打开订单�
   assert.deepEqual(navigation.map(value => value.url), ['/pages/order/order-detail?orderId=81', '/pages/order/order_list'])
 })
 
-test('待确认使用订单应付金额，异常退款不会展示成功或消费订单购物车快照；成功实付零值仍保留', () => {
+test('待确认使用订单应付金额，异常退款不会展示成功或消费订单购物车快照；成功实付零值仍保留', async () => {
   for (const [payStatus, paymentFulfillmentStatus] of [[0, null], [1, 'PENDING'], [1, 'REFUND_REQUIRED'], [1, 'REFUNDED']]) {
     const { page, consumedOrderIds } = createPage()
-    page.applyOrderData({ ...order(), payStatus, paymentFulfillmentStatus, paidAmount: 0 })
+    await page.applyOrderData({ ...order(), payStatus, paymentFulfillmentStatus, paidAmount: 0 })
     assert.notEqual(page.paymentOutcome.value.state, 'success')
     assert.equal(page.paymentInfo.value.amount, 36.6)
     assert.equal(page.paymentInfo.value.primaryTip, page.paymentOutcome.value.tip)
@@ -69,7 +69,7 @@ test('待确认使用订单应付金额，异常退款不会展示成功或消�
     assert.deepEqual(consumedOrderIds, [])
   }
   const { page } = createPage()
-  page.applyOrderData({ ...order(), paidAmount: 0 })
+  await page.applyOrderData({ ...order(), paidAmount: 0 })
   assert.equal(page.paymentInfo.value.amount, 0)
 })
 
@@ -87,14 +87,14 @@ test('服务端轮询确认成功后只消费当前订单，重复应用成功�
   assert.deepEqual(consumptionAtRead, [[], []], '订单尚未确认可履约时不能消费快照')
   assert.equal(fixture.page.paymentOutcome.value.state, 'success')
   assert.deepEqual(fixture.consumedOrderIds, [81])
-  fixture.page.applyOrderData(order())
-  fixture.page.applyOrderData({ ...order(), items: [...order().items] })
+  await fixture.page.applyOrderData(order())
+  await fixture.page.applyOrderData({ ...order(), items: [...order().items] })
   assert.deepEqual(fixture.consumedOrderIds, [81])
 })
 
-test('已取消订单即使已收到付款也不消费购物车快照', () => {
+test('已取消订单即使已收到付款也不消费购物车快照', async () => {
   const { page, consumedOrderIds } = createPage()
-  page.applyOrderData({ ...order(), orderStatus: 4 })
+  await page.applyOrderData({ ...order(), orderStatus: 4 })
   assert.equal(page.paymentOutcome.value.state, 'canceled')
   assert.deepEqual(consumedOrderIds, [])
 })
@@ -112,31 +112,31 @@ test('没有订单ID时不编造订单号和成功结果，查看入口回订单
   assert.equal(navigation[0].url, '/pages/order/order_list')
 })
 
-test('仅疗法订单展示无需配送；普通实物无核销提示，当前分类不覆盖购买快照', () => {
+test('仅疗法订单展示无需配送；普通实物无核销提示，当前分类不覆盖购买快照', async () => {
   const { page } = createPage()
-  page.applyOrderData({ ...order(), items: [{ ...order().items[1], productCategory: 2 }] })
+  await page.applyOrderData({ ...order(), items: [{ ...order().items[1], productCategory: 2 }] })
   assert.equal(page.paymentInfo.value.requiresShipping, false)
   assert.match(page.paymentInfo.value.shippingFeeText, /无需快递费/)
-  page.applyOrderData({ ...order(), items: [{ ...order().items[0], productCategory: 3 }] })
+  await page.applyOrderData({ ...order(), items: [{ ...order().items[0], productCategory: 3 }] })
   assert.equal(page.paymentInfo.value.requiresShipping, true)
   assert.equal(page.paymentInfo.value.hasTherapy, false)
 })
 
-test('规格、小计和缺图占位保留真实值，零价商品不能被错误回退', () => {
+test('规格、小计和缺图占位保留真实值，零价商品不能被错误回退', async () => {
   const { page } = createPage()
   assert.equal(page.formatOrderItemMeta(order().items[0]), '规格A / 盒')
   assert.equal(page.orderItemSubtotal(order().items[0]), 24.4)
   assert.equal(page.orderItemSubtotal({ subtotalAmount: 0, price: 10, quantity: 2 }), 0)
   assert.equal(page.orderItemSubtotal({ price: '12.20', quantity: 2 }), 24.4)
   assert.equal(page.getProductImageUrl(''), '/static/images/product-placeholder.jpg')
-  page.applyOrderData({ ...order(), receiverName: null, receiverPhone: null, province: null, city: null, district: null, addressDetail: null })
+  await page.applyOrderData({ ...order(), receiverName: null, receiverPhone: null, province: null, city: null, district: null, addressDetail: null })
   assert.equal(page.paymentInfo.value.receiverName, '')
   assert.equal(page.paymentInfo.value.addressText, '')
 })
 
 test('完整订单号可复制，页面卸载后延迟订单响应不清购物车或导航', async () => {
   const normal = createPage()
-  normal.page.applyOrderData(order()); normal.page.copyOrderNo()
+  await normal.page.applyOrderData(order()); normal.page.copyOrderNo()
   assert.deepEqual(normal.copied, ['SYNTHETIC-ORDER-81'])
   let finish
   const pending = new Promise(resolve => { finish = resolve })
@@ -147,11 +147,11 @@ test('完整订单号可复制，页面卸载后延迟订单响应不清购物�
   assert.deepEqual(late.navigation, [])
   assert.deepEqual(late.copied, [])
   assert.deepEqual(late.consumedOrderIds, [])
-  late.page.applyOrderData(order())
+  await late.page.applyOrderData(order())
   assert.deepEqual(late.consumedOrderIds, [], '退页后直接到达的成功处理同样不能消费快照')
 })
 
-test('实际回执模板可编译，收货内容及复制、订单入口均连接实际处理函数', () => {
+test('实际回执模板可编译，收货内容及复制、订单入口均连接实际处理函数', async () => {
   const require = createRequire(new URL('../../liaoning_zongyi-admin/ruoyi-ui/package.json', import.meta.url))
   const compiler = require('vue-template-compiler')
   const source = readFileSync(new URL('../pages/order/payment_success.vue', import.meta.url), 'utf8')

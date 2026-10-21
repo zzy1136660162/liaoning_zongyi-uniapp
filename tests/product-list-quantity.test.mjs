@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
 import { readFileSync } from 'node:fs'
-import * as cart from '../utils/cart.js'
+import * as cart from './cart-api-fixture.mjs'
 import { inventoryFields, inventoryStock } from '../utils/inventory.js'
 import { loadOptions, loadSetup } from './sfc-harness.mjs'
 import { isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit } from '../utils/purchase-quantity.js'
@@ -13,7 +13,7 @@ globalThis.uni = {
   removeStorageSync: key => storage.delete(key), $emit() {}, showLoading() {}, hideLoading() {},
   navigateTo: value => navigations.push(value), showToast: value => messages.push(value)
 }
-beforeEach(() => { storage.clear(); navigations.length = 0; messages.length = 0 })
+beforeEach(async () => { storage.clear(); navigations.length = 0; messages.length = 0 })
 const source = readFileSync(new URL('../api/product.js', import.meta.url), 'utf8')
   .replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const { mapProductDetail } = Function('inventoryFields', 'inventoryStock', 'getImageUrl',
@@ -30,12 +30,12 @@ function list(name, product = detail()) {
     TabBar: {}, getImageUrl: value => value,
     getExternalUseLabel() {}, getColdShippingLabel() {}, isSelfDevelopedProduct() {}
   })
-  return { ...definition.data(), ...definition.methods, categories: [],
+  return { ...definition.data(), ...definition.methods, categories: [], verifiedProducts: cart.getCartEntries(),
     ensureLogin: () => true, ensureCartCompatible: () => true,
-    loadVerifiedProductsFromStorage() {}, removeZeroQuantityMarker() {}, setZeroQuantityMarker() {} }
+    updateCartView: definition.methods.updateCartView }
 }
 
-test('列表结算投影保留当前商品范围，并使用实际 SKU 价格与库存', () => {
+test('列表结算投影保留当前商品范围，并使用实际 SKU 价格与库存', async () => {
   const categories = [{ id: 1, products: [{ id: 10, price: 999, stock: 999 }] }]
   const entries = {
     '10:11': { productId: 10, skuId: 11, quantity: 2, price: 5, stock: 6 },
@@ -60,30 +60,30 @@ for (const name of ['medicine_list', 'priducts_list', 'priducts_list2']) {
     assert.equal(cart.getCartEntries()['10'], undefined)
   })
 
-  test(`${name}: 单个已加购 SKU 直接增减，其他商品不受影响`, () => {
+  test(`${name}: 单个已加购 SKU 直接增减，其他商品不受影响`, async () => {
     cart.replaceCartData({
       '10:11': { productId: 10, skuId: 11, quantity: 2, stock: 6, available: true },
       '20:21': { productId: 20, skuId: 21, quantity: 4, stock: 9, available: true }
     })
     const page = list(name)
-    page.increaseQuantity({ id: 10 })
+    await page.increaseQuantity({ id: 10 })
     assert.equal(cart.getCartEntries()['10:11'].quantity, 3)
-    page.decreaseQuantity({ id: 10 })
+    await page.decreaseQuantity({ id: 10 })
     assert.equal(cart.getCartEntries()['10:11'].quantity, 2)
     assert.equal(cart.getCartEntries()['20:21'].quantity, 4)
     assert.equal(navigations.length, 0)
   })
 
-  test(`${name}: 多个已加购 SKU 显示总量，点击加减只进购物车且不改任意规格`, () => {
+  test(`${name}: 多个已加购 SKU 显示总量，点击加减只进购物车且不改任意规格`, async () => {
     cart.replaceCartData({
       '10:11': { productId: 10, skuId: 11, quantity: 2, stock: 6, available: true },
       '10:12': { productId: 10, skuId: 12, quantity: 3, stock: 9, available: true }
     })
     const page = list(name), before = structuredClone(cart.getCartEntries())
     assert.equal(page.getProductQuantity(10), 5)
-    page.increaseQuantity({ id: 10 })
-    page.decreaseQuantity({ id: 10 })
-    if (page.onNumberBoxChange) page.onNumberBoxChange({ id: 10 }, 6)
+    await page.increaseQuantity({ id: 10 })
+    await page.decreaseQuantity({ id: 10 })
+    if (page.onNumberBoxChange) await page.onNumberBoxChange({ id: 10 }, 6)
     assert.deepEqual(cart.getCartEntries(), before)
     assert.ok(navigations.length >= 2)
     assert.ok(navigations.every(item => item.url === '/pages/cart/cart'))

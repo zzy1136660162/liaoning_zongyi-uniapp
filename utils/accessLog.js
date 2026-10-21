@@ -1,217 +1,69 @@
-/**
- * 访问日志工具
- * 用于记录页面访问和关键操作
- */
+import { API_PATHS, BASE_URL } from './config.js'
+import { getAnalyticsSessionId, getSessionToken } from './session.js'
 
-import { post } from './request.js'
-import { API_PATHS, TOKEN_KEY } from './config.js'
-import { getAnalyticsSessionId } from './session.js'
+const ACTION_TYPES = new Set(['PAGE_VIEW', 'BUTTON_CLICK', 'BEHAVIOR'])
+const ACTION_RESULTS = new Set(['', 'SUCCESS', 'FAILED', 'CANCELLED', 'UNKNOWN'])
+const CLIENT_ID_KEY = 'lnzy_client_id'
 
-// 获取设备信息
-const getDeviceInfo = () => {
+const getClientId = () => {
   try {
-    const systemInfo = uni.getSystemInfoSync()
-    return {
-      deviceType: systemInfo.platform || 'unknown',
-      screenWidth: systemInfo.screenWidth,
-      screenHeight: systemInfo.screenHeight,
-      system: systemInfo.system,
-      version: systemInfo.version
+    let id = uni.getStorageSync(CLIENT_ID_KEY)
+    if (!id) {
+      id = 'lnzy_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10)
+      uni.setStorageSync(CLIENT_ID_KEY, id)
     }
-  } catch (e) {
-    console.error('获取设备信息失败:', e)
-    return { deviceType: 'unknown' }
-  }
-}
-
-// 生成或获取本地持久化的 clientId，用于标识客户端/设备
-const CLIENT_ID_STORAGE_KEY = 'lnzy_client_id'
-
-const getOrCreateClientId = () => {
-  try {
-    let clientId = uni.getStorageSync(CLIENT_ID_STORAGE_KEY)
-    if (!clientId) {
-      // 简单生成一个随机ID，形如: lnzy_xxx
-      clientId = 'lnzy_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
-      uni.setStorageSync(CLIENT_ID_STORAGE_KEY, clientId)
-    }
-    return clientId
-  } catch (e) {
-    console.error('生成/读取 clientId 失败:', e)
+    return id
+  } catch (_) {
     return undefined
   }
 }
 
-// 获取当前页面路径
-const getCurrentPage = () => {
-  try {
-    const pages = getCurrentPages()
-    if (pages && pages.length > 0) {
-      const currentPage = pages[pages.length - 1]
-      return currentPage.route || ''
-    }
-  } catch (e) {
-    console.error('获取当前页面失败:', e)
-  }
-  return ''
+export const getActionFailureResult = error => {
+  if (error?.cancelled || error?.code === 'PAYMENT_CANCELLED' || error?.message === '用户取消支付' || /cancel/i.test(error?.errMsg || '')) return 'CANCELLED'
+  const code = Number(error?.code || error?.statusCode)
+  return code >= 400 && code < 500 && code !== 408 ? 'FAILED' : 'UNKNOWN'
 }
 
-const LOG_DEDUP_MS = 1500
-const logDedupCache = new Map()
+/** 页面显式触发；日志失败不影响业务，也不触发认证跳转或接口访问日志。 */
+export const logAccess = (options = {}) => {
+  try {
+    if (!options || typeof options !== 'object' || Array.isArray(options)) return
+    const { actionType, moduleCode, accessType, pageType, actionCode, accessTitle, accessDescription,
+      pageId = '', actionResult = '', extraData = {} } = options
+    if (!ACTION_TYPES.has(actionType) || !ACTION_RESULTS.has(actionResult)) return
+    if (![moduleCode, accessType, pageType, actionCode, accessTitle, accessDescription]
+      .every(value => typeof value === 'string' && value.trim())) return
+    if (!extraData || typeof extraData !== 'object' || Array.isArray(extraData)) return
+    const serializedExtra = JSON.stringify(extraData)
+    if (serializedExtra.length > 8192) return
 
-const shouldSkipDuplicateLog = (cacheKey) => {
-  const now = Date.now()
-  const lastAt = logDedupCache.get(cacheKey)
-  if (lastAt && now - lastAt < LOG_DEDUP_MS) {
-    return true
-  }
-  logDedupCache.set(cacheKey, now)
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+    const current = pages[pages.length - 1]
+    const route = options.requestUri || (current?.route ? '/' + current.route.replace(/^\//, '') : '')
+    if (!route.startsWith('/pages/') || /[?#]/.test(route)) return
+    const previous = pages.length > 1 ? pages[pages.length - 2]?.route : ''
+    const token = getSessionToken()
+    let deviceType = 'unknown'
+    try { deviceType = uni.getSystemInfoSync().platform || deviceType } catch (_) { /* 设备信息缺失仍记录行为。 */ }
 
-  if (logDedupCache.size > 300) {
-    const expiredBefore = now - LOG_DEDUP_MS * 20
-    logDedupCache.forEach((time, key) => {
-      if (time < expiredBefore) {
-        logDedupCache.delete(key)
-      }
+    uni.request({
+      url: BASE_URL + API_PATHS.ACCESS_LOG.SAVE,
+      method: 'POST',
+      timeout: 5000,
+      header: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      data: {
+        moduleCode, accessType, pageType, pageId: String(pageId ?? ''), actionType, actionCode,
+        accessTitle, accessDescription, actionResult, requestUri: route,
+        sessionId: getAnalyticsSessionId(), clientId: getClientId(), deviceType,
+        referer: options.referer || (previous ? '/' + previous.replace(/^\//, '') : ''),
+        extraData: serializedExtra
+      },
+      fail() {}
     })
-  }
-  return false
-}
-
-// 获取来源页面
-const getReferer = () => {
-  try {
-    const pages = getCurrentPages()
-    if (pages && pages.length > 1) {
-      const prevPage = pages[pages.length - 2]
-      return prevPage.route || ''
-    }
-  } catch (e) {
-    console.error('获取来源页面失败:', e)
-  }
-  return ''
-}
-
-/**
- * 记录访问日志
- * @param {Object} options 日志选项
- * @param {String} options.actionType 操作类型：PAGE_VIEW页面访问 BUTTON_CLICK按钮点击
- * @param {String} options.pageType 页面类型：HOME/ORDER_LIST/PRODUCT_DETAIL等
- * @param {String} options.pageId 页面主键ID，如商品ID/订单ID等
- * @param {String} options.buttonName 按钮名称（按钮点击时使用）
- * @param {Object} options.extraData 扩展信息
- */
-export const logAccess = async (options = {}) => {
-  try {
-    const {
-      actionType = 'PAGE_VIEW',
-      pageType = '',
-      pageId = '',
-      buttonName = '',
-      accessTitle = '',
-      extraData = {}
-    } = options
-
-    // 获取设备信息
-    const deviceInfo = getDeviceInfo()
-    const currentPage = getCurrentPage()
-    const referer = extraData.refererRoute ? `/${extraData.refererRoute}` : getReferer()
-    const resolvedPageType = pageType || currentPage.split('/').pop().replace('.vue', '').toUpperCase()
-    const resolvedAccessTitle = accessTitle || extraData.accessTitle || resolvedPageType
-    const requestUri = extraData.route ? `/${extraData.route}` : (currentPage ? `/${currentPage}` : '')
-    const dedupKey = `${actionType}:${requestUri}:${pageId || ''}:${buttonName || ''}`
-
-    if (shouldSkipDuplicateLog(dedupKey)) {
-      return
-    }
-
-    // 构建日志数据
-    const logData = {
-      actionType: actionType,
-      pageType: resolvedPageType,
-      accessType: resolvedPageType,
-      accessTitle: resolvedAccessTitle,
-      pageId: pageId || '',
-      sessionId: getAnalyticsSessionId(),
-      // 使用本地持久化的 clientId 作为客户端标识
-      clientId: getOrCreateClientId(),
-      requestUri: requestUri || (currentPage ? `/${currentPage}` : ''),
-      deviceType: deviceInfo.deviceType,
-      referer: referer ? (referer.startsWith('/') ? referer : `/${referer}`) : '',
-      extraData: JSON.stringify({
-        ...extraData,
-        buttonName: buttonName,
-        screenWidth: deviceInfo.screenWidth,
-        screenHeight: deviceInfo.screenHeight,
-        system: deviceInfo.system,
-        version: deviceInfo.version
-      })
-    }
-
-    // 异步发送日志，不阻塞主流程
-    // 携带 token 但不强制校验（needAuth:false 避免 401 打断业务）
-    post(API_PATHS.ACCESS_LOG.SAVE, logData, {
-      needAuth: false, // 不强制校验，未登录也允许
-      showLoading: false, // 不显示加载提示
-      header: buildAuthHeaderIfExists()
-    }).catch(err => {
-      // 静默失败，不影响业务
-      console.error('记录访问日志失败:', err)
-    })
-  } catch (e) {
-    // 静默失败，不影响业务
-    console.error('记录访问日志异常:', e)
+  } catch (_) {
+    // 日志不重试、不输出业务载荷，避免重复上报及泄露用户信息。
   }
 }
 
-// 如果本地有 token，则附加到 header，未登录则返回空头
-const buildAuthHeaderIfExists = () => {
-  try {
-    const token = uni.getStorageSync(TOKEN_KEY)
-    if (token) {
-      return { Authorization: `Bearer ${token}` }
-    }
-  } catch (e) {
-    console.error('读取 token 失败:', e)
-  }
-  return {}
-}
-
-/**
- * 记录页面访问
- * @param {String} pageType 页面类型
- * @param {String} pageId 页面ID（可选）
- * @param {Object} extraData 扩展信息（可选）
- */
-export const logPageView = (pageType, pageId = '', extraData = {}) => {
-  const normalizedExtra = typeof pageId === 'object' && pageId !== null && !Array.isArray(pageId)
-    ? pageId
-    : extraData
-  const normalizedPageId = typeof pageId === 'object' ? '' : String(pageId || '')
-
-  logAccess({
-    actionType: 'PAGE_VIEW',
-    pageType: pageType,
-    pageId: normalizedPageId,
-    accessTitle: normalizedExtra.accessTitle || pageType,
-    extraData: normalizedExtra
-  })
-}
-
-/**
- * 记录按钮点击
- * @param {String} buttonName 按钮名称
- * @param {String} pageType 页面类型
- * @param {String} pageId 页面ID（可选）
- * @param {Object} extraData 扩展信息（可选）
- */
-export const logButtonClick = (buttonName, pageType = '', pageId = '', extraData = {}) => {
-  logAccess({
-    actionType: 'BUTTON_CLICK',
-    pageType: pageType,
-    pageId: pageId,
-    buttonName: buttonName,
-    accessTitle: buttonName,
-    extraData: extraData
-  })
-}
+export const logPageView = options => logAccess({ ...options, actionType: 'PAGE_VIEW' })
+export const logButtonClick = options => logAccess({ ...options, actionType: 'BUTTON_CLICK' })

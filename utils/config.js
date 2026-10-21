@@ -43,9 +43,6 @@ export const CUSTOMER_SERVICE_CONFIG = CUSTOMER_SERVICE_ENV[ENV]
 // Token存储Key
 export { STORAGE_KEY_TOKEN as TOKEN_KEY } from './storage.js'
 
-// 用户ID存储Key
-export const USER_ID_KEY = 'user_id'
-
 // 图片地址前缀
 // export const IMAGE_BASE_URL = 'https://yuntuoengine.com/lnzy-admin'
 export const IMAGE_BASE_URL = 'https://shop.lntcm.com/assets_files'

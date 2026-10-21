@@ -2,21 +2,24 @@
   <view class="profile-page">
     <view class="user-header">
       <view class="user-info">
-        <view class="avatar-wrapper">
-          <image
-            class="avatar"
-            :src="avatarSrc"
-            mode="aspectFill"
-          />
+        <view v-if="profileLoading" class="profile-status">个人资料加载中...</view>
+        <view v-else-if="profileError" class="profile-status">
+          <text>{{ profileError }}</text>
+          <button class="profile-retry" size="mini" @click="loadUserProfile">重新加载</button>
         </view>
-        <view class="user-details">
+        <template v-else>
           <view class="name">
             {{ userInfo.realName || '微信用户' }}
           </view>
-          <view class="card-number">
-            就诊卡号: {{ userInfo.idNumber || '暂无' }}
+          <view class="card-info">
+            <text class="card-label">
+              就诊卡号
+            </text>
+            <text class="card-number">
+              {{ userInfo.idNumber || '暂无' }}
+            </text>
           </view>
-        </view>
+        </template>
       </view>
     </view>
 
@@ -206,28 +209,30 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { getUserProfile, logout } from '@/api/auth.js'
+import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'USER', accessType: '个人中心', pageType: 'USER_PROFILE', requestUri: '/pages/user/profile', pageId: '' }
+import { onShow, onUnload } from '@dcloudio/uni-app'
+import { ref } from 'vue'
+import { logout } from '@/api/auth.js'
+import { fetchAccountProfile } from '@/utils/account.js'
 import { endSession, getSessionToken, getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { getOrderStats } from '@/api/order.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
-import { logButtonClick, logPageView } from '@/utils/accessLog.js'
-import { getImageUrl } from '@/utils/config.js'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
-import {
-  STORAGE_KEY_USER_REGISTER
-} from '@/utils/storage.js'
-
-const userInfo = ref({
+// 仅用于个人中心展示，不作为共享账号资料或注册表单。
+const emptyUserInfo = () => ({
   realName: '',
   idType: '',
   phone: '',
-  idNumber: '',
-  verifyCode: ''
+  idNumber: ''
 })
-
-const avatarSrc = computed(() => getImageUrl('/profile/liaoning_zongyi/zaixian_mingyi_logo.png'))
-const successIcon = computed(() => getImageUrl('/profile/liaoning_zongyi/success.png'))
+const userInfo = ref(emptyUserInfo())
+const profileLoading = ref(false)
+const profileError = ref('')
+let profileRequestSequence = 0
+let statsRequestSequence = 0
+let pageActive = true
 
 const currentTab = ref('mine')
 
@@ -239,39 +244,29 @@ const orderStats = ref({
 })
 
 const loadUserProfile = async () => {
+  if (!pageActive) return
+  const sequence = ++profileRequestSequence
   const session = getSessionGeneration()
+  const isCurrentRequest = () => pageActive && sequence === profileRequestSequence && isCurrentSession(session)
+  // 重新进入或重试时立即清空上次展示，接口失败不能冒充资料仍然有效。
+  userInfo.value = emptyUserInfo()
+  profileLoading.value = true
+  profileError.value = ''
   try {
-    uni.showLoading({ title: '加载中...' })
-
-    const userData = await getUserProfile()
-    if (!isCurrentSession(session)) return
-
-    if (userData) {
-      userInfo.value = {
-        realName: userData.userName || '',
-        idType: userData.idType || '',
-        phone: userData.phone || '',
-        idNumber: userData.idCardNo || '',
-        verifyCode: ''
-      }
-
-      uni.setStorageSync(STORAGE_KEY_USER_REGISTER, userInfo.value)
+    const userData = await fetchAccountProfile()
+    if (!isCurrentRequest()) return
+    userInfo.value = {
+      realName: userData.userName || '',
+      idType: userData.idType || '',
+      phone: userData.phone || '',
+      idNumber: userData.idCardNo || ''
     }
-
-    uni.hideLoading()
   } catch (error) {
-    if (!isCurrentSession(session)) return
+    if (!isCurrentRequest()) return
     console.error('event=ui_user_profile stage=profile_request result=failed reason=request_failed')
-    uni.hideLoading()
-
-    try {
-      const localUserInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-      if (localUserInfo) {
-        userInfo.value = localUserInfo
-      }
-    } catch (storageError) {
-      console.error('event=ui_user_profile stage=profile_cache result=failed reason=storage_error')
-    }
+    profileError.value = '个人资料加载失败，请重试'
+  } finally {
+    if (pageActive && sequence === profileRequestSequence) profileLoading.value = false
   }
 }
 
@@ -285,10 +280,11 @@ const handleLogout = async () => {
         return
       }
 
+      logButtonClick({ ...PAGE_LOG, actionCode: 'LOGOUT', accessTitle: '确认退出登录', accessDescription: '用户确认退出，即将清除本机登录状态并请求注销凭证' })
       const revocation = logout(getSessionToken())
       endSession()
       const endedGeneration = getSessionGeneration()
-      userInfo.value = { realName: '', phone: '', idNumber: '' }
+      userInfo.value = emptyUserInfo()
       uni.reLaunch({ url: '/pages/register/register' })
       const result = await revocation
       if (!result.confirmed && isCurrentSession(endedGeneration)) {
@@ -299,10 +295,13 @@ const handleLogout = async () => {
 }
 
 const loadOrderStats = async () => {
+  if (!pageActive) return
+  const sequence = ++statsRequestSequence
   const session = getSessionGeneration()
+  const isCurrentRequest = () => pageActive && sequence === statsRequestSequence && isCurrentSession(session)
   try {
-    const stats = (await getOrderStats()) || {}
-    if (!isCurrentSession(session)) return
+    const stats = (await getOrderStats({ silent: true })) || {}
+    if (!isCurrentRequest()) return
 
     orderStats.value = {
       pending: Number(stats.pending) || 0,
@@ -311,12 +310,13 @@ const loadOrderStats = async () => {
       refund: Number(stats.refund) || 0
     }
   } catch (error) {
-    if (!isCurrentSession(session)) return
+    if (!isCurrentRequest()) return
     console.error('event=ui_user_profile stage=load_order_stats result=failed reason=operation_incomplete')
   }
 }
 
 const goToOrderList = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_ORDER_LIST', accessTitle: '查看全部订单', accessDescription: '从个人中心进入全部订单列表' })
   uni.navigateTo({
     url: '/pages/order/order_list'
   })
@@ -330,7 +330,7 @@ const goToOrderListByStatus = (status) => {
     refund: '退款'
   }
 
-  logButtonClick(`查看${statusMap[status] || '订单'}`, 'USER_PROFILE', '', { status })
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_ORDER_LIST', accessTitle: `查看${statusMap[status] || '订单'}`, accessDescription: '从个人中心进入指定状态的订单或退款列表', extraData: { status } })
 
   if (status === 'refund') {
     uni.navigateTo({
@@ -341,10 +341,10 @@ const goToOrderListByStatus = (status) => {
 
   const statusParamMap = {
     0: 'pending',
-    1: 'shipping',
+    1: 'paid',
     2: 'received',
     3: 'completed',
-    4: 'all'
+    4: 'cancelled'
   }
 
   uni.navigateTo({
@@ -353,33 +353,32 @@ const goToOrderListByStatus = (status) => {
 }
 
 const goToAddressList = () => {
-  logButtonClick('收货地址', 'USER_PROFILE')
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_ADDRESS_LIST', accessTitle: '管理收货地址', accessDescription: '从个人中心进入收货地址管理' })
   uni.navigateTo({
     url: '/pages/order/address_list'
   })
 }
 
 const goToPatientList = () => {
-  logButtonClick('就诊人管理', 'USER_PROFILE')
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PATIENT_LIST', accessTitle: '管理就诊人', accessDescription: '从个人中心进入就诊人管理' })
   uni.navigateTo({
     url: '/pages/user/patient_list'
   })
 }
 
 const openHumanCustomerService = () => {
-  logButtonClick('人工客服', 'USER_PROFILE')
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_HUMAN_SERVICE', accessTitle: '选择人工客服', accessDescription: '用户选择人工客服渠道，准备打开客服会话' })
   openCustomerServiceChat()
 }
 
 const openAiCustomerService = () => {
-  logButtonClick('AI客服', 'USER_PROFILE')
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_AI_SERVICE', accessTitle: '选择智能客服', accessDescription: '用户选择智能客服渠道，进入智能客服页面' })
   uni.navigateTo({
     url: '/pages/ai/chat'
   })
 }
 
 const handleContact = () => {
-  logButtonClick('联系客服', 'USER_PROFILE')
 
   uni.showActionSheet({
     itemList: ['人工客服', 'AI客服'],
@@ -400,31 +399,18 @@ const handleTabChange = (tab) => {
   currentTab.value = tab
 }
 
-onMounted(() => {
-  logPageView('USER_PROFILE')
+onShow(() => {
+  if (!pageActive) return
+  logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问个人中心', accessDescription: '查看个人资料及订单、地址、就诊人与客服入口' })
   loadUserProfile()
   loadOrderStats()
 })
 
-const getCurrentRoute = () => {
-  try {
-    const pages = getCurrentPages()
-    const currentPage = pages[pages.length - 1] || {}
-    let route = currentPage.route || '/pages/user/profile'
-    const options = currentPage.options || {}
-    const queryString = Object.keys(options)
-      .map((key) => `${key}=${encodeURIComponent(options[key])}`)
-      .join('&')
-
-    if (queryString) {
-      route += `?${queryString}`
-    }
-
-    return route
-  } catch (error) {
-    return '/pages/user/profile'
-  }
-}
+onUnload(() => {
+  pageActive = false
+  profileRequestSequence++
+  statsRequestSequence++
+})
 </script>
 
 <style scoped lang="scss">
@@ -435,50 +421,60 @@ const getCurrentRoute = () => {
 }
 
 .user-header {
-  background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
-  padding: 60rpx 30rpx 80rpx;
-  position: relative;
+  padding: 24rpx 20rpx 0;
 }
 
 .user-info {
   display: flex;
-  align-items: center;
-  gap: 24rpx;
+  flex-direction: column;
+  gap: 20rpx;
+  min-width: 0;
+  padding: 32rpx 32rpx 30rpx;
+  border-radius: 20rpx;
+  background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
 }
 
-.avatar-wrapper {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
+.profile-status {
+  color: #ffffff;
+  font-size: 26rpx;
+  line-height: 1.6;
 }
 
-.avatar {
-  width: 100rpx;
-  height: 100rpx;
-  border-radius: 50%;
-}
-
-.user-details {
-  flex: 1;
-  color: #fff;
+.profile-retry {
+  margin: 16rpx 0 0;
+  color: #357abd;
 }
 
 .name {
-  font-size: 36rpx;
+  font-size: 38rpx;
   font-weight: 600;
-  margin-bottom: 12rpx;
+  line-height: 1.4;
   color: #ffffff;
+  word-break: break-all;
+}
+
+.card-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  min-width: 0;
+}
+
+.card-label {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.74);
 }
 
 .card-number {
+  flex: 1;
+  min-width: 0;
   font-size: 26rpx;
-  opacity: 0.9;
-  color: #ffffff;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.95);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
 }
 
 .order-section {

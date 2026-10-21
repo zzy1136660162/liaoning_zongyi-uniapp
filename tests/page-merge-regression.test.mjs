@@ -10,8 +10,9 @@ const healthListMethods = read('utils/health-product-list.js')
 assert.match(cartPage, /isItemSelectable\(item\)/)
 assert.match(cartPage, /isQuantityAtStockLimit\(item\)/)
 assert.match(cartPage, /checkout\.requiresConsultation/)
-assert.match(cartPage, /logPageView\('CART'\)/)
-assert.match(cartPage, /loadCartProducts/)
+assert.match(cartPage, /logPageView\(\{/)
+assert.match(cartPage, /refreshCart/)
+assert.doesNotMatch(cartPage, /loadLocalCartFallback/)
 
 
 assert.match(healthListPage, /handleSearch\(e\)/)

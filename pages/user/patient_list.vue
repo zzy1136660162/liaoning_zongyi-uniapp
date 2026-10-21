@@ -8,9 +8,15 @@
             <text class="patient-type" :class="patient.patientType">
               {{ patient.patientType === 'child' ? '儿童' : '成人' }}
             </text>
+            <text
+              v-if="getPatientProfileNotice(patient)"
+              class="patient-type incomplete"
+            >
+              待完善
+            </text>
           </view>
           <text class="patient-meta">
-            {{ patient.gender || '未知' }} · {{ patient.age ?? '--' }}岁
+            {{ patient.gender || '性别待完善' }} · {{ patient.birthDate ? (patient.age ?? '--') + '岁' : '出生日期待完善' }}
           </text>
           <text class="patient-meta">
             {{ patient.idType || '证件' }} {{ patient.idNumberMasked || '未完善' }}
@@ -19,14 +25,22 @@
             联系电话 {{ patient.phoneMasked }}
           </text>
           <text
-            v-if="patientHisSyncNotice(patient.hisBindingStatus)"
+            v-if="getPatientProfileNotice(patient)"
+            class="patient-sync-notice"
+          >
+            {{ getPatientProfileNotice(patient) }}，完善后可用于下单。
+          </text>
+          <text
+            v-else-if="patientHisSyncNotice(patient.hisBindingStatus)"
             class="patient-sync-notice"
           >
             医院信息待同步，可编辑核对资料。
           </text>
         </view>
         <view class="patient-actions">
-          <button class="action-btn edit" @click="editPatient(patient.id)">编辑</button>
+          <button class="action-btn edit" @click="editPatient(patient.id)">
+            {{ getPatientProfileNotice(patient) ? '完善信息' : '编辑' }}
+          </button>
           <button class="action-btn delete" @click="confirmDelete(patient)">删除</button>
         </view>
       </view>
@@ -44,10 +58,15 @@
 </template>
 
 <script setup>
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'PATIENT', accessType: '就诊人管理', pageType: 'PATIENT_LIST', requestUri: '/pages/user/patient_list', pageId: '' }
 import { ref } from 'vue'
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+const pageSession = getSessionGeneration()
 import { onShow } from '@dcloudio/uni-app'
 import { deletePatient, getPatientList } from '@/api/patient.js'
-import { patientHisSyncNotice } from '@/utils/patient.js'
+import { getPatientProfileNotice, patientHisSyncNotice } from '@/utils/patient.js'
 
 const patients = ref([])
 const loading = ref(false)
@@ -66,31 +85,45 @@ const loadPatients = async () => {
 }
 
 const addPatient = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ADD_PATIENT', accessTitle: '新增就诊人', accessDescription: '进入新增就诊人资料页面' })
   uni.navigateTo({ url: '/pages/dispense/patient_edit' })
 }
 
 const editPatient = (id) => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'EDIT_PATIENT', accessTitle: '编辑就诊人', accessDescription: '进入所选就诊人的资料编辑页面', extraData: { patientId: id } })
   uni.navigateTo({ url: `/pages/dispense/patient_edit?id=${encodeURIComponent(id)}` })
 }
 
 const confirmDelete = (patient) => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'DELETE_PATIENT', accessTitle: '请求删除就诊人', accessDescription: '用户发起删除所选就诊人，等待确认', extraData: { patientId: patient.id } })
   uni.showModal({
     title: '删除就诊人',
     content: `确定删除“${patient.name}”吗？历史问诊和处方不会受影响。`,
     success: async (result) => {
-      if (!result.confirm) return
+      if (!isCurrentSession(pageSession)) return
+      if (!result.confirm) {
+        logAccess({ ...PAGE_LOG, actionCode: 'DELETE_PATIENT', accessTitle: '取消删除就诊人', accessDescription: '用户取消删除，就诊人资料未更改', actionType: 'BEHAVIOR', actionResult: 'CANCELLED', extraData: { patientId: patient.id } })
+        return
+      }
       try {
         await deletePatient(patient.id)
+        if (!isCurrentSession(pageSession)) return
+        logAccess({ ...PAGE_LOG, actionCode: 'DELETE_PATIENT', accessTitle: '就诊人删除成功', accessDescription: '服务端已删除所选就诊人记录', actionType: 'BEHAVIOR', actionResult: 'SUCCESS', extraData: { patientId: patient.id } })
         uni.showToast({ title: '删除成功', icon: 'success' })
         await loadPatients()
       } catch (error) {
+        if (!isCurrentSession(pageSession)) return
+        logAccess({ ...PAGE_LOG, actionCode: 'DELETE_PATIENT', accessTitle: '就诊人删除未完成', accessDescription: '删除操作未取得明确成功结果', actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { patientId: patient.id, reason: 'delete_incomplete' } })
         uni.showToast({ title: error?.message || '删除失败', icon: 'none' })
       }
     }
   })
 }
 
-onShow(loadPatients)
+onShow(() => {
+  logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问就诊人管理', accessDescription: '查看已保存的就诊人并准备新增、编辑或删除' })
+  return loadPatients()
+})
 </script>
 
 <style scoped>
@@ -135,7 +168,8 @@ onShow(loadPatients)
   border-radius: 999rpx;
 }
 
-.patient-type.child {
+.patient-type.child,
+.patient-type.incomplete {
   color: #a15c00;
   background: #fff3dc;
 }

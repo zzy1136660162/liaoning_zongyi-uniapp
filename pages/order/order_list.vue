@@ -1,17 +1,25 @@
 <template>
   <view class="order-list-page">
     <!-- 标签页 -->
-    <view class="tabs">
-      <view
-        v-for="tab in tabs"
-        :key="tab.key"
-        class="tab-item"
-        :class="{ active: activeTab === tab.key }"
-        @click="switchTab(tab.key)"
-      >
-        {{ tab.label }}
+    <scroll-view
+      class="tabs"
+      scroll-x
+      :scroll-into-view="'order-tab-' + activeTab"
+      :show-scrollbar="false"
+    >
+      <view class="tabs-content">
+        <view
+          v-for="tab in tabs"
+          :id="'order-tab-' + tab.key"
+          :key="tab.key"
+          class="tab-item"
+          :class="{ active: activeTab === tab.key }"
+          @click="switchTab(tab.key)"
+        >
+          {{ tab.label }}
+        </view>
       </view>
-    </view>
+    </scroll-view>
 
     <!-- 订单列表 -->
     <scroll-view
@@ -88,6 +96,12 @@
               <view class="product-text">
                 <text class="product-name">{{ item.productName }}</text>
                 <text v-if="formatOrderItemMeta(item)" class="order-product-meta">{{ formatOrderItemMeta(item) }}</text>
+                <text
+                  v-if="getOrderItemRefundText(item)"
+                  class="product-refund-summary"
+                >
+                  {{ getOrderItemRefundText(item) }}
+                </text>
               </view>
             </view>
             <view class="product-side">
@@ -112,6 +126,9 @@
           {{ redeemSummaryText(order) }}
         </view>
 
+        <view v-if="shouldContactForPhysicalRefund(order)" class="refund-contact-tip">
+          实物商品已发货，如需退款请线下联系客服。
+        </view>
         <view class="order-footer">
           <view class="order-amount">
             <text class="amount-label">
@@ -143,22 +160,22 @@
             >
               确认收货
             </button>
-            <!-- 申请退货按钮：普通商品已完成可申请；传统疗法已支付即可申请 -->
-            <!-- <button
+            <!-- 按逐项可退数量显示入口，部分核销或已有退款不影响剩余项目申请。 -->
+            <button
               v-if="canOrderApplyRefund(order)"
               class="action-btn refund-btn"
               @click.stop="applyRefund(order.id)"
             >
               {{ refundActionText(order) }}
-            </button> -->
-            <!-- 查看申请按钮：在已完成且有退货申请时，或退货中状态时显示 -->
-            <!-- <button
-              v-if="(order.status === 3 && order.refundApplicationId) || (order.status === 5 && order.refundApplicationId)"
+            </button>
+            <!-- 申请记录与继续退款是两种操作，可以同时显示。 -->
+            <button
+              v-if="order.refundApplicationId"
               class="action-btn view-refund-btn"
               @click.stop="viewRefundApplication(order.refundApplicationId)"
             >
-              查看申请
-            </button> -->
+              退款记录
+            </button>
           </view>
         </view>
       </view>
@@ -193,16 +210,19 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { ref, onUnmounted } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/order.js'
 import { checkCanApplyRefund } from '@/api/refund.js'
-import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+import { getOrderItemRefundText, canOrderApplyRefund, shouldContactForPhysicalRefund } from '@/utils/refund.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
 import { canPayOrder, getOrderStatusText } from '@/utils/order-status.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import { useProductImages } from '@/utils/product-image.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
+
+const PAGE_LOG = { moduleCode: 'ORDER', accessType: '订单', pageType: 'ORDER_LIST', pageId: '', requestUri: '/pages/order/order_list' }
 
 const { getProductImageUrl, handleProductImageError } = useProductImages()
 const activeTab = ref('all')
@@ -225,8 +245,10 @@ const tabs = ref([
   { key: 'all', label: '全部' },
   { key: 'completed', label: '已完成' },
   { key: 'pending', label: '待支付' },
+  { key: 'paid', label: '已支付' },
   { key: 'shipping', label: '待发货' },
   { key: 'received', label: '待收货' },
+  { key: 'cancelled', label: '已取消' },
   { key: 'afterSale', label: '退款' }
 ])
 
@@ -301,8 +323,16 @@ const mapOrderItem = (item = {}) => ({
   specText: item.specText || '',
   unit: item.unit || '',
   quantity: item.quantity || 1,
+  // 列表保留服务端的可退结果，历史申请只占用对应明细的数量。
+  refundedQuantity: Number(item.refundedQuantity || 0),
+  redeemedQuantity: Number(item.redeemedQuantity || 0),
+  refundFrozenQuantity: Number(item.refundFrozenQuantity || 0),
+  refundableQuantity: Number(item.refundableQuantity || 0),
+  refundable: Boolean(item.refundable),
+  refundBlockedReason: item.refundBlockedReason || '',
   price: item.price || '0.00',
   subtotalAmount: item.subtotalAmount,
+  refundCompletedQuantity: Number(item.refundCompletedQuantity || 0),
   productCategorySnapshot: item.productCategorySnapshot,
   redeemRequiredSnapshot: item.redeemRequiredSnapshot,
   redeemVouchers: normalizeRedeemVouchers(item)
@@ -430,28 +460,15 @@ const refreshOrders = () => {
   return loadOrders()
 }
 
-const canOrderApplyRefund = (order = {}) => {
-  if (!order.id || order.refundApplicationId) {
-    return false
-  }
-  const refundStatus = Number(order.refundStatus)
-  if (Number.isFinite(refundStatus) && refundStatus > 0) {
-    return false
-  }
-  if (isTherapyOrder(order) || hasRedeemEntitlement(order)) {
-    return Number(order.payStatus) === 1 && Number(order.status) !== 4
-  }
-  return Number(order.status) === 1
-}
-
 const refundActionText = (order = {}) => {
-  return isTherapyOrder(order) || hasRedeemEntitlement(order) ? '申请退款' : '申请退货'
+  return order.refundApplicationId ? '继续退款' : '申请退款'
 }
 
 // 切换标签
 const switchTab = (key) => {
   if (key === activeTab.value || !tabs.value.some(tab => tab.key === key)) return
   activeTab.value = key
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_FILTER', accessTitle: '筛选订单', accessDescription: '切换订单列表的状态筛选', extraData: { statusFilter: key } })
   return loadOrders()
 }
 
@@ -482,18 +499,23 @@ const getStatusColor = (status) => {
 // ✅ 取消订单
 const handleCancelOrder = async (orderId) => {
   const session = getSessionGeneration()
-  logButtonClick('取消订单', 'ORDER_LIST', orderId.toString())
   uni.showModal({
     title: '提示',
     content: '确定要取消此订单吗？',
     success: async (res) => {
       if (disposed || !isCurrentSession(session)) return
+      if (!res.confirm) {
+        logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_CANCEL_RESULT', actionResult: 'CANCELLED', accessTitle: '取消订单', accessDescription: '用户关闭确认弹窗，保留原订单', extraData: { orderId } })
+        return
+      }
       if (res.confirm) {
         try {
+          logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_CANCEL', accessTitle: '取消订单', accessDescription: '用户确认取消指定订单', extraData: { orderId } })
           uni.showLoading({ title: '取消中...' })
 
           await cancelOrder(orderId)
           if (disposed || !isCurrentSession(session)) return
+          logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_CANCEL_RESULT', actionResult: 'SUCCESS', accessTitle: '取消订单', accessDescription: '服务端已确认订单取消', extraData: { orderId } })
 
           uni.hideLoading()
           uni.showToast({
@@ -505,6 +527,7 @@ const handleCancelOrder = async (orderId) => {
           loadOrders()
         } catch (error) {
           if (disposed || !isCurrentSession(session)) return
+          logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_CANCEL_RESULT', actionResult: getActionFailureResult(error), accessTitle: '取消订单', accessDescription: '取消订单未获得服务端成功确认', extraData: { orderId, reason: 'CANCEL_NOT_CONFIRMED' } })
           console.error('event=ui_order_order_list stage=cancel_order result=failed reason=request_failed')
           uni.hideLoading()
           uni.showToast({
@@ -520,25 +543,29 @@ const handleCancelOrder = async (orderId) => {
 // 去支付
 const handlePayOrder = (order) => {
   if (!canPayOrder(order)) return
-  logButtonClick('去支付', 'ORDER_LIST', String(order.id))
-  goToOrderDetail(order.id)
+  goToOrderDetail(order.id, 'ORDER_PAY_OPEN')
 }
 
 // ✅ 确认收货
 const handleConfirmReceipt = async (orderId) => {
   const session = getSessionGeneration()
-  logButtonClick('确认收货', 'ORDER_LIST', orderId.toString())
   uni.showModal({
     title: '提示',
     content: '确认已收到货物吗？',
     success: async (res) => {
       if (disposed || !isCurrentSession(session)) return
+      if (!res.confirm) {
+        logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_RECEIPT_RESULT', actionResult: 'CANCELLED', accessTitle: '确认收货', accessDescription: '用户取消确认收货，订单状态保持原样', extraData: { orderId } })
+        return
+      }
       if (res.confirm) {
         try {
+          logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_RECEIPT', accessTitle: '确认收货', accessDescription: '用户确认已经收到指定订单商品', extraData: { orderId } })
           uni.showLoading({ title: '确认中...' })
 
           await confirmReceipt(orderId)
           if (disposed || !isCurrentSession(session)) return
+          logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_RECEIPT_RESULT', actionResult: 'SUCCESS', accessTitle: '确认收货', accessDescription: '服务端已保存确认收货结果', extraData: { orderId } })
 
           uni.hideLoading()
           uni.showToast({
@@ -550,6 +577,7 @@ const handleConfirmReceipt = async (orderId) => {
           loadOrders()
         } catch (error) {
           if (disposed || !isCurrentSession(session)) return
+          logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_RECEIPT_RESULT', actionResult: getActionFailureResult(error), accessTitle: '确认收货', accessDescription: '确认收货未获得服务端成功确认', extraData: { orderId, reason: 'RECEIPT_NOT_CONFIRMED' } })
           console.error('event=ui_order_order_list stage=confirm_receipt result=failed reason=request_failed')
           uni.hideLoading()
           uni.showToast({
@@ -573,12 +601,12 @@ const copyOrderNo = (value) => {
 }
 
 // 跳转到订单详情
-const goToOrderDetail = (orderId) => {
+const goToOrderDetail = (orderId, actionCode = 'ORDER_DETAIL_OPEN') => {
   if (!orderId || navigatingOrderId.value === orderId) {
     return
   }
   navigatingOrderId.value = orderId
-  logButtonClick('查看订单详情', 'ORDER_LIST', orderId.toString())
+  logButtonClick({ ...PAGE_LOG, actionCode, accessTitle: actionCode === 'ORDER_PAY_OPEN' ? '去支付' : '查看订单详情', accessDescription: actionCode === 'ORDER_PAY_OPEN' ? '从订单列表进入待支付订单，准备继续付款' : '从订单列表查看指定订单的详细状态', extraData: { orderId } })
   console.debug('event=ui_order_order_list stage=go_to_order_detail result=observed')
   uni.navigateTo({
     url: `/pages/order/order-detail?orderId=${encodeURIComponent(orderId)}`,
@@ -594,12 +622,15 @@ const goToOrderDetail = (orderId) => {
 
 // 申请退货
 const applyRefund = async (orderId) => {
+  const session = getSessionGeneration()
   try {
-    logButtonClick('申请退货', 'ORDER_LIST', orderId.toString())
+    logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_REFUND_OPEN', accessTitle: '申请退款售后', accessDescription: '检查指定订单是否允许申请退款售后', extraData: { orderId } })
 
     // 检查是否可以申请退货
     const checkResult = await checkCanApplyRefund(orderId)
+    if (disposed || !isCurrentSession(session)) return
     if (!checkResult) {
+      logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_REFUND_OPEN_RESULT', actionResult: 'FAILED', accessTitle: '申请退款售后', accessDescription: '订单不符合申请条件，未进入退款申请', extraData: { orderId, reason: 'REFUND_NOT_ALLOWED' } })
       uni.showToast({
         title: '该订单不符合退货条件',
         icon: 'none'
@@ -613,6 +644,8 @@ const applyRefund = async (orderId) => {
     })
 
   } catch (error) {
+    if (disposed || !isCurrentSession(session)) return
+    logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_REFUND_OPEN_RESULT', actionResult: getActionFailureResult(error), accessTitle: '申请退款售后', accessDescription: '未能确认订单的退款申请条件', extraData: { orderId, reason: 'ELIGIBILITY_NOT_CONFIRMED' } })
     console.error('event=ui_order_order_list stage=apply_refund result=failed reason=operation_incomplete')
     uni.showToast({
       title: error.message || '操作失败',
@@ -623,7 +656,7 @@ const applyRefund = async (orderId) => {
 
 // 查看退货申请
 const viewRefundApplication = (refundApplicationId) => {
-  logButtonClick('查看退货申请', 'ORDER_LIST', refundApplicationId.toString())
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_REFUND_DETAIL_OPEN', accessTitle: '查看退款详情', accessDescription: '从订单列表查看关联的退款申请进度', extraData: { refundApplicationId } })
   uni.navigateTo({
     url: `/pages/order/refund_detail?refundApplicationId=${refundApplicationId}`
   })
@@ -646,17 +679,12 @@ const formatDate = (dateStr) => {
   }
 }
 
-onMounted(() => {
-  // 检查页面参数，设置默认标签页
-  const pages = getCurrentPages()
-  const currentPage = pages[pages.length - 1]
-  const status = currentPage?.options?.status
-
+onLoad((options = {}) => {
+  // onShow 会早于 mounted 发起首屏请求，筛选条件必须先在 onLoad 中确定。
+  const status = options.status
   if (tabs.value.some(tab => tab.key === status)) {
     activeTab.value = status
   }
-
-  logPageView('ORDER_LIST', activeTab.value)
   unsubscribeSessionChanged = onSessionChanged(() => {
     requestSequence += 1
     orders.value = []
@@ -671,6 +699,7 @@ onMounted(() => {
 })
 
 onShow(() => {
+  if (!disposed) logPageView({ ...PAGE_LOG, actionCode: 'ORDER_LIST_VIEW', accessTitle: '我的订单', accessDescription: '进入我的订单列表，查看当前状态筛选下的订单', extraData: { statusFilter: activeTab.value } })
   loadOrders()
 })
 
@@ -708,7 +737,8 @@ $info: #3b82f6;
   position: sticky;
   top: 0;
   z-index: 20;
-  display: flex;
+  flex-shrink: 0;
+  white-space: nowrap;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -716,10 +746,16 @@ $info: #3b82f6;
   box-shadow: 0 8rpx 18rpx rgba(15, 23, 42, 0.04);
 }
 
+.tabs-content {
+  display: inline-flex;
+  min-width: 100%;
+  vertical-align: top;
+}
+
 .tab-item {
-  flex: 1;
+  flex: 1 0 auto;
   text-align: center;
-  padding: 26rpx 0 22rpx;
+  padding: 26rpx 24rpx 22rpx;
   font-size: 28rpx;
   color: rgba(100, 116, 139, 0.95);
   position: relative;
@@ -952,6 +988,19 @@ $info: #3b82f6;
   flex-direction: column;
   align-items: flex-end;
   gap: 6rpx;
+}
+
+.product-refund-summary {
+  font-size: 22rpx;
+  color: #b45309;
+  line-height: 1.4;
+}
+
+.refund-contact-tip {
+  margin-bottom: 14rpx;
+  font-size: 24rpx;
+  color: #64748b;
+  line-height: 1.5;
 }
 
 .product-quantity {

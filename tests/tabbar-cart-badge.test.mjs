@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { beforeEach, afterEach, test } from 'node:test'
-import * as cart from '../utils/cart.js'
+import * as cart from './cart-api-fixture.mjs'
 import { subscribeCartUpdated } from '../utils/cart-events.js'
 import { beginSession, endSession } from '../utils/session.js'
 import { STORAGE_KEY_CART_ITEMS } from '../utils/storage.js'
@@ -30,7 +30,7 @@ const createTabBar = (mount = true) => {
     onMounted: callback => { hooks.mount = callback },
     onUnmounted: callback => { hooks.unmount = callback },
     onPageShow: callback => { hooks.show = callback },
-    getCartTotalQuantity: cart.getCartTotalQuantity, subscribeCartUpdated
+    getCartTotalQuantity: cart.getCartTotalQuantity, refreshCart: cart.refreshCart, subscribeCartUpdated
   })
   const state = definition.setup()
   const component = { ...hooks, state }
@@ -43,12 +43,12 @@ const entry = (productId, quantity, extra = {}) => ({
 })
 const count = component => component.state.cartCount.value
 
-beforeEach(() => {
+beforeEach(async () => {
   storage.clear(); listeners.clear(); components = []; navigations = []
 })
 afterEach(() => components.forEach(component => component.unmount()))
 
-test('7 个页面共用自动角标，按完整购物车的 SKU 数量求和，不受当前列表和勾选影响', () => {
+test('7 个页面共用自动角标，按完整购物车的 SKU 数量求和，不受当前列表和勾选影响', async () => {
   const pages = ['products/medicine_list', 'products/medicine_index', 'products/priducts_list',
     'products/priducts_list2', 'cart/cart', 'order/order_list', 'user/profile']
   cart.replaceCartData({ '10:1': entry(10, 2, { skuId: 1 }),
@@ -60,11 +60,11 @@ test('7 个页面共用自动角标，按完整购物车的 SKU 数量求和，�
     assert.doesNotMatch(tab, /:cart(?:-count|Count)=/, path)
     assert.equal(count(createTabBar()), 6, path)
   }
-  cart.setCartItemQuantity('10:1', 4)
+  await cart.setCartItemQuantity('10:1', 4)
   components.forEach(component => assert.equal(count(component), 8))
-  cart.removeFromCart('10:2')
+  await cart.removeFromCart('10:2')
   components.forEach(component => assert.equal(count(component), 5))
-  cart.clearCart()
+  await cart.clearCart()
   components.forEach(component => assert.equal(count(component), 0))
 })
 
@@ -90,11 +90,11 @@ test('medicine_list 实际加购和增减数量即时更新角标，其他分类
     assert.equal(cart.getCartProductQuantity(10), 1)
     assert.equal(count(tab), 5)
     assert.equal(cart.calculateTotalQuantity(page.cartItems), 1)
-    page.increaseQuantity(product)
+    await page.increaseQuantity(product)
     assert.equal(count(tab), 6)
-    page.decreaseQuantity(product)
+    await page.decreaseQuantity(product)
     assert.equal(count(tab), 5)
-    page.decreaseQuantity(product)
+    await page.decreaseQuantity(product)
     assert.equal(count(tab), 4)
     page.ensureLogin = () => false
     await page.handleAddToCart(product)
@@ -116,30 +116,38 @@ test('需要问卷的商品先加购并刷新数量，答题留到结算统一�
   assert.equal(navigations.length, 0)
   assert.equal(count(tab), 1)
   assert.equal(cart.getCartProductInfo(10, 1).questionnairePassed, false)
-  cart.addCartItem(product, 2, { questionnaireId: 7, questionnairePassed: true, answerId: 9 })
-  assert.equal(count(tab), 2)
+  await cart.addCartItem(product, 2, { questionnaireId: 7, questionnairePassed: true, answerId: 9 })
+  assert.equal(count(tab), 3)
 })
 
-test('挂载及返回页面重读最新存储，服务器替换、清空与退出登录均刷新', () => {
+test('挂载及返回页面查询服务端，忽略旧购物车存储，退出和切账号清空展示', async () => {
   const tab = createTabBar(false)
-  cart.addCartItem({ id: 10, skuId: 1, stock: 100 }, 3)
-  tab.mount()
+  await cart.addCartItem({ id: 10, skuId: 1, stock: 100 }, 3)
+  await tab.mount()
+  await cart.refreshCart()
   assert.equal(count(tab), 3)
   storage.set(STORAGE_KEY_CART_ITEMS, { '20': entry(20, 4) })
-  tab.show()
+  await tab.show()
+  await cart.refreshCart()
+  assert.equal(count(tab), 3, '不读取旧本地购物车')
+  cart.cartApiFixture.seed({ '20:1': entry(20, 4) })
+  await tab.show()
+  await cart.refreshCart()
   assert.equal(count(tab), 4)
   cart.replaceCartData({ '30': entry(30, 101, { stock: 200 }) })
   assert.equal(count(tab), 101)
   endSession()
   assert.equal(count(tab), 0)
   beginSession('fixture-A')
-  cart.addCartItem({ id: 10, skuId: 1, stock: 100 }, 2)
+  await cart.addCartItem({ id: 10, skuId: 1, stock: 100 }, 2)
   beginSession('fixture-B')
-  tab.show()
+  cart.cartApiFixture.seed({})
+  await tab.show()
+  await cart.refreshCart()
   assert.equal(count(tab), 0)
 })
 
-test('库存修正数量会同步角标，元数据刷新不循环发事件或远程同步', () => {
+test('商品展示投影保留服务端数量，不反写购物车或循环触发远程请求', async () => {
   cart.replaceCartData({ '10': entry(10, 5) })
   const tab = createTabBar()
   const categories = [{ products: [{ id: '10:1', productId: 10, skuId: 1, stock: 2, available: true, price: 5 }] }]
@@ -150,21 +158,21 @@ test('库存修正数量会同步角标，元数据刷新不循环发事件或�
   })
   uni.$on('cartRemoteSync', () => { remoteSyncs++ })
   cart.loadCartItems(categories)
-  assert.equal(count(tab), 2)
-  assert.equal(events, 1)
+  assert.equal(count(tab), 5)
+  assert.equal(events, 0)
   assert.equal(remoteSyncs, 0)
   cart.loadCartItems([{ products: [{ id: '10:1', productId: 10, skuId: 1, stock: 2, available: true, price: 6, needQuestionnaire: 1, questionnaireId: 9 }] }])
-  assert.equal(events, 1)
-  assert.equal(count(tab), 2)
+  assert.equal(events, 0)
+  assert.equal(count(tab), 5)
   stop()
 })
 
-test('反复显示不重复订阅，卸载只解除自身订阅，其他页面仍正常更新', () => {
+test('反复显示不重复订阅，卸载只解除自身订阅，其他页面仍正常更新', async () => {
   const first = createTabBar(), second = createTabBar()
   for (let i = 0; i < 5; i++) first.show()
   assert.equal(listeners.get('cartUpdated').size, 2)
   first.unmount()
-  cart.addCartItem({ id: 10, skuId: 1, stock: 100 }, 3)
+  await cart.addCartItem({ id: 10, skuId: 1, stock: 100 }, 3)
   assert.equal(count(first), 0)
   assert.equal(count(second), 3)
   assert.equal(listeners.get('cartUpdated').size, 1)

@@ -236,7 +236,7 @@
 <script setup>
 // ==================== 导入依赖 ====================
 // Vue 3 响应式 API
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 // uni-app 生命周期钩子
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 // 时间处理库
@@ -250,6 +250,7 @@ import {
 // ==================== 工具函数 ====================
 import {
   loadCartItems,
+  refreshCart,
   buildOrderInfo,
   getCurrentCheckoutProductIds,
   updateProductSelection,
@@ -262,14 +263,16 @@ import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/uti
 // ==================== API 接口 ====================
 import { getConsultationDetail, getPrescriptionByConsultation } from '@/api/consultation.js'
 import { parseConsultationContext, requireConsultationPatient, requireCreatedPrescription } from '@/utils/consultation-checkout.js'
-import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
+import { getSessionGeneration, assertCurrentSession, isCurrentSession } from '@/utils/session.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
 import { getDoctorDetail } from '@/api/hospital.js'
 import { getPrescriptionStatusText, resolvePrescriptionDoctorName } from '@/utils/prescription.js'
 
 // ==================== 其他 ====================
-import { logPageView } from '@/api/access-log.js'
+import { logPageView, logButtonClick, logAccess } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'PRESCRIPTION', accessType: '处方', pageType: 'PRESCRIPTION_LIST', pageId: '', requestUri: '/pages/order/prescription_list' }
 import { resolveProductTypeLabel } from '@/utils/product-biz.js'
 
 // ==================== 响应式数据 ====================
@@ -324,7 +327,7 @@ const isCartItemSelected = (cartItemId) => {
   return normalizedId ? selectedCartIds.value.includes(normalizedId) : false
 }
 
-const syncSelectedCartState = () => {
+const syncSelectedCartState = async () => {
   const cartIds = cartItemsList.value
     .map(item => normalizeCartId(item.id))
     .filter(Boolean)
@@ -350,8 +353,10 @@ const syncSelectedCartState = () => {
   const matchedSelectedIds = cartIds.filter(id => selectedIds.includes(id))
 
   if (matchedSelectedIds.length === 0) {
+    await updateMultipleSelections(buildSelectionMap(cartIds, true))
+    assertCurrentSession(pageSession)
+    if (!pageActive) return
     selectedCartIds.value = [...cartIds]
-    updateMultipleSelections(buildSelectionMap(cartIds, true))
     setCheckoutProductIds(cartIds)
     return
   }
@@ -384,9 +389,9 @@ const syncSelectedCartState = () => {
   /**
    * 页面挂载时初始化数据
    */
-  onShow(() => loadPage())
-  onMounted(() => {
-    logPageView('处方列表', '用户进入处方列表页面')
+  onShow(() => {
+    if (pageActive && isCurrentSession(pageSession)) logPageView({ ...PAGE_LOG, actionCode: 'PRESCRIPTION_LIST_VIEW', accessTitle: '本次复诊处方确认', accessDescription: '进入本次复诊处方确认页，查看处方与准备结算的商品', extraData: { consultationId: checkoutContext.value?.consultationId || '', checkoutSource: directPurchase.value ? 'DIRECT' : 'CART' } })
+    return loadPage()
   })
 
   const loadPage = async () => {
@@ -429,7 +434,7 @@ const syncSelectedCartState = () => {
       consultation.value = record
       currentPrescription.value = prescription
       prescriptionDoctorName.value = doctorName
-      syncSelectedCartState()
+      await syncSelectedCartState()
     } catch (error) {
       if (!pageActive || requestId !== refreshId || error.code === 'SESSION_CHANGED') return
       consultation.value = null
@@ -446,12 +451,14 @@ const syncSelectedCartState = () => {
 
   /**
    * 加载购物车产品数据
-   * 从本地存储中获取已验证的商品ID，然后批量获取商品详情
+   * 刷新服务端购物车，再按本次结算的规格加载商品详情
    * 每次进入页面都会重新加载，确保数据最新
    */
   const loadProducts = async (requestId) => {
     try {
       if (checkoutRouteError.value) throw new Error(checkoutRouteError.value)
+      if (!directPurchase.value) await refreshCart()
+      assertCurrentSession(pageSession)
       const checkoutIds = checkoutItemKeys.value.length ? checkoutItemKeys.value : getCurrentCheckoutProductIds()
       const productIds = checkoutIds.length > 0
         ? checkoutIds
@@ -557,51 +564,53 @@ const syncSelectedCartState = () => {
    * 切换单个购物车商品的选择状态
    * @param {string} cartItemId - 商品ID
    */
-  const toggleCartSelect = (cartItemId) => {
+  const selectionSaving = ref(false)
+  const toggleCartSelect = async (cartItemId) => {
     const normalizedId = normalizeCartId(cartItemId)
-    if (!normalizedId) {
-      return
-    }
-    const isCurrentlySelected = selectedCartIds.value.includes(normalizedId)
-    const newSelectedState = !isCurrentlySelected
-
-    // 更新内存中的选中状态
-    if (newSelectedState) {
-      selectedCartIds.value.push(normalizedId)
-    } else {
-      const index = selectedCartIds.value.indexOf(normalizedId)
-      if (index > -1) {
-        selectedCartIds.value.splice(index, 1)
+    if (!normalizedId || selectionSaving.value) return
+    const selected = !selectedCartIds.value.includes(normalizedId)
+    selectionSaving.value = true
+    try {
+      if (!directPurchase.value) await updateProductSelection(normalizedId, selected)
+      assertCurrentSession(pageSession)
+      if (!pageActive) return
+      selectedCartIds.value = selected
+        ? [...selectedCartIds.value, normalizedId]
+        : selectedCartIds.value.filter(id => id !== normalizedId)
+      if (!directPurchase.value) setCheckoutProductIds(selectedCartIds.value)
+    } catch (error) {
+      if (pageActive && error.code !== 'SESSION_CHANGED') {
+        if (!directPurchase.value) {
+          const confirmed = getSelectedProductIds()
+          selectedCartIds.value = cartItemsList.value.map(item => String(item.id)).filter(id => confirmed.includes(id))
+          setCheckoutProductIds(selectedCartIds.value)
+        }
+        uni.showToast({ title: error.message || '修改选择失败', icon: 'none' })
       }
-    }
-
-    // 持久化到storage
-    if (!directPurchase.value) updateProductSelection(normalizedId, newSelectedState)
-    if (!directPurchase.value) setCheckoutProductIds(selectedCartIds.value)
+    } finally { selectionSaving.value = false }
   }
 
-  /**
-   * 切换全选/取消全选状态
-   * 如果当前已全选，则取消全选；否则全选所有商品
-   */
-  const toggleCartSelectAll = () => {
-    const allProductIds = cartItemsList.value
-      .map(item => normalizeCartId(item.id))
-      .filter(Boolean)
-    const newSelectedState = !isCartAllSelected.value
-
-    // 更新内存中的选中状态
-    selectedCartIds.value = newSelectedState ? [...allProductIds] : []
-
-    // 批量更新storage中的选中状态
-    const selectionMap = {}
-    allProductIds.forEach(productId => {
-      selectionMap[productId] = newSelectedState
-    })
-
-    // 使用cart.js中的批量更新函数
-    if (!directPurchase.value) updateMultipleSelections(selectionMap)
-    if (!directPurchase.value) setCheckoutProductIds(selectedCartIds.value)
+  const toggleCartSelectAll = async () => {
+    if (selectionSaving.value) return
+    const allProductIds = cartItemsList.value.map(item => normalizeCartId(item.id)).filter(Boolean)
+    const selected = !isCartAllSelected.value
+    selectionSaving.value = true
+    try {
+      if (!directPurchase.value) await updateMultipleSelections(buildSelectionMap(allProductIds, selected))
+      assertCurrentSession(pageSession)
+      if (!pageActive) return
+      selectedCartIds.value = selected ? allProductIds : []
+      if (!directPurchase.value) setCheckoutProductIds(selectedCartIds.value)
+    } catch (error) {
+      if (pageActive && error.code !== 'SESSION_CHANGED') {
+        if (!directPurchase.value) {
+          const confirmed = getSelectedProductIds()
+          selectedCartIds.value = cartItemsList.value.map(item => String(item.id)).filter(id => confirmed.includes(id))
+          setCheckoutProductIds(selectedCartIds.value)
+        }
+        uni.showToast({ title: error.message || '修改选择失败', icon: 'none' })
+      }
+    } finally { selectionSaving.value = false }
   }
 
   /**
@@ -625,8 +634,13 @@ const syncSelectedCartState = () => {
    * 收集用户选中的商品，构建订单信息并跳转到确认页面
    */
   const goToOrder = () => {
-    if (checkoutRouteError.value) { uni.showToast({ title: checkoutRouteError.value, icon: 'none' }); return }
+    if (!pageActive || !isCurrentSession(pageSession)) return
+    if (checkoutRouteError.value) {
+      logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'PRESCRIPTION_CHECKOUT_RESULT', actionResult: 'FAILED', accessTitle: '确认处方商品', accessDescription: '购买上下文无效，未进入订单确认', extraData: { reason: 'INVALID_CHECKOUT_CONTEXT' } })
+      uni.showToast({ title: checkoutRouteError.value, icon: 'none' }); return
+    }
     if (!canSubmit.value) {
+      logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'PRESCRIPTION_CHECKOUT_RESULT', actionResult: 'FAILED', accessTitle: '确认处方商品', accessDescription: '本次处方或商品尚不可结算，未进入订单确认', extraData: { reason: 'CHECKOUT_NOT_READY' } })
       uni.showToast({ title: loadError.value || '本次处方或所选商品不可结算，请检查后重试', icon: 'none' })
       return
     }
@@ -634,6 +648,7 @@ const syncSelectedCartState = () => {
       if (!pageActive) return
       assertCurrentSession(pageSession)
       // 获取完整的购物车数据（包含数量等信息）
+      logButtonClick({ ...PAGE_LOG, actionCode: 'PRESCRIPTION_CHECKOUT', accessTitle: '确认处方商品', accessDescription: '确认本次处方所选商品并进入订单确认', extraData: { consultationId: checkoutContext.value?.consultationId || '', selectedCount: selectedCartIds.value.length } })
       const cartItems = cartItemsList.value
 
       // 获取用户选中的商品ID列表

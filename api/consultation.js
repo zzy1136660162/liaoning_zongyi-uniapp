@@ -36,10 +36,11 @@ export const getConsultationList = (status = null) => {
  * 获取复诊咨询详情
  * @param {Number} id 咨询ID
  */
-export const getConsultationDetail = (id) => {
+export const getConsultationDetail = (id, { showLoading = true, silent = false } = {}) => {
   return get(API_PATHS.CONSULTATION.DETAIL(id), {}, {
     needAuth: true,
-    showLoading: true
+    showLoading,
+    silent
   })
 }
 
@@ -58,10 +59,11 @@ export const getPrescriptionByConsultation = (consultationId) => {
  * 获取处方详情
  * @param {Number} id 处方ID
  */
-export const getPrescriptionDetail = (id) => {
+export const getPrescriptionDetail = (id, { showLoading = true, silent = false } = {}) => {
   return get(API_PATHS.PRESCRIPTION.DETAIL(id), {}, {
     needAuth: true,
-    showLoading: true
+    showLoading,
+    silent
   })
 }
 

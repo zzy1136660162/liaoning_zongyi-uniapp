@@ -40,7 +40,7 @@
 
     <view v-if="consultationError" class="footer">
       <text>{{ consultationError }}</text>
-      <button :disabled="isSubmitting" @click="createConsultationRecord">重新获取本次处方</button>
+      <button :disabled="isSubmitting" @click="retryConsultation">重新获取本次处方</button>
     </view>
     <!-- 查看处方按钮 -->
     <view class="footer" v-if="showPrescriptionBtn">
@@ -51,14 +51,16 @@
 </template>
 
 <script setup>
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'CONSULTATION', accessType: '在线诊疗', pageType: 'DISPENSE_CONSULTATION', requestUri: '/pages/dispense/consultation', pageId: '' }
 import { ref, onMounted, nextTick } from 'vue'
-import { onLoad, onUnload } from '@dcloudio/uni-app'
+import { onLoad, onUnload, onShow } from '@dcloudio/uni-app'
 import { createConsultation, getPrescriptionByConsultation } from '@/api/consultation.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
 import { getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/cart.js'
 import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
-import { logPageView } from '@/api/access-log.js'
 import { getImageUrl } from '@/utils/config.js'
 import { PRODUCT_FLOW_CONSULTATION, resolveProductFlow, resolveProductFlowType } from '@/utils/product-biz.js'
 import { AI_DOCTOR, CONSULTATION_MODE_AI, CONSULTATION_MODE_MANUAL, resolveConsultationDoctor } from '@/utils/consultation-mode.js'
@@ -138,6 +140,7 @@ const viewPrescription = () => {
   }
   queryParts.push(`consultationId=${checkoutContext.value.consultationId}`)
   queryParts.push(`patientId=${checkoutContext.value.patientId}`)
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PRESCRIPTION', accessTitle: '查看本次复诊处方', accessDescription: '进入本次复诊关联的处方和选购商品确认页面', pageId: checkoutContext.value.consultationId, extraData: { consultationId: checkoutContext.value.consultationId } })
   const query = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
   uni.navigateTo({
     url: `/pages/order/prescription_list${query}${directPurchaseQuery(directPurchase.value)}`
@@ -146,7 +149,7 @@ const viewPrescription = () => {
 
 // 同次创建只读取一次商品；再次创建时仍重新核验商品和规格。
 const loadProductsForConsultation = async () => {
-  if (checkoutRouteError.value) throw new Error(checkoutRouteError.value)
+  if (checkoutRouteError.value) throw Object.assign(new Error(checkoutRouteError.value), { code: 400 })
   const itemKeys = selectedProductIds.value.length > 0
     ? selectedProductIds.value
     : getCurrentCheckoutProductIds()
@@ -154,7 +157,11 @@ const loadProductsForConsultation = async () => {
 
   const products = await loadCartProducts(itemKeys, checkoutEntries(itemKeys, directPurchase.value), getProductDetail)
   assertCurrentSession(pageSession)
-  if (products.some(product => product.loadFailure || product.available === false)) throw new Error('所选商品或规格已失效，请重新选择')
+  if (products.some(product => product.loadFailure || product.available === false)) {
+    const error = new Error('所选商品或规格已失效，请重新选择')
+    if (!products.some(product => product.loadFailure)) error.code = 400
+    throw error
+  }
   return products
 
 }
@@ -162,7 +169,7 @@ const loadProductsForConsultation = async () => {
 const buildConsultationData = (products) => {
   // 混合结算保留全部行，处方只包含购买分类1的制剂。
   const consultationProducts = products.filter(product => resolveProductFlowType(product) === PRODUCT_FLOW_CONSULTATION)
-  if (consultationProducts.length === 0) throw new Error('本次没有可复诊商品')
+  if (consultationProducts.length === 0) throw Object.assign(new Error('本次没有可复诊商品'), { code: 400 })
   const firstProduct = consultationProducts[0]
   return {
     patientId: patientId.value,
@@ -201,7 +208,7 @@ const createConsultationRecord = async () => {
       const products = await loadProductsForConsultation()
       if (!pageActive) return null
       const flow = resolveProductFlow(products)
-      if (!flow.valid) throw new Error(flow.message)
+      if (!flow.valid) throw Object.assign(new Error(flow.message), { code: 400 })
       if (!flow.requiresConsultation) {
         redirectToConfirm()
         return null
@@ -221,10 +228,12 @@ const createConsultationRecord = async () => {
     console.info('event=ui_dispense_consultation stage=prescription_context result=validated')
     prescriptionStatusText.value = '处方审核通过'
     checkoutContext.value = context
+    logAccess({ ...PAGE_LOG, actionCode: 'PREPARE_CONSULTATION', accessTitle: '本次复诊处方已就绪', accessDescription: '服务端返回的本次复诊及处方已通过关联校验', pageId: context.consultationId, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', extraData: { consultationId: context.consultationId, consultationMode: consultationMode.value } })
     showMessages()
     return result
   } catch (error) {
     if (!pageActive || error?.code === 'SESSION_CHANGED') return null
+    logAccess({ ...PAGE_LOG, actionCode: 'PREPARE_CONSULTATION', accessTitle: '本次复诊处方准备未完成', accessDescription: '复诊或处方尚未取得可继续购买的明确结果', actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { reason: 'consultation_incomplete', consultationMode: consultationMode.value } })
     console.warn('event=ui_dispense_consultation stage=create result=failed reason=consultation_incomplete')
     consultationError.value = error?.message || '问诊未完成，请重试'
     messages.value = [{ text: '本次复诊尚未完成。', show: true }]
@@ -232,6 +241,12 @@ const createConsultationRecord = async () => {
   } finally {
     isSubmitting.value = false
   }
+}
+
+const retryConsultation = () => {
+  if (isSubmitting.value || !pageActive) return
+  logButtonClick({ ...PAGE_LOG, actionCode: 'RETRY_PRESCRIPTION', accessTitle: '重新获取本次处方', accessDescription: '用户主动重试准备本次复诊与处方' })
+  return createConsultationRecord()
 }
 
 const redirectToConfirm = () => {
@@ -249,7 +264,7 @@ onMounted(async () => {
   await createConsultationRecord()
 
   // 记录页面访问日志
-  logPageView('咨询页面', '用户进入咨询页面')
+
 })
 
 onUnload(() => {
@@ -287,6 +302,9 @@ onLoad((options) => {
   } catch (error) {
     checkoutRouteError.value = error.message
   }
+})
+onShow(() => {
+  logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问在线复诊', accessDescription: '进入本次在线复诊页面，查看复诊与处方进度' })
 })
 </script>
 

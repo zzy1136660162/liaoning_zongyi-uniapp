@@ -1,5 +1,8 @@
 <template>
-  <view class="product-container">
+  <view
+    class="product-container"
+    :style="{ '--intro-safe-top': `${introSafeTop}px` }"
+  >
     <view class="top-banner">
       <image
         class="top-banner-img"
@@ -14,7 +17,7 @@
         'intro-collapsing': introMotion === 'collapse',
         'intro-expanding': introMotion === 'expand'
       }"
-      :style="{ marginTop: imageCollapsed ? '-400rpx' : '-40rpx' }"
+      :style="{ marginTop: imageCollapsed ? '-320rpx' : '-40rpx' }"
       @animationend="onIntroAnimationEnd"
     >
       <view
@@ -131,7 +134,7 @@
           >
           <button
             class="search-btn"
-            @click="handleSearch"
+            @click="submitSearch"
           >
             搜索
           </button>
@@ -346,6 +349,7 @@
                         class="quantity-selector"
                       >
                         <uni-number-box
+                          :key="`${product.id}-${quantityRenderVersion}`"
                           :value="getProductQuantity(product.id)"
                           :min="0"
                           :max="999"
@@ -398,11 +402,10 @@ import { getCategoryList, getCategoryProducts, getProductDetail, mapProductDetai
 import {
   addCartItem,
   getCartEntries,
-  getCartProductInfo,
-  getCartProductQuantity,
   loadCartItems,
   setCartItemQuantity,
-  removeFromCart,
+  changeCartItemQuantity,
+  refreshCart,
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
@@ -415,11 +418,20 @@ import { getToken } from '@/utils/request.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { buildCategoryTree, normalizeCategoryId } from '@/utils/category-tree.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import {
   getColdShippingLabel,
   getExternalUseLabel,
   isSelfDevelopedProduct
 } from '@/utils/product-display.js'
+
+
+const PAGE_LOG = {
+  pageId: '', moduleCode: 'MALL', accessType: '商城', pageType: 'MEDICINE_LIST',
+  requestUri: '/pages/products/medicine_list', actionCode: 'VIEW_MEDICINE_LIST',
+  accessTitle: '访问制剂商品列表', accessDescription: '用户浏览制剂商品及分类'
+}
 
 const PRODUCT_CATEGORY_FILTER = null // null=全部购买分类，目录 categoryId 只作展示筛选
 const PRODUCT_PAGE_SIZE = 20
@@ -445,7 +457,7 @@ export default {
         scale: 1
       },
       verifiedProducts: {},
-      zeroQuantityProducts: {},
+      quantityRenderVersion: 0,
       currentTab: 'home',
       productPageState: {},
       categoryList: [],
@@ -454,6 +466,7 @@ export default {
       sortOrder: 'desc',
       shouldPlayIntro,
       imageCollapsed: !shouldPlayIntro,
+      introSafeTop: 0,
       introMotion: '',
       unsubscribeCartUpdated: null,
       searchTimer: null,
@@ -483,12 +496,13 @@ export default {
     }
   },
   onLoad() {
+    this.updateIntroSafeTop()
     // 首次进入即消费标记，动画中途离开也不重播。
     getApp().globalData.mallIntroPlayed = true
     this.currentTab = 'home'
-    uni.$on('refreshProductsList', this.loadVerifiedProductsFromStorage)
+    uni.$on('refreshProductsList', this.updateCartView)
     this.unsubscribeCartUpdated = subscribeCartUpdated(() => {
-      this.loadVerifiedProductsFromStorage('cartUpdated')
+      this.updateCartView()
     })
   },
   onReady() {
@@ -496,9 +510,15 @@ export default {
       this.scheduleImageCollapse()
     }
   },
-  onShow() {
+  async onShow() {
+    logPageView({ ...PAGE_LOG, extraData: { categoryId: this.currentCategoryId, subCategoryId: this.currentSubCategoryId } })
     this.loadProducts()
-    this.loadVerifiedProductsFromStorage()
+    try {
+      await refreshCart()
+      this.updateCartView()
+    } catch (error) {
+      if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '购物车加载失败', icon: 'none' })
+    }
   },
   onPullDownRefresh() {
     this.handleRefreshProducts()
@@ -508,7 +528,7 @@ export default {
   },
   onUnload() {
     this.finishIntro()
-    uni.$off('refreshProductsList', this.loadVerifiedProductsFromStorage)
+    uni.$off('refreshProductsList', this.updateCartView)
     if (this.unsubscribeCartUpdated) {
       this.unsubscribeCartUpdated()
       this.unsubscribeCartUpdated = null
@@ -523,6 +543,24 @@ export default {
     getExternalUseLabel,
     getColdShippingLabel,
     isSelfDevelopedProduct,
+    updateIntroSafeTop() {
+      // #ifdef MP-WEIXIN
+      try {
+        const info = uni.getWindowInfo?.() || uni.getSystemInfoSync?.() || {}
+        this.introSafeTop = (info.statusBarHeight || 24) + 44 + 8
+      } catch {
+        this.introSafeTop = 76
+      }
+      try {
+        const menu = uni.getMenuButtonBoundingClientRect?.()
+        if (Number.isFinite(menu?.bottom) && menu.bottom > 0) {
+          this.introSafeTop = menu.bottom + 8
+        }
+      } catch {
+        // 胶囊信息不可用时保留状态栏与导航高度的回退值。
+      }
+      // #endif
+    },
     scheduleImageCollapse(delay = 800) {
       clearTimeout(this.collapseTimer)
       this.collapseTimer = setTimeout(() => {
@@ -583,46 +621,6 @@ export default {
       this.isPullingIntro = false
       this.scheduleImageCollapse(2000)
     },
-    removeZeroQuantityMarker(productId) {
-      const normalizedId = String(productId)
-      if (!this.zeroQuantityProducts[normalizedId]) {
-        return
-      }
-      const nextZeroQuantityProducts = { ...this.zeroQuantityProducts }
-      delete nextZeroQuantityProducts[normalizedId]
-      this.zeroQuantityProducts = nextZeroQuantityProducts
-    },
-    setZeroQuantityMarker(productId) {
-      const normalizedId = String(productId)
-      this.zeroQuantityProducts = {
-        ...this.zeroQuantityProducts,
-        [normalizedId]: true
-      }
-    },
-    debugProductQuantityState(productId, source = 'unknown') {
-      const normalizedId = String(productId)
-      const storageEntry = getCartProductInfo(normalizedId)
-      const storageQuantity = getCartProductQuantity(normalizedId, 0)
-      const zeroTracked = !!this.zeroQuantityProducts[normalizedId]
-      const verified = !!this.verifiedProducts[normalizedId]
-      const selectorVisible = storageQuantity > 0 || zeroTracked
-
-      console.log('[medicine_list][quantity-debug]', {
-        source,
-        productId: normalizedId,
-        storageQuantity,
-        zeroTracked,
-        verified,
-        selectorVisible,
-        storageEntry,
-        zeroQuantityKeys: Object.keys(this.zeroQuantityProducts),
-        verifiedKeys: Object.keys(this.verifiedProducts),
-        cartItems: this.cartItems.map(item => ({
-          id: String(item.id),
-          quantity: item.quantity
-        }))
-      })
-    },
     toggleSort(type) {
       if (type === '') {
         this.sortType = ''
@@ -633,10 +631,15 @@ export default {
         this.sortType = type
         this.sortOrder = 'desc'
       }
+      logButtonClick({ ...PAGE_LOG, actionCode: 'SORT_PRODUCTS', accessTitle: '调整商品排序', accessDescription: '用户调整制剂商品列表的排序方式', extraData: { sortType: this.sortType, sortOrder: this.sortOrder } })
       this.reloadCurrentCategoryProducts()
     },
     getSearchKeyword() {
       return (this.searchKeyword || '').trim()
+    },
+    submitSearch() {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'SEARCH_PRODUCTS', accessTitle: '搜索商品', accessDescription: '用户点击搜索按钮检索当前商品列表', extraData: { categoryId: this.currentCategoryId, hasKeyword: Boolean(this.getSearchKeyword()) } })
+      this.handleSearch()
     },
     handleSearch() {
       if (this.getSearchKeyword() && this.currentCategoryId !== 'all') {
@@ -778,7 +781,7 @@ export default {
     async reloadCurrentCategoryProducts() {
       try {
         await this.fetchProductPage(this.currentCategoryId, { reset: true })
-        this.loadVerifiedProductsFromStorage('reloadProducts')
+        this.updateCartView()
       } catch (error) {
         uni.showToast({ title: '刷新商品失败', icon: 'none' })
       }
@@ -786,7 +789,7 @@ export default {
     async handleRefreshProducts() {
       try {
         await this.fetchProductPage(this.currentCategoryId, { reset: true })
-        this.loadVerifiedProductsFromStorage('pullRefresh')
+        this.updateCartView()
       } catch (error) {
         uni.showToast({ title: '刷新失败', icon: 'none' })
       } finally {
@@ -800,7 +803,7 @@ export default {
       }
       try {
         await this.fetchProductPage(this.currentCategoryId, { reset: false })
-        this.loadVerifiedProductsFromStorage('loadMore')
+        this.updateCartView()
       } catch (error) {
         console.error('handleLoadMore failed:', error)
       }
@@ -833,7 +836,7 @@ export default {
         }
         this.syncCurrentSubCategory()
         await this.fetchProductPage(this.currentCategoryId, { reset: true })
-        this.loadVerifiedProductsFromStorage('loadProducts')
+        this.updateCartView()
       } catch (error) {
         console.error('loadProducts failed:', error)
         uni.showToast({ title: '加载失败', icon: 'none' })
@@ -847,31 +850,12 @@ export default {
     async loadCategoryProducts(categoryId) {
       await this.fetchProductPage(categoryId, { reset: true })
     },
-    loadVerifiedProductsFromStorage(source = 'unknown', focusProductId = '') {
-      try {
-        this.verifiedProducts = getCartEntries()
-        const nextZeroQuantityProducts = { ...this.zeroQuantityProducts }
-        Object.keys(nextZeroQuantityProducts).forEach((productId) => {
-          if (this.verifiedProducts[String(productId)]) {
-            delete nextZeroQuantityProducts[String(productId)]
-          }
-        })
-        this.zeroQuantityProducts = nextZeroQuantityProducts
-        this.cartItems = loadCartItems(buildListCartCategories(this.categories, this.verifiedProducts))
-        console.log('[medicine_list] loadVerifiedProductsFromStorage', {
-          source,
-          verifiedKeys: Object.keys(this.verifiedProducts),
-          zeroQuantityKeys: Object.keys(this.zeroQuantityProducts),
-          cartItemIds: this.cartItems.map(item => String(item.id))
-        })
-        if (focusProductId) {
-          this.debugProductQuantityState(focusProductId, `${source}:after-load`)
-        }
-      } catch (error) {
-        console.error('loadVerifiedProductsFromStorage failed:', error)
-      }
+    updateCartView() {
+      this.verifiedProducts = getCartEntries()
+      this.cartItems = loadCartItems(buildListCartCategories(this.categories, this.verifiedProducts))
     },
     async switchCategory(categoryId) {
+      if (String(this.currentCategoryId) !== String(categoryId)) logButtonClick({ ...PAGE_LOG, actionCode: 'CHANGE_PRODUCT_CATEGORY', accessTitle: '切换商品分类', accessDescription: '用户切换商品列表的展示分类', extraData: { categoryId } })
       const normalizedCategoryId = normalizeCategoryId(categoryId)
       const isCurrentCategory = this.currentCategoryId === normalizedCategoryId
       if (isCurrentCategory && this.hasInlineSubCategories(normalizedCategoryId)) {
@@ -889,18 +873,19 @@ export default {
       if (categoryId === 'all') {
         await this.loadAllProducts()
         this.syncCurrentSubCategory()
-        this.loadVerifiedProductsFromStorage('switchCategory:all')
+        this.updateCartView()
         return
       }
       await this.loadCategoryProducts(categoryId)
       this.syncCurrentSubCategory()
-      this.loadVerifiedProductsFromStorage(`switchCategory:${categoryId}`)
+      this.updateCartView()
     },
     async switchSubCategory(subCategoryId) {
+      if (String(this.currentSubCategoryId) !== String(subCategoryId)) logButtonClick({ ...PAGE_LOG, actionCode: 'CHANGE_PRODUCT_SUBCATEGORY', accessTitle: '切换商品子分类', accessDescription: '用户切换制剂商品列表的子分类', extraData: { categoryId: this.currentCategoryId, subCategoryId } })
       this.currentSubCategoryId = normalizeCategoryId(subCategoryId)
       try {
         await this.fetchProductPage(this.currentCategoryId, { reset: true })
-        this.loadVerifiedProductsFromStorage(`switchSubCategory:${subCategoryId}`)
+        this.updateCartView()
       } catch (error) {
         console.error('switchSubCategory failed:', error)
       }
@@ -953,6 +938,7 @@ export default {
       this.currentSubCategoryId = exists ? currentId : this.buildAllSubCategoryId(category.id)
     },
     goToDetail(product) {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PRODUCT_DETAIL', accessTitle: '查看商品详情', accessDescription: '用户从商品列表进入对应的制剂或传统疗法详情', extraData: { productId: product.id, categoryId: this.currentCategoryId } })
       const page = isTraditionalTherapyProduct(product) ? 'therapy_detail' : 'medicine_detail'
       uni.navigateTo({
         url: `/pages/products/${page}?id=${product.id}`
@@ -981,29 +967,34 @@ export default {
       }
       return true
     },
-    showQuantitySelector(productId) {
-      const normalizedId = String(productId)
-      return this.getProductQuantity(productId) > 0 || !!this.zeroQuantityProducts[normalizedId]
-    },
-    getDisplayQuantity(productId) {
-      return Math.max(0, this.getProductQuantity(productId))
-    },
     async handleAddToCart(product) {
-      if (!product?.id || !this.ensureLogin()) return
+      const session = getSessionGeneration()
+      const actionLog = { ...PAGE_LOG, actionCode: 'ADD_CART', accessTitle: '加入购物车', accessDescription: '用户从商品列表选择真实可售规格并保存到购物车', extraData: { productId: product?.id } }
+      logButtonClick(actionLog)
+      let productLoaded = false
+      if (!product?.id || !this.ensureLogin()) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_OR_PRODUCT_REQUIRED' } })
+        return
+      }
       try {
         // 快捷加购重读当前商品，默认选择真实可售规格，不使用列表汇总价和汇总库存。
         const detail = mapProductDetail(await getProductDetail(product.id))
+        if (!isCurrentSession(session)) return
+        productLoaded = true
         product = withProductSku(detail, resolveProductSku(detail))
         if (!isPurchaseAvailable(product)) throw new Error('商品已售罄或限购额度已用完')
-        if (!this.ensureCartCompatible(product)) return
-        const nextQuantity = Math.max(1, getCartProductQuantity(product.id, 0, product.skuId))
+        if (!this.ensureCartCompatible(product)) {
+          if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'CART_INCOMPATIBLE' } })
+          return
+        }
         // 加购仅保存当前规格和数量，问卷在结算所选商品时统一检查一次。
-        const success = addCartItem(product, nextQuantity)
+        const success = await addCartItem(product, 1)
         if (!success) throw new Error('加入购物车失败')
-        this.removeZeroQuantityMarker(product.id)
-        this.loadVerifiedProductsFromStorage()
+        this.updateCartView()
+        if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', extraData: { ...actionLog.extraData, skuId: product.skuId } })
         uni.showToast({ title: '已加入购物车', icon: 'success' })
       } catch (error) {
+        if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: productLoaded ? 'FAILED' : getActionFailureResult(error), extraData: { ...actionLog.extraData, reason: productLoaded ? 'LOCAL_CART_REJECTED' : 'PRODUCT_LOOKUP_UNAVAILABLE' } })
         uni.showToast({ title: error.message || '加入购物车失败', icon: 'none' })
       }
     },
@@ -1011,7 +1002,7 @@ export default {
       return getProductCartLines(this.verifiedProducts, productId).length > 0
     },
     getProductQuantity(productId) {
-      return getCartProductQuantity(productId, 0)
+      return getProductCartLines(this.verifiedProducts, productId).reduce((total, line) => total + Number(line.quantity || 0), 0)
     },
     getQuantityCartLine(product) {
       const lines = getProductCartLines(getCartEntries(), product.id)
@@ -1026,47 +1017,52 @@ export default {
       }
       return lines[0] || null
     },
-    increaseQuantity(product) {
+    async increaseQuantity(product) {
       const lines = getProductCartLines(getCartEntries(), product.id)
       if (!lines.length) return this.handleAddToCart(product)
       const line = this.getQuantityCartLine(product)
       if (!line) return
-      setCartItemQuantity(line.cartKey, line.quantity + 1)
-      this.removeZeroQuantityMarker(product.id)
-      this.loadVerifiedProductsFromStorage()
+      try {
+        await changeCartItemQuantity(line.cartKey, 1)
+        this.updateCartView()
+      } catch (error) {
+        if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '修改数量失败', icon: 'none' })
+      }
     },
-    decreaseQuantity(product) {
+    async decreaseQuantity(product) {
       const line = this.getQuantityCartLine(product)
       if (!line) return
-      if (line.quantity <= 1) {
-        removeFromCart(line.cartKey)
-        this.setZeroQuantityMarker(product.id)
-      } else {
-        setCartItemQuantity(line.cartKey, line.quantity - 1)
+      try {
+        await changeCartItemQuantity(line.cartKey, -1)
+        this.updateCartView()
+      } catch (error) {
+        if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '修改数量失败', icon: 'none' })
       }
-      this.loadVerifiedProductsFromStorage()
     },
-    onNumberBoxChange(product, value) {
+    async onNumberBoxChange(product, value) {
       const line = this.getQuantityCartLine(product)
-      if (!line) return
-      if (value <= 0) {
-        removeFromCart(line.cartKey)
-        this.setZeroQuantityMarker(product.id)
-      } else {
-        setCartItemQuantity(line.cartKey, value)
+      if (!line) { this.quantityRenderVersion += 1; return }
+      try {
+        await setCartItemQuantity(line.cartKey, value)
+        this.updateCartView()
+      } catch (error) {
+        this.quantityRenderVersion += 1
+        if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '修改数量失败', icon: 'none' })
       }
-      this.loadVerifiedProductsFromStorage()
     },
     showCart() {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_CART', accessTitle: '查看购物车', accessDescription: '用户从商品列表进入购物车' })
       uni.navigateTo({ url: '/pages/cart/cart' })
     },
     goToHistory() {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_ORDER_LIST', accessTitle: '查看历史订单', accessDescription: '用户从商品列表进入历史订单列表' })
       uni.navigateTo({ url: '/pages/order/order_list' })
     },
     handleTabChange(tab) {
       this.currentTab = tab
     },
     switchToHorizontalLayout() {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'CHANGE_LIST_LAYOUT', accessTitle: '切换商品列表布局', accessDescription: '用户切换商城商品列表的展示布局', extraData: { targetLayout: 'horizontal' } })
       uni.navigateTo({ url: '/pages/products/priducts_list' })
     }
   }
@@ -1135,7 +1131,6 @@ scroll-view ::-webkit-scrollbar {
   display: flex;
   height: calc(100vh - 500rpx);
   overflow: scroll;
-  padding-bottom: 150rpx;
 }
 
 .category-nav {
@@ -1336,6 +1331,12 @@ scroll-view ::-webkit-scrollbar {
   display: flex;
   flex-direction: column;
   gap: 16rpx;
+}
+
+.product-items,
+.category-group:last-child {
+  padding-bottom: 150rpx;
+  padding-bottom: calc(150rpx + env(safe-area-inset-bottom));
 }
 
 .product-item {
@@ -1658,6 +1659,7 @@ scroll-view ::-webkit-scrollbar {
 
 .top-banner {
   width: 100%;
+  min-height: calc(340rpx + var(--intro-safe-top, 0px));
   overflow: hidden;
 }
 
@@ -1676,12 +1678,12 @@ scroll-view ::-webkit-scrollbar {
 }
 
 @keyframes intro-collapse {
-  from { transform: translateY(360rpx); }
+  from { transform: translateY(280rpx); }
   to { transform: translateY(0); }
 }
 
 @keyframes intro-expand {
-  from { transform: translateY(-360rpx); }
+  from { transform: translateY(-280rpx); }
   to { transform: translateY(0); }
 }
 

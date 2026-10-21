@@ -27,10 +27,9 @@ test('退出清除实际凭证、就诊/地址/购物车/AI状态并保持显式
   for (const [name, key] of Object.entries(storage)) {
     if (name.startsWith('STORAGE_KEY_')) values.set(key, 'old-session-data')
   }
-  values.set('auth_token', 'legacy-token')
   values.set('temp_selected_address', { id: 7 })
   const analytics = getAnalyticsSessionId()
-  assert.notEqual(analytics, values.get(storage.STORAGE_KEY_WECHAT_SESSION_KEY))
+  assert.equal([...values.values()].includes(analytics), false)
   endSession()
   assert.equal(getToken(), '')
   assert.equal(isExplicitlyLoggedOut(), true)
@@ -96,7 +95,7 @@ test('openid查询、code登录、注册分别消费新code且不存sessionKey',
   const info = await identity
   assert.equal(info.openid, 'fixture-openid')
   assert.equal('sessionKey' in info, false)
-  assert.equal(values.has(storage.STORAGE_KEY_WECHAT_SESSION_KEY), false)
+  assert.equal(values.has('wechat_session_key'), false)
   requests = []
   const code = await getWeChatLoginCode()
   const signIn = loginByWeChatCode(code)

@@ -6,7 +6,7 @@
 		</view>
 		
 		<view class="form-container">
-			<!-- 鐪熷疄濮撳悕 -->
+			<!-- 真实姓名 -->
 			<view class="input-group">
 				<uni-icons type="contact" size="18" color="#666666" class="input-icon"></uni-icons>
 				<input 
@@ -18,7 +18,7 @@
 				/>
 			</view>
 			
-			<!-- 璇佷欢绫诲瀷鍜屽彿鐮?-->
+			<!-- 证件类型和号码 -->
 			<view class="input-group">
 				<uni-icons type="wallet" size="18" color="#666666" class="input-icon"></uni-icons>
 				<picker 
@@ -46,7 +46,7 @@
 				/>
 			</view>
 			
-			<!-- 鎵嬫満鍙?-->
+			<!-- 手机号 -->
 			<view class="input-group">
 				<uni-icons type="phone" size="18" color="#666666" class="input-icon"></uni-icons>
 				<input 
@@ -59,7 +59,7 @@
 				/>
 			</view>
 			
-			<!-- 楠岃瘉鐮?-->
+			<!-- 验证码 -->
 			<view class="input-group verify-code-group">
 				<uni-icons type="locked" size="18" color="#666666" class="input-icon"></uni-icons>
 				<input 
@@ -79,7 +79,7 @@
 				</button>
 			</view>
 			
-			<!-- 鐢ㄦ埛鍗忚 -->
+			<!-- 用户协议 -->
 			<view class="agreement-group" @click="toggleAgreement">
 				<view class="checkbox" :class="{ checked: isAgreed }">
 					<uni-icons v-if="isAgreed" type="checkmarkempty" size="16" color="#ffffff" class="checkbox-icon"></uni-icons>
@@ -91,7 +91,7 @@
 				</text>
 			</view>
 			
-			<!-- 鐧诲綍鎸夐挳 -->
+			<!-- 登录按钮 -->
 			<button 
 				class="login-btn" 
 				:class="{ disabled: !canSubmit }"
@@ -105,21 +105,21 @@
 </template>
 
 <script>
-import { 
-	STORAGE_KEY_USER_REGISTER,
-	STORAGE_KEY_AGREEMENT_ACCEPTED,
-	STORAGE_KEY_USER_INFO,
-	STORAGE_KEY_USER_LOGIN_STATUS
-} from '@/utils/storage.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+import { STORAGE_KEY_AGREEMENT_ACCEPTED } from '@/utils/storage.js'
 import { sendSmsCode, login, getWeChatLoginCode, getWeChatUserProfile } from '@/api/auth.js'
-import { saveToken } from '@/utils/request.js'
+import { establishAccountSession } from '@/utils/account.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
-import { logPageView } from '@/api/access-log.js'
-import { syncCartOnLogin } from '@/utils/cart-sync.js'
+import { refreshCart } from '@/utils/cart.js'
 import { assertCurrentSession, getSessionGeneration } from '@/utils/session.js'
 import { ID_TYPE_OPTIONS, patientHisSyncNotice } from '@/utils/patient.js'
 
+const PAGE_LOG = { moduleCode: 'AUTH', accessType: '用户登录', pageType: 'REGISTER', requestUri: '/pages/register/register', pageId: '' }
+
 export default {
+  onShow() {
+    logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问注册登录页', accessDescription: '进入注册登录页面，准备完成身份验证' })
+  },
 	data() {
 		return {
 			formData: {
@@ -149,73 +149,38 @@ export default {
 		}
 	},
 	onLoad(options) {
-		// 鎺ユ敹 redirect 鍙傛暟
+		// 保留登录前的业务入口，成功后返回原流程。
 		if (options && (options.redirect || options.redirectUrl)) {
 			this.redirectUrl = decodeURIComponent(options.redirect || options.redirectUrl)
 		}
-		// 鍔犺浇宸蹭繚瀛樼殑娉ㄥ唽淇℃伅
-		this.loadSavedData()
-
-		// 璁板綍椤甸潰璁块棶鏃ュ織
-		logPageView('注册页面', '用户进入注册页面')
+		this.loadAgreementPreference()
 	},
 	onUnload() {
-		// 娓呴櫎鍊掕鏃跺畾鏃跺櫒
+		// 离开页面后停止短信倒计时。
 		if (this.countdownTimer) {
 			clearInterval(this.countdownTimer)
 		}
 	},
 	methods: {
-		// 鍔犺浇宸蹭繚瀛樼殑鏁版嵁
-		loadSavedData() {
+		// 仅恢复设备上的协议偏好，姓名、证件和手机号不保存草稿。
+		loadAgreementPreference() {
 			try {
-				const savedData = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-				if (savedData && typeof savedData === 'object' && !Array.isArray(savedData)) {
-					this.formData = { ...this.formData, ...savedData }
-					// 鎭㈠璇佷欢绫诲瀷绱㈠紩
-					const index = this.idTypeList.indexOf(savedData.idType)
-					if (index !== -1) {
-						this.idTypeIndex = index
-					} else if (this.formData.idNumber || savedData.idType) {
-						this.formData.idType = ''
-						this.idTypeList = ['请选择', ...ID_TYPE_OPTIONS]
-						this.idTypeIndex = 0
-					} else {
-						this.formData.idType = '身份证'
-					}
-				}
-				
-				// 鍔犺浇鍗忚鍚屾剰鐘舵€?
-				const agreementStatus = uni.getStorageSync(STORAGE_KEY_AGREEMENT_ACCEPTED)
-				if (agreementStatus) {
-					this.isAgreed = agreementStatus
-				}
+				this.isAgreed = uni.getStorageSync(STORAGE_KEY_AGREEMENT_ACCEPTED) === true
 			} catch (e) {
-				console.error('event=ui_register_register stage=form_cache_read result=failed reason=storage_error')
+				console.error('event=ui_register_register stage=agreement_read result=failed reason=storage_error')
 			}
 		},
 		
-		// 淇濆瓨琛ㄥ崟鏁版嵁
-		saveFormData() {
-			try {
-				uni.setStorageSync(STORAGE_KEY_USER_REGISTER, { ...this.formData, verifyCode: '' })
-				uni.setStorageSync(STORAGE_KEY_AGREEMENT_ACCEPTED, this.isAgreed)
-			} catch (e) {
-				console.error('event=ui_register_register stage=form_cache_write result=failed reason=storage_error')
-			}
-		},
-		
-		// 璇佷欢绫诲瀷閫夋嫨
+		// 按原证件类型提交，不转换成其他类型。
 		onIdTypeChange(e) {
 			this.idTypeIndex = e.detail.value
 			const idType = this.idTypeList[this.idTypeIndex]
 			this.formData.idType = ID_TYPE_OPTIONS.includes(idType) ? idType : ''
-			this.saveFormData()
 		},
 		
-		// 鑾峰彇楠岃瘉鐮?
+		// 通过短信验证注册手机号。
 		async getVerifyCode() {
-			// 楠岃瘉鎵嬫満鍙?
+			// 先检查手机号，避免发送无效请求。
 			if (!this.formData.phone) {
 				uni.showToast({
 					title: '请输入手机号',
@@ -224,7 +189,6 @@ export default {
 				return
 			}
 			
-			// 楠岃瘉鎵嬫満鍙锋牸寮?
 			const phoneReg = /^1[3-9]\d{9}$/
 			if (!phoneReg.test(this.formData.phone)) {
 				uni.showToast({
@@ -234,11 +198,15 @@ export default {
 				return
 			}
 			
+			const smsSession = getSessionGeneration()
 			try {
-				// 鉁?璋冪敤鍚庣API鍙戦€侀獙璇佺爜
+				// 请求短信验证码。
+				logButtonClick({ ...PAGE_LOG, actionCode: 'SEND_SMS_CODE', accessTitle: '获取登录验证码', accessDescription: '用户请求发送登录验证码' })
 				await sendSmsCode(this.formData.phone)
+				assertCurrentSession(smsSession)
+				logAccess({ ...PAGE_LOG, actionCode: 'SEND_SMS_CODE', accessTitle: '验证码请求已受理', accessDescription: '短信服务已受理发送请求，不代表用户已收到短信', actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
 				
-				// 寮€濮嬪€掕鏃?
+				// 当前会话发送成功后开始倒计时。
 				this.countdown = 60
 				this.countdownTimer = setInterval(() => {
 					this.countdown--
@@ -249,6 +217,8 @@ export default {
 				}, 1000)
 				
 			} catch (error) {
+				if (getSessionGeneration() !== smsSession) return
+				logAccess({ ...PAGE_LOG, actionCode: 'SEND_SMS_CODE', accessTitle: '验证码请求未完成', accessDescription: '未取得短信发送受理的明确成功结果', actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { reason: 'sms_request_incomplete' } })
 				console.error('event=ui_register_register stage=sms_request result=failed reason=request_failed')
 				uni.showToast({
 					title: error.message || '发送失败，请重试',
@@ -257,13 +227,17 @@ export default {
 			}
 		},
 		
-		// 鍒囨崲鍗忚鍚屾剰鐘舵€?
+		// 协议勾选是设备偏好，不与个人资料或登录状态混存。
 		toggleAgreement() {
 			this.isAgreed = !this.isAgreed
-			this.saveFormData()
+			try {
+				uni.setStorageSync(STORAGE_KEY_AGREEMENT_ACCEPTED, this.isAgreed)
+			} catch (e) {
+				console.error('event=ui_register_register stage=agreement_write result=failed reason=storage_error')
+			}
 		},
 		
-		// 鏌ョ湅鐢ㄦ埛鏈嶅姟鍗忚
+		// 查看用户服务协议。
 		viewServiceAgreement() {
 			uni.showToast({
 				title: '用户服务协议',
@@ -272,7 +246,7 @@ export default {
 
 		},
 		
-		// 鏌ョ湅鐢ㄦ埛闅愮鍗忚
+		// 查看用户隐私协议。
 		viewPrivacyAgreement() {
 			uni.showToast({
 				title: '用户隐私协议',
@@ -282,7 +256,7 @@ export default {
 		},
 
 		
-		// 澶勭悊鐧诲綍
+		// 微信授权与短信身份验证都属于本次页面登录操作。
 		async handleLogin() {
 			if (!this.canSubmit) {
 				uni.showToast({
@@ -292,76 +266,55 @@ export default {
 				return
 			}
 
+			logButtonClick({ ...PAGE_LOG, actionCode: 'LOGIN', accessTitle: '提交注册登录', accessDescription: '用户提交注册登录并进行微信及身份验证' })
 			this.loggingIn = true
 			const session = getSessionGeneration()
+			let expectedSession = session
 			try {
 				uni.showLoading({ title: '获取微信信息...' })
 				
-				// 1. 获取微信 openid / unionid，支付链路依赖该信息
+				// 取得一次性微信授权码，不能把本地 openid 当作登录凭证。
 				const wechatCode = await getWeChatLoginCode()
 				assertCurrentSession(session)
 				
-				// 2. 灏濊瘯鑾峰彇寰俊鐢ㄦ埛淇℃伅锛堝ご鍍忋€佹樀绉帮級
+				// 微信头像授权可拒绝，身份验证仍按注册表单继续。
 				let wechatUserInfo = {}
 				try {
 					wechatUserInfo = await getWeChatUserProfile()
 
 				} catch (userInfoError) {
 					console.error('event=ui_register_register stage=wechat_profile result=failed reason=provider_error')
-					// 鐢ㄦ埛鍙兘鎷掔粷鎺堟潈锛屼笉褰卞搷鐧诲綍
 				}
+				assertCurrentSession(session)
 				
 				uni.showLoading({ title: '登录中...' })
 				
-				// 3. 鍑嗗鐧诲綍鏁版嵁锛堝寘鍚畬鏁寸殑鐢ㄦ埛淇℃伅锛?
+				// 本次表单仅用于请求，不写入本地资料或草稿。
 				const loginData = {
 					wechatCode,
 					phone: this.formData.phone,
 					code: this.formData.verifyCode,
-					userName: this.formData.realName, // 鐪熷疄濮撳悕
-					idType: this.formData.idType, // 璇佷欢绫诲瀷
-					idCardNo: this.formData.idNumber, // 璇佷欢鍙风爜
-					avatarUrl: wechatUserInfo.avatarUrl || '', // 寰俊澶村儚
-					gender: this.parseGender(wechatUserInfo.gender), // 鎬у埆
+					userName: this.formData.realName,
+					idType: this.formData.idType,
+					idCardNo: this.formData.idNumber,
+					avatarUrl: wechatUserInfo.avatarUrl || '',
+					gender: this.parseGender(wechatUserInfo.gender),
 				}
 				
 
 				
-				// 4. 璋冪敤鍚庣API鐧诲綍/娉ㄥ唽
+				// 服务端验证身份后建立新会话，后续页面自行请求资料。
 				assertCurrentSession(session)
 				const result = await login(loginData)
 				assertCurrentSession(session)
-				if (!result?.token) throw new Error('登录未返回有效凭证')
-				
-
-				
-				// 5. 淇濆瓨Token
-				if (result && result.token) {
-					saveToken(result.token)
-					if (result.wechatOpenid) uni.setStorageSync('wechat_openid', result.wechatOpenid)
-					syncCartOnLogin()
-				}
-				
-				// 6. 淇濆瓨鍚庣杩斿洖鐨勫熀纭€鐢ㄦ埛淇℃伅
-				try {
-					if (result) {
-						const userInfo = {
-							userId: result.userId,
-							phone: result.phone || this.formData.phone,
-							userName: result.userName || this.formData.realName,
-							avatarUrl: result.avatarUrl || wechatUserInfo.avatarUrl || '',
-							openid: result.wechatOpenid || ''
-						}
-						uni.setStorageSync(STORAGE_KEY_USER_INFO, userInfo)
-						uni.setStorageSync(STORAGE_KEY_USER_LOGIN_STATUS, true)
+				expectedSession = establishAccountSession(result)
+				refreshCart().catch(error => {
+					if (getSessionGeneration() === expectedSession && error.code !== 'SESSION_CHANGED') {
+						uni.showToast({ title: error.message || '购物车加载失败', icon: 'none' })
 					}
-				} catch (storageError) {
-					console.error('event=ui_register_register stage=profile_cache_write result=failed reason=storage_error')
-				}
+				})
 				
-				// 7. 淇濆瓨鐢ㄦ埛鏁版嵁
-				this.saveFormData()
-				
+				logAccess({ ...PAGE_LOG, actionCode: 'LOGIN', accessTitle: '注册登录成功', accessDescription: '服务端已返回有效凭证并建立本次登录会话', actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
 				uni.hideLoading()
 				const syncNotice = patientHisSyncNotice(result.hisBindingStatus)
 				uni.showToast({
@@ -370,8 +323,8 @@ export default {
 					duration: syncNotice ? 2500 : 1500
 				})
 				
-				// 8. 鐧诲綍鎴愬姛鍚庤烦杞?
-				const signedInSession = getSessionGeneration()
+				// 延迟跳转只属于本次登录，避免退出或切号后跳回旧流程。
+				const signedInSession = expectedSession
 				setTimeout(() => {
 					if (signedInSession !== getSessionGeneration()) return
 					const rawUrl = this.redirectUrl || '/pages/products/medicine_list'
@@ -380,11 +333,13 @@ export default {
 				}, syncNotice ? 2500 : 1500)
 				
 			} catch (error) {
-				if (error?.code === 'SESSION_CHANGED') return
+				const failureSession = error?.code === 'SESSION_STORAGE_FAILED' ? error.sessionGeneration : expectedSession
+				if (error?.code === 'SESSION_CHANGED' || getSessionGeneration() !== failureSession) return
+				logAccess({ ...PAGE_LOG, actionCode: 'LOGIN', accessTitle: '注册登录未完成', accessDescription: '本次登录未取得有效登录完成结果', actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { reason: 'login_incomplete' } })
 				console.error('event=ui_register_register stage=login result=failed reason=login_incomplete')
 				uni.hideLoading()
 				uni.showToast({
-					title: error.message || '鐧诲綍澶辫触锛岃閲嶈瘯',
+					title: error.message || '登录失败，请重试',
 					icon: 'none'
 				})
 			} finally {
@@ -392,21 +347,11 @@ export default {
 			}
 		},
 		
-		// 瑙ｆ瀽寰俊鎬у埆锛?-鏈煡锛?-鐢凤紝2-濂?
+		// 微信性别：0 未知、1 男、2 女。
 		parseGender(wechatGender) {
-			if (wechatGender === 1) return 1 // 鐢?
-			if (wechatGender === 2) return 2 // 濂?
-			return 0 // 鏈煡
-		}
-	},
-	
-	watch: {
-		// 鐩戝惉琛ㄥ崟鏁版嵁鍙樺寲锛岃嚜鍔ㄤ繚瀛?
-		formData: {
-			handler() {
-				this.saveFormData()
-			},
-			deep: true
+			if (wechatGender === 1) return 1
+			if (wechatGender === 2) return 2
+			return 0
 		}
 	}
 }

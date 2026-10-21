@@ -269,16 +269,18 @@
 
 <script setup>
 import { ref } from 'vue'
-import { onLoad, onUnload } from '@dcloudio/uni-app'
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { getOrderDetail } from '@/api/order.js'
 import { syncPaymentByOrder } from '@/api/payment.js'
 import { consumeOrderCart } from '@/utils/order-submission.js'
-import { logPageView, logButtonClick } from '@/api/access-log.js'
+import { logPageView, logButtonClick, logAccess } from '@/utils/accessLog.js'
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
 import { getPaymentOutcome, getOrderStatusText } from '@/utils/order-status.js'
 import { useProductImages } from '@/utils/product-image.js'
-import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
+import { getSessionGeneration, assertCurrentSession, isCurrentSession } from '@/utils/session.js'
+
+const PAGE_LOG = { moduleCode: 'PAYMENT', accessType: '订单支付', pageType: 'PAYMENT_RESULT', requestUri: '/pages/order/payment_success' }
 
 const pageSession = getSessionGeneration()
 let pageActive = true
@@ -377,17 +379,22 @@ const applyTips = (orderData = {}) => {
 
 const isOrderPaid = orderData => getPaymentOutcome(orderData).state === 'success'
 
-const clearPaidCartItems = (orderData = {}) => {
+const clearPaidCartItems = async (orderData = {}) => {
   if (cartCleared.value || !isOrderPaid(orderData)) {
     return
   }
 
-  if (orderData.id && consumeOrderCart(orderData.id)) {
-    cartCleared.value = true
+  if (!orderData.id) return
+  try {
+    if (await consumeOrderCart(orderData.id)) cartCleared.value = true
+  } catch (error) {
+    if (pageActive && error.code !== 'SESSION_CHANGED') {
+      uni.showToast({ title: '支付已成功，购物车清理失败，请稍后重试', icon: 'none' })
+    }
   }
 }
 
-const applyOrderData = (orderData) => {
+const applyOrderData = async (orderData) => {
   assertCurrentSession(pageSession)
   if (!pageActive) return
   paymentOutcome.value = getPaymentOutcome(orderData)
@@ -414,7 +421,7 @@ const applyOrderData = (orderData) => {
   const payTime = orderData.payTime
   paymentInfo.value.paymentTime = formatTime(payTime)
 
-  clearPaidCartItems(orderData)
+  await clearPaidCartItems(orderData)
 
   applyTips(orderData)
 }
@@ -433,7 +440,7 @@ const waitForPaymentConfirmed = async (orderId, outTradeNo) => {
   for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt += 1) {
     try {
       const orderData = await fetchOrderDetail(orderId)
-      applyOrderData(orderData)
+      await applyOrderData(orderData)
       if (getPaymentOutcome(orderData).terminal) {
         return true
       }
@@ -453,7 +460,7 @@ const waitForPaymentConfirmed = async (orderId, outTradeNo) => {
       if (!pageActive) return false
       await syncPaymentByOrder(orderId, outTradeNo)
       const orderData = await fetchOrderDetail(orderId)
-      applyOrderData(orderData)
+      await applyOrderData(orderData)
       if (getPaymentOutcome(orderData).terminal) {
         return true
       }
@@ -478,7 +485,7 @@ const loadOrderInfo = async (orderId, outTradeNo = '') => {
 
     const orderData = await fetchOrderDetail(orderId)
     console.debug('event=ui_order_payment_success stage=payment_state_response result=received')
-    applyOrderData(orderData)
+    await applyOrderData(orderData)
 
     if (!getPaymentOutcome(orderData).terminal) {
       uni.hideLoading()
@@ -499,6 +506,7 @@ const loadOrderInfo = async (orderId, outTradeNo = '') => {
     syncing.value = false
     loading.value = false
   }
+  if (pageActive && isCurrentSession(pageSession)) logAccess({ ...PAGE_LOG, pageId: orderId, actionType: 'BEHAVIOR', actionCode: 'PAYMENT_STATUS_DISPLAYED', actionResult: paymentOutcome.value.terminal ? 'SUCCESS' : 'UNKNOWN', accessTitle: '展示支付结果', accessDescription: paymentOutcome.value.terminal ? '已展示服务端确认的支付与履约状态，具体资金结果以支付状态为准' : '本次等待结束，支付与履约结果仍待服务端确认', extraData: { paymentState: paymentOutcome.value.state } })
 }
 
 onLoad(async (options) => {
@@ -507,8 +515,6 @@ onLoad(async (options) => {
   const outTradeNo = options.combineOutTradeNo || options.outTradeNo || ''
   currentOrderId = orderId || ''
   console.debug('event=ui_order_payment_success stage=route_context result=parsed')
-
-  logPageView('支付成功页面', '用户进入支付成功页面', orderId)
 
   if (orderId) {
     await loadOrderInfo(orderId, outTradeNo)
@@ -521,15 +527,23 @@ onLoad(async (options) => {
   }
 })
 
+onShow(() => {
+  if (pageActive && isCurrentSession(pageSession)) logPageView({ ...PAGE_LOG, pageId: currentOrderId, actionCode: 'PAYMENT_RESULT_VIEW', accessTitle: '支付结果', accessDescription: '进入支付结果页面，查询服务端确认的支付与订单履约状态' })
+})
+
 const goOrderList = () => {
-  if (pageActive) uni.redirectTo({ url: '/pages/order/order_list' })
+  if (!pageActive || !isCurrentSession(pageSession)) return
+  logButtonClick({ ...PAGE_LOG, pageId: currentOrderId, actionCode: 'PAYMENT_ORDER_LIST_OPEN', accessTitle: '查看订单列表', accessDescription: '从支付结果页面返回我的订单列表' })
+  uni.redirectTo({ url: '/pages/order/order_list' })
 }
 
 const goToOrder = () => {
-  if (!pageActive) return
-  logButtonClick('支付成功页面', '查看订单')
+  if (!pageActive || !isCurrentSession(pageSession)) return
   // 保留当前这笔订单的状态与履约信息，不能跳回商品列表或猜一个订单筛选状态。
-  if (currentOrderId) uni.redirectTo({ url: `/pages/order/order-detail?orderId=${encodeURIComponent(currentOrderId)}` })
+  if (currentOrderId) {
+    logButtonClick({ ...PAGE_LOG, pageId: currentOrderId, actionCode: 'PAYMENT_ORDER_DETAIL_OPEN', accessTitle: '查看本次订单', accessDescription: '从支付结果页面查看当前订单的最新状态与履约信息' })
+    uni.redirectTo({ url: `/pages/order/order-detail?orderId=${encodeURIComponent(currentOrderId)}` })
+  }
   else goOrderList()
 }
 

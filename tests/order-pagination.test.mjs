@@ -16,18 +16,19 @@ globalThis.uni = {
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
 const row = (id, extra = {}) => ({ id, orderStatus: 1, items: [{ id: `item-${id}`, productName: `商品${id}` }], ...extra })
 const page = (rows, pageNum = 1, hasMore = false, total = rows.length) => ({ rows, pageNum, pageSize: 20, hasMore, total })
-const createList = () => {
+const createList = (options = {}) => {
   const pageCalls = [], detailCalls = []
-  let mount, unmount, show
+  let load, mount, unmount, show
   const state = loadSetup('pages/order/order_list.vue', {
     ref: value => ({ value }), onMounted: callback => { mount = callback },
+    onLoad: callback => { load = callback },
     onUnmounted: callback => { unmount = callback }, onShow: callback => { show = callback },
     getSessionGeneration, isCurrentSession,
     onSessionChanged: handler => {
       const unsubscribe = onSessionChanged(handler)
       return () => { stoppedSessionListeners++; unsubscribe() }
     },
-    getCurrentPages: () => [],
+    getCurrentPages: () => [{ options }],
     getOrderPage: params => new Promise((resolve, reject) => pageCalls.push({ params, resolve, reject })),
     getOrderDetail: id => new Promise((resolve, reject) => detailCalls.push({ id, resolve, reject })),
     cancelOrder: async () => { cancelled++ }, confirmReceipt: async () => { confirmed++ },
@@ -37,8 +38,10 @@ const createList = () => {
     'loadOrders', 'loadMoreOrders', 'refreshOrders', 'retryOrders', 'switchTab', 'handleCancelOrder', 'handleConfirmReceipt'])
   const list = { state, pageCalls, detailCalls, unmount, show }
   lists.push(list)
-  mount()
+  // 小程序先触发页面 onLoad、onShow，再触发组件 mounted。
+  load?.(options)
   show()
+  mount?.()
   return list
 }
 
@@ -49,6 +52,72 @@ beforeEach(() => {
 afterEach(() => {
   lists.forEach(list => list.unmount())
   endSession()
+})
+
+test('个人中心已支付入口在 onShow 早于 mounted 时仍结束加载并显示订单', async () => {
+  let targetUrl
+  const profile = loadSetup('pages/user/profile.vue', {
+    ref: value => ({ value }), logButtonClick() {},
+    fetchAccountProfile: async () => ({ id: 7, userName: '测试用户' }),
+    uni: { navigateTo: ({ url }) => { targetUrl = url } }
+  }, ['goToOrderListByStatus'])
+  profile.goToOrderListByStatus(1)
+  const target = new URL(targetUrl, 'https://fixture.invalid')
+  assert.equal(target.pathname, '/pages/order/order_list')
+  assert.equal(target.searchParams.get('status'), 'paid')
+
+  const { state, pageCalls } = createList(Object.fromEntries(target.searchParams))
+  assert.equal(state.activeTab.value, 'paid')
+  pageCalls[0].resolve(page([row('paid-order', { payStatus: 1 })])); await flush()
+  assert.equal(state.loading.value, false, '接口已返回后必须退出加载态')
+  assert.equal(state.hasLoaded.value, true)
+  assert.deepEqual(state.orders.value.map(order => order.id), ['paid-order'])
+  assert.equal(state.loadError.value, '')
+  assert.equal(pageCalls.length, 1)
+  assert.deepEqual(pageCalls[0].params, { tab: 'paid', pageNum: 1, pageSize: 20 })
+})
+
+test('所有入口分类均在首次请求前确定，缺失或无效参数回退到全部', async () => {
+  for (const status of ['all', 'pending', 'paid', 'cancelled', 'shipping', 'received', 'completed', 'afterSale', '', undefined, 'invalid']) {
+    const expected = !status || status === 'invalid' ? 'all' : status
+    const { state, pageCalls } = createList(status === undefined ? {} : { status })
+    assert.equal(pageCalls.length, 1)
+    assert.deepEqual(pageCalls[0].params, { tab: expected, pageNum: 1, pageSize: 20 })
+    pageCalls[0].resolve(page([])); await flush()
+    assert.equal(state.activeTab.value, expected)
+    assert.equal(state.loading.value, false)
+    assert.equal(state.hasLoaded.value, true)
+    assert.deepEqual(state.orders.value, [])
+  }
+})
+
+test('带筛选参数的首次请求失败会结束加载，重试继续请求原分类', async () => {
+  const { state, pageCalls } = createList({ status: 'shipping' })
+  pageCalls[0].reject(new Error('网络失败')); await flush()
+  assert.equal(state.loading.value, false)
+  assert.equal(state.loadError.value, '网络失败')
+  assert.equal(state.hasLoaded.value, false)
+  const retry = state.retryOrders()
+  assert.equal(pageCalls.length, 2)
+  assert.deepEqual(pageCalls[1].params, { tab: 'shipping', pageNum: 1, pageSize: 20 })
+  pageCalls[1].resolve(page([row('retried')])); await retry
+  assert.equal(state.loading.value, false)
+  assert.equal(state.loadError.value, '')
+  assert.deepEqual(state.orders.value.map(order => order.id), ['retried'])
+})
+
+test('带筛选入口进入后切换分类，返回页面保留当前分类并刷新', async () => {
+  const { state, pageCalls, show } = createList({ status: 'shipping' })
+  pageCalls[0].resolve(page([row('shipping')])); await flush()
+  const switched = state.switchTab('completed')
+  pageCalls[1].resolve(page([row('completed', { orderStatus: 3 })])); await switched
+  show()
+  assert.equal(state.activeTab.value, 'completed')
+  assert.equal(pageCalls.length, 3)
+  assert.deepEqual(pageCalls[2].params, { tab: 'completed', pageNum: 1, pageSize: 20 })
+  pageCalls[2].resolve(page([row('refreshed', { orderStatus: 3 })])); await flush()
+  assert.equal(state.loading.value, false)
+  assert.deepEqual(state.orders.value.map(order => order.id), ['refreshed'])
 })
 
 test('第一页加载期间不显示空态，触底按页追加并去重，到末页不再请求', async () => {
@@ -224,7 +293,8 @@ test('分页API读取完整响应元数据，普通请求继续仅返回data', a
 
 const createProfileStats = getOrderStats => loadSetup('pages/user/profile.vue', {
   ref: value => ({ value }), computed: callback => ({ get value() { return callback() } }),
-  onMounted() {}, onUnmounted() {}, onShow() {}, getSessionGeneration, isCurrentSession,
+  onUnmounted() {}, onShow() {}, getSessionGeneration, isCurrentSession,
+  fetchAccountProfile: async () => ({ id: 7, userName: '测试用户' }),
   getOrderStats, getImageUrl: value => value
 }, ['loadOrderStats', 'orderStats'])
 

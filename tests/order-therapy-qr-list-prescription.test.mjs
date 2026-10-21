@@ -15,7 +15,8 @@ assert.match(orderDetailPage, /:src="normalizeQrImageSrc\(voucher\.verifyQrBase6
 assert.match(orderDetailPage, /formatRedeemStatus/)
 assert.match(orderDetailPage, /buildRedeemVouchers/)
 assert.match(orderDetailPage, /resolvePrescriptionNavigationParams/)
-assert.match(orderDetailPage, /orderId=/)
+// 处方入口应由实际关联控制；订单 ID 本身不能证明存在处方。
+assert.match(orderDetailPage, /v-if="canViewPrescription"/)
 assert.doesNotMatch(orderDetailPage, /:src="voucher\.verifyQrBase64"/)
 assert.match(orderDetailPage, /resolvePrescriptionNavigationParams/)
 assert.doesNotMatch(orderDetailPage, /prescriptionNo=\$\{this\.order\.prescriptionId\}/)

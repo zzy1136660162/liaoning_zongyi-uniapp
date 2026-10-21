@@ -7,9 +7,7 @@ import { API_PATHS } from '../utils/config.js'
 import { assertCurrentSession, getSessionGeneration } from '../utils/session.js'
 import { 
   STORAGE_KEY_WECHAT_OPENID, 
-  STORAGE_KEY_WECHAT_UNIONID, 
-  STORAGE_KEY_WECHAT_SESSION_KEY,
-  STORAGE_KEY_USER_INFO
+  STORAGE_KEY_WECHAT_UNIONID
 } from '../utils/storage.js'
 
 /**
@@ -47,7 +45,8 @@ export const login = (params) => {
 }
 
 /**
- * 获取当前登录用户信息
+ * 获取当前登录用户资料的 HTTP 协议层；业务页面统一调用 utils/account.js。
+ * 禁止把注册表单或本地资料作为该接口的兜底结果。
  */
 export const getUserProfile = ({ authRedirect = true } = {}) => {
   return get(API_PATHS.AUTH.USER_PROFILE, {}, {
@@ -87,7 +86,6 @@ export const getWeChatOpenId = async () => {
   assertCurrentSession(session)
   const identity = await get('/api/wechat/auth/jscode2session', { code }, { needAuth: false, showLoading: false })
   assertCurrentSession(session)
-  uni.removeStorageSync(STORAGE_KEY_WECHAT_SESSION_KEY)
   if (identity.openid) uni.setStorageSync(STORAGE_KEY_WECHAT_OPENID, identity.openid)
   if (identity.unionid) uni.setStorageSync(STORAGE_KEY_WECHAT_UNIONID, identity.unionid)
   return { openid: identity.openid, unionid: identity.unionid }
@@ -139,19 +137,7 @@ export const getWeChatUserProfile = () => {
  */
 export const getStoredWeChatOpenId = () => {
   try {
-    const storedOpenid = uni.getStorageSync(STORAGE_KEY_WECHAT_OPENID)
-    if (storedOpenid) {
-      return storedOpenid
-    }
-
-    const storedUserInfo = uni.getStorageSync(STORAGE_KEY_USER_INFO)
-    const userInfoOpenid = storedUserInfo && storedUserInfo.openid
-    if (userInfoOpenid) {
-      uni.setStorageSync(STORAGE_KEY_WECHAT_OPENID, userInfoOpenid)
-      return userInfoOpenid
-    }
-
-    return null
+    return uni.getStorageSync(STORAGE_KEY_WECHAT_OPENID) || null
   } catch (e) {
     console.warn('event=wechat_identity stage=local_identity result=failed reason=storage_error')
     return null
@@ -199,7 +185,6 @@ export const clearStoredWeChatInfo = () => {
   try {
     uni.removeStorageSync(STORAGE_KEY_WECHAT_OPENID)
     uni.removeStorageSync(STORAGE_KEY_WECHAT_UNIONID)
-    uni.removeStorageSync(STORAGE_KEY_WECHAT_SESSION_KEY)
     console.info('event=wechat_identity stage=local_clear result=success')
   } catch (e) {
     console.warn('event=wechat_identity stage=local_clear result=failed reason=storage_error')

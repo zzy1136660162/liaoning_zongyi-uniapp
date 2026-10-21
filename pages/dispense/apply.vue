@@ -41,6 +41,7 @@
                   ¥{{ item.price.toFixed(2) }}
                 </view>
                 <uni-number-box
+                  :key="`${item.id}-${quantityRenderVersion}`"
                   :value="item.quantity || 1"
                   :min="1"
                   :max="99"
@@ -56,49 +57,106 @@
         <view class="section">
           <view class="section-title patient-section-title">
             <text>就诊人信息</text>
-            <text class="patient-manage" @click="onManagePatients">管理就诊人</text>
+            <text
+              class="patient-manage"
+              @click="onManagePatients"
+            >
+              管理就诊人
+            </text>
           </view>
 
           <view class="patient-row">
             <view class="label">
               <text class="required">
                 *
-              </text> 就诊人
+              </text> 本次已选就诊人
+            </view>
+            <view
+              v-if="selectedPatient"
+              class="patient-selected"
+            >
+              <view class="patient-info">
+                <text class="patient-name">
+                  {{ selectedPatient.name }}
+                </text>
+                <text class="patient-meta">
+                  {{ selectedPatient.gender || '性别待完善' }} · {{ selectedPatient.birthDate ? selectedPatient.age + '岁' : '年龄待完善' }}
+                </text>
+                <text class="patient-meta">
+                  {{ selectedPatient.idType || '证件' }} {{ selectedPatient.idNumberMasked || '未完善' }}
+                </text>
+                <text
+                  v-if="getPatientProfileNotice(selectedPatient)"
+                  class="patient-profile-notice"
+                >
+                  {{ getPatientProfileNotice(selectedPatient) }}
+                </text>
+              </view>
+              <button
+                class="patient-remove"
+                @click="removeSelectedPatient"
+              >
+                移除
+              </button>
+            </view>
+            <view
+              v-else
+              class="patient-note"
+            >
+              请从下方选择一位就诊人
+            </view>
+            <view class="patient-note">
+              每笔订单仅用于一位就诊人，移除仅取消本次选择。
             </view>
 
+            <view class="label patient-list-title">
+              可选就诊人（单选）
+            </view>
             <view class="patients">
-              <view
+              <button
                 v-for="p in patients"
                 :key="p.id"
                 class="patient-item"
+                :class="{ active: selectedPatient && String(selectedPatient.id) === String(p.id) }"
+                @click="selectPatient(p)"
               >
-                <view class="patient-chip-wrapper">
-                  <view
-                    class="patient-chip"
-                    :class="{active: selectedPatient && selectedPatient.id === p.id}"
-                    @click="selectPatient(p)"
-                  >
+                <view class="patient-info">
+                  <text class="patient-name">
                     {{ p.name }}
-                  </view>
-                  <view
-                    v-if="p.id"
-                    class="delete-icon"
-                    @click.stop="onDeletePatient(p.id)"
+                  </text>
+                  <text class="patient-meta">
+                    {{ p.gender || '性别待完善' }} · {{ p.birthDate ? p.age + '岁' : '年龄待完善' }}
+                  </text>
+                  <text class="patient-meta">
+                    {{ p.idType || '证件' }} {{ p.idNumberMasked || '未完善' }}
+                  </text>
+                  <text
+                    v-if="getPatientProfileNotice(p)"
+                    class="patient-profile-notice"
                   >
-                    <uni-icons
-                      type="close"
-                      size="14"
-                      color="#fff"
-                    />
-                  </view>
+                    待完善：{{ getPatientProfileNotice(p) }}
+                  </text>
                 </view>
-              </view>
-
+                <uni-icons
+                  :type="selectedPatient && String(selectedPatient.id) === String(p.id) ? 'circle-filled' : 'circle'"
+                  size="22"
+                  color="#4a90e2"
+                />
+              </button>
               <view
+                v-if="!patients.length"
+                class="patient-note"
+              >
+                还没有就诊人，请先添加。
+              </view>
+              <button
                 class="patient-add"
                 @click="onAddPatient"
               >
                 ＋ 添加就诊人
+              </button>
+              <view class="patient-note">
+                当前账号下同一身份证无需重复添加，请直接选择已有就诊人。
               </view>
             </view>
           </view>
@@ -235,6 +293,9 @@
 </template>
 
 <script setup>
+import { logPageView, logButtonClick, logAccess } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'CONSULTATION', accessType: '在线诊疗', pageType: 'DISPENSE_APPLY', requestUri: '/pages/dispense/apply', pageId: '' }
 import { getSessionGeneration, assertCurrentSession, isCurrentSession } from '@/utils/session.js'
 const pageSession = getSessionGeneration()
 import { ref, computed, onMounted, onUnmounted } from 'vue'
@@ -247,12 +308,13 @@ import {
   loadCartItems,
   setCheckoutProductIds,
   setCartItemQuantity,
+  refreshCart,
 } from '@/utils/cart.js'
 import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
-import { getPatientList, deletePatient } from '@/api/patient.js'
+import { getPatientList } from '@/api/patient.js'
+import { getPatientProfileNotice } from '@/utils/patient.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
-import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
 import { resolveProductFlow } from '@/utils/product-biz.js'
 import {
@@ -262,6 +324,7 @@ import {
 } from '@/utils/consultation-mode.js'
 
 const cartItems = ref([])
+const quantityRenderVersion = ref(0)
 const categories = ref([])
 const selectedItems = ref([])
 const directPurchase = ref(null)
@@ -273,8 +336,11 @@ const agreementChecked = ref(false)
 const showAgreement = ref(false)
 const consultationMode = ref(CONSULTATION_MODE_AI)
 let pageActive = true
+let routeReady = false
 let patientRefreshId = 0
 let preferredPatientId = null
+let patientSelectionInitialized = false
+let patientSelectionVersion = 0
 
 const totalPrice = computed(() => calculateTotalPrice(cartItems.value))
 const totalQuantity = computed(() => calculateTotalQuantity(cartItems.value))
@@ -282,14 +348,19 @@ const totalQuantity = computed(() => calculateTotalQuantity(cartItems.value))
 const loadPatientsFromAPI = async (preferredId = null) => {
   if (!pageActive || !isCurrentSession(pageSession)) return
   const requestId = ++patientRefreshId
+  const selectionVersion = patientSelectionVersion
   try {
     uni.showLoading({ title: '加载中...' })
     const patientList = await getPatientList()
     if (!pageActive || requestId !== patientRefreshId) return
     assertCurrentSession(pageSession)
-    const currentSelectedId = preferredId ?? selectedPatient.value?.id
+    const currentSelectedId = selectionVersion === patientSelectionVersion
+      ? preferredId ?? selectedPatient.value?.id
+      : selectedPatient.value?.id
     patients.value = Array.isArray(patientList) ? patientList : []
-    selectedPatient.value = patients.value.find(p => p.id === currentSelectedId) || patients.value[0] || null
+    selectedPatient.value = patients.value.find(p => String(p.id) === String(currentSelectedId))
+      || (!patientSelectionInitialized && currentSelectedId == null && patients.value.length === 1 ? patients.value[0] : null)
+    patientSelectionInitialized = true
     if (preferredPatientId === preferredId) preferredPatientId = null
   } catch (error) {
     if (!pageActive || requestId !== patientRefreshId || !isCurrentSession(pageSession)) return
@@ -310,6 +381,8 @@ const loadProducts = async () => {
   if (!pageActive || !isCurrentSession(pageSession)) return
   try {
     if (checkoutRouteError.value) throw new Error(checkoutRouteError.value)
+    if (!directPurchase.value) await refreshCart()
+    if (!pageActive || !isCurrentSession(pageSession)) return
     const requestedIds = selectedItems.value.length > 0 ? selectedItems.value : getCurrentCheckoutProductIds()
     if (requestedIds.length === 0) {
       uni.showToast({ title: '购物车为空', icon: 'none' })
@@ -367,60 +440,48 @@ const loadProducts = async () => {
   }
 }
 
-const onQuantityChange = (item, val) => {
+const onQuantityChange = async (item, val) => {
   const quantity = Number(val)
   if (!item || !Number.isSafeInteger(quantity) || quantity < 1) return
-  if (directPurchase.value) directPurchase.value = { ...directPurchase.value, quantity }
-  else if (!setCartItemQuantity(item.cartKey || item.id, quantity)) return
-  item.quantity = quantity
+  try {
+    if (directPurchase.value) directPurchase.value = { ...directPurchase.value, quantity }
+    else if (!(await setCartItemQuantity(item.cartKey || item.id, quantity))) return
+    if (pageActive && isCurrentSession(pageSession)) item.quantity = quantity
+  } catch (error) {
+    if (pageActive && isCurrentSession(pageSession)) {
+      quantityRenderVersion.value += 1
+      uni.showToast({ title: error.message || '修改数量失败', icon: 'none' })
+    }
+  }
 }
 
 const selectPatient = (patient) => {
-  logButtonClick('选择就诊人', 'DISPENSE_APPLY', patient?.id?.toString() || '', {
-    patientName: patient?.name
-  })
-  selectedPatient.value = patient
+  if (!pageActive || !isCurrentSession(pageSession)) return
+  logButtonClick({ ...PAGE_LOG, actionCode: 'SELECT_PATIENT', accessTitle: '选择就诊人', accessDescription: '为本次配制剂申请选择就诊人', extraData: { patientId: patient?.id || '' } })
+  selectedPatient.value = patients.value.find(p => String(p.id) === String(patient?.id)) || null
+  patientSelectionInitialized = true
+  patientSelectionVersion += 1
+  preferredPatientId = null
 }
 
-const onDeletePatient = (patientId) => {
-  if (!pageActive || !isCurrentSession(pageSession)) return
-  logButtonClick('删除就诊人', 'DISPENSE_APPLY', patientId.toString())
-  uni.showModal({
-    title: '提示',
-    content: '确定要删除此就诊人吗？',
-    success: async (res) => {
-      if (!res.confirm || !pageActive || !isCurrentSession(pageSession)) {
-        return
-      }
-      try {
-        uni.showLoading({ title: '删除中...' })
-        await deletePatient(patientId)
-        if (!pageActive) return
-        assertCurrentSession(pageSession)
-        uni.showToast({ title: '删除成功', icon: 'success' })
-        await loadPatientsFromAPI()
-      } catch (error) {
-        if (!pageActive || !isCurrentSession(pageSession)) return
-        console.error('onDeletePatient failed:', error)
-        uni.showToast({
-          title: error.message || '删除失败',
-          icon: 'none'
-        })
-      } finally {
-        if (pageActive && isCurrentSession(pageSession)) uni.hideLoading()
-      }
-    }
-  })
+const removeSelectedPatient = () => {
+  if (!pageActive || !isCurrentSession(pageSession) || !selectedPatient.value) return
+  logButtonClick({ ...PAGE_LOG, actionCode: 'REMOVE_PATIENT', accessTitle: '移除本次就诊人', accessDescription: '仅取消本次购买选择，保留就诊人资料', extraData: { patientId: selectedPatient.value.id } })
+  selectedPatient.value = null
+  patientSelectionInitialized = true
+  patientSelectionVersion += 1
+  preferredPatientId = null
 }
 
 const onAddPatient = () => {
-  logButtonClick('添加就诊人', 'DISPENSE_APPLY')
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ADD_PATIENT', accessTitle: '新增就诊人', accessDescription: '从配制剂申请进入新增就诊人页面' })
   uni.navigateTo({
     url: '/pages/dispense/patient_edit'
   })
 }
 
 const onManagePatients = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PATIENT_LIST', accessTitle: '管理就诊人', accessDescription: '从配制剂申请进入就诊人管理页面' })
   uni.navigateTo({ url: '/pages/user/patient_list' })
 }
 
@@ -429,10 +490,7 @@ const selectConsultationMode = (mode) => {
     return
   }
   consultationMode.value = mode
-  logButtonClick('切换接诊方式', 'DISPENSE_APPLY', mode, {
-    patientName: selectedPatient.value?.name,
-    productCount: cartItems.value.length
-  })
+  logButtonClick({ ...PAGE_LOG, actionCode: 'SELECT_CONSULTATION_MODE', accessTitle: '切换接诊方式', accessDescription: '用户选择本次复诊的接诊方式', extraData: { consultationMode: mode, productCount: cartItems.value.length } })
 }
 
 const agreementContent = `"在线常见病、慢性病复诊"是一项在线诊疗服务（以下简称"本服务"）。本服务由入驻平台的互联网医院及其医务人员向您提供。作为平台方，我们将对平台内的互联网医院及医务人员采取必要的平台管理措施，督促其严格按照医疗卫生法律法规和诊疗规范及互联网在线诊疗规范。您在使用本服务之前，请务必仔细阅读下列文本。在此郑重提示：一旦您使用了本服务，即表示您已经完整、准确的了解了本声明所提示的所有内容，并同意接受本声明全部条款的约束。
@@ -512,18 +570,41 @@ const navigateToConsultation = (selectedItemIds, mode) => {
   })
 }
 
+const promptPatientCompletion = () => {
+  const notice = getPatientProfileNotice(selectedPatient.value)
+  if (!notice) return false
+
+  uni.showModal({
+    title: '请完善就诊人信息',
+    content: `${notice}，请前往就诊人管理完善后继续下单。`,
+    confirmText: '去完善',
+    success: (result) => {
+      if (result.confirm && pageActive && isCurrentSession(pageSession)) {
+        onManagePatients()
+      }
+    }
+  })
+  return true
+}
+
 const onSubmit = () => {
   if (!pageActive || !isCurrentSession(pageSession)) return
-  if (checkoutRouteError.value) { uni.showToast({ title: checkoutRouteError.value, icon: 'none' }); return }
+  const actionLog = { ...PAGE_LOG, actionCode: 'CONTINUE_PURCHASE', accessTitle: '继续配制剂流程', accessDescription: '根据商品复诊要求进入在线复诊或订单确认', extraData: { patientId: selectedPatient.value?.id || '', productCount: cartItems.value.length, consultationMode: consultationMode.value, destination: selectedRequiresConsultation.value ? 'consultation' : 'order_confirm' } }
+  logButtonClick(actionLog)
+  if (checkoutRouteError.value) {
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', accessTitle: '购买上下文校验未通过', accessDescription: '本次购买信息无效，未继续购买流程', extraData: { ...actionLog.extraData, reason: 'INVALID_CHECKOUT_CONTEXT' } })
+    uni.showToast({ title: checkoutRouteError.value, icon: 'none' })
+    return
+  }
   if (selectedRequiresConsultation.value && !selectedPatient.value?.id) {
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', accessTitle: '尚未选择就诊人', accessDescription: '本次复诊需要有效就诊人，未继续购买流程', extraData: { ...actionLog.extraData, reason: 'PATIENT_REQUIRED' } })
     uni.showToast({ title: '请先选择就诊人', icon: 'none' })
     return
   }
-
-  logButtonClick('提交申请', 'DISPENSE_APPLY', selectedPatient.value?.id?.toString() || '', {
-    patientName: selectedPatient.value?.name,
-    productCount: cartItems.value.length
-  })
+  if (promptPatientCompletion()) {
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', accessTitle: '就诊人资料待完善', accessDescription: '缺少下单必需的就诊人资料，提示前往管理页完善', extraData: { ...actionLog.extraData, reason: 'PATIENT_PROFILE_INCOMPLETE' } })
+    return
+  }
 
   const selectedItemIds = selectedItems.value.length > 0
     ? selectedItems.value
@@ -542,7 +623,7 @@ const onSubmit = () => {
 }
 
 onMounted(() => {
-  logPageView('DISPENSE_APPLY')
+
   uni.$on('patientChanged', handlePatientChanged)
 
   const pages = getCurrentPages()
@@ -561,15 +642,19 @@ onMounted(() => {
     if (!directPurchase.value) setCheckoutProductIds(selectedItems.value)
   }
 
+  routeReady = true
   loadProducts()
 })
 
-onShow(() => loadPatientsFromAPI(preferredPatientId))
 
 onUnmounted(() => {
   pageActive = false
   patientRefreshId += 1
   uni.$off('patientChanged', handlePatientChanged)
+})
+onShow(() => {
+  logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问配制剂申请', accessDescription: '核对选购商品并选择就诊人及接诊方式' })
+  return Promise.all([loadPatientsFromAPI(preferredPatientId), routeReady ? loadProducts() : Promise.resolve()])
 })
 </script>
 
@@ -807,71 +892,89 @@ onUnmounted(() => {
 }
 .required { color: #ff6b6b; margin-right: 6rpx; }
 
-/* 就诊人 chips */
+/* 就诊人选择 */
 .patients {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 16rpx;
-  flex-wrap: wrap;
 }
-
+.patient-selected,
 .patient-item {
   display: flex;
   align-items: center;
-}
-
-.patient-chip-wrapper {
-  display: inline-flex;
-  align-items: center;
-  position: relative;
-  padding-right: 18rpx;
-}
-
-.patient-chip {
-  padding: 14rpx 32rpx;
-  border-radius: 40rpx;
-  background: linear-gradient(135deg, #f0f6ff, #e8f0fe);
-  color: #4a90e2;
-  font-size: 28rpx;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  background: #f4f8ff;
   border: 2rpx solid #d4e4ff;
-  transition: all 0.3s;
 }
-.patient-chip.active {
-  background: linear-gradient(135deg, #4a90e2, #67c6ff);
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 6rpx 20rpx rgba(74,144,226,0.35);
-  transform: scale(1.05);
+.patient-item {
+  width: 100%;
+  margin: 0;
+  text-align: left;
+  line-height: 1.5;
 }
-
-.delete-icon {
-  width: 28rpx;
-  height: 28rpx;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #ff6b6b, #ff4757);
-  position: absolute;
-  top: -8rpx;
-  right: 0;
-  margin-left: 0;
-  z-index: 2;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2rpx 8rpx rgba(255,107,107,0.4);
+.patient-item.active {
+  border-color: #4a90e2;
+  background: #e8f2ff;
 }
-.delete-icon:hover {
-  transform: scale(1.15);
+.patient-info {
+  flex: 1;
+  min-width: 0;
 }
-
+.patient-name,
+.patient-meta {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.patient-name {
+  font-size: 28rpx;
+  color: #333;
+  font-weight: 600;
+}
+.patient-meta,
+.patient-note {
+  font-size: 24rpx;
+  color: #888;
+  line-height: 1.6;
+}
+.patient-note {
+  margin-top: 12rpx;
+}
+.patient-profile-notice {
+  display: block;
+  margin-top: 8rpx;
+  color: #a15c00;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+.patient-list-title {
+  margin-top: 24rpx;
+}
+.patient-remove {
+  margin: 0;
+  padding: 8rpx 20rpx;
+  color: #d85757;
+  font-size: 26rpx;
+  background: #fff;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
 .patient-add {
+  width: 100%;
+  margin: 0;
   padding: 14rpx 24rpx;
   color: #4a90e2;
   font-size: 28rpx;
-  background: linear-gradient(135deg, #f0f6ff, #e8f0fe);
-  border-radius: 40rpx;
+  background: #f0f6ff;
+  border-radius: 16rpx;
   border: 2rpx dashed #4a90e2;
+}
+.patient-item::after,
+.patient-remove::after,
+.patient-add::after {
+  border: none;
 }
 
 .consultation-mode-row {

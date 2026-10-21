@@ -163,6 +163,12 @@
                 <view class="medicine-price">
                   ¥{{ ((item.price || 0) * (Number(item.quantity) || 1)).toFixed(2) }}
                 </view>
+                <view
+                  v-if="getOrderItemRefundText(item)"
+                  class="medicine-refund-summary"
+                >
+                  {{ getOrderItemRefundText(item) }}
+                </view>
               </view>
             </view>
 
@@ -225,6 +231,9 @@
         </view>
       </view>
 
+      <view v-if="showOfflineRefundNotice" class="refund-contact-tip">
+        实物商品已发货，如需退款请线下联系客服。
+      </view>
       <!-- 底部按钮 -->
       <view class="btn-row">
         <button
@@ -236,11 +245,13 @@
         >
           {{ paying ? '正在支付...' : '去支付' }}
         </button>
+        <!-- 只有订单实际关联处方时才显示入口；健康产品、疗法及混合订单均使用同一判断。 -->
         <button
+          v-if="canViewPrescription"
           class="primary-btn"
           @tap="handleView"
         >
-          点击查看
+          查看处方
         </button>
         <button
           v-if="canApplyRefund"
@@ -263,13 +274,16 @@
   import { getOrderDetail } from '@/api/order.js'
   import { wechatSinglePay } from '@/api/payment.js'
   import { checkCanApplyRefund } from '@/api/refund.js'
+  import { getOrderItemRefundText, canOrderApplyRefund, shouldContactForPhysicalRefund } from '@/utils/refund.js'
   import { getImageUrl } from '@/utils/config.js'
   import { useProductImages } from '@/utils/product-image.js'
-  import { logPageView, logButtonClick } from '@/utils/accessLog.js'
-  import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
+  import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+  import { isTherapyOrder } from '@/utils/therapy.js'
   import { buildItemRedeemVouchers } from '@/utils/order-redeem-vouchers.js'
   import { canPayOrder, canShowRedeemCode, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
   import { getSessionGeneration, isCurrentSession, assertCurrentSession } from '@/utils/session.js'
+
+  const PAGE_LOG = { moduleCode: 'ORDER', accessType: '订单', pageType: 'ORDER_DETAIL', requestUri: '/pages/order/order-detail' }
 
   export default {
     name: 'OrderDetail',
@@ -313,14 +327,16 @@
         },
         paying: false,
         orderLoaded: false,
+        detailRequestSequence: 0,
+        detailLoading: false,
         paymentPageActive: true,
+        pageSession: getSessionGeneration(),
         hasShown: false,
         allCartItems: [], // 订单商品列表
         prescriptionInfoLoaded: false
       }
     },
     async onLoad(options) {
-      logPageView('ORDER_DETAIL', options?.orderId || options?.id || '')
       console.debug('event=ui_order_order_detail stage=page_load result=started')
 
       const orderId = options.orderId || options.id
@@ -333,13 +349,18 @@
       }
     },
     onShow() {
+      if (!this.paymentPageActive || !isCurrentSession(this.pageSession)) return
+      logPageView({ ...PAGE_LOG, pageId: this.order.id || '', actionCode: 'ORDER_DETAIL_VIEW', accessTitle: '订单详情', accessDescription: '进入订单详情，查看订单、支付与履约信息' })
       if (this.hasShown && this.order.id && !this.paying) {
         this.loadOrderDetail(this.order.id)
       }
       this.hasShown = true
     },
     onUnload() {
+      if (this.detailLoading && isCurrentSession(this.pageSession)) uni.hideLoading()
+      this.detailLoading = false
       this.paymentPageActive = false
+      this.detailRequestSequence++
     },
     computed: {
       displayCartItems() {
@@ -355,6 +376,12 @@
       },
       canPay() {
         return this.orderLoaded && canPayOrder(this.order)
+      },
+      canViewPrescription() {
+        // 以本次订单接口返回的处方关联为准，不按商品分类或是否混购推断。
+        // 加载中、加载失败时不开放入口，避免用户打开上一次响应留下的处方。
+        // 处方主键必须是正整数；兼容接口返回数字或字符串，排除空值、0 和无效标识。
+        return this.orderLoaded && /^[1-9]\d*$/.test(String(this.order.prescriptionId || ''))
       },
       displayPrescriptionNo() {
         const value = this.order.prescriptionId
@@ -410,18 +437,22 @@
         return calculated > 0 ? calculated : 0
       },
 
-      // 是否可以申请退货：普通商品仍需已完成；传统疗法已支付即可由后端继续校验
       canApplyRefund() {
-        return this.allCartItems && this.allCartItems.some(item => Number(item.refundableQuantity || 0) > 0)
+        return canOrderApplyRefund({ ...this.order, items: this.allCartItems })
+      },
+      showOfflineRefundNotice() {
+        return shouldContactForPhysicalRefund({ ...this.order, items: this.allCartItems })
       },
       refundActionText() {
-        const hasRedeemVoucher = hasTherapyEntitlement({ items: this.allCartItems })
         const hasRefundApplication = !!this.order.refundApplicationId || Number(this.order.refundStatus) > 0
-        const baseText = isTherapyOrder({ ...this.order, items: this.allCartItems }) || hasRedeemVoucher ? '申请退款' : '申请退货'
-        return hasRefundApplication ? `继续${baseText}` : baseText
+        return hasRefundApplication ? '继续退款' : '申请退款'
       }
     },
     methods: {
+      getOrderItemRefundText,
+      isDetailRequestCurrent(sequence) {
+        return this.paymentPageActive && sequence === this.detailRequestSequence && isCurrentSession(this.pageSession)
+      },
       copyOrderNo() {
         const orderNo = String(this.order.orderNo ?? '').trim()
         if (!orderNo) return
@@ -441,22 +472,25 @@
           assertCurrentSession(session)
           if (!this.paymentPageActive) return
           if (!canPayOrder(latest)) {
+            logAccess({ ...PAGE_LOG, pageId: orderId, actionType: 'BEHAVIOR', actionCode: 'ORDER_PAYMENT_CLIENT_RESULT', actionResult: 'FAILED', accessTitle: '发起订单支付', accessDescription: '订单状态已变化，本次未发起支付', extraData: { reason: 'ORDER_NOT_PAYABLE' } })
             await this.loadOrderDetail(orderId)
             if (this.paymentPageActive && isCurrentSession(session)) {
               uni.showToast({ title: '订单状态已更新，请查看详情', icon: 'none' })
             }
             return
           }
-          logButtonClick('去支付', 'ORDER_DETAIL', String(orderId))
+          logButtonClick({ ...PAGE_LOG, pageId: orderId, actionCode: 'ORDER_PAYMENT_START', accessTitle: '发起订单支付', accessDescription: '为当前待支付订单发起微信支付' })
           const result = await wechatSinglePay(orderId)
           assertCurrentSession(session)
           if (!this.paymentPageActive) return
+          logAccess({ ...PAGE_LOG, pageId: orderId, actionType: 'BEHAVIOR', actionCode: 'ORDER_PAYMENT_CLIENT_RESULT', actionResult: 'UNKNOWN', accessTitle: '客户端付款已提交', accessDescription: '微信客户端付款提交已返回，实际支付结果仍需服务端确认', extraData: { sdkState: 'SUBMITTED' } })
           // SDK 成功仅代表付款已提交，结果页继续由服务端查单确认。
           const query = Object.entries({ orderId, outTradeNo: result.outTradeNo || '', paymentType: 'single' })
             .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`).join('&')
           uni.redirectTo({ url: `/pages/order/payment_success?${query}` })
         } catch (error) {
           if (!this.paymentPageActive || !isCurrentSession(session) || error.code === 'SESSION_CHANGED') return
+          logAccess({ ...PAGE_LOG, pageId: orderId, actionType: 'BEHAVIOR', actionCode: 'ORDER_PAYMENT_CLIENT_RESULT', actionResult: getActionFailureResult(error), accessTitle: '发起订单支付', accessDescription: '本次支付流程未取得服务端支付成功确认', extraData: { reason: error.message === '用户取消支付' ? 'USER_CANCELLED' : 'PAYMENT_NOT_CONFIRMED' } })
           if (error.message !== '用户取消支付') {
             uni.showToast({ title: error.message || '支付未完成，请稍后重试', icon: 'none' })
           }
@@ -622,10 +656,6 @@
         return text !== '' && text !== 'null' && text !== 'undefined'
       },
 
-      isNumericId(value) {
-        return this.isUsableId(value) && /^\d+$/.test(String(value).trim())
-      },
-
       applyPatientSnapshot(source = {}) {
         if (!Object.prototype.hasOwnProperty.call(source, 'patientSnapshotAvailable')) {
           return
@@ -641,27 +671,24 @@
       },
 
       resolvePrescriptionNavigationParams() {
-        if (this.isNumericId(this.order.prescriptionId)) {
-          return `prescriptionId=${encodeURIComponent(this.order.prescriptionId)}`
-        }
-        if (this.isUsableId(this.order.id)) {
-          return `orderId=${encodeURIComponent(this.order.id)}`
-        }
-        return ''
+        // 点击时复用按钮的显示条件，防止刷新期间或旧事件继续打开无效处方。
+        // 没有真实处方 ID 就停止，不再用订单 ID 进入处方页后尝试查找。
+        if (!this.canViewPrescription) return ''
+        return `prescriptionId=${encodeURIComponent(this.order.prescriptionId)}`
       },
 
       async loadProductDetail(productId) {
         if (!productId) {
           return null
         }
-        return getProductDetail(productId)
+        return getProductDetail(productId, { showLoading: false, silent: true })
       },
 
       async loadDoctorDetail(doctorId) {
         if (!doctorId) {
           return null
         }
-        return getDoctorDetail(doctorId)
+        return getDoctorDetail(doctorId, { showLoading: false, silent: true })
       },
 
       applyDoctorInfo(doctor, doctorId = null) {
@@ -703,12 +730,17 @@
 
       // 从API加载订单详情
       async loadOrderDetail(orderId) {
+        if (!this.paymentPageActive || !isCurrentSession(this.pageSession)) return
+        const sequence = ++this.detailRequestSequence
+        this.detailLoading = true
         this.orderLoaded = false
         this.prescriptionInfoLoaded = false
         try {
           uni.showLoading({ title: '加载中...' })
 
-          const orderDetail = await getOrderDetail(orderId, { showLoading: false })
+          // 本轮加载统一管理提示，公共请求层不能替旧请求弹错或结束新请求的 Loading。
+          const orderDetail = await getOrderDetail(orderId, { showLoading: false, silent: true })
+          if (!this.isDetailRequestCurrent(sequence)) return
           console.debug('event=ui_order_order_detail stage=order_detail result=received')
 
           if (orderDetail) {
@@ -745,10 +777,9 @@
             this.order.routeStatusDesc = orderDetail.routeStatusDesc || ''
             this.order.logisticsNo = orderDetail.logisticsNo || ''
 
-            // 设置处方信息
-            const prescriptionId = orderDetail.prescriptionId
-            if (prescriptionId) {
-              this.order.prescriptionId = prescriptionId
+            // 每次成功响应都覆盖处方关联；服务端未返回关联时清空旧值，避免刷新后入口残留。
+            this.order.prescriptionId = orderDetail.prescriptionId || null
+            if (this.order.prescriptionId) {
               this.applyAiDoctorInfo()
             }
 
@@ -756,8 +787,11 @@
             if (orderDetail.doctorId && !this.order.prescriptionId) {
               this.order.doctorId = orderDetail.doctorId
               try {
-                this.applyDoctorInfo(await this.loadDoctorDetail(orderDetail.doctorId), orderDetail.doctorId)
+                const doctor = await this.loadDoctorDetail(orderDetail.doctorId)
+                if (!this.isDetailRequestCurrent(sequence)) return
+                this.applyDoctorInfo(doctor, orderDetail.doctorId)
               } catch (e) {
+                if (!this.isDetailRequestCurrent(sequence)) return
                 console.warn('event=ui_order_order_detail stage=doctor_info result=failed reason=request_failed')
               }
             }
@@ -778,6 +812,9 @@
                 price: parseFloat(item.price || 0),
                 quantity: Number(item.quantity),
                 refundedQuantity: Number(item.refundedQuantity || 0),
+                redeemedQuantity: Number(item.redeemedQuantity || 0),
+                refundCompletedQuantity: Number(item.refundCompletedQuantity || 0),
+                refundFrozenQuantity: Number(item.refundFrozenQuantity || 0),
                 refundableQuantity: Number(item.refundableQuantity || 0),
                 refundable: Boolean(item.refundable),
                 refundBlockedReason: item.refundBlockedReason || '',
@@ -788,34 +825,43 @@
             }
 
             if (this.needsProductEnrichment()) {
-              await this.enrichDiagnosisFromAllProducts()
+              await this.enrichDiagnosisFromAllProducts(sequence)
+              if (!this.isDetailRequestCurrent(sequence)) return
             }
             if (this.needsPrescriptionEnrichment()) {
-              await this.applyDoctorFromPrescription(this.order.prescriptionId)
+              await this.applyDoctorFromPrescription(this.order.prescriptionId, sequence)
+              if (!this.isDetailRequestCurrent(sequence)) return
             }
             const productId = (this.allCartItems[0] && this.allCartItems[0].id) || null
             if (productId && this.needsProductEnrichment()) {
-              await this.enrichByProduct(productId)
+              await this.enrichByProduct(productId, sequence)
+              if (!this.isDetailRequestCurrent(sequence)) return
             }
             if (this.needsPrescriptionEnrichment()) {
-              await this.fillPrescriptionInfo(this.order.prescriptionId)
+              await this.fillPrescriptionInfo(this.order.prescriptionId, sequence)
+              if (!this.isDetailRequestCurrent(sequence)) return
             }
             this.orderLoaded = true
           }
 
-          uni.hideLoading()
         } catch (error) {
+          if (!this.isDetailRequestCurrent(sequence)) return
           console.error('event=ui_order_order_detail stage=order_detail result=failed reason=request_failed')
-          uni.hideLoading()
 
           this.orderLoaded = false
           this.allCartItems = []
           uni.showToast({ title: '订单加载失败，请重试', icon: 'none' })
+        } finally {
+          if (this.isDetailRequestCurrent(sequence)) {
+            this.detailLoading = false
+            uni.hideLoading()
+          }
         }
       },
 
       // 从所有商品中收集诊断信息（用逗号拼接）
-      async enrichDiagnosisFromAllProducts() {
+      async enrichDiagnosisFromAllProducts(sequence = this.detailRequestSequence) {
+        if (!this.isDetailRequestCurrent(sequence)) return
         if (!this.allCartItems || this.allCartItems.length === 0) {
           return
         }
@@ -829,6 +875,7 @@
           for (const productId of productIds) {
             try {
               const product = await this.loadProductDetail(productId)
+              if (!this.isDetailRequestCurrent(sequence)) return
               if (product) {
                 const pd = product.prescriptionDiagnosis
                 if (pd) {
@@ -839,6 +886,7 @@
                 }
               }
             } catch (e) {
+              if (!this.isDetailRequestCurrent(sequence)) return
               console.warn('event=ui_order_order_detail stage=enrich_diagnosis_from_all_products result=warning reason=operation_incomplete')
             }
           }
@@ -851,14 +899,17 @@
             console.debug('event=ui_order_order_detail stage=diagnosis_enrichment result=applied')
           }
         } catch (e) {
+          if (!this.isDetailRequestCurrent(sequence)) return
           console.error('event=ui_order_order_detail stage=enrich_diagnosis_from_all_products result=failed reason=operation_incomplete')
         }
       },
 
       // 基于首件商品补全医生/诊断信息
-      async enrichByProduct(productId) {
+      async enrichByProduct(productId, sequence = this.detailRequestSequence) {
+        if (!this.isDetailRequestCurrent(sequence)) return
         try {
           const product = await this.loadProductDetail(productId)
+          if (!this.isDetailRequestCurrent(sequence)) return
           if (product) {
             // 诊断信息已通过 enrichDiagnosisFromAllProducts 处理，这里不再覆盖
             if (!this.order.prescriptionId && !this.order.doctorName) {
@@ -883,24 +934,30 @@
           if (this.order.doctorId) {
             try {
               const doctor = await this.loadDoctorDetail(this.order.doctorId)
+              if (!this.isDetailRequestCurrent(sequence)) return
               this.applyDoctorInfo(doctor, this.order.doctorId)
               console.debug('event=ui_order_order_detail stage=enrich_by_product result=observed')
             } catch (e) {
+              if (!this.isDetailRequestCurrent(sequence)) return
               console.warn('event=ui_order_order_detail stage=enrich_by_product result=warning reason=operation_incomplete')
             }
           }
         } catch (e) {
+          if (!this.isDetailRequestCurrent(sequence)) return
           console.error('event=ui_order_order_detail stage=enrich_by_product result=failed reason=operation_incomplete')
         }
       },
 
       // 根据咨询ID获取 created_at 作为开具时间
-      async fillPrescriptionInfo(prescriptionId) {
-        if (!prescriptionId) return
+      async fillPrescriptionInfo(prescriptionId, sequence = this.detailRequestSequence) {
+        if (!prescriptionId || !this.isDetailRequestCurrent(sequence)) return
         try {
           const { prescription, consultation } = await loadPrescriptionContext(prescriptionId, {
-            getPrescriptionDetail, getConsultationDetail
+            getPrescriptionDetail: id => getPrescriptionDetail(id, { showLoading: false, silent: true }),
+            getConsultationDetail: id => this.isDetailRequestCurrent(sequence)
+              ? getConsultationDetail(id, { showLoading: false, silent: true }) : null
           })
+          if (!this.isDetailRequestCurrent(sequence)) return
           this.applyPatientSnapshot(prescription)
           this.order.prescriptionId = prescription.id
           this.order.diagnosis = prescription.diagnosis || consultation?.diagnosis || ''
@@ -912,16 +969,18 @@
           }
           this.prescriptionInfoLoaded = true
         } catch (error) {
+          if (!this.isDetailRequestCurrent(sequence)) return
           console.warn('event=ui_order_order_detail stage=fill_prescription_info result=warning reason=operation_incomplete')
         }
       },
 
-      async applyDoctorFromPrescription(prescriptionId) {
-        if (!prescriptionId) {
+      async applyDoctorFromPrescription(prescriptionId, sequence = this.detailRequestSequence) {
+        if (!prescriptionId || !this.isDetailRequestCurrent(sequence)) {
           return
         }
         try {
-          const prescription = await getPrescriptionDetail(prescriptionId)
+          const prescription = await getPrescriptionDetail(prescriptionId, { showLoading: false, silent: true })
+          if (!this.isDetailRequestCurrent(sequence)) return
           if (!prescription) {
             return
           }
@@ -933,6 +992,7 @@
           }
           if (doctorId) {
             const doctor = await this.loadDoctorDetail(doctorId)
+            if (!this.isDetailRequestCurrent(sequence)) return
             if (doctor) {
               this.applyDoctorInfo(doctor, doctorId)
               return
@@ -940,7 +1000,8 @@
           }
           const consultationId = prescription.consultationId
           if (consultationId) {
-            const consultation = await getConsultationDetail(consultationId)
+            const consultation = await getConsultationDetail(consultationId, { showLoading: false, silent: true })
+            if (!this.isDetailRequestCurrent(sequence)) return
             const displayName = resolveConsultationDoctorName(consultation)
             if (displayName) {
               this.order.doctorName = displayName
@@ -948,6 +1009,7 @@
             }
           }
         } catch (e) {
+          if (!this.isDetailRequestCurrent(sequence)) return
           console.warn('event=ui_order_order_detail stage=apply_doctor_from_prescription result=warning reason=operation_incomplete')
         }
       },
@@ -965,16 +1027,18 @@
       },
 
       handleView() {
+        // 页面隐藏按钮之外，方法入口也校验一次，避免无处方订单进入报错页。
         const query = this.resolvePrescriptionNavigationParams()
         if (!query) {
           uni.showToast({
-            title: '暂无关联处方或订单',
+            title: '暂无关联处方',
             icon: 'none'
           })
           return
         }
 
         console.debug('event=ui_order_order_detail stage=handle_view result=observed')
+        logButtonClick({ ...PAGE_LOG, pageId: this.order.id || '', actionCode: 'ORDER_PRESCRIPTION_OPEN', accessTitle: '查看关联处方', accessDescription: '从订单详情打开关联处方', extraData: { prescriptionId: this.order.prescriptionId || '' } })
         uni.navigateTo({
           url: `/pages/prescription/detail?${query}`
         })
@@ -990,13 +1054,16 @@
 
       // 申请退货
       async applyRefund() {
+        const session = getSessionGeneration()
         try {
           const orderId = this.order.id
-          logButtonClick('申请退货', 'ORDER_DETAIL', orderId?.toString())
+          logButtonClick({ ...PAGE_LOG, pageId: orderId || '', actionCode: 'ORDER_REFUND_OPEN', accessTitle: '申请退款售后', accessDescription: '检查当前订单是否允许申请退款售后' })
 
           // 检查是否可以申请退货
           const checkResult = await checkCanApplyRefund(orderId)
+          if (!this.paymentPageActive || !isCurrentSession(session)) return
           if (!checkResult) {
+            logAccess({ ...PAGE_LOG, pageId: orderId || '', actionType: 'BEHAVIOR', actionCode: 'ORDER_REFUND_OPEN_RESULT', actionResult: 'FAILED', accessTitle: '申请退款售后', accessDescription: '当前订单不符合申请条件，未进入退款申请', extraData: { reason: 'REFUND_NOT_ALLOWED' } })
             uni.showToast({
               title: '该订单不符合退货条件',
               icon: 'none'
@@ -1010,6 +1077,8 @@
           })
 
         } catch (error) {
+          if (!this.paymentPageActive || !isCurrentSession(session)) return
+          logAccess({ ...PAGE_LOG, pageId: this.order.id || '', actionType: 'BEHAVIOR', actionCode: 'ORDER_REFUND_OPEN_RESULT', actionResult: getActionFailureResult(error), accessTitle: '申请退款售后', accessDescription: '未能确认当前订单的退款申请条件', extraData: { reason: 'ELIGIBILITY_NOT_CONFIRMED' } })
           console.error('event=ui_order_order_detail stage=apply_refund result=failed reason=operation_incomplete')
           uni.showToast({
             title: error.message || '操作失败',
@@ -1393,6 +1462,19 @@
     color: #e64340;
     font-size: 26rpx;
     font-weight: 600;
+  }
+
+  .medicine-refund-summary {
+    font-size: 24rpx;
+    color: #b45309;
+    line-height: 1.4;
+  }
+
+  .refund-contact-tip {
+    margin: 24rpx 0;
+    font-size: 26rpx;
+    color: #64748b;
+    line-height: 1.5;
   }
 
   .therapy-vouchers {

@@ -5,9 +5,12 @@
       :style="{ height: `${statusBarHeight}px` }"
     />
 
-    <view class="page-header">
+    <view
+      class="page-header"
+      :style="{ height: `${navigationHeight}px`, paddingRight: `${navigationRightInset}px` }"
+    >
       <view
-        class="header-side back-button"
+        class="back-button"
         @tap="goBack"
       >
         <uni-icons
@@ -16,47 +19,38 @@
           color="#163450"
         />
       </view>
-      <text class="header-title">
+      <text
+        class="header-title"
+        :style="{ left: `${navigationRightInset}px`, right: `${navigationRightInset}px` }"
+      >
         智能客服
       </text>
-      <view
-        class="header-side new-chat-button"
-        @tap="handleStartNewChat"
-      >
-        新对话
-      </view>
     </view>
 
-    <view class="service-card">
-      <view class="service-card-top">
+    <view class="conversation-toolbar">
+      <view class="service-identity">
         <image
           class="service-logo"
           :src="hospitalLogo"
           mode="aspectFill"
         />
         <view class="service-info">
-          <view class="service-name-row">
-            <text class="service-name">
-              辽宁中医智能客服
-            </text>
-            <view class="service-badge">
-              在线
-            </view>
-          </view>
-          <text class="service-desc">
-            提供就诊指引、药品咨询与常见问题解答
+          <text class="service-name">
+            辽宁中医智能客服
           </text>
+          <view class="service-status">
+            <view class="status-dot" />
+            <text>在线为您解答</text>
+          </view>
         </view>
       </view>
-      <view class="service-tags">
-        <view
-          v-for="item in serviceTags"
-          :key="item"
-          class="service-tag"
-        >
-          {{ item }}
-        </view>
-      </view>
+      <button
+        class="new-chat-button"
+        @tap="handleStartNewChat"
+      >
+        <uni-icons type="plusempty" size="14" color="#2f6fb3" />
+        <text>新对话</text>
+      </button>
     </view>
 
     <scroll-view
@@ -65,122 +59,129 @@
       :scroll-into-view="scrollIntoView"
       scroll-with-animation
     >
-      <view
-        v-for="item in messages"
-        :id="`message-${item.id}`"
-        :key="item.id"
-        class="message-row"
-        :class="item.role"
-      >
-        <view
-          v-if="item.role !== 'user'"
-          class="avatar assistant-avatar"
-        >
-          AI
+      <view class="message-content">
+        <view v-if="showQuickQuestions" class="service-tags">
+          <view v-for="item in serviceTags" :key="item" class="service-tag">
+            {{ item }}
+          </view>
         </view>
-        <image
-          v-else-if="userAvatar"
-          class="avatar user-avatar"
-          :src="userAvatar"
-          mode="aspectFill"
-        />
         <view
-          v-else
-          class="avatar user-avatar fallback-avatar"
-        >
-          我
-        </view>
-
-        <view
-          class="message-main"
+          v-for="item in messages"
+          :id="`message-${item.id}`"
+          :key="item.id"
+          class="message-row"
           :class="item.role"
         >
           <view
-            class="bubble"
-            :class="item.role"
-            @longpress="copyMessage(item.content)"
+            v-if="item.role !== 'user'"
+            class="avatar assistant-avatar"
           >
-            <MarkdownMessage
-              v-if="item.role !== 'user'"
-              :content="item.content"
-            />
-            <text
-              v-else
-              class="user-text"
-            >
-              {{ item.content }}
-            </text>
+            AI
+          </view>
+          <image
+            v-else-if="userAvatar"
+            class="avatar user-avatar"
+            :src="userAvatar"
+            mode="aspectFill"
+          />
+          <view
+            v-else
+            class="avatar user-avatar fallback-avatar"
+          >
+            我
           </view>
 
           <view
-            v-if="item.role === 'system' && item.status === 'error' && failedQuestion"
-            class="message-actions"
+            class="message-main"
+            :class="item.role"
           >
             <view
-              class="retry-action"
-              @tap="retryLastMessage"
+              class="bubble"
+              :class="[item.role, { 'is-error': item.status === 'error' }]"
+              @longpress="copyMessage(item.content)"
             >
-              重试上一条
+              <MarkdownMessage
+                v-if="item.role !== 'user'"
+                :content="item.content"
+              />
+              <text
+                v-else
+                class="user-text"
+              >
+                {{ item.content }}
+              </text>
+            </view>
+
+            <view
+              v-if="item.role === 'system' && item.status === 'error' && failedQuestion"
+              class="message-actions"
+            >
+              <view
+                class="retry-action"
+                @tap="retryLastMessage"
+              >
+                重试上一条
+              </view>
+            </view>
+
+            <view class="message-meta">
+              <text class="message-time">
+                {{ formatTime(item.createdAt) }}
+              </text>
+              <text
+                v-if="item.role === 'user' && item.status === 'sending'"
+                class="message-status"
+              >
+                发送中
+              </text>
+              <text
+                v-if="item.role === 'user' && item.status === 'error'"
+                class="message-status error"
+              >
+                发送失败
+              </text>
             </view>
           </view>
+        </view>
 
-          <view class="message-meta">
-            <text class="message-time">
-              {{ formatTime(item.createdAt) }}
-            </text>
-            <text
-              v-if="item.role === 'user' && item.status === 'sending'"
-              class="message-status"
-            >
-              发送中
-            </text>
-            <text
-              v-if="item.role === 'user' && item.status === 'error'"
-              class="message-status error"
-            >
-              发送失败
-            </text>
+        <view
+          v-if="isLoading"
+          class="message-row assistant"
+        >
+          <view class="avatar assistant-avatar">
+            AI
+          </view>
+          <view class="message-main assistant">
+            <view class="bubble assistant loading-bubble">
+              <view class="loading-dots">
+                <view class="dot" />
+                <view class="dot" />
+                <view class="dot" />
+              </view>
+            </view>
           </view>
         </view>
-      </view>
-
-      <view
-        v-if="isLoading"
-        class="message-row assistant"
-      >
-        <view class="avatar assistant-avatar">
-          AI
-        </view>
-        <view class="message-main assistant">
-          <view class="bubble assistant loading-bubble">
-            <view class="loading-dots">
-              <view class="dot" />
-              <view class="dot" />
-              <view class="dot" />
+        <view
+          v-if="showQuickQuestions"
+          class="quick-section"
+        >
+          <text class="quick-title">
+            您可以这样问
+          </text>
+          <view class="quick-list">
+            <view
+              v-for="question in quickQuestions"
+              :key="question"
+              class="quick-item"
+              @tap="handleQuickQuestion(question)"
+            >
+              <text>{{ question }}</text>
+              <uni-icons type="right" size="12" color="#8ba2b7" />
             </view>
           </view>
         </view>
       </view>
     </scroll-view>
-
-    <view
-      v-if="showQuickQuestions"
-      class="quick-section"
-    >
-      <text class="quick-title">
-        常见问题
-      </text>
-      <view class="quick-list">
-        <view
-          v-for="question in quickQuestions"
-          :key="question"
-          class="quick-item"
-          @tap="handleQuickQuestion(question)"
-        >
-          {{ question }}
-        </view>
-      </view>
-    </view>
 
     <view class="input-panel">
       <view class="input-shell">
@@ -190,6 +191,7 @@
           :disabled="isLoading"
           maxlength="-1"
           confirm-type="send"
+          :cursor-spacing="16"
           placeholder="请输入您想咨询的问题"
           @confirm="submitMessage()"
         >
@@ -210,21 +212,26 @@
 </template>
 
 <script setup>
-import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
-const pageSession = getSessionGeneration()
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'CUSTOMER_SERVICE', accessType: '客户服务', pageType: 'AI_CHAT', requestUri: '/pages/ai/chat', pageId: '' }
+import { getSessionGeneration, getSessionToken, isCurrentSession, onSessionChanged } from '@/utils/session.js'
+import { fetchAccountProfile } from '@/utils/account.js'
+let pageSession = getSessionGeneration()
+let pageToken = getSessionToken()
+let pageActive = true
+let chatRequestSequence = 0
+let avatarRequestSequence = 0
 
 import { computed, nextTick, ref, watch } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onResize, onShow, onUnload } from '@dcloudio/uni-app'
 import MarkdownMessage from '@/components/chat/MarkdownMessage.vue'
 import { sendAiChatMessage } from '@/api/ai-chat.js'
 import { getImageUrl } from '@/utils/config.js'
 import { renderMarkdown } from '@/utils/markdown.js'
 import {
   STORAGE_KEY_AI_CHAT_ID,
-  STORAGE_KEY_AI_CHAT_MESSAGES,
-  STORAGE_KEY_USER_INFO,
-  STORAGE_KEY_USER_REGISTER,
-  STORAGE_KEY_WECHAT_OPENID
+  STORAGE_KEY_AI_CHAT_MESSAGES
 } from '@/utils/storage.js'
 
 const serviceTags = ['就诊指引', '药品咨询', '常见问答']
@@ -237,23 +244,24 @@ const quickQuestions = [
 const welcomeMessage = '您好，这里是辽宁中医智能客服。我可以协助您了解就诊流程、订单进度、药品说明和常见问题。'
 const MAX_CONTEXT_MESSAGES = 12
 
-const statusBarHeight = ref(0)
+const statusBarHeight = ref(24)
+const navigationHeight = ref(44)
+const navigationRightInset = ref(96)
 const inputValue = ref('')
 const isLoading = ref(false)
 const chatId = ref('')
 const messages = ref([])
 const scrollIntoView = ref('')
 const failedQuestion = ref('')
+const userAvatar = ref('')
 
 const hospitalLogo = computed(() => getImageUrl('/profile/liaoning_zongyi/zaixian_mingyi_logo.png'))
 const canSend = computed(() => Boolean(inputValue.value.trim()) && !isLoading.value)
 const showQuickQuestions = computed(() => !messages.value.some((item) => item.role === 'user'))
-const userAvatar = computed(() => {
-  const userInfo = uni.getStorageSync(STORAGE_KEY_USER_INFO) || {}
-  return userInfo.avatarUrl || ''
-})
-
 const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+// 会话编号只使用时间与随机值，不携带账户资料或页面表单身份。
+const createChatId = () => `chat_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`
+const isCurrentAccount = (session, token) => pageActive && isCurrentSession(session) && getSessionToken() === token
 
 const formatTime = (timestamp) => {
   const date = new Date(timestamp || Date.now())
@@ -307,21 +315,8 @@ const buildRequestMessages = (content) => {
   ]
 }
 
-const loadCurrentUserInfo = () => {
-  const userInfo = uni.getStorageSync(STORAGE_KEY_USER_INFO) || {}
-  const registerInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER) || {}
-  const openid = uni.getStorageSync(STORAGE_KEY_WECHAT_OPENID) || userInfo.openid || ''
-
-  return {
-    userId: userInfo.userId || registerInfo.userId || '',
-    userName: userInfo.userName || registerInfo.realName || '',
-    phone: userInfo.phone || registerInfo.phone || '',
-    openid
-  }
-}
-
 const saveChatState = () => {
-  if (!isCurrentSession(pageSession)) return
+  if (!isCurrentAccount(pageSession, pageToken)) return
   uni.setStorageSync(STORAGE_KEY_AI_CHAT_ID, chatId.value || '')
   uni.setStorageSync(STORAGE_KEY_AI_CHAT_MESSAGES, messages.value)
 }
@@ -360,6 +355,8 @@ const updateMessageStatus = (messageId, status) => {
 }
 
 const resetConversation = () => {
+  chatRequestSequence += 1
+  isLoading.value = false
   failedQuestion.value = ''
   chatId.value = ''
   inputValue.value = ''
@@ -369,6 +366,36 @@ const resetConversation = () => {
       content: welcomeMessage
     })
   ])
+}
+
+const syncAccountSession = () => {
+  if (!pageActive) return false
+  const token = getSessionToken()
+  if (!isCurrentSession(pageSession) || pageToken !== token) {
+    pageSession = getSessionGeneration()
+    pageToken = token
+    avatarRequestSequence += 1
+    userAvatar.value = ''
+    resetConversation()
+  }
+  return true
+}
+
+const loadAccountAvatar = async () => {
+  const sequence = ++avatarRequestSequence
+  const session = getSessionGeneration()
+  const token = getSessionToken()
+  userAvatar.value = ''
+  if (!token) return
+  try {
+    // 头像来自正式账户 DTO；接口失败时使用页面默认头像，不回退本地资料。
+    const profile = await fetchAccountProfile({ authRedirect: false })
+    if (sequence !== avatarRequestSequence || !isCurrentAccount(session, token)) return
+    userAvatar.value = profile.avatarUrl || ''
+  } catch (error) {
+    if (sequence !== avatarRequestSequence || !isCurrentAccount(session, token)) return
+    uni.showToast({ title: '账户资料加载失败，头像暂不可用', icon: 'none' })
+  }
 }
 
 const restoreConversation = () => {
@@ -393,7 +420,8 @@ const resolveErrorMessage = (error) => {
   return '发送失败，请检查网络或 FastGPT 配置后重试。'
 }
 
-const submitMessage = async (presetQuestion = '') => {
+const submitMessage = async (presetQuestion = '', entry = 'input') => {
+  if (!syncAccountSession()) return
   const content = typeof presetQuestion === 'string' && presetQuestion
     ? presetQuestion.trim()
     : inputValue.value.trim()
@@ -402,6 +430,13 @@ const submitMessage = async (presetQuestion = '') => {
     return
   }
 
+  const actionSession = getSessionGeneration()
+  const actionToken = getSessionToken()
+  const requestSequence = ++chatRequestSequence
+  const isRequestCurrent = () => requestSequence === chatRequestSequence && isCurrentAccount(actionSession, actionToken)
+  if (!chatId.value) chatId.value = createChatId()
+  const actionLog = { ...PAGE_LOG, actionCode: 'SEND_AI_MESSAGE', accessTitle: '发送智能客服问题', accessDescription: '用户提交咨询问题并等待智能客服回复', extraData: { entry, chatId: chatId.value || '' } }
+  logButtonClick(actionLog)
   failedQuestion.value = ''
   inputValue.value = ''
   uni.hideKeyboard()
@@ -420,10 +455,11 @@ const submitMessage = async (presetQuestion = '') => {
     const result = await sendAiChatMessage({
       text: content,
       chatId: chatId.value,
-      userInfo: loadCurrentUserInfo(),
       messages: requestMessages
     })
 
+    if (!isRequestCurrent()) return
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', accessTitle: '智能客服已返回回复', accessDescription: '本次咨询请求已返回回复结果，不记录问题和回复正文' })
     chatId.value = result.chatId || chatId.value
     updateMessageStatus(userMessage.id, 'sent')
 
@@ -432,6 +468,8 @@ const submitMessage = async (presetQuestion = '') => {
       content: result.content || '已收到您的问题，但当前没有返回可展示的回复。'
     }))
   } catch (error) {
+    if (!isRequestCurrent()) return
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), accessTitle: '智能客服回复未完成', accessDescription: '本次咨询未取得明确成功回复，可由用户重试', extraData: { ...actionLog.extraData, reason: 'chat_incomplete' } })
     failedQuestion.value = content
     updateMessageStatus(userMessage.id, 'error')
 
@@ -441,7 +479,7 @@ const submitMessage = async (presetQuestion = '') => {
       status: 'error'
     }))
   } finally {
-    isLoading.value = false
+    if (isRequestCurrent()) isLoading.value = false
   }
 }
 
@@ -450,11 +488,11 @@ const retryLastMessage = () => {
     return
   }
 
-  submitMessage(failedQuestion.value)
+  submitMessage(failedQuestion.value, 'retry')
 }
 
 const handleQuickQuestion = (question) => {
-  submitMessage(question)
+  submitMessage(question, 'quick_question')
 }
 
 const copyMessage = (content) => {
@@ -474,9 +512,14 @@ const copyMessage = (content) => {
 }
 
 const handleStartNewChat = () => {
+  if (!syncAccountSession()) return
+  const actionSession = getSessionGeneration()
+  const actionToken = getSessionToken()
+  logButtonClick({ ...PAGE_LOG, actionCode: 'START_NEW_AI_CHAT', accessTitle: '开启新客服会话', accessDescription: '用户请求结束当前本地会话并开始新会话' })
   const hasConversation = messages.value.some((item) => item.role === 'user' || item.role === 'assistant')
   if (!hasConversation) {
     resetConversation()
+    logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'START_NEW_AI_CHAT', actionResult: 'SUCCESS', accessTitle: '已开启新客服会话', accessDescription: '本地会话已重置，准备开始新的咨询' })
     return
   }
 
@@ -484,11 +527,14 @@ const handleStartNewChat = () => {
     title: '开启新对话',
     content: '当前会话记录将被清空，是否继续？',
     success: (res) => {
+      if (!isCurrentAccount(actionSession, actionToken)) return
       if (!res.confirm) {
+        logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'START_NEW_AI_CHAT', actionResult: 'CANCELLED', accessTitle: '取消新建客服会话', accessDescription: '用户保留当前会话，不清空本地消息' })
         return
       }
 
       resetConversation()
+      logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'START_NEW_AI_CHAT', actionResult: 'SUCCESS', accessTitle: '已开启新客服会话', accessDescription: '用户确认清空本地会话，准备开始新的咨询' })
       uni.showToast({
         title: '已开启新对话',
         icon: 'none'
@@ -509,25 +555,79 @@ const goBack = () => {
   })
 }
 
+const updateHeaderLayout = () => {
+  let windowInfo = {}
+  try {
+    windowInfo = uni.getWindowInfo?.() || {}
+  } catch (error) {
+    // 旧基础库或非微信环境继续使用兼容接口。
+  }
+  if (!Number.isFinite(windowInfo.statusBarHeight)) {
+    try {
+      windowInfo = uni.getSystemInfoSync?.() || windowInfo
+    } catch (error) {
+      // 无法测量时保留安全回退值，不阻断聊天记录恢复。
+    }
+  }
+  statusBarHeight.value = Number.isFinite(windowInfo.statusBarHeight) && windowInfo.statusBarHeight >= 0
+    ? windowInfo.statusBarHeight : 24
+  navigationHeight.value = 44
+  navigationRightInset.value = 96
+  try {
+    const capsule = uni.getMenuButtonBoundingClientRect?.()
+    if (Number.isFinite(capsule?.bottom) && capsule.bottom > statusBarHeight.value) {
+      // 新对话位于下一行，确保这一行从胶囊底边至少 8px 之后开始。
+      navigationHeight.value = Math.max(44, capsule.bottom - statusBarHeight.value + 8)
+    }
+    const width = windowInfo.windowWidth || windowInfo.screenWidth
+    if (Number.isFinite(width) && capsule?.left > 0 && capsule.left < width) {
+      navigationRightInset.value = width - capsule.left + 8
+    }
+  } catch (error) {
+    // 胶囊测量不可用时使用标准导航高度和右侧预留空间。
+  }
+}
+
 watch(chatId, saveChatState)
 watch(messages, saveChatState, { deep: true })
 
+// 账号切换时立即清空页面上下文；旧请求即使成功也不能写进新账号会话。
+const unsubscribeSessionChanged = onSessionChanged(() => {
+  avatarRequestSequence += 1
+  userAvatar.value = ''
+  resetConversation()
+})
+
 onLoad(() => {
-  statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 0
+  updateHeaderLayout()
   restoreConversation()
 })
+onShow(async () => {
+  if (!syncAccountSession()) return
+  logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问智能客服', accessDescription: '进入智能客服会话，查看消息并准备咨询' })
+  await loadAccountAvatar()
+})
+
+onUnload(() => {
+  pageActive = false
+  chatRequestSequence += 1
+  avatarRequestSequence += 1
+  unsubscribeSessionChanged()
+})
+
+onResize(updateHeaderLayout)
 </script>
 
 <style scoped>
 page {
-  background: #edf3f8;
+  background: #f5f7fb;
 }
 
 .chat-page {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #f6fbff 0%, #edf3f8 34%, #edf3f8 100%);
+  background: linear-gradient(180deg, #f7fbff 0%, #f5f7fb 30%, #f5f7fb 100%);
   overflow: hidden;
 }
 
@@ -536,126 +636,164 @@ page {
 }
 
 .page-header {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 28rpx 18rpx;
-  background: transparent;
+  gap: 8rpx;
+  flex-shrink: 0;
+  min-width: 0;
+  padding-left: 8px;
   box-sizing: border-box;
-}
-
-.header-side {
-  min-width: 120rpx;
-  height: 64rpx;
-  display: flex;
-  align-items: center;
 }
 
 .back-button {
-  justify-content: flex-start;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .new-chat-button {
-  justify-content: flex-end;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  flex-shrink: 0;
+  min-height: 64rpx;
+  margin: 0;
+  padding: 14rpx 18rpx;
+  background: #eef5ff;
+  border: 1rpx solid #dceaff;
+  border-radius: 16rpx;
   color: #2f6fb3;
-  font-size: 26rpx;
+  font-size: 24rpx;
+  line-height: 1.3;
   font-weight: 600;
 }
 
+.new-chat-button::after {
+  border: none;
+}
+
+.new-chat-button:active {
+  background: #e0edfc;
+}
+
 .header-title {
-  font-size: 34rpx;
-  color: #163450;
-  font-weight: 700;
-}
-
-.service-card {
-  margin: 0 24rpx 20rpx;
-  padding: 24rpx;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(92, 135, 177, 0.12);
-  border-radius: 20rpx;
-  box-shadow: 0 12rpx 32rpx rgba(17, 57, 95, 0.08);
-  box-sizing: border-box;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  pointer-events: none;
+  min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 32rpx;
+  color: #163450;
+  font-weight: 600;
 }
 
-.service-card-top {
+.conversation-toolbar {
   display: flex;
   align-items: center;
+  gap: 16rpx;
+  flex-shrink: 0;
+  margin: 8rpx 24rpx 0;
+  padding: 20rpx 22rpx;
+  background: #ffffff;
+  border: 1rpx solid #e5edf6;
+  border-radius: 24rpx;
+  box-shadow: 0 4rpx 16rpx rgba(17, 57, 95, 0.04);
+  box-sizing: border-box;
+}
+
+.service-identity {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex: 1;
+  min-width: 0;
 }
 
 .service-logo {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 28rpx;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 18rpx;
   background: #e3edf6;
   flex-shrink: 0;
 }
 
 .service-info {
   flex: 1;
-  margin-left: 20rpx;
   min-width: 0;
 }
 
-.service-name-row {
+.service-status {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12rpx;
+  gap: 8rpx;
+  margin-top: 6rpx;
+  color: #7c91a8;
+  font-size: 22rpx;
+  line-height: 1.4;
 }
 
 .service-name {
-  font-size: 30rpx;
+  display: block;
+  font-size: 28rpx;
   color: #163450;
-  font-weight: 700;
-}
-
-.service-badge {
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
-  background: rgba(60, 146, 90, 0.12);
-  color: #2f8f4f;
-  font-size: 22rpx;
-  line-height: 1;
-}
-
-.service-desc {
-  margin-top: 10rpx;
-  font-size: 24rpx;
-  color: #5b7690;
-  line-height: 1.6;
+  font-weight: 600;
+  line-height: 1.5;
   word-break: break-word;
+}
+
+.status-dot {
+  width: 10rpx;
+  height: 10rpx;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #50a77c;
 }
 
 .service-tags {
   display: flex;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 12rpx;
-  margin-top: 20rpx;
+  margin-bottom: 24rpx;
 }
 
 .service-tag {
-  padding: 10rpx 18rpx;
+  padding: 8rpx 16rpx;
   border-radius: 999rpx;
-  background: #f1f6fb;
-  color: #44627e;
+  background: #eaf1f9;
+  color: #64809a;
   font-size: 22rpx;
 }
 
 .message-list {
   flex: 1;
+  height: 0;
   min-height: 0;
-  padding: 0 24rpx 20rpx;
+  width: 100%;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.message-content {
+  padding: 28rpx 24rpx 32rpx;
+  font-size: 28rpx;
+  box-sizing: border-box;
 }
 
 .message-row {
   display: flex;
   align-items: flex-start;
   width: 100%;
-  margin-bottom: 24rpx;
+  margin-bottom: 28rpx;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -665,9 +803,9 @@ page {
 }
 
 .avatar {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 24rpx;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 20rpx;
   flex-shrink: 0;
 }
 
@@ -698,7 +836,7 @@ page {
   flex: 1;
   min-width: 0;
   max-width: none;
-  margin: 0 16rpx;
+  margin: 0 14rpx;
 }
 
 .message-main.user {
@@ -719,14 +857,15 @@ page {
   overflow-wrap: anywhere;
 }
 
-.bubble.assistant {
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(90, 126, 160, 0.12);
-  box-shadow: 0 10rpx 26rpx rgba(28, 68, 107, 0.08);
+.bubble.assistant,
+.bubble.system {
+  background: #ffffff;
+  border: 1rpx solid #e4ebf3;
+  box-shadow: 0 4rpx 14rpx rgba(28, 68, 107, 0.04);
   border-top-left-radius: 10rpx;
 }
 
-.bubble.system {
+.bubble.system.is-error {
   background: #fff8e8;
   border: 1px solid #f3d88c;
   border-top-left-radius: 10rpx;
@@ -809,40 +948,50 @@ page {
 }
 
 .quick-section {
-  padding: 0 24rpx 18rpx;
+  margin-top: 36rpx;
   box-sizing: border-box;
 }
 
 .quick-title {
   display: block;
-  margin-bottom: 14rpx;
+  margin-bottom: 20rpx;
   color: #526d87;
-  font-size: 24rpx;
+  font-size: 26rpx;
+  font-weight: 600;
 }
 
 .quick-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 14rpx;
+  gap: 16rpx;
 }
 
 .quick-item {
-  min-height: 78rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  min-height: 100rpx;
   min-width: 0;
-  padding: 18rpx 20rpx;
-  flex: 1 1 calc(50% - 7rpx);
+  padding: 20rpx;
+  flex: 1 1 calc(50% - 8rpx);
   box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(90, 126, 160, 0.12);
+  background: #ffffff;
+  border: 1rpx solid #e4ebf3;
   border-radius: 18rpx;
   color: #274461;
-  font-size: 26rpx;
+  font-size: 24rpx;
   line-height: 1.6;
 }
 
+.quick-item:active {
+  background: #eef5ff;
+}
+
 .input-panel {
+  flex-shrink: 0;
   padding: 18rpx 24rpx calc(env(safe-area-inset-bottom) + 18rpx);
-  background: rgba(248, 251, 255, 0.98);
+  background: #ffffff;
   border-top: 1px solid rgba(116, 145, 173, 0.12);
   box-shadow: 0 -8rpx 30rpx rgba(18, 58, 97, 0.04);
   box-sizing: border-box;
@@ -851,9 +1000,10 @@ page {
 .input-shell {
   display: flex;
   align-items: center;
-  padding: 10rpx 10rpx 10rpx 22rpx;
-  background: #ffffff;
-  border: 1px solid rgba(116, 145, 173, 0.18);
+  gap: 12rpx;
+  padding: 10rpx 10rpx 10rpx 24rpx;
+  background: #f3f6fa;
+  border: 1rpx solid #e6ecf3;
   border-radius: 24rpx;
   box-sizing: border-box;
   overflow: hidden;
@@ -862,21 +1012,23 @@ page {
 .message-input {
   flex: 1;
   min-width: 0;
-  height: 72rpx;
+  height: 64rpx;
   font-size: 28rpx;
   color: #163450;
 }
 
 .send-button {
-  width: 136rpx;
-  height: 72rpx;
-  line-height: 72rpx;
+  width: 104rpx;
+  height: 64rpx;
+  flex-shrink: 0;
+  line-height: 64rpx;
+  padding: 0;
   margin: 0;
   border: none;
   border-radius: 18rpx;
   background: #d8e6f5;
   color: #8aa3bc;
-  font-size: 28rpx;
+  font-size: 26rpx;
   font-weight: 600;
 }
 
@@ -893,8 +1045,9 @@ page {
   display: block;
   margin-top: 12rpx;
   color: #8ba2b7;
-  font-size: 22rpx;
+  font-size: 20rpx;
   line-height: 1.5;
+  text-align: center;
 }
 
 @keyframes dot-bounce {

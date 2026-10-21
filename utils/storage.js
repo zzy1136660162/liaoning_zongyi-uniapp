@@ -6,39 +6,11 @@
 
 // ==================== 用户相关 ====================
 /**
- * 用户注册信息
- * 存储格式: {
- *   realName: string,        // 真实姓名
- *   idType: string,          // 证件类型 (如: '身份证')
- *   idNumber: string,        // 证件号码
- *   phone: string,           // 手机号
- *   verifyCode: string       // 验证码
- * }
- */
-export const STORAGE_KEY_USER_REGISTER = 'user_register_info'
-
-/**
- * 用户登录状态
- * 存储格式: boolean
- */
-export const STORAGE_KEY_USER_LOGIN_STATUS = 'user_login_status'
-
-/**
  * 用户认证Token
  * 存储格式: string
+ * 登录状态由 Token 和服务端会话共同确认，姓名、手机号等正式资料不落盘。
  */
 export const STORAGE_KEY_TOKEN = 'user_token'
-
-/**
- * 用户基本信息
- * 存储格式: {
- *   userId: string,
- *   userName: string,
- *   phone: string,
- *   ...
- * }
- */
-export const STORAGE_KEY_USER_INFO = 'user_info'
 
 /**
  * 微信 OpenID
@@ -53,13 +25,6 @@ export const STORAGE_KEY_WECHAT_OPENID = 'wechat_openid'
  * 说明: 微信开放平台账号下的唯一标识，可能为空
  */
 export const STORAGE_KEY_WECHAT_UNIONID = 'wechat_unionid'
-
-/**
- * 微信会话密钥
- * 存储格式: string
- * 说明: 微信会话密钥，用于解密微信数据
- */
-export const STORAGE_KEY_WECHAT_SESSION_KEY = 'wechat_session_key'
 
 // ==================== 其他业务数据 ====================
 /**
@@ -76,9 +41,7 @@ export const STORAGE_KEY_PRIVACY_ACCEPTED = 'privacy_accepted'
 
 // ==================== 产品相关 ====================
 /**
- * 当前账号购物车只存 productId:skuId 规范条目；缺真实规格的历史条目不进入当前购物车。
- * 条目保留数量、勾选、问卷答案及商品展示快照；价格/库存每次打开页面重新查询。
- * 处方、问诊使用各自真实 ID，不能写成购物车条目。
+ * 旧版购物车键，仅保留账号切换时清理；购物车现由接口读取并在内存展示。
  */
 export const STORAGE_KEY_CART_ITEMS = 'cart_items'
 

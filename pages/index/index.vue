@@ -8,21 +8,27 @@
 				</view>
 			</view>
 			<view class="button-container">
-				<button class="enter-btn" @click="goToNotice">进入首页</button>
+				<button class="enter-btn" @click="goToNotice(true)">进入首页</button>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script>
-import { getWeChatLoginCode, getUserProfile, loginByWeChatCode } from '@/api/auth.js'
-import { STORAGE_KEY_USER_REGISTER, STORAGE_KEY_USER_INFO, STORAGE_KEY_USER_LOGIN_STATUS } from '@/utils/storage.js'
-import { getToken, saveToken } from '@/utils/request.js'
+import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+import { getWeChatLoginCode, loginByWeChatCode } from '@/api/auth.js'
+import { establishAccountSession, fetchAccountProfile } from '@/utils/account.js'
+import { getToken } from '@/utils/request.js'
 import { getImageUrl } from '@/utils/config.js'
-import { syncCartOnLogin } from '@/utils/cart-sync.js'
+import { refreshCart } from '@/utils/cart.js'
 import { assertCurrentSession, getSessionGeneration, isExplicitlyLoggedOut, isCurrentSession } from '@/utils/session.js'
 
+const PAGE_LOG = { moduleCode: 'ENTRY', accessType: '就诊引导', pageType: 'INDEX', requestUri: '/pages/index/index', pageId: '' }
+
 export default {
+  onShow() {
+    logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问启动首页', accessDescription: '进入启动首页，准备查看就诊告知' })
+  },
 	data() {
 		return {
 			bgImage: getImageUrl('/profile/liaoning_zongyi/index_bg.jpg?v=0.01'),
@@ -44,35 +50,35 @@ export default {
 			try {
 				if (isExplicitlyLoggedOut()) return
 				let session = getSessionGeneration()
-                const signIn = async () => {
-                    const code = await getWeChatLoginCode()
-                    assertCurrentSession(session)
-                    const result = await loginByWeChatCode(code)
-                    assertCurrentSession(session)
-                    saveToken(result.token)
-                    session = getSessionGeneration()
-                    if (result.wechatOpenid) uni.setStorageSync('wechat_openid', result.wechatOpenid)
-                    syncCartOnLogin()
-                }
-                if (!getToken()) await signIn()
-                let profile
-                try { profile = await getUserProfile({ authRedirect: false }) }
-                catch (error) {
-                    if (!error.invalidated || !isCurrentSession(error.sessionGeneration) || isExplicitlyLoggedOut()) throw error
-                    session = error.sessionGeneration
-                    await signIn()
-                    profile = await getUserProfile()
-                }
+				const signIn = async () => {
+					const code = await getWeChatLoginCode()
+					assertCurrentSession(session)
+					const result = await loginByWeChatCode(code)
+					assertCurrentSession(session)
+					// 登录只建立会话，个人资料由实际使用页面向接口读取。
+					session = establishAccountSession(result)
+					const signedInSession = session
+					refreshCart().catch(error => {
+						if (isCurrentSession(signedInSession) && error.code !== 'SESSION_CHANGED') {
+							uni.showToast({ title: error.message || '购物车加载失败', icon: 'none' })
+						}
+					})
+				}
+				if (!getToken()) {
+					await signIn()
+					return
+				}
+				// 静默校验已有凭证；401 时允许在启动页恢复登录，不弹出登录跳转。
+				try { await fetchAccountProfile({ authRedirect: false }) }
+				catch (error) {
+					if (!error.invalidated || !isCurrentSession(error.sessionGeneration) || isExplicitlyLoggedOut()) throw error
+					session = error.sessionGeneration
+					await signIn()
+				}
 				assertCurrentSession(session)
-				uni.setStorageSync(STORAGE_KEY_USER_INFO, { ...profile, userId: profile.id })
-				uni.setStorageSync(STORAGE_KEY_USER_REGISTER, {
-					realName: profile.userName || '', idType: profile.idType || '',
-					idNumber: profile.idCardNo || '', phone: profile.phone || '', verifyCode: ''
-				})
-				uni.setStorageSync(STORAGE_KEY_USER_LOGIN_STATUS, true)
 			} catch (error) {
 				// 未注册或登录态变化时保留访客流程，由用户主动登录。
-				if (error?.code !== 'SESSION_CHANGED') console.warn('event=ui_index_index stage=load_user_info_by_openid result=warning reason=operation_incomplete')
+				if (error?.code !== 'SESSION_CHANGED') console.warn('event=ui_index_index stage=restore_account_session result=warning reason=operation_incomplete')
 			}
 		},
 		
@@ -85,7 +91,8 @@ export default {
 				}
 			}, 1000)
 		},
-		goToNotice() {
+		goToNotice(manual = false) {
+			if (manual) logButtonClick({ ...PAGE_LOG, actionCode: 'ENTER_NOTICE', accessTitle: '进入就诊告知', accessDescription: '用户主动跳过启动倒计时，进入就诊告知' })
 			if (this.timer) {
 				clearInterval(this.timer)
 			}

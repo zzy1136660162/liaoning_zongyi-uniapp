@@ -26,19 +26,25 @@
     </view>
 
     <view class="btn-row" v-if="doctorId && doctorName">
-      <button class="btn secondary" @click="clearCanvas">重签</button>
+      <button class="btn secondary" @click="clearCanvas(true)">重签</button>
       <button class="btn primary" :loading="submitting" @click="submitSignature">确定</button>
     </view>
   </view>
 </template>
 
 <script>
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { API_PATHS } from '@/utils/config.js'
 import { get } from '@/utils/request.js'
 import { uploadFile } from '@/api/common.js'
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 
+const PAGE_LOG = { moduleCode: 'DOCTOR', accessType: '医生签名', pageType: 'DOCTOR_SIGNATURE_LANDSCAPE', requestUri: '/pages/doctor/signature_landscape', pageId: '' }
+
 export default {
+  onShow() {
+    logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问横屏签名页', accessDescription: '进入横屏医生签名页面，准备绘制并提交签名', pageId: this.doctorId || '' })
+  },
   name: 'DoctorSignatureLandscape',
   data() {
     return {
@@ -189,7 +195,8 @@ export default {
       }
     },
 
-    clearCanvas() {
+    clearCanvas(manual = false) {
+      if (manual) logButtonClick({ ...PAGE_LOG, pageId: this.doctorId || '', actionCode: 'RESET_SIGNATURE', accessTitle: '重新绘制横屏签名', accessDescription: '用户主动清空横屏签名画布，准备重新签名' })
       if (!this.ctx) return
       if (this.ctx.clearRect) {
         this.ctx.clearRect(0, 0, this.canvasWidth, this.canvasHeight)
@@ -207,6 +214,7 @@ export default {
         return
       }
       this.submitting = true
+      logButtonClick({ ...PAGE_LOG, pageId: this.doctorId, actionCode: 'SUBMIT_SIGNATURE', accessTitle: '提交横屏医生签名', accessDescription: '用户确认提交当前横屏绘制的医生签名' })
       try {
         const image = await new Promise((resolve, reject) => uni.canvasToTempFilePath({
           canvasId: 'signatureCanvas', success: resolve, fail: reject
@@ -214,12 +222,14 @@ export default {
         if (!isCurrentSession(session)) return
         await uploadFile(image.tempFilePath, { url: `/api/doctors/${this.doctorId}/signature` })
         if (!isCurrentSession(session)) return
+        logAccess({ ...PAGE_LOG, pageId: this.doctorId, actionType: 'BEHAVIOR', actionCode: 'SUBMIT_SIGNATURE', actionResult: 'SUCCESS', accessTitle: '横屏签名提交成功', accessDescription: '服务端已保存本次横屏提交的医生签名' })
         uni.showToast({ title: '签名已提交', icon: 'success' })
         setTimeout(() => {
           if (isCurrentSession(session)) uni.navigateBack({ delta: 1 })
         }, 1500)
       } catch (error) {
         if (!isCurrentSession(session) || error.code === 'SESSION_CHANGED') return
+        logAccess({ ...PAGE_LOG, pageId: this.doctorId, actionType: 'BEHAVIOR', actionCode: 'SUBMIT_SIGNATURE', actionResult: getActionFailureResult(error), accessTitle: '横屏签名提交未完成', accessDescription: '本次横屏签名未取得明确保存成功结果', extraData: { reason: 'signature_submit_incomplete' } })
         console.warn('event=doctor_signature stage=submit result=failed')
         uni.showToast({ title: error.message || '签名提交失败', icon: 'none' })
       } finally {

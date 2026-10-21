@@ -1,16 +1,8 @@
-import { trackCurrentPageVisit } from '@/utils/page-tracker.js'
-
 // #ifndef VUE3
 import Vue from 'vue'
 import AppVue2 from './App'
 
 Vue.config.productionTip = false
-
-Vue.mixin({
-  onShow() {
-    trackCurrentPageVisit()
-  }
-})
 
 AppVue2.mpType = 'app'
 
@@ -26,12 +18,6 @@ import AppVue3 from './App.vue'
 
 export function createApp() {
   const app = createSSRApp(AppVue3)
-
-  app.mixin({
-    onShow() {
-      trackCurrentPageVisit()
-    }
-  })
 
   return {
     app

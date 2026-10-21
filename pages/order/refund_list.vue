@@ -113,7 +113,9 @@
 <script>
 import { getRefundPage, getRefundStats, cancelRefund } from '@/api/refund.js'
 import { getRefundStageText } from '@/utils/refund.js'
-import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'REFUND', accessType: '退款售后', pageType: 'REFUND_LIST', pageId: '', requestUri: '/pages/order/refund_list' }
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 
 const REFUND_PAGE_SIZE = 20
@@ -160,10 +162,10 @@ export default {
       this.loadError = '登录状态已变更'
       this.tabs.forEach(tab => { tab.count = 0 })
     })
-    logPageView('退货申请列表', 'REFUND_LIST')
   },
 
   onShow() {
+    if (!this.disposed) logPageView({ ...PAGE_LOG, actionCode: 'REFUND_LIST_VIEW', accessTitle: '退款记录', accessDescription: '进入退款记录列表，查看当前筛选状态下的退款申请', extraData: { statusFilter: this.activeTab } })
     // 页面显示时刷新数据
     this.refreshRefunds()
   },
@@ -251,10 +253,13 @@ export default {
     switchTab(tabKey) {
       if (tabKey === this.activeTab || !this.tabs.some(tab => tab.key === tabKey)) return
       this.activeTab = tabKey
+      logButtonClick({ ...PAGE_LOG, actionCode: 'REFUND_FILTER', accessTitle: '筛选退款记录', accessDescription: '切换退款申请列表的状态筛选', extraData: { statusFilter: tabKey } })
       return this.loadRefundList()
     },
 
     goToDetail(refundApplicationId) {
+      if (this.disposed) return
+      logButtonClick({ ...PAGE_LOG, actionCode: 'REFUND_DETAIL_OPEN', accessTitle: '查看退款详情', accessDescription: '从退款记录列表打开指定退款申请', extraData: { refundApplicationId } })
       uni.navigateTo({
         url: `/pages/order/refund_detail?refundApplicationId=${refundApplicationId}`
       })
@@ -265,15 +270,19 @@ export default {
       const session = getSessionGeneration()
       this.cancellingRefundId = refundApplicationId
       try {
-        logButtonClick('取消退货申请', 'REFUND_LIST', refundApplicationId.toString())
-
         const confirm = await this.showConfirm('确定要取消此退货申请吗？')
-        if (!confirm || this.disposed || !isCurrentSession(session)) return
+        if (this.disposed || !isCurrentSession(session)) return
+        if (!confirm) {
+          logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'REFUND_CANCEL_RESULT', actionResult: 'CANCELLED', accessTitle: '取消退款申请', accessDescription: '用户关闭确认弹窗，保留原退款申请', extraData: { refundApplicationId } })
+          return
+        }
+        logButtonClick({ ...PAGE_LOG, actionCode: 'REFUND_CANCEL', accessTitle: '取消退款申请', accessDescription: '用户确认取消尚可撤销的退款申请', extraData: { refundApplicationId } })
 
         uni.showLoading({ title: '取消中...' })
 
         await cancelRefund(refundApplicationId)
         if (this.disposed || !isCurrentSession(session)) return
+        logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'REFUND_CANCEL_RESULT', actionResult: 'SUCCESS', accessTitle: '取消退款申请', accessDescription: '退款申请已取消', extraData: { refundApplicationId } })
 
         uni.hideLoading()
         uni.showToast({
@@ -286,6 +295,7 @@ export default {
 
       } catch (error) {
         if (this.disposed || !isCurrentSession(session)) return
+        logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'REFUND_CANCEL_RESULT', actionResult: getActionFailureResult(error), accessTitle: '取消退款申请', accessDescription: '取消退款申请未获得成功确认', extraData: { refundApplicationId, reason: 'CANCEL_NOT_CONFIRMED' } })
         console.error('取消退货申请失败:', error)
         uni.hideLoading()
         uni.showToast({

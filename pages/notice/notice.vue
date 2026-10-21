@@ -40,11 +40,16 @@
 </template>
 
 <script>
+import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
 
 import { getImageUrl } from '@/utils/config.js'
-import { logPageView } from '@/api/access-log.js'
+const PAGE_LOG = { moduleCode: 'ENTRY', accessType: '就诊引导', pageType: 'NOTICE', requestUri: '/pages/notice/notice', pageId: '' }
+
 export default {
+  onShow() {
+    logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '阅读就诊告知', accessDescription: '进入就诊告知页面，阅读复诊及购买须知' })
+  },
 	data() {
 		return {
 			bgImage: getImageUrl('/profile/liaoning_zongyi/gaozhishu_bg.jpg'),
@@ -79,7 +84,7 @@ export default {
 		this.startCountdown()
 
 		// 记录页面访问日志
-		logPageView('公告页面', '用户进入公告页面')
+
 	},
 	onUnload() {
 		// 页面卸载时清除定时器
@@ -121,6 +126,7 @@ export default {
 				}
 				return
 			}
+			logButtonClick({ ...PAGE_LOG, actionCode: 'CONFIRM_NOTICE', accessTitle: '确认阅读就诊告知', accessDescription: '倒计时结束且用户勾选确认，继续进入制剂商城' })
 			redirectToWithFallback('/pages/products/medicine_list')
 		},
 		handleBrowse() {

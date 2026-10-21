@@ -809,10 +809,11 @@ import {
   getCartEntries,
   getCartProductQuantity,
   getCartTotalQuantity,
+  refreshCart,
   prepareCheckout,
   resolveCartCompatibility
 } from '@/utils/cart.js'
-import { logPageView } from '@/api/access-log.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 import {
   isPurchaseAvailable,
@@ -827,6 +828,13 @@ import {
   isSelfDevelopedProduct,
   shouldShowSfLogo
 } from '@/utils/product-display.js'
+
+
+const PAGE_LOG = {
+  pageId: '', moduleCode: 'MALL', accessType: '商城', pageType: 'THERAPY_DETAIL',
+  requestUri: '/pages/products/therapy_detail', actionCode: 'VIEW_THERAPY_DETAIL',
+  accessTitle: '访问传统疗法详情', accessDescription: '用户查看传统疗法商品及规格、数量要求'
+}
 
 const { getProductImageUrl, handleProductImageError } = useProductImages()
 
@@ -1147,23 +1155,39 @@ const goCheckout = (targetProduct, purchase) => {
   return true
 }
 
-const handlePurchaseAction = async (mode, targetProduct = product.value, selectedQuantity = 1) => {
+const handlePurchaseAction = async (mode, targetProduct = product.value, selectedQuantity = 1, clickLog = null) => {
   if (!targetProduct?.id) {
     return false
   }
+  const actionLog = clickLog || {
+    ...PAGE_LOG, pageId: routeProductId.value,
+    actionCode: mode === 'buy' ? 'BUY_NOW' : 'ADD_CART',
+    accessTitle: mode === 'buy' ? '立即购买' : '加入购物车',
+    accessDescription: mode === 'buy' ? '用户按所选规格和数量发起立即购买流程' : '用户将所选规格和数量加入购物车',
+    extraData: { productId: targetProduct.id, skuId: targetProduct.skuId || selectedSkuId.value, quantity: selectedQuantity,
+      entry: String(targetProduct.id) === String(product.value.id) ? 'detail' : 'recommend' }
+  }
+  if (!clickLog) logButtonClick(actionLog)
+
   try { targetProduct = withSelectedSku(targetProduct) }
-  catch (error) { uni.showToast({ title: error.message, icon: 'none' }); return false }
+  catch (error) {
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'SKU_UNAVAILABLE' } })
+    uni.showToast({ title: error.message, icon: 'none' }); return false
+  }
 
   if (!ensureLogin()) {
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
     return false
   }
 
   if (!ensureCartCompatible(targetProduct)) {
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'CART_INCOMPATIBLE' } })
     return false
   }
 
   if (!isPurchaseAvailable(targetProduct)) {
     showQuantityLimit(targetProduct)
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'QUANTITY_LIMIT' } })
     return false
   }
 
@@ -1174,6 +1198,7 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
   const requestedQuantity = normalizePurchaseQuantity(targetProduct, normalizedRawQuantity)
   if (requestedQuantity !== normalizedRawQuantity) {
     showQuantityLimit(targetProduct)
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'QUANTITY_LIMIT' } })
     return false
   }
 
@@ -1188,6 +1213,7 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
   const questionnaireState = resolveQuestionnaireState(targetProduct, purchase || {})
   if (mode === 'buy' && questionnaireState === 'unavailable') {
     uni.showToast({ title: getQuestionnaireStateMessage(questionnaireState), icon: 'none' })
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'QUESTIONNAIRE_UNAVAILABLE' } })
     return false
   }
   if (mode === 'buy' && questionnaireState === 'required') {
@@ -1196,15 +1222,19 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
 
   if (mode === 'buy') return goCheckout(targetProduct, purchase)
 
-  const saved = addCartItem(targetProduct, requestedQuantity)
-  if (!saved) {
-    uni.showToast({
-      title: '加入购物车失败',
-      icon: 'none'
-    })
+  const session = getSessionGeneration()
+  const sequence = productRequestSequence
+  try {
+    if (!(await addCartItem(targetProduct, requestedQuantity))) throw new Error('加入购物车失败')
+    if (!isCurrentSession(session) || sequence !== productRequestSequence) return false
+  } catch (error) {
+    if (!isCurrentSession(session) || sequence !== productRequestSequence) return false
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { ...actionLog.extraData, reason: 'CART_SAVE_FAILED' } })
+    uni.showToast({ title: error.message || '加入购物车失败', icon: 'none' })
     return false
   }
 
+  logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
   loadCartCount()
   loadRecommendCartQuantities()
   uni.showToast({
@@ -1215,8 +1245,7 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
 }
 
 const addCart = async () => {
-  await handlePurchaseAction('cart', product.value,
-    getCartProductQuantity(product.value.id, 0, selectedSkuId.value) + quantity.value)
+  await handlePurchaseAction('cart', product.value, quantity.value)
 }
 
 const buyNow = async () => {
@@ -1267,15 +1296,20 @@ const goConsult = () => {
   })
 }
 const showCustomerService = () => {
-  console.info('category=CUSTOMER_SERVICE action=open result=pending page=THERAPY_DETAIL productId=%s', product.value.id || '')
-  openCustomerServiceChat().then((result) => {
-    console.info('category=CUSTOMER_SERVICE action=open result=%s page=THERAPY_DETAIL productId=%s', result ? 'success' : 'failed', product.value.id || '')
+  const session = getSessionGeneration()
+  const actionLog = { ...PAGE_LOG, pageId: routeProductId.value, actionCode: 'OPEN_CUSTOMER_SERVICE', accessTitle: '打开商品客服', accessDescription: '用户从商品详情打开人工客服会话' }
+  logButtonClick(actionLog)
+  Promise.resolve(openCustomerServiceChat()).then(result => {
+    if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: result ? 'SUCCESS' : 'FAILED' })
+  }).catch(error => {
+    if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { reason: 'CUSTOMER_SERVICE_UNAVAILABLE' } })
   })
 }
 const toggleCollect = () => {
   isCollected.value = !isCollected.value
 }
 const goCart = () => {
+  logButtonClick({ ...PAGE_LOG, pageId: routeProductId.value, actionCode: 'OPEN_CART', accessTitle: '查看购物车', accessDescription: '用户从商品详情进入购物车' })
   uni.navigateTo({
     url: '/pages/cart/cart'
   })
@@ -1283,6 +1317,7 @@ const goCart = () => {
 
 const goToDetail = (item) => {
   if (!item?.id || String(item.id) === String(product.value.id)) return
+  logButtonClick({ ...PAGE_LOG, pageId: routeProductId.value, actionCode: 'OPEN_RECOMMENDED_PRODUCT', accessTitle: '查看推荐商品', accessDescription: '用户从商品详情进入推荐商品详情', extraData: { productId: item.id } })
   const page = isTraditionalTherapyProduct(item) ? 'therapy_detail' : 'medicine_detail'
   console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=THERAPY_DETAIL targetPage=%s productId=%s', page, item.id)
   uni.navigateTo({
@@ -1316,25 +1351,33 @@ const animateFlyToCart = () => {
 }
 
 const flyToCart = async (event, item) => {
-  if (!ensureLogin()) return
+  const actionLog = { ...PAGE_LOG, pageId: routeProductId.value, actionCode: 'ADD_CART', accessTitle: '推荐商品加入购物车', accessDescription: '用户从详情页推荐区域为指定商品规格增加购物车数量', extraData: { productId: item.id, entry: 'recommend', addedQuantity: 1 } }
+  logButtonClick(actionLog)
+  if (!ensureLogin()) {
+    logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
+    return
+  }
   let lines = getProductCartLines(getCartEntries(), item.id)
   if (lines.length > 1) return goCart()
   if (lines[0] && !lines[0].skuId) return goToDetail(item)
   const session = getSessionGeneration()
+  const sequence = productRequestSequence
   try {
     // 推荐卡片只有商品汇总数据；重新读真实规格，已有单规格时只增加该行。
     const detail = mapProductDetail(await getProductDetail(item.id))
-    if (!isCurrentSession(session)) return
-    // 等待期间可能连续加购或新增规格，按最新行和数量落车，不能重放点击时的旧数量。
+    if (!isCurrentSession(session) || sequence !== productRequestSequence) return
+    // 等待期间可能新增规格，再次确认本次需要操作的规格。
     lines = getProductCartLines(getCartEntries(), item.id)
     if (lines.length > 1) return goCart()
     if (lines[0] && !lines[0].skuId) return goToDetail(item)
     const saleProduct = withProductSku(detail, resolveProductSku(detail, lines[0]?.skuId))
-    const nextQuantity = (lines[0]?.quantity || 0) + 1
-    const added = await handlePurchaseAction('cart', saleProduct, nextQuantity)
+    const added = await handlePurchaseAction('cart', saleProduct, 1, { ...actionLog, extraData: { ...actionLog.extraData, skuId: saleProduct.skuId, quantity: 1 } })
     if (added) animateFlyToCart()
   } catch (error) {
-    if (isCurrentSession(session)) uni.showToast({ title: error.message || '加入购物车失败', icon: 'none' })
+    if (isCurrentSession(session) && sequence === productRequestSequence) {
+      logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { ...actionLog.extraData, reason: 'RECOMMENDED_PRODUCT_LOOKUP_UNAVAILABLE' } })
+      uni.showToast({ title: error.message || '加入购物车失败', icon: 'none' })
+    }
   }
 }
 
@@ -1342,7 +1385,6 @@ onLoad((options) => {
   productRequestSequence++
   loadedSession = null
   unsubscribeSession?.()
-  logPageView('MEDICINE_DETAIL', options?.id || '')
   product.value = createEmptyProduct()
   quantity.value = 1
   selectedSkuId.value = options.skuId || null
@@ -1366,8 +1408,20 @@ onUnload(() => {
 })
 
 onShow(async () => {
-  loadCartCount()
-  await loadProduct(routeProductId.value)
+  logPageView({ ...PAGE_LOG, pageId: routeProductId.value, extraData: { skuId: selectedSkuId.value } })
+  const session = getSessionGeneration()
+  const loading = loadProduct(routeProductId.value)
+  const sequence = productRequestSequence
+  await loading
+  if (!isCurrentSession(session) || sequence !== productRequestSequence) return
+  try {
+    await refreshCart()
+    if (!isCurrentSession(session) || sequence !== productRequestSequence) return
+    loadCartCount()
+    loadRecommendCartQuantities()
+  } catch (error) {
+    if (isCurrentSession(session) && sequence === productRequestSequence) uni.showToast({ title: error.message || '购物车加载失败', icon: 'none' })
+  }
 })
 </script>
 
@@ -2358,9 +2412,10 @@ onShow(async () => {
 .action-icon-btn {
   position: relative;
   display: flex;
+  flex: 0 0 60rpx;
   flex-direction: column;
   align-items: center;
-  margin-right: 40rpx;
+  margin-right: 32rpx;
 }
 
 .action-icon {
@@ -2371,6 +2426,7 @@ onShow(async () => {
   font-size: 20rpx;
   color: #666;
   margin-top: 4rpx;
+  white-space: nowrap;
 }
 
 .cart-badge {

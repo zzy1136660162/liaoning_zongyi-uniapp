@@ -40,24 +40,22 @@
 <script setup>
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 const pageSession = getSessionGeneration()
-import { ref, onMounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { ref } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { 
   STORAGE_KEY_DEFAULT_ADDRESS_ID
 } from '@/utils/storage.js'
 import { getAddressList, deleteAddress as delAddressApi, setDefaultAddress as setDefaultApi } from '@/api/address.js'
-import { logPageView } from '@/api/access-log.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'ADDRESS', accessType: '收货地址', pageType: 'ADDRESS_LIST', pageId: '', requestUri: '/pages/order/address_list' }
 
 const addresses = ref([])
 const isSelectMode = ref(false)
 
-onMounted(() => {
+onLoad((options) => {
   // 检查是否是选择模式
-  const pages = getCurrentPages()
-  const currentPage = pages[pages.length - 1]
-  if (currentPage && currentPage.options) {
-    isSelectMode.value = currentPage.options.select === 'true'
-  }
+  isSelectMode.value = options?.select === 'true'
   
 })
 
@@ -66,7 +64,7 @@ onShow(() => {
   loadAddresses()
 
   // 记录页面访问日志
-  logPageView('地址列表', '用户进入地址列表页面')
+  if (isCurrentSession(pageSession)) logPageView({ ...PAGE_LOG, actionCode: 'ADDRESS_LIST_VIEW', accessTitle: '收货地址', accessDescription: isSelectMode.value ? '进入收货地址列表，为当前订单选择收货地址' : '进入收货地址列表，管理收货地址', extraData: { mode: isSelectMode.value ? 'SELECT' : 'MANAGE' } })
 })
 
 const loadAddresses = async () => {
@@ -95,6 +93,7 @@ const selectAddress = (address) => {
       // 通过事件总线或全局状态传递选中的地址
       // 这里使用 storage 临时存储
       uni.setStorageSync('temp_selected_address', address.id)
+      logButtonClick({ ...PAGE_LOG, actionCode: 'ADDRESS_SELECT', accessTitle: '选择收货地址', accessDescription: '为当前订单选用收货地址', extraData: { addressId: address.id } })
       uni.navigateBack()
     }
   } else {
@@ -106,9 +105,11 @@ const selectAddress = (address) => {
 const setDefaultAddress = async (addressId) => {
   if (!isCurrentSession(pageSession)) return
   try {
+    logButtonClick({ ...PAGE_LOG, actionCode: 'ADDRESS_DEFAULT', accessTitle: '设置默认地址', accessDescription: '将指定收货地址设为默认地址', extraData: { addressId } })
     // ✅ 调用后端API设置默认地址
     await setDefaultApi(addressId)
     if (!isCurrentSession(pageSession)) return
+    logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ADDRESS_DEFAULT_RESULT', actionResult: 'SUCCESS', accessTitle: '设置默认地址', accessDescription: '默认收货地址已保存', extraData: { addressId } })
     
     // 更新本地数据
     addresses.value.forEach(addr => {
@@ -121,12 +122,14 @@ const setDefaultAddress = async (addressId) => {
     await loadAddresses()
   } catch (e) {
     if (!isCurrentSession(pageSession)) return
+    logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ADDRESS_DEFAULT_RESULT', actionResult: getActionFailureResult(e), accessTitle: '设置默认地址', accessDescription: '设置默认收货地址未获得成功确认', extraData: { addressId, reason: 'SAVE_NOT_CONFIRMED' } })
     console.error('设置默认地址失败:', e)
     uni.showToast({ title: '设置失败', icon: 'none' })
   }
 }
 
 const editAddress = (address) => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ADDRESS_EDIT_OPEN', accessTitle: '编辑收货地址', accessDescription: '打开已有收货地址进行编辑', extraData: { addressId: address.id } })
   uni.navigateTo({
     url: `/pages/order/address_edit?id=${address.id}`
   })
@@ -138,11 +141,18 @@ const deleteAddress = (addressId) => {
     title: '确认删除',
     content: '确定要删除这个收货地址吗？',
     success: async (res) => {
+      if (!isCurrentSession(pageSession)) return
+      if (!res.confirm) {
+        logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ADDRESS_DELETE_RESULT', actionResult: 'CANCELLED', accessTitle: '删除收货地址', accessDescription: '用户取消删除收货地址', extraData: { addressId } })
+        return
+      }
       if (res.confirm && isCurrentSession(pageSession)) {
         try {
+          logButtonClick({ ...PAGE_LOG, actionCode: 'ADDRESS_DELETE', accessTitle: '删除收货地址', accessDescription: '用户确认删除收货地址', extraData: { addressId } })
           // ✅ 调用后端API删除地址
           await delAddressApi(addressId)
     if (!isCurrentSession(pageSession)) return
+          logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ADDRESS_DELETE_RESULT', actionResult: 'SUCCESS', accessTitle: '删除收货地址', accessDescription: '收货地址已删除', extraData: { addressId } })
           
           uni.showToast({ title: '删除成功', icon: 'success' })
           
@@ -150,6 +160,7 @@ const deleteAddress = (addressId) => {
           await loadAddresses()
         } catch (e) {
     if (!isCurrentSession(pageSession)) return
+          logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ADDRESS_DELETE_RESULT', actionResult: getActionFailureResult(e), accessTitle: '删除收货地址', accessDescription: '删除收货地址未获得成功确认', extraData: { addressId, reason: 'DELETE_NOT_CONFIRMED' } })
           console.error('删除地址失败:', e)
           uni.showToast({ title: '删除失败', icon: 'none' })
         }
@@ -159,6 +170,7 @@ const deleteAddress = (addressId) => {
 }
 
 const addAddress = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ADDRESS_CREATE_OPEN', accessTitle: '新增收货地址', accessDescription: '打开新增收货地址页面' })
   uni.navigateTo({
     url: '/pages/order/address_edit'
   })

@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { ID_TYPE_OPTIONS, deriveAgeFromId, deriveGenderFromId, patientHisSyncNotice } from '../utils/patient.js'
+import { ID_TYPE_OPTIONS, deriveAgeFromId, deriveGenderFromId, deriveBirthDateFromId, getPatientProfileNotice, patientHisSyncNotice } from '../utils/patient.js'
 import { loadOptions, loadSetup } from './sfc-harness.mjs'
 
 const fixture = () => {
   const values = new Map(), writes = [], toasts = [], events = []
   let generation = 1
+  let accountProfile = { id: 7, userName: '测试陪诊人', idType: '护照', idCardNo: 'P87654321', phone: '13900139000' }
   const mocks = {
-    ID_TYPE_OPTIONS, deriveAgeFromId, deriveGenderFromId, patientHisSyncNotice,
+    ID_TYPE_OPTIONS, deriveAgeFromId, deriveGenderFromId, deriveBirthDateFromId, getPatientProfileNotice, patientHisSyncNotice,
     ref: value => ({ value }), reactive: value => value,
     computed: get => ({ get value() { return get() } }), watch() {}, onLoad() {}, onMounted() {},
     getSessionGeneration: () => generation, isCurrentSession: value => value === generation,
@@ -17,6 +18,8 @@ const fixture = () => {
     STORAGE_KEY_AGREEMENT_ACCEPTED: 'agreed', getToken: () => 'fixture-token', isExplicitlyLoggedOut: () => false,
     getImageUrl: value => value, logButtonClick() {}, setTimeout() {},
     getPatientDetail: async () => ({}),
+    fetchAccountProfile: async () => accountProfile,
+    establishAccountSession: () => ++generation,
     addPatient: async payload => { writes.push(payload); return { id: 7 } },
     updatePatient: async (id, payload) => { writes.push({ id, ...payload }); return { id } },
     uni: {
@@ -25,7 +28,7 @@ const fixture = () => {
       $emit: (...args) => events.push(args)
     }
   }
-  return { mocks, values, writes, toasts, events, changeSession: () => { generation++ } }
+  return { mocks, values, writes, toasts, events, changeSession: () => { generation++ }, setAccountProfile: profile => { accountProfile = profile } }
 }
 const editPage = env => loadSetup('pages/dispense/patient_edit.vue', env.mocks, [
   'formData', 'patientId', 'idTypeOptions', 'guardianIdTypeOptions', 'idTypeIndex', 'guardianIdTypeIndex',
@@ -37,23 +40,27 @@ const fillPatient = (page, patientType = 'adult') => Object.assign(page.formData
   guardianName: '测试陪诊人', guardianIdType: '护照', guardianIdNumber: 'P87654321', guardianPhone: '13900139000'
 })
 
-test('个人页与首页按同一资料响应完整写回缓存，缺失类型不会复用旧值，保留就诊卡号显示', async () => {
+test('个人页和首页只使用接口资料且不写个人缓存，缺失类型不复用旧值，保留就诊卡号显示', async () => {
   for (const idType of [...ID_TYPE_OPTIONS, undefined]) {
     const env = fixture()
-    const profile = { userName: '测试用户', idType, idCardNo: 'P12345678', phone: '13800138000' }
-    env.mocks.getUserProfile = async () => profile
-    env.values.set('register', { idType: '身份证', idNumber: 'old-number' })
+    const profile = { id: 7, userName: '测试用户', idType, idCardNo: 'P12345678', phone: '13800138000' }
+    env.setAccountProfile(profile)
+    const oldCache = { idType: '身份证', idNumber: 'old-number' }
+    env.values.set('register', oldCache)
     const page = loadSetup('pages/user/profile.vue', env.mocks, ['loadUserProfile', 'userInfo'])
     await page.loadUserProfile()
-    const expected = { realName: profile.userName, idType: idType || '', idNumber: profile.idCardNo, phone: profile.phone, verifyCode: '' }
-    assert.deepEqual(env.values.get('register'), expected)
+    const expected = { realName: profile.userName, idType: idType || '', idNumber: profile.idCardNo, phone: profile.phone }
+    assert.deepEqual(page.userInfo.value, expected)
     assert.equal(page.userInfo.value.idNumber, profile.idCardNo)
     const home = loadOptions('pages/index/index.vue', env.mocks)
     await home.methods.loadCurrentUser.call({})
-    assert.deepEqual(env.values.get('register'), expected)
+    assert.deepEqual(env.values.get('register'), oldCache)
+    assert.equal(env.values.has('user'), false)
+    assert.equal(env.values.has('logged-in'), false)
   }
   const source = readFileSync(new URL('../pages/user/profile.vue', import.meta.url), 'utf8')
-  assert.match(source, /就诊卡号:\s*\{\{ userInfo.idNumber/)
+  const templateText = source.split('<script')[0].replace(/<[^>]*>/g, '')
+  assert.match(templateText, /就诊卡号[:：]?\s*\{\{ userInfo.idNumber/)
 })
 
 test('注册保留原九类选项，患者本人及陪诊人都能选择并按原类型保存', async () => {
@@ -65,7 +72,7 @@ test('注册保留原九类选项，患者本人及陪诊人都能选择并按�
     const env = fixture(), page = editPage(env)
     fillPatient(page, 'child')
     page.onIdTypeChange({ detail: { value: page.idTypeOptions.value.findIndex(item => item.value === idType) } })
-    page.formData.idNumber = idType === '身份证' ? '110105199001010019' : 'P12345678'
+    page.formData.idNumber = idType === '身份证' ? '110105202001010019' : 'P12345678'
     page.onGuardianIdTypeChange({ detail: { value: String(page.guardianIdTypeOptions.value.findIndex(item => item.value === idType)) } })
     await page.handleSubmit()
     assert.equal(env.writes.length, 1)
@@ -74,12 +81,14 @@ test('注册保留原九类选项，患者本人及陪诊人都能选择并按�
   }
 })
 
-test('九类缓存及旧别名正确预填，缺失或未知类型保留号码并要求明确选择', async () => {
+test('九类接口证件正确预填陪诊人，缺失或未知类型保留号码并要求明确选择', async () => {
   for (const idType of [...ID_TYPE_OPTIONS, undefined, '历史证件']) {
     const env = fixture()
-    env.values.set('register', { realName: '测试陪诊人', idType, idNumber: 'P87654321', phone: '13900139000' })
+    env.setAccountProfile({ id: 7, userName: '测试陪诊人', idType, idCardNo: 'P87654321', phone: '13900139000' })
+    env.values.set('register', { realName: '旧缓存姓名', idType: '身份证', idNumber: 'old-number' })
     const page = editPage(env)
-    page.initGuardianInfo()
+    page.formData.patientType = 'child'
+    await page.initGuardianInfo()
     assert.equal(page.formData.guardianIdNumber, 'P87654321')
     assert.equal(page.formData.guardianIdType, ID_TYPE_OPTIONS.includes(idType) ? idType : '')
     if (!ID_TYPE_OPTIONS.includes(idType)) {
@@ -91,72 +100,76 @@ test('九类缓存及旧别名正确预填，缺失或未知类型保留号码�
       assert.equal(page.guardianIdTypeIndex.value, 0)
     }
   }
-  const env = fixture()
-  env.values.set('register', { name: '旧姓名', idCardType: '军官证', idCard: '12345678', mobile: '13900139000' })
-  const page = editPage(env)
-  page.initGuardianInfo()
-  assert.equal(page.formData.guardianName, '旧姓名')
-  assert.equal(page.formData.guardianIdType, '军官证')
-  assert.equal(page.formData.guardianIdNumber, '12345678')
-  assert.equal(page.formData.guardianPhone, '13900139000')
+  const env = fixture(), page = editPage(env)
+  env.setAccountProfile({ id: 7, name: '旧姓名', idCardType: '军官证', idCard: 'legacy-number', mobile: '13900139000' })
+  page.formData.patientType = 'child'
+  await page.initGuardianInfo()
+  assert.equal(page.formData.guardianName, '')
+  assert.equal(page.formData.guardianIdType, '')
+  assert.equal(page.formData.guardianIdNumber, '')
+  assert.equal(page.formData.guardianPhone, '')
 })
 
-test('注册恢复缺失或未知类型的旧号码时要求明确选择，既有登录载荷和首次默认不变', async () => {
-  for (const idType of [undefined, '', '历史证件']) {
+test('注册忽略全部旧草稿，仅恢复协议偏好，既有证件选项、校验和登录载荷保留', async () => {
+  for (const cached of [undefined, null, {}, '', 'invalid', [], { realName: '旧草稿', idType: '历史证件', idNumber: 'old-number', phone: '13800138000' }]) {
     const env = fixture(), requests = []
     Object.assign(env.mocks, {
       getWeChatLoginCode: async () => 'fixture-code',
       getWeChatUserProfile: async () => ({ avatarUrl: '/fixture-avatar.jpg', gender: 2 }),
       login: async payload => { requests.push(payload); return { token: 'fixture-token', userId: 7 } },
-      saveToken() {}, syncCartOnLogin() {}
+      establishAccountSession: () => { env.changeSession(); return 2 }
     })
-    env.values.set('register', { realName: '注册用户', idType, idNumber: 'P12345678', phone: '13800138000' })
+    env.values.set('register', cached)
+    env.values.set('agreed', true)
     const options = loadOptions('pages/register/register.vue', env.mocks)
     const page = { ...options.data(), ...options.methods }
     Object.defineProperty(page, 'canSubmit', { get: () => options.computed.canSubmit.call(page) })
-    page.loadSavedData()
-    page.isAgreed = true
-    page.formData.verifyCode = 'fixture-sms-code'
-    assert.equal(page.formData.idType, '')
-    assert.equal(page.formData.idNumber, 'P12345678')
-    assert.equal(page.idTypeList[page.idTypeIndex], '请选择')
+    page.loadAgreementPreference()
+    assert.deepEqual(page.formData, { realName: '', idType: '身份证', idNumber: '', phone: '', verifyCode: '' })
+    assert.deepEqual(page.idTypeList, ID_TYPE_OPTIONS)
+    assert.equal(page.isAgreed, true)
     assert.equal(Boolean(page.canSubmit), false)
     await page.handleLogin()
     assert.equal(requests.length, 0)
+    Object.assign(page.formData, { realName: '注册用户', idType: '', idNumber: 'P12345678', phone: '13800138000', verifyCode: 'fixture-sms-code' })
+    assert.equal(Boolean(page.canSubmit), false)
     page.onIdTypeChange({ detail: { value: page.idTypeList.indexOf('护照') } })
     assert.equal(page.canSubmit, true)
     await page.handleLogin()
     assert.deepEqual(requests, [{ wechatCode: 'fixture-code', phone: '13800138000', code: 'fixture-sms-code',
       userName: '注册用户', idType: '护照', idCardNo: 'P12345678', avatarUrl: '/fixture-avatar.jpg', gender: 2 }])
-    assert.equal(env.values.get('register').verifyCode, '')
-  }
-  for (const cached of [undefined, null, {}, '', 'invalid', []]) {
-    const env = fixture()
-    env.values.set('register', cached)
-    const options = loadOptions('pages/register/register.vue', env.mocks)
-    const page = { ...options.data(), ...options.methods }
-    page.loadSavedData()
-    assert.equal(page.formData.idType, '身份证')
-    assert.deepEqual(page.idTypeList, ID_TYPE_OPTIONS)
+    assert.equal(env.values.get('register'), cached)
+    assert.equal(env.values.has('user'), false)
+    assert.equal(env.values.has('logged-in'), false)
+    assert.equal(options.watch, undefined)
+    assert.equal(page.saveFormData, undefined)
+    page.toggleAgreement()
+    assert.equal(env.values.get('agreed'), false)
+    assert.equal(env.values.get('register'), cached)
   }
 })
 
-test('异常缓存和重复预填不清空或覆盖已填写的陪诊人', () => {
-  for (const cached of [null, '', 'invalid', 1, true, []]) {
-    const env = fixture(), page = editPage(env)
+test('接口失败和重复预填不回退旧缓存，也不清空或覆盖已填写的陪诊人', async () => {
+  for (const cached of [null, '', 'invalid', 1, true, [], { realName: '旧账号姓名', idType: '身份证', idNumber: 'old-number' }]) {
+    const env = fixture()
     env.values.set('register', cached)
-    page.initGuardianInfo()
-    assert.equal(page.formData.guardianIdType, '')
-    assert.equal(page.formData.guardianIdNumber, '')
+    env.mocks.fetchAccountProfile = async () => { throw new Error('profile unavailable') }
+    const empty = editPage(env)
+    empty.formData.patientType = 'child'
+    await empty.initGuardianInfo()
+    assert.equal(empty.formData.guardianIdType, '')
+    assert.equal(empty.formData.guardianIdNumber, '')
   }
   const env = fixture(), page = editPage(env)
   page.formData.guardianName = '手工填写'
+  page.formData.patientType = 'child'
   env.values.set('register', { realName: '缓存姓名', idType: '护照' })
-  page.initGuardianInfo()
+  await page.initGuardianInfo()
   assert.equal(page.formData.guardianName, '手工填写')
   const empty = editPage(env)
+  empty.formData.patientType = 'child'
   env.mocks.uni.getStorageSync = () => { throw new Error('storage unavailable') }
-  assert.doesNotThrow(() => empty.initGuardianInfo())
+  await assert.doesNotReject(() => empty.initGuardianInfo())
 })
 
 test('已有详情保留未知证件并优先于缓存，切换患者类型和只改电话不会篡改证件', async () => {
@@ -191,7 +204,7 @@ test('缺失详情类型明确为空，不回填为身份证或使用注册缓�
   const page = editPage(env)
   page.patientId.value = 9
   await page.loadPatient(9)
-  page.initGuardianInfo()
+  await page.initGuardianInfo()
   assert.equal(page.formData.idType, '')
   assert.equal(page.formData.guardianIdType, '')
   assert.equal(page.formData.guardianIdNumber, 'old-guardian')
@@ -209,7 +222,7 @@ test('账号变化后旧详情和旧保存响应不能回填、发事件或提�
   await loading
   assert.equal(page.formData.name, '')
   env.values.set('register', { realName: '新账号', idType: '护照' })
-  page.initGuardianInfo()
+  await page.initGuardianInfo()
   assert.equal(page.formData.guardianName, '')
   fillPatient(page)
   await page.handleSubmit()

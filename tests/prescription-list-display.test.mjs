@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import dayjs from 'dayjs'
-import * as cart from '../utils/cart.js'
+import * as cart from './cart-api-fixture.mjs'
 import * as context from '../utils/consultation-checkout.js'
 import * as prescriptionDisplay from '../utils/prescription.js'
 import { AI_DOCTOR } from '../utils/consultation-mode.js'
@@ -81,7 +81,7 @@ describe('处方清单普通购物车', () => {
     ])
     assert.equal(page.selectedCartTotal.value, 212)
     assert.equal(page.canSubmit.value, true)
-    page.goToOrder()
+    await page.goToOrder()
     assert.equal(page.routes[0], '/pages/order/confirm?selectedItems=10:11,10:12,20:21,30:31&consultationId=123&patientId=8')
     assert.deepEqual(page.storage.get('current_order').items.map(item => [item.skuId, item.quantity]),
       [['11', 2], ['12', 1], ['21', 3], ['31', 4]])
@@ -113,7 +113,7 @@ describe('处方清单普通购物车', () => {
       const page = harness({ getPrescriptionByConsultation: async () => prescription({ status, expired }) })
       await page.show()
       assert.equal(page.canSubmit.value, allowed)
-      page.goToOrder()
+      await page.goToOrder()
       assert.equal(page.routes.length, allowed ? 1 : 0)
     }
   })
@@ -133,7 +133,7 @@ describe('处方清单普通购物车', () => {
     assert.equal(page.consultation.value, null)
     assert.equal(page.prescriptionDoctorName.value, '')
     assert.equal(page.canSubmit.value, false)
-    page.goToOrder()
+    await page.goToOrder()
     assert.deepEqual(page.routes, [])
     assert.equal(page.loadError.value, 'fixture-prescription-offline')
     await page.loadPage()
@@ -150,7 +150,7 @@ describe('处方清单普通购物车', () => {
       await page.show()
       assert.equal(page.currentPrescription.value, null)
       assert.equal(page.canSubmit.value, false)
-      page.goToOrder()
+      await page.goToOrder()
       assert.deepEqual(page.routes, [])
     }
   })
@@ -164,22 +164,22 @@ describe('处方清单普通购物车', () => {
     assert.equal(page.cartItemsList.value.length, 4)
     assert.equal(page.cartItemsList.value.find(item => item.id === '20:21').loadFailure, true)
     assert.equal(page.canSubmit.value, false)
-    page.goToOrder()
+    await page.goToOrder()
     assert.deepEqual(page.routes, [])
   })
 
   test('勾选只影响当前结算选择，空选不能导航', async () => {
     const page = harness()
     await page.show()
-    page.toggleCartSelect('10:11')
+    await page.toggleCartSelect('10:11')
     assert.equal(page.selectedCartCount.value, 3)
     assert.equal(page.selectedCartTotal.value, 192)
     assert.equal(cart.getCartEntries()['10:11'].selected, false)
-    page.toggleCartSelectAll()
-    page.toggleCartSelectAll()
+    await page.toggleCartSelectAll()
+    await page.toggleCartSelectAll()
     assert.equal(page.selectedCartCount.value, 0)
     assert.equal(page.canSubmit.value, false)
-    page.goToOrder()
+    await page.goToOrder()
     assert.deepEqual(page.routes, [])
   })
 
@@ -193,7 +193,7 @@ describe('处方清单普通购物车', () => {
       await pending
       assert.equal(page.currentPrescription.value, null)
       assert.equal(page.canSubmit.value, false)
-      page.goToOrder()
+      await page.goToOrder()
       assert.deepEqual(page.routes, [])
     }
   })

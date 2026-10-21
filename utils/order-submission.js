@@ -4,7 +4,9 @@ import { STORAGE_KEY_ORDER_SUBMISSION, STORAGE_KEY_ORDER_CART_SNAPSHOTS } from '
 /** 请求结果不确定时沿用同一个标识；内容或购物车版本改变后才开始新的提交。 */
 export const getOrderSubmission = (kind, data, cartSnapshot = null) => {
   const cartIntent = cartSnapshot && Object.fromEntries(Object.entries(cartSnapshot).map(([key, entry]) =>
-    [key, { revision: entry.revision, quantity: entry.quantity, timestamp: entry.timestamp }]))
+    [key, entry.serverCartItemId && entry.serverCartVersion != null
+      ? { id: entry.serverCartItemId, version: entry.serverCartVersion, quantity: entry.quantity }
+      : { revision: entry.revision, quantity: entry.quantity, timestamp: entry.timestamp }]))
   const fingerprint = JSON.stringify({ kind, data, cartSnapshot: cartIntent })
   const previous = uni.getStorageSync(STORAGE_KEY_ORDER_SUBMISSION)
   if (previous?.fingerprint === fingerprint) {
@@ -43,10 +45,10 @@ export const forgetOrderSubmission = orderId => {
 }
 
 /** 旧订单及独立购买没有购物车快照，不得按商品规格猜测清理当前购物车。 */
-export const consumeOrderCart = orderId => {
+export const consumeOrderCart = async orderId => {
   const snapshots = uni.getStorageSync(STORAGE_KEY_ORDER_CART_SNAPSHOTS) || {}
   const snapshot = snapshots[orderId]
-  if (snapshot && !removePurchasedCartItems(snapshot)) return false
+  if (snapshot && !await removePurchasedCartItems(snapshot)) return false
   forgetOrderSubmission(orderId)
   return true
 }

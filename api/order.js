@@ -72,8 +72,8 @@ export const getOrderPage = (params = {}) => {
   })
 }
 
-export const getOrderStats = () => get(`${API_PATHS.ORDER.LIST}/stats`, {}, {
-  needAuth: true, showLoading: false
+export const getOrderStats = ({ silent = false } = {}) => get(`${API_PATHS.ORDER.LIST}/stats`, {}, {
+  needAuth: true, showLoading: false, silent
 })
 
 /**

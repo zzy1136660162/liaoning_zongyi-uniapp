@@ -27,29 +27,29 @@
           />
         </view>
         
-        <view class="form-item picker-item">
-          <text class="label"><text class="required">*</text> 区域</text>
-          <picker
-            mode="multiSelector"
-            :range="multiRange"
-            :value="multiValue"
-            @columnchange="onMultiColumnChange"
-            @change="onMultiChange"
-          >
-            <view
-              class="picker-value"
-              :class="{ placeholder: !formData.province }"
-            >
-              <template v-if="formData.province || formData.city || formData.district || formData.street">
-                {{ [formData.province, formData.city, formData.district, formData.street].filter(Boolean).join(' ') || '请选择省/市/区/街道' }}
-              </template>
-              <template v-else>
-                请选择省/市/区/街道
-              </template>
-        </view>
-          </picker>
-          <text class="arrow">›</text>
-        </view>
+        <picker
+          class="region-picker"
+          mode="multiSelector"
+          :range="multiRange"
+          :value="multiValue"
+          @columnchange="onMultiColumnChange"
+          @change="onMultiChange"
+          @cancel="setMultiValueFromForm"
+        >
+          <view class="picker-item">
+            <text class="label"><text class="required">*</text> 区域</text>
+            <view class="picker-content">
+              <view
+                class="picker-value"
+                :class="{ placeholder: !formData.district }"
+              >
+                {{ [formData.province, formData.city, formData.district, formData.street].filter(Boolean).join(' ') || '请选择市/区县/街道' }}
+              </view>
+              <view class="region-hint">仅支持辽宁省内地址</view>
+            </view>
+            <text class="arrow">›</text>
+          </view>
+        </picker>
         
         <view class="form-item">
           <text class="label"><text class="required">*</text> 详细地址</text>
@@ -81,10 +81,15 @@
 
 <script setup>
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+import { createPageReturn } from '@/utils/page-return.js'
 const pageSession = getSessionGeneration()
+const pageReturn = createPageReturn(() => isCurrentSession(pageSession))
 import { ref, reactive, onMounted } from 'vue'
+import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { getAddressDetail, addAddress, updateAddress } from '@/api/address.js'
-import { logPageView } from '@/api/access-log.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'ADDRESS', accessType: '收货地址', pageType: 'ADDRESS_EDIT', requestUri: '/pages/order/address_edit' }
 import { getImageUrl } from '@/utils/config.js'
 
 const isEdit = ref(false)
@@ -107,13 +112,14 @@ const multiRange = ref([[], [], [], []])
 const multiValue = ref([0, 0, 0, 0])
 const DEFAULT_STREETS = ['请选择街道']
 const STREET_PLACEHOLDER = DEFAULT_STREETS[0]
-const NATIONAL_REGION_DATA = ref([])
+const SUPPORTED_PROVINCE = '辽宁省'
+const REGION_DATA = ref([])
 const REGION_DATA_URL = '/profile/liaoning_zongyi/data/pcas-code.json'
 
 // 异步加载省市区街道数据（从远程 JSON，而不是打包进主包）
 const initRegionData = () => {
   return new Promise((resolve) => {
-    if (NATIONAL_REGION_DATA.value && NATIONAL_REGION_DATA.value.length > 0) {
+    if (REGION_DATA.value.length > 0) {
       resolve()
       return
     }
@@ -122,15 +128,15 @@ const initRegionData = () => {
       method: 'GET',
       success: (res) => {
         if (Array.isArray(res.data)) {
-          NATIONAL_REGION_DATA.value = res.data
+          REGION_DATA.value = res.data.filter(province => province.name === SUPPORTED_PROVINCE)
         } else {
-          NATIONAL_REGION_DATA.value = []
+          REGION_DATA.value = []
         }
         resolve()
       },
       fail: (err) => {
         console.error('加载区域数据失败:', err)
-        NATIONAL_REGION_DATA.value = []
+        REGION_DATA.value = []
         resolve()
       }
     })
@@ -139,7 +145,7 @@ const initRegionData = () => {
 
 const findStreetsByRegion = (provinceName, cityName, districtName) => {
   if (!provinceName || !cityName || !districtName) return []
-  const provinceNode = NATIONAL_REGION_DATA.value.find(item => item.name === provinceName)
+  const provinceNode = REGION_DATA.value.find(item => item.name === provinceName)
   if (!provinceNode || !provinceNode.children) return []
   const cityNode = provinceNode.children.find(item => item.name === cityName)
   if (!cityNode || !cityNode.children) return []
@@ -151,11 +157,11 @@ const findStreetsByRegion = (provinceName, cityName, districtName) => {
 
 // 根据当前 multiValue 计算四级联动各列选项
 const buildMultiRange = () => {
-  const provinces = NATIONAL_REGION_DATA.value.map(p => p.name)
+  const provinces = REGION_DATA.value.map(p => p.name)
   let pIndex = multiValue.value[0] || 0
   if (pIndex < 0 || pIndex >= provinces.length) pIndex = 0
 
-  const province = NATIONAL_REGION_DATA.value[pIndex] || {}
+  const province = REGION_DATA.value[pIndex] || {}
   const cities = (province.children || []).map(c => c.name)
   let cIndex = multiValue.value[1] || 0
   if (cIndex < 0 || cIndex >= cities.length) cIndex = 0
@@ -194,7 +200,7 @@ const restoreStreetAndDetail = (addressDetailText) => {
 
 // 根据已有的表单省市区街道，回填 multiSelector 的索引
 const setMultiValueFromForm = () => {
-  const provinces = NATIONAL_REGION_DATA.value
+  const provinces = REGION_DATA.value
   const pIndex = provinces.findIndex(p => p.name === formData.province)
   let p = pIndex >= 0 ? pIndex : 0
 
@@ -218,6 +224,21 @@ const setMultiValueFromForm = () => {
   buildMultiRange()
 }
 
+onLoad((options) => {
+  pageReturn.bind()
+  isEdit.value = !!options?.id
+  addressId.value = options?.id ? String(options.id) : ''
+})
+
+onShow(() => {
+  pageReturn.show()
+  if (!isCurrentSession(pageSession)) return
+  logPageView({ ...PAGE_LOG, pageId: addressId.value, actionCode: 'ADDRESS_EDIT_VIEW', accessTitle: isEdit.value ? '编辑收货地址' : '新增收货地址', accessDescription: isEdit.value ? '进入地址编辑页，修改已有收货地址' : '进入地址编辑页，新增收货地址', extraData: { mode: isEdit.value ? 'EDIT' : 'CREATE' } })
+})
+
+onHide(() => pageReturn.hide())
+onUnload(() => pageReturn.dispose())
+
 onMounted(async () => {
   // 初始化四级联动数据（先加载区域 JSON，再构建多列选择数据）
   await initRegionData()
@@ -239,7 +260,7 @@ onMounted(async () => {
     })
   } else {
     // 新增地址模式：设置默认省市为辽宁省沈阳市
-    formData.province = '辽宁省'
+    formData.province = SUPPORTED_PROVINCE
     formData.city = '沈阳市'
     formData.region = '辽宁省 沈阳市'
     
@@ -252,9 +273,6 @@ onMounted(async () => {
     })
   }
 
-  // 记录页面访问日志
-  const pageTitle = isEdit.value ? '编辑地址' : '新增地址'
-  logPageView(pageTitle, `用户进入${pageTitle}页面`)
 })
 
 const loadAddress = async () => {
@@ -324,8 +342,13 @@ const validateForm = () => {
     return false
   }
   
-  if (!formData.region || formData.region.trim() === '') {
-    uni.showToast({ title: '请选择省市区', icon: 'none' })
+  if (formData.province !== SUPPORTED_PROVINCE) {
+    uni.showToast({ title: '仅支持辽宁省内地址，请重新选择区域', icon: 'none' })
+    return false
+  }
+
+  if (!formData.city.trim() || !formData.district.trim()) {
+    uni.showToast({ title: '请选择完整的市、区县', icon: 'none' })
     return false
   }
   
@@ -343,11 +366,14 @@ const validateForm = () => {
 }
 
 const saveAddress = async () => {
+  if (!isCurrentSession(pageSession)) return
   if (!validateForm()) {
+    logAccess({ ...PAGE_LOG, pageId: addressId.value, actionType: 'BEHAVIOR', actionCode: 'ADDRESS_SAVE_RESULT', actionResult: 'FAILED', accessTitle: '保存收货地址', accessDescription: '收货地址表单校验未通过，尚未提交保存', extraData: { mode: isEdit.value ? 'EDIT' : 'CREATE', reason: 'INVALID_FORM' } })
     return
   }
   
   try {
+    logButtonClick({ ...PAGE_LOG, pageId: addressId.value, actionCode: 'ADDRESS_SAVE', accessTitle: '保存收货地址', accessDescription: isEdit.value ? '提交已有收货地址修改' : '提交新增收货地址', extraData: { mode: isEdit.value ? 'EDIT' : 'CREATE' } })
     uni.showLoading({ title: '保存中...' })
     
     // 准备提交数据
@@ -371,19 +397,19 @@ const saveAddress = async () => {
       await addAddress(addressData)
     }
     
-    if (isCurrentSession(pageSession)) uni.hideLoading()
+    if (!isCurrentSession(pageSession)) return
+    logAccess({ ...PAGE_LOG, pageId: addressId.value, actionType: 'BEHAVIOR', actionCode: 'ADDRESS_SAVE_RESULT', actionResult: 'SUCCESS', accessTitle: '保存收货地址', accessDescription: isEdit.value ? '收货地址修改已保存' : '新增收货地址已保存', extraData: { mode: isEdit.value ? 'EDIT' : 'CREATE' } })
+    uni.hideLoading()
     uni.showToast({ 
       title: isEdit.value ? '保存成功' : '添加成功', 
       icon: 'success'
     })
     
-    setTimeout(() => {
-      if (!isCurrentSession(pageSession)) return
-      uni.navigateBack()
-    }, 1500)
+    pageReturn.schedule(() => uni.navigateBack(), 1500)
     
   } catch (e) {
     if (!isCurrentSession(pageSession)) return
+    logAccess({ ...PAGE_LOG, pageId: addressId.value, actionType: 'BEHAVIOR', actionCode: 'ADDRESS_SAVE_RESULT', actionResult: getActionFailureResult(e), accessTitle: '保存收货地址', accessDescription: '保存收货地址未获得成功确认', extraData: { mode: isEdit.value ? 'EDIT' : 'CREATE', reason: 'SAVE_NOT_CONFIRMED' } })
     console.error('保存地址失败:', e)
     if (isCurrentSession(pageSession)) uni.hideLoading()
     uni.showToast({ 
@@ -451,7 +477,8 @@ const onMultiChange = (event) => {
   padding: 20rpx;
 }
 
-.form-item {
+.form-item,
+.picker-item {
   display: flex;
   align-items: center;
   padding: 24rpx 0;
@@ -462,8 +489,20 @@ const onMultiChange = (event) => {
   border-bottom: none;
 }
 
-.picker-item {
-  position: relative;
+.region-picker {
+  display: block;
+  width: 100%;
+}
+
+.picker-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.region-hint {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #999;
 }
 
 .label {

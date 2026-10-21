@@ -7,9 +7,8 @@ const appDefinition = loadOptions('App.vue', {
   initCartRemoteSync() {}, console: { warn() {}, log() {} }
 })
 let app
-globalThis.uni = { $on() {}, $off() {}, removeStorageSync() {} }
-
 beforeEach(t => {
+  globalThis.uni = { $on() {}, $off() {}, removeStorageSync() {} }
   t.mock.timers.enable({ apis: ['setTimeout'] })
   app = { globalData: { ...appDefinition.globalData } }
   appDefinition.onLaunch.call(app)
@@ -21,17 +20,60 @@ const createPage = () => {
   const definition = loadOptions('pages/products/medicine_list.vue', {
     getApp: () => app, TabBar: {}, getImageUrl: value => value,
     getExternalUseLabel() {}, getColdShippingLabel() {}, isSelfDevelopedProduct() {},
-    subscribeCartUpdated: () => () => { unsubscribed++ }
+    refreshCart: async () => [], subscribeCartUpdated: () => () => { unsubscribed++ }
   })
   const vm = {
     ...definition.data(), ...definition.methods,
     loadProducts() { refreshes++ },
-    loadVerifiedProductsFromStorage() { cartRefreshes++ }
+    updateCartView() { cartRefreshes++ }
   }
   return { definition, vm, counts: () => ({ refreshes, cartRefreshes, unsubscribed }) }
 }
 const touch = (y, className = 'hospital-intro') => ({
   target: { className }, touches: [{ clientY: y }]
+})
+
+test('首次及重建首页在渲染前按胶囊底边预留8px，胶囊坐标保持px单位', () => {
+  for (const bottom of [60, 80, 97]) {
+    uni.getWindowInfo = () => ({ statusBarHeight: 24 })
+    uni.getMenuButtonBoundingClientRect = () => ({ bottom })
+    const { definition, vm } = createPage()
+    definition.onLoad.call(vm)
+    assert.equal(vm.introSafeTop, bottom + 8)
+  }
+  const source = readFileSync(new URL('../pages/products/medicine_list.vue', import.meta.url), 'utf8')
+  assert.ok(source.includes("'--intro-safe-top': `${introSafeTop}px`"))
+})
+
+test('胶囊接口缺失、零值或抛错时按状态栏及导航高度回退，不影响首页加载', () => {
+  for (const menu of [undefined, () => ({ bottom: 0 }), () => { throw new Error('unavailable') }]) {
+    uni.getWindowInfo = () => ({ statusBarHeight: 59 })
+    uni.getMenuButtonBoundingClientRect = menu
+    const { definition, vm } = createPage()
+    definition.onLoad.call(vm)
+    assert.equal(vm.introSafeTop, 111)
+  }
+  delete uni.getWindowInfo
+  uni.getSystemInfoSync = () => ({ statusBarHeight: 44 })
+  const { vm } = createPage()
+  vm.updateIntroSafeTop()
+  assert.equal(vm.introSafeTop, 96)
+  uni.getSystemInfoSync = () => { throw new Error('unavailable') }
+  vm.updateIntroSafeTop()
+  assert.equal(vm.introSafeTop, 76)
+})
+
+test('收起端点再下移20rpx且正反动画补偿匹配，横幅安全高度保持不变', () => {
+  const source = readFileSync(new URL('../pages/products/medicine_list.vue', import.meta.url), 'utf8')
+  const [, collapsed, expanded] = source.match(/marginTop: imageCollapsed \? '(-\d+)rpx' : '(-\d+)rpx'/)
+  assert.equal(Number(collapsed), -320)
+  const distance = Number(expanded) - Number(collapsed)
+  const collapse = source.match(/@keyframes intro-collapse\s*{\s*from { transform: translateY\((\d+)rpx\)/)
+  const expand = source.match(/@keyframes intro-expand\s*{\s*from { transform: translateY\((-\d+)rpx\)/)
+  assert.equal(Number(collapse[1]), distance)
+  assert.equal(Number(expand[1]), -distance)
+  const minHeight = source.match(/\.top-banner\s*{[^}]*min-height: calc\((\d+)rpx \+ var\(--intro-safe-top, 0px\)\)/)
+  assert.equal(Number(minHeight[1]) + Number(collapsed), 20)
 })
 
 test('本次启动首次进入立即消费标记，渲染完成后停留800ms才收起', t => {
@@ -77,7 +119,7 @@ test('前台恢复不重置标记，真正冷启动后再次首次进入才播�
   assert.equal(createPage().vm.imageCollapsed, false)
 })
 
-test('等待中离开会清理定时器，返回同一页面只刷新商品和购物车', t => {
+test('等待中离开会清理定时器，返回同一页面只刷新商品和购物车', async t => {
   const { definition, vm, counts } = createPage()
   definition.onLoad.call(vm)
   definition.onReady.call(vm)
@@ -86,7 +128,7 @@ test('等待中离开会清理定时器，返回同一页面只刷新商品和�
   assert.equal(vm.collapseTimer, null)
   assert.equal(vm.imageCollapsed, true)
   assert.equal(vm.shouldPlayIntro, false)
-  definition.onShow.call(vm)
+  await definition.onShow.call(vm)
   t.mock.timers.tick(3000)
   assert.equal(vm.introMotion, '')
   assert.deepEqual(counts(), { refreshes: 1, cartRefreshes: 1, unsubscribed: 0 })

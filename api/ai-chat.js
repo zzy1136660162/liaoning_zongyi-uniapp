@@ -1,4 +1,5 @@
-import { getSessionGeneration, isCurrentSession, sessionChangedError } from '../utils/session.js'
+import { getSessionGeneration, getSessionToken, isCurrentSession, sessionChangedError } from '../utils/session.js'
+import { fetchAccountProfile } from '../utils/account.js'
 import {
   FASTGPT_API_KEY,
   FASTGPT_STREAM,
@@ -6,32 +7,6 @@ import {
   getFastgptChatUrl,
   isFastgptConfigured
 } from '@/utils/ai-chat-config.js'
-import {
-  STORAGE_KEY_USER_INFO,
-  STORAGE_KEY_USER_REGISTER,
-  STORAGE_KEY_WECHAT_OPENID
-} from '@/utils/storage.js'
-
-const getStoredUserContext = () => {
-  const userInfo = uni.getStorageSync(STORAGE_KEY_USER_INFO) || {}
-  const registerInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER) || {}
-  const openid = uni.getStorageSync(STORAGE_KEY_WECHAT_OPENID) || userInfo.openid || ''
-
-  return {
-    userId: userInfo.userId || registerInfo.userId || '',
-    userName: userInfo.userName || registerInfo.realName || '',
-    phone: userInfo.phone || registerInfo.phone || '',
-    openid
-  }
-}
-
-const getCustomUid = (userInfo = {}) => userInfo.userId || userInfo.openid || userInfo.phone || 'guest'
-
-const buildVariables = (userInfo = {}) => ({
-  userId: userInfo.userId || '',
-  userName: userInfo.userName || '',
-  phone: userInfo.phone || ''
-})
 
 const normalizeRequestMessages = (messages = [], fallbackContent = '') => {
   if (Array.isArray(messages) && messages.length > 0) {
@@ -100,29 +75,34 @@ const normalizeReplyContent = (content) => {
   return String(content)
 }
 
-export const sendAiChatMessage = ({ text, chatId = '', userInfo = {}, messages = [] } = {}) => {
+export const sendAiChatMessage = async ({ text, chatId = '', messages = [] } = {}) => {
   const session = getSessionGeneration()
+  const token = getSessionToken()
+  const isRequestCurrent = () => isCurrentSession(session) && getSessionToken() === token
   const content = typeof text === 'string' ? text.trim() : ''
   const requestMessages = normalizeRequestMessages(messages, content)
 
   if (!content && requestMessages.length === 0) {
-    return Promise.reject(new Error('消息内容不能为空'))
+    throw new Error('消息内容不能为空')
   }
 
   if (!isFastgptConfigured()) {
-    return Promise.reject(new Error('请先在 utils/ai-chat-config.js 中配置 FastGPT 地址和 API Key'))
+    throw new Error('请先在 utils/ai-chat-config.js 中配置 FastGPT 地址和 API Key')
   }
 
-  const mergedUserInfo = {
-    ...getStoredUserContext(),
-    ...userInfo
-  }
+  // 登录身份只取正式账户 DTO；页面输入、微信身份及本地资料不能覆盖发送者。
+  const profile = token ? await fetchAccountProfile({ authRedirect: false }) : null
+  if (!isRequestCurrent()) throw sessionChangedError()
 
   const payload = {
     stream: FASTGPT_STREAM,
     detail: false,
-    customUid: getCustomUid(mergedUserInfo),
-    variables: buildVariables(mergedUserInfo),
+    customUid: profile ? String(profile.id) : 'guest',
+    variables: {
+      userId: profile?.id || '',
+      userName: profile?.userName || '',
+      phone: profile?.phone || ''
+    },
     messages: requestMessages
   }
 
@@ -141,7 +121,7 @@ export const sendAiChatMessage = ({ text, chatId = '', userInfo = {}, messages =
       },
       data: payload,
       success: (response) => {
-        if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
+        if (!isRequestCurrent()) { reject(sessionChangedError()); return }
         const { statusCode, data } = response
 
         if (statusCode < 200 || statusCode >= 300) {
@@ -161,7 +141,7 @@ export const sendAiChatMessage = ({ text, chatId = '', userInfo = {}, messages =
         })
       },
       fail: (error) => {
-        if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
+        if (!isRequestCurrent()) { reject(sessionChangedError()); return }
         const errorMessage = error?.errMsg || ''
         if (errorMessage.includes('timeout')) {
           reject(new Error('请求超时，请稍后重试'))

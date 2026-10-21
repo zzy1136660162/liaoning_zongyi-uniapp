@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
-import * as cart from '../utils/cart.js'
+import * as cart from './cart-api-fixture.mjs'
 import * as checkout from '../utils/checkout.js'
 import * as quantity from '../utils/purchase-quantity.js'
 import { loadSetup, loadOptions } from './sfc-harness.mjs'
 
 const storage = new Map(), navigations = [], messages = []
-beforeEach(() => {
+beforeEach(async () => {
   storage.clear(); navigations.length = 0; messages.length = 0
   globalThis.uni = {
     getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value),
@@ -19,7 +19,7 @@ const product = (extra = {}) => ({ id: 101, productName: '测试商品', name: '
   goodsMerchantType: 1, productCategory: 2, needQuestionnaire: 0, stock: 20, available: true,
   skus: [{ id: 11, price: 10, stock: 20, status: 1, defaultFlag: 1 },
     { id: 12, price: 20, stock: 10, status: 1 }], ...extra })
-const seedCart = () => cart.addCartItem({ ...product(), skuId: 11, price: 10 }, 5)
+const seedCart = async () => await cart.addCartItem({ ...product(), skuId: 11, price: 10 }, 5)
 const parseUrl = url => Object.fromEntries(new URL(url, 'https://fixture.invalid').searchParams)
 
 function detail(name) {
@@ -40,11 +40,11 @@ function detail(name) {
 
 for (const name of ['medicine_detail', 'therapy_detail']) {
   test(`${name}: 购买数量独立于购物车，重复主按钮按本次所选数量累加`, async () => {
-    seedCart()
+    await seedCart()
     const page = detail(name)
     page.applyProduct(product())
     assert.equal(page.quantity.value, 1)
-    page.increaseQuantity()
+    await page.increaseQuantity()
     await page.addCart(); await page.addCart()
     assert.equal(cart.getCartProductInfo(101, 11).quantity, 9)
     assert.equal(page.quantity.value, 2)
@@ -58,7 +58,7 @@ for (const name of ['medicine_detail', 'therapy_detail']) {
   })
 
   test(`${name}: 加购总量超过库存或限购时不偷偷截断，草稿步进不超上限`, async () => {
-    seedCart()
+    await seedCart()
     const page = detail(name)
     page.applyProduct(product({ limitInfo: { enabled: true, remainingQuantity: 6 } }))
     page.quantity.value = 2
@@ -66,14 +66,14 @@ for (const name of ['medicine_detail', 'therapy_detail']) {
     assert.equal(cart.getCartProductInfo(101, 11).quantity, 5)
     page.quantity.value = 6
     assert.equal(page.canIncreaseQuantity.value, false)
-    page.increaseQuantity()
+    await page.increaseQuantity()
     assert.equal(page.quantity.value, 6)
-    page.decreaseQuantity()
+    await page.decreaseQuantity()
     assert.equal(page.quantity.value, 5)
   })
 
   test(`${name}: 直接购买独立数量及SKU，确认/复诊路由不写原购物车`, async () => {
-    seedCart()
+    await seedCart()
     const page = detail(name)
     for (const productCategory of [2, 1]) {
       page.applyProduct(product({ productCategory }))
@@ -89,7 +89,7 @@ for (const name of ['medicine_detail', 'therapy_detail']) {
   })
 
   test(`${name}: 直接购买显式复用同SKU当前有效答卷，仍不继承购物车数量`, async () => {
-    cart.addCartItem({ ...product({ needQuestionnaire: 1, questionnaireId: 8 }), skuId: 11 }, 5,
+    await cart.addCartItem({ ...product({ needQuestionnaire: 1, questionnaireId: 8 }), skuId: 11 }, 5,
       { questionnaireId: 8, answerId: 99 })
     const before = structuredClone(cart.getCartEntries()), page = detail(name)
     page.applyProduct(product({ needQuestionnaire: 1, questionnaireId: 8 }))
@@ -103,7 +103,7 @@ for (const name of ['medicine_detail', 'therapy_detail']) {
   })
 
   test(`${name}: 问卷已换绑时不复制购物车旧答卷，按本次数量重新答题`, async () => {
-    cart.addCartItem({ ...product({ needQuestionnaire: 1, questionnaireId: 8 }), skuId: 11 }, 5,
+    await cart.addCartItem({ ...product({ needQuestionnaire: 1, questionnaireId: 8 }), skuId: 11 }, 5,
       { questionnaireId: 8, answerId: 99 })
     const before = structuredClone(cart.getCartEntries()), page = detail(name)
     page.applyProduct(product({ needQuestionnaire: 1, questionnaireId: 9 }))
@@ -130,7 +130,7 @@ function notice(options, current = product()) {
 }
 
 test('须知直接购买不加购，当前有效问卷凭据与数量透传确认页', async () => {
-  seedCart()
+  await seedCart()
   const before = structuredClone(cart.getCartEntries())
   await notice({ buyQuestionnaireId: '8', buyAnswerId: '30' }, product({ needQuestionnaire: 1, questionnaireId: 8 })).startQuestionnaire()
   const options = parseUrl(navigations.at(-1).url)
@@ -142,7 +142,7 @@ test('须知直接购买不加购，当前有效问卷凭据与数量透传确�
 function questionnaire(options, opener, current = product({ needQuestionnaire: 1, questionnaireId: 8 })) {
   const definition = loadOptions('pages/products/product_questionnaire.vue', {
     ...cart, ...checkout, getSessionGeneration: () => 1, isCurrentSession: () => true,
-    onSessionChanged: () => () => {}, getQuestionnaireDraftAccountId: () => 'fixture-account',
+    onSessionChanged: () => () => {},
     restoreQuestionnaireDraft: (account, id, questionnaireId, questions) => questions,
     clearQuestionnaireDraft() {}, logPageView() {}, getProductDetail: async () => current,
     getQuestionnaireByProductId: async () => ({ questionnaireId: 8, questions: [{ questionId: 7,
@@ -156,7 +156,7 @@ function questionnaire(options, opener, current = product({ needQuestionnaire: 1
 }
 
 test('立即购买问卷通过后带新凭据继续结算，不覆盖已有购物车', async () => {
-  seedCart()
+  await seedCart()
   const before = structuredClone(cart.getCartEntries()), page = questionnaire()
   await page.loadQuestionnaire(); page.selectAnswer(0, 10); await page.submitAnswer()
   const options = parseUrl(navigations.at(-1).url)
@@ -166,7 +166,7 @@ test('立即购买问卷通过后带新凭据继续结算，不覆盖已有购�
 })
 
 test('直接购买补答经页面EventChannel返回原确认页，购物车保持不变', async () => {
-  seedCart()
+  await seedCart()
   const before = structuredClone(cart.getCartEntries()), events = []
   const page = notice({ action: 'repair' }, product({ needQuestionnaire: 1, questionnaireId: 8 }))
   page.getOpenerEventChannel = () => ({ emit: (...args) => events.push(args) })
@@ -182,8 +182,8 @@ test('直接购买补答经页面EventChannel返回原确认页，购物车保�
 })
 
 for (const name of ['product_notice', 'product_questionnaire']) {
-  test(`${name}: 缺失或非法的直接购买数量不能退回购物车模式`, () => {
-    seedCart()
+  test(`${name}: 缺失或非法的直接购买数量不能退回购物车模式`, async () => {
+    await seedCart()
     const before = structuredClone(cart.getCartEntries())
     const definition = loadOptions(`pages/products/${name}.vue`, {
       ...cart, ...checkout, getSessionGeneration: () => 1, isCurrentSession: () => true,

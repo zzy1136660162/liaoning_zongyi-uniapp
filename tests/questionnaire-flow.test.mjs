@@ -26,7 +26,6 @@ afterEach(() => pages.forEach(({ definition, page }) => definition.onUnload.call
 const createPage = (overrides = {}, options = {}) => {
   const definition = loadOptions('pages/products/product_questionnaire.vue', {
     getSessionGeneration: () => 1, isCurrentSession: () => true, onSessionChanged: () => () => {},
-    getQuestionnaireDraftAccountId: () => 'fixture-account',
     restoreQuestionnaireDraft: (account, id, questionnaireId, questions) => questions,
     clearQuestionnaireDraft() {}, saveQuestionnaireDraft() {}, logPageView() {},
     getQuestionnaireByProductId: async () => questionnaire(),

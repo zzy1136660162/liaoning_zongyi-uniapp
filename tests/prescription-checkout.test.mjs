@@ -44,7 +44,7 @@ test('真实处方固定原患者，按每条明细一件和默认真实SKU展�
   const { page, orders, payments, writes } = harness()
   await page.loadProducts(); page.loadOrderInfo(); await page.loadCheckoutPatients(); await page.loadAddresses()
   assert.equal(page.selectedPatient.value.id, 8)
-  page.selectPatient({ detail: { value: '1' } })
+  page.selectPatient({ id: 9, name: '另一位患者' })
   assert.equal(page.selectedPatient.value.id, 8)
   assert.equal(page.orderInfo.value.items[0].quantity, 1, '疗程days不能当购买数量')
   assert.equal(page.orderInfo.value.items[0].skuId, 1)

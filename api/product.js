@@ -47,11 +47,12 @@ export const getCategoryProducts = (
   })
 }
 
-export const getProductDetail = (id) => {
+export const getProductDetail = (id, { showLoading = true, silent = false } = {}) => {
   const token = getToken()
   const options = {
     needAuth: false,
-    showLoading: true
+    showLoading,
+    silent
   }
   if (token) {
     options.header = { Authorization: `Bearer ${token}` }

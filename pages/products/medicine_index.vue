@@ -104,6 +104,14 @@ import { onShow } from '@dcloudio/uni-app'
 import { getCategoryProducts, mapProductListItem } from '@/api/product.js'
 import { useProductImages } from '@/utils/product-image.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
+import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+
+
+const PAGE_LOG = {
+  pageId: '', moduleCode: 'MALL', accessType: '商城', pageType: 'MEDICINE_INDEX',
+  requestUri: '/pages/products/medicine_index', actionCode: 'VIEW_MALL_HOME',
+  accessTitle: '访问商城首页', accessDescription: '用户进入商城首页，浏览制剂推荐和商城入口'
+}
 
 const FORMULA_PRODUCT_CATEGORY = 1
 const { getProductImageUrl, handleProductImageError } = useProductImages()
@@ -136,18 +144,22 @@ const loadFeaturedProducts = async () => {
 }
 
 const goMedicineList = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_MEDICINE_LIST', accessTitle: '进入制剂列表', accessDescription: '用户从商城首页进入制剂商品列表' })
   uni.navigateTo({ url: '/pages/products/medicine_list' })
 }
 
 const goHealthList = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_HEALTH_LIST', accessTitle: '进入健康商城', accessDescription: '用户从商城首页进入健康商城横向列表' })
   uni.navigateTo({ url: '/pages/products/priducts_list' })
 }
 
 const goHealthListAlt = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_HEALTH_LIST_ALT', accessTitle: '进入健康商城备用列表', accessDescription: '用户从商城首页进入健康商城纵向列表' })
   uni.navigateTo({ url: '/pages/products/priducts_list2' })
 }
 
 const goCart = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_CART', accessTitle: '查看购物车', accessDescription: '用户从商城首页进入购物车' })
   uni.navigateTo({ url: '/pages/cart/cart' })
 }
 
@@ -156,12 +168,15 @@ const goDetail = (item) => {
     return
   }
 
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PRODUCT_DETAIL', accessTitle: '查看推荐商品', accessDescription: '用户从商城首页推荐区域进入制剂详情', extraData: { productId: item.id } })
+
   uni.navigateTo({
     url: `/pages/products/medicine_detail?id=${item.id}`
   })
 }
 
 onShow(() => {
+  logPageView({ ...PAGE_LOG })
   loadFeaturedProducts()
 })
 </script>

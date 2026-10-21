@@ -8,16 +8,22 @@
 				</view>
 			</view>
 			<view class="button-container">
-				<button class="enter-btn" @click="goToNotice">进入首页</button>
+				<button class="enter-btn" @click="goToNotice(true)">进入首页</button>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script>
+import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 import { getImageUrl } from '@/utils/config.js'
 
+const PAGE_LOG = { moduleCode: 'ENTRY', accessType: '就诊引导', pageType: 'SPLASH', requestUri: '/pages/splash/splash', pageId: '' }
+
 export default {
+  onShow() {
+    logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问闪屏页', accessDescription: '进入闪屏页，等待或主动前往就诊告知' })
+  },
 	data() {
 		return {
 			bgImage: getImageUrl('/profile/liaoning_zongyi/index_bg.jpg'),
@@ -43,7 +49,8 @@ export default {
 				}
 			}, 1000)
 		},
-		goToNotice() {
+		goToNotice(manual = false) {
+			if (manual) logButtonClick({ ...PAGE_LOG, actionCode: 'ENTER_NOTICE', accessTitle: '进入就诊告知', accessDescription: '用户主动跳过闪屏倒计时，进入就诊告知' })
 			if (this.timer) {
 				clearInterval(this.timer)
 			}

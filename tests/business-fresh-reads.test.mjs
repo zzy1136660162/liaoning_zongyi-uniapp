@@ -128,7 +128,7 @@ test('处方详情接口失败不会读写旧处方响应副本', async () => {
 test('购物车新业务字段覆盖旧元数据，0值有效且问卷新启用需要重新通过', async () => {
   const values = new Map()
   globalThis.uni = { getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, value), $emit() {} }
-  const cart = await import('../utils/cart.js')
+  const cart = await import('./cart-api-fixture.mjs')
   cart.replaceCartData({ '7:1': { productId: 7, skuId: 1, selected: false, quantity: 3,
     stock: 8, available: true, productCategory: 1, goodsMerchantType: 1, needQuestionnaire: 0, questionnairePassed: true } })
   const product = { id: '7:1', productId: 7, skuId: 1, stock: 8, available: true, price: 10, productCategory: 2,
@@ -138,13 +138,13 @@ test('购物车新业务字段覆盖旧元数据，0值有效且问卷新启用�
   assert.equal(item.needQuestionnaire, 1); assert.equal(item.questionnairePassed, false)
   assert.equal(item.questionnaireId, 101); assert.equal(item.answerId, null)
   assert.equal(item.quantity, 3); assert.equal(item.selected, false)
-  assert.equal(cart.getCartProductInfo(7, 1).goodsMerchantType, 2)
+  assert.equal(cart.getCartProductInfo(7, 1).goodsMerchantType, 1, '展示投影不回写服务端确认快照')
 
   ;[item] = cart.loadCartItems([{ products: [{ ...product, productCategory: 0, goodsMerchantType: 0, needQuestionnaire: 0 }] }])
   assert.equal(item.productCategory, 0); assert.equal(item.goodsMerchantType, 0); assert.equal(item.needQuestionnaire, 0)
   assert.equal(item.answerId, null)
   ;[item] = cart.loadCartItems([{ products: [{ id: '7:1', productId: 7, skuId: 1, stock: 8, available: true, price: 10 }] }])
-  assert.equal(item.goodsMerchantType, 0, '缺失字段兼容已有元数据')
+  assert.equal(item.goodsMerchantType, 1, '缺失字段只使用服务端确认的元数据')
   ;[item] = cart.loadCartItems([{ products: [{ ...product, productCategory: 2, goodsMerchantType: null, needQuestionnaire: 0 }] }])
   assert.equal(item.goodsMerchantType, 0, '无效空商户不推断成另一业务类型')
 })
@@ -152,7 +152,7 @@ test('购物车新业务字段覆盖旧元数据，0值有效且问卷新启用�
 test('购物车问卷相同保留用户答案，问卷换绑清除旧通过态及答案', async () => {
   const values = new Map()
   globalThis.uni = { getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, value), $emit() {} }
-  const cart = await import('../utils/cart.js')
+  const cart = await import('./cart-api-fixture.mjs')
   cart.replaceCartData({ '7:1': { productId: 7, skuId: 1, selected: true, quantity: 2,
     stock: 8, available: true, needQuestionnaire: 1, questionnaireId: 101, answerId: 55, questionnairePassed: true } })
   const product = { id: '7:1', productId: 7, skuId: 1, stock: 8, available: true, price: 10, needQuestionnaire: 1, questionnaireId: 101 }
@@ -163,7 +163,7 @@ test('购物车问卷相同保留用户答案，问卷换绑清除旧通过态�
   assert.equal(item.answerId, null); assert.equal(item.questionnairePassed, false)
   assert.equal(item.quantity, 2); assert.equal(item.selected, true)
 
-  cart.addCartItem({ ...product, skuId: 1, productCategory: 3, goodsMerchantType: 0, questionnaireId: 103 }, 2,
+  await cart.addCartItem({ ...product, skuId: 1, productCategory: 3, goodsMerchantType: 0, questionnaireId: 103 }, 2,
     { productCategory: 2, goodsMerchantType: 2, questionnaireId: 101, answerId: 55, questionnairePassed: true })
   const stored = cart.getCartProductInfo(7, 1)
   assert.equal(stored.productCategory, 3); assert.equal(stored.goodsMerchantType, 0)

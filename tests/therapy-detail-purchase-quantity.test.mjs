@@ -50,7 +50,7 @@ assert.match(therapyDetailScript, /const maxPurchaseQuantity = computed/)
 assert.match(therapyDetailScript, /const decreaseQuantity = \(\) =>/)
 assert.match(therapyDetailScript, /const increaseQuantity = \(\) =>/)
 assert.match(therapyDetailScript, /normalizePurchaseQuantity\(saleProduct\.value, quantity\.value/)
-assert.match(therapyDetailScript, /getCartProductQuantity\(product\.value\.id, 0, selectedSkuId\.value\) \+ quantity\.value/)
+assert.match(therapyDetailScript, /handlePurchaseAction\('cart', product\.value, quantity\.value\)/)
 assert.match(therapyDetailScript, /handlePurchaseAction\('buy', product\.value, quantity\.value\)/)
 assert.match(therapyDetailScript, /navigateToNotice\(targetProduct, requestedQuantity, mode, purchase\)/)
 assert.match(therapyDetailScript, /addCartItem\(targetProduct, requestedQuantity/)
@@ -69,7 +69,7 @@ globalThis.uni = {
   $emit() {}
 }
 
-const cart = await import('../utils/cart.js')
+const cart = await import('./cart-api-fixture.mjs')
 const therapyProduct = {
   id: '8801',
   productId: '8801',
@@ -84,7 +84,7 @@ const therapyProduct = {
 }
 const selectedQuantity = normalizePurchaseQuantity(therapyProduct, 3)
 
-assert.equal(cart.addCartItem(therapyProduct, selectedQuantity), true)
+assert.equal(await cart.addCartItem(therapyProduct, selectedQuantity), true)
 assert.equal(cart.getCartProductInfo(therapyProduct.id, therapyProduct.skuId).quantity, 3)
 
 const categories = [{

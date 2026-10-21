@@ -12,7 +12,7 @@
       <view class="search-bar">
         <uni-icons type="search" size="18" color="#999999"></uni-icons>
         <input v-model="searchKeyword" class="search-input" placeholder="搜索健康产品" @input="handleSearch" />
-        <button class="search-btn" @click="handleSearch">搜索</button>
+        <button class="search-btn" @click="submitSearch">搜索</button>
       </view>
     </view>
 
@@ -114,9 +114,9 @@
 
 <script>
 import {
-  STORAGE_KEY_CURRENT_CONSULTATION_ID,
-  STORAGE_KEY_USER_REGISTER
+  STORAGE_KEY_CURRENT_CONSULTATION_ID
 } from '@/utils/storage.js'
+import { fetchAccountProfile } from '@/utils/account.js'
 import { createHealthProductListMethods } from '@/utils/health-product-list.js'
 import { getCategoryList, getCategoryProducts, getProductDetail, mapProductDetail, mapProductListItem } from '@/api/product.js'
 import {
@@ -124,12 +124,11 @@ import {
   calculateTotalPrice,
   calculateTotalQuantity,
   getCartEntries,
-  getCartProductQuantity,
   loadCartItems,
   prepareCheckout,
-  removeFromCart,
   resolveCartCompatibility,
-  setCartItemQuantity
+  changeCartItemQuantity,
+  refreshCart
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
 import { useProductImages } from '@/utils/product-image.js'
@@ -141,7 +140,16 @@ import { buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
+import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 
+
+
+const PAGE_LOG = {
+  pageId: '', moduleCode: 'MALL', accessType: '商城', pageType: 'HEALTH_PRODUCT_LIST',
+  requestUri: '/pages/products/priducts_list', actionCode: 'VIEW_HEALTH_PRODUCT_LIST',
+  accessTitle: '访问健康商城横向列表', accessDescription: '用户通过横向分类浏览健康商品'
+}
 
 export default {
   setup: useProductImages,
@@ -185,20 +193,26 @@ export default {
   },
   onLoad() {
     this.currentTab = 'home'
-    uni.$on('refreshProductsList', this.loadVerifiedProductsFromStorage)
+    uni.$on('refreshProductsList', this.updateCartView)
     this.unsubscribeCartUpdated = subscribeCartUpdated(() => {
-      this.loadVerifiedProductsFromStorage()
+      this.updateCartView()
     })
   },
-  onShow() {
+  async onShow() {
+    logPageView({ ...PAGE_LOG, extraData: { layout: 'horizontal', categoryId: this.currentCategoryId } })
     this.loadProducts()
-    this.loadVerifiedProductsFromStorage()
+    try {
+      await refreshCart()
+      this.updateCartView()
+    } catch (error) {
+      if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '购物车加载失败', icon: 'none' })
+    }
   },
   onPullDownRefresh() {
     this.handleRefreshProducts()
   },
   onUnload() {
-    uni.$off('refreshProductsList', this.loadVerifiedProductsFromStorage)
+    uni.$off('refreshProductsList', this.updateCartView)
     if (this.unsubscribeCartUpdated) {
       this.unsubscribeCartUpdated()
       this.unsubscribeCartUpdated = null
@@ -214,30 +228,35 @@ export default {
     async handleRefreshProducts() {
       try {
         await this.fetchProductPage(this.currentCategoryId, { reset: true })
-        this.loadVerifiedProductsFromStorage()
+        this.updateCartView()
       } catch (error) {
         uni.showToast({ title: '刷新失败', icon: 'none' })
       } finally {
         uni.stopPullDownRefresh()
       }
     },
-    loadVerifiedProductsFromStorage() {
+    updateCartView() {
       try {
         this.verifiedProducts = getCartEntries()
         this.cartItems = loadCartItems(buildListCartCategories(this.categories, this.verifiedProducts))
       } catch (error) {
-        console.error('loadVerifiedProductsFromStorage failed:', error)
+        console.error('updateCartView failed:', error)
       }
     },
     async switchCategory(categoryId) {
+      if (String(this.currentCategoryId) !== String(categoryId)) logButtonClick({ ...PAGE_LOG, actionCode: 'CHANGE_PRODUCT_CATEGORY', accessTitle: '切换商品分类', accessDescription: '用户切换商品列表的展示分类', extraData: { categoryId } })
       this.currentCategoryId = categoryId
       if (categoryId === 'all') {
         await this.loadAllProducts()
-        this.loadVerifiedProductsFromStorage()
+        this.updateCartView()
         return
       }
       await this.loadCategoryProducts(categoryId)
-      this.loadVerifiedProductsFromStorage()
+      this.updateCartView()
+    },
+    submitSearch() {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'SEARCH_PRODUCTS', accessTitle: '搜索商品', accessDescription: '用户点击搜索按钮检索当前商品列表', extraData: { categoryId: this.currentCategoryId, hasKeyword: Boolean(this.getSearchKeyword()) } })
+      this.handleSearch()
     },
     handleSearch(e) {
       if (e && e.detail) {
@@ -257,13 +276,14 @@ export default {
         }
         try {
           await this.fetchProductPage(this.currentCategoryId, { reset: true })
-          this.loadVerifiedProductsFromStorage()
+          this.updateCartView()
         } catch (error) {
           console.error('handleSearch failed:', error)
         }
       }, 300)
     },
     goToDetail(product) {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PRODUCT_DETAIL', accessTitle: '查看商品详情', accessDescription: '用户从商品列表进入对应的制剂或传统疗法详情', extraData: { productId: product.id, categoryId: this.currentCategoryId } })
       const page = isTraditionalTherapyProduct(product) ? 'therapy_detail' : 'medicine_detail'
       console.info('category=PRODUCT_NAVIGATION action=go_detail result=pending from=PRODUCT_LIST targetPage=%s productId=%s', page, product.id)
       uni.navigateTo({
@@ -271,25 +291,35 @@ export default {
       })
     },
     async goToNotice(product) {
+      const session = getSessionGeneration()
+      const actionLog = { ...PAGE_LOG, actionCode: 'ADD_CART', accessTitle: '加入购物车', accessDescription: '用户从商品列表选择真实可售规格并保存到购物车', extraData: { productId: product?.id } }
+      logButtonClick(actionLog)
+      let productLoaded = false
       if (!getToken()) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
         uni.navigateTo({ url: '/pages/register/register?redirect=/pages/products/priducts_list' })
         return
       }
       try {
         // 快捷加购和详情页使用同一真实 SKU 选择规则，问卷也绑定本次规格。
         const detail = mapProductDetail(await getProductDetail(product.id))
+        if (!isCurrentSession(session)) return
+        productLoaded = true
         product = withProductSku(detail, resolveProductSku(detail))
         if (!isPurchaseAvailable(product)) throw new Error('商品已售罄或限购额度已用完')
         const flow = resolveCartCompatibility(product)
         if (!flow.valid) {
+          if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'CART_INCOMPATIBLE' } })
           uni.showToast({ title: flow.message, icon: 'none' })
           return
         }
         // 健康商品也先加购，结算只检查所选商品中固定的一份问卷。
-        if (!addCartItem(product, 1)) throw new Error('加入购物车失败')
-        this.loadVerifiedProductsFromStorage()
+        if (!(await addCartItem(product, 1))) throw new Error('加入购物车失败')
+        this.updateCartView()
+        if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', extraData: { ...actionLog.extraData, skuId: product.skuId } })
         uni.showToast({ title: '已加入购物车', icon: 'success' })
       } catch (error) {
+        if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: productLoaded ? 'FAILED' : getActionFailureResult(error), extraData: { ...actionLog.extraData, reason: productLoaded ? 'LOCAL_CART_REJECTED' : 'PRODUCT_LOOKUP_UNAVAILABLE' } })
         uni.showToast({ title: error.message || '加入购物车失败', icon: 'none' })
       }
     },
@@ -297,7 +327,7 @@ export default {
       return getProductCartLines(this.verifiedProducts, productId).length > 0
     },
     getProductQuantity(productId) {
-      return getCartProductQuantity(productId, 0)
+      return getProductCartLines(this.verifiedProducts, productId).reduce((total, line) => total + Number(line.quantity || 0), 0)
     },
     getQuantityCartLine(product) {
       const lines = getProductCartLines(getCartEntries(), product.id)
@@ -312,44 +342,55 @@ export default {
       }
       return lines[0] || null
     },
-    increaseQuantity(product) {
+    async increaseQuantity(product) {
       const lines = getProductCartLines(getCartEntries(), product.id)
       if (!lines.length) return this.goToNotice(product)
       const line = this.getQuantityCartLine(product)
       if (!line) return
-      setCartItemQuantity(line.cartKey, line.quantity + 1)
-      this.loadVerifiedProductsFromStorage()
+      try {
+        await changeCartItemQuantity(line.cartKey, 1)
+        this.updateCartView()
+      } catch (error) {
+        if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '修改数量失败', icon: 'none' })
+      }
     },
-    decreaseQuantity(product) {
+    async decreaseQuantity(product) {
       const line = this.getQuantityCartLine(product)
       if (!line) return
-      if (line.quantity <= 1) removeFromCart(line.cartKey)
-      else setCartItemQuantity(line.cartKey, line.quantity - 1)
-      this.loadVerifiedProductsFromStorage()
+      try {
+        await changeCartItemQuantity(line.cartKey, -1)
+        this.updateCartView()
+      } catch (error) {
+        if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '修改数量失败', icon: 'none' })
+      }
     },
     showCart() {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_CART', accessTitle: '查看购物车', accessDescription: '用户从商品列表进入购物车' })
       uni.navigateTo({ url: '/pages/cart/cart' })
     },
-    handleSubmit() {
+    async handleSubmit() {
+      const session = getSessionGeneration()
+      const actionLog = { ...PAGE_LOG, actionCode: 'START_CHECKOUT', accessTitle: '发起商品结算', accessDescription: '用户按列表中选中的商品发起问卷、复诊或订单确认流程', extraData: { selectedCount: this.selectedCartItems.length } }
+      logButtonClick(actionLog)
       if (!getToken()) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
         uni.navigateTo({
           url: '/pages/register/register?redirect=/pages/products/priducts_list'
         })
         return
       }
       if (this.selectedCartItems.length === 0) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'NO_SELECTION' } })
         uni.showToast({ title: '请先选择商品', icon: 'none' })
         return
       }
 
       try {
-        const userRegisterInfo = uni.getStorageSync(STORAGE_KEY_USER_REGISTER)
-        if (!userRegisterInfo || !userRegisterInfo.realName) {
-          uni.navigateTo({
-            url: '/pages/register/register?redirect=/pages/products/priducts_list'
-          })
-          return
-        }
+        await refreshCart()
+        this.updateCartView()
+        // 正式账户资料来自接口，页面表单和姓名不能代表注册状态。
+        await fetchAccountProfile()
+        if (!isCurrentSession(session)) return
 
         const selectedIds = this.selectedCartItems.map(item => String(item.id))
         const checkout = prepareCheckout(selectedIds, buildListCartCategories(this.categories, getCartEntries()))
@@ -359,6 +400,7 @@ export default {
               { action: 'checkout', selectedItems: checkout.productIds }) })
             return
           }
+          logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'CHECKOUT_REJECTED' } })
           uni.showToast({
             title: checkout.message,
             icon: 'none'
@@ -378,19 +420,18 @@ export default {
           url: `/pages/dispense/apply?selectedItems=${checkout.productIds.join(',')}`
         })
       } catch (error) {
-        console.error('handleSubmit failed:', error)
-        uni.navigateTo({
-          url: '/pages/register/register?redirect=/pages/products/priducts_list'
-        })
+        if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '结算准备失败', icon: 'none' })
       }
     },
     goToHistory() {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_ORDER_LIST', accessTitle: '查看历史订单', accessDescription: '用户从商品列表进入历史订单列表' })
       uni.navigateTo({ url: '/pages/order/order_list' })
     },
     handleTabChange(tab) {
       this.currentTab = tab
     },
     switchToVerticalLayout() {
+      logButtonClick({ ...PAGE_LOG, actionCode: 'CHANGE_LIST_LAYOUT', accessTitle: '切换商品列表布局', accessDescription: '用户切换商城商品列表的展示布局', extraData: { targetLayout: 'vertical' } })
       uni.navigateTo({ url: '/pages/products/medicine_list' })
     }
   }

@@ -5,7 +5,7 @@ import { beginSession, endSession, getSessionGeneration, isCurrentSession, onSes
 import * as drafts from '../utils/questionnaire-draft.js'
 
 const values = new Map()
-let toasts, modals, navigations, pages, failDraftWrite
+let toasts, modals, navigations, pages, failDraftWrite, signedInAccountId
 globalThis.uni = {
   getStorageSync: key => values.get(key),
   setStorageSync: (key, value) => {
@@ -19,7 +19,7 @@ globalThis.uni = {
 }
 const signIn = accountId => {
   beginSession(`fixture-session-${accountId}`)
-  values.set('user_info', { id: accountId })
+  signedInAccountId = accountId
 }
 const questionnaire = (id = 8) => ({ questionnaireId: id, questions: [
   { questionId: 7, title: '症状一', questionType: 1, isRequired: 1,
@@ -30,6 +30,7 @@ const questionnaire = (id = 8) => ({ questionnaireId: id, questions: [
 const createPage = (overrides = {}, productId = '6') => {
   const definition = loadOptions('pages/products/product_questionnaire.vue', {
     getSessionGeneration, isCurrentSession, onSessionChanged, ...drafts,
+    fetchAccountProfile: async () => ({ id: signedInAccountId }),
     getQuestionnaireByProductId: async () => questionnaire(),
     submitQuestionnaire: async () => ({ answerId: 30, isMatch: false }),
     logPageView() {}, ...overrides
@@ -123,6 +124,7 @@ test('账号切换清空旧页面，旧加载响应不会恢复或显示上一�
   const { definition, page } = createPage({ getQuestionnaireByProductId: () => new Promise(resolve => { finish = resolve }) })
   definition.onLoad.call(page, { id: '6' })
   definition.onShow.call(page)
+  await flush()
   signIn('B')
   finish(questionnaire())
   await flush()
@@ -159,10 +161,30 @@ test('本地存储失败不会显示已暂存，没有确认账号时也不保�
   assert.equal(toasts.at(-1).title, '暂存失败，请稍后重试')
   assert.equal(draftEntries().length, 0)
   failDraftWrite = false
-  values.delete('user_info')
-  const { page: unknown } = createPage()
-  await unknown.loadQuestionnaire(); unknown.selectAnswer(0, 10); unknown.saveDraft()
+  const { page: unknown } = createPage({ fetchAccountProfile: async () => { throw new Error('账户资料加载失败') } })
+  await unknown.loadQuestionnaire()
+  assert.deepEqual(unknown.questions, [])
+  assert.equal(unknown.draftAccountId, '')
+  unknown.saveDraft()
   assert.equal(toasts.at(-1).title, '暂存失败，请稍后重试')
+  assert.equal(draftEntries().length, 0)
+})
+
+test('先确认接口账号再加载问卷，账号查询晚到不会把草稿挂到新会话', async () => {
+  let finishAccount, questionnaireCalls = 0
+  const { definition, page } = createPage({
+    fetchAccountProfile: () => new Promise(resolve => { finishAccount = resolve }),
+    getQuestionnaireByProductId: async () => { questionnaireCalls++; return questionnaire() }
+  })
+  definition.onLoad.call(page, { id: '6' })
+  const loading = page.loadQuestionnaire()
+  assert.equal(questionnaireCalls, 0)
+  signIn('B')
+  finishAccount({ id: 'A' })
+  await loading
+  assert.equal(questionnaireCalls, 0)
+  assert.equal(page.draftAccountId, '')
+  assert.deepEqual(page.questions, [])
   assert.equal(draftEntries().length, 0)
 })
 

@@ -25,7 +25,7 @@
 <script>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { onPageShow } from '@dcloudio/uni-app'
-import { getCartTotalQuantity } from '@/utils/cart.js'
+import { getCartTotalQuantity, refreshCart } from '@/utils/cart.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
 
@@ -42,13 +42,21 @@ export default {
     const refreshCartCount = () => {
       cartCount.value = getCartTotalQuantity()
     }
+    const loadCartCount = async () => {
+      try {
+        await refreshCart()
+        refreshCartCount()
+      } catch (error) {
+        if (error.code !== 'SESSION_CHANGED') console.warn('购物车数量加载失败')
+      }
+    }
     let unsubscribeCartUpdated
 
     onMounted(() => {
       unsubscribeCartUpdated = subscribeCartUpdated(refreshCartCount)
-      refreshCartCount()
+      loadCartCount()
     })
-    onPageShow(refreshCartCount)
+    onPageShow(loadCartCount)
     onUnmounted(() => unsubscribeCartUpdated?.())
 
     return { cartCount }

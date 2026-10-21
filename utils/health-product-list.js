@@ -106,7 +106,7 @@ export const createHealthProductListMethods = ({ getCategoryList, getCategoryPro
     }
     try {
       await this.fetchProductPage(this.currentCategoryId, { reset: false })
-      this.loadVerifiedProductsFromStorage()
+      this.updateCartView()
     } catch (error) {
       console.error('handleLoadMore failed:', error)
     }
@@ -128,7 +128,7 @@ export const createHealthProductListMethods = ({ getCategoryList, getCategoryPro
         this.currentCategoryId = 'all'
       }
       await this.fetchProductPage(this.currentCategoryId, { reset: true })
-      this.loadVerifiedProductsFromStorage()
+      this.updateCartView()
     } catch (error) {
       console.error('loadProducts failed:', error)
       uni.showToast({ title: '加载商品失败', icon: 'none' })

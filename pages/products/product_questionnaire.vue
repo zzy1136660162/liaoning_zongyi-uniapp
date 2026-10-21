@@ -35,8 +35,8 @@ import {
 } from '@/utils/questionnaire-form.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
+import { fetchAccountProfile } from '@/utils/account.js'
 import {
-  getQuestionnaireDraftAccountId,
   saveQuestionnaireDraft,
   restoreQuestionnaireDraft,
   clearQuestionnaireDraft
@@ -46,6 +46,7 @@ import {
   addCartItem,
   buildCartItemKey,
   getCartEntries,
+  refreshCart,
   prepareCheckout,
   resolveCartCompatibility,
   updateCartQuestionnaire
@@ -53,8 +54,15 @@ import {
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
 import { getQuestionnaireByProductId, submitQuestionnaire } from '@/api/questionnaire.js'
-import { logPageView } from '@/api/access-log.js'
+import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
+
+
+const PAGE_LOG = {
+  pageId: '', moduleCode: 'PURCHASE', accessType: '购前确认', pageType: 'PRODUCT_QUESTIONNAIRE',
+  requestUri: '/pages/products/product_questionnaire', actionCode: 'VIEW_PRODUCT_QUESTIONNAIRE',
+  accessTitle: '访问健康问卷', accessDescription: '用户进入商品绑定的健康问卷页面'
+}
 
 export default {
   components: { SingleChoiceQuestion },
@@ -105,10 +113,16 @@ export default {
       return
     }
     this.selectedItems = decodeURIComponent(options.selectedItems || '').split(',').filter(Boolean)
-    logPageView('PRODUCT_QUESTIONNAIRE', this.productId)
   },
-  onShow() {
-    if (this.productId && !this.submitting && !this.submissionCompleted) this.loadQuestionnaire()
+  async onShow() {
+    logPageView({ ...PAGE_LOG, pageId: this.productId, extraData: { skuId: this.skuId, flowAction: this.action } })
+    if (!this.productId || this.submitting || this.submissionCompleted) return
+    try {
+      if (!this.directPurchase) await refreshCart()
+      if (this.pageActive && isCurrentSession(this.sessionGeneration)) await this.loadQuestionnaire()
+    } catch (error) {
+      if (this.pageActive && isCurrentSession(this.sessionGeneration)) uni.showToast({ title: error.message || '购物车加载失败', icon: 'none' })
+    }
   },
   onUnload() {
     if ((this.loading || this.submitting) && isCurrentSession(this.sessionGeneration)) uni.hideLoading()
@@ -120,7 +134,7 @@ export default {
   },
   methods: {
     isQuestionnaireSessionCurrent() {
-      return this.pageActive && isCurrentSession(this.sessionGeneration) && this.draftAccountId === getQuestionnaireDraftAccountId()
+      return this.pageActive && isCurrentSession(this.sessionGeneration)
     },
     isSubmissionCurrent(sequence) {
       return this.isQuestionnaireSessionCurrent() && sequence === this.submissionRequestSeq
@@ -154,7 +168,6 @@ export default {
     async loadQuestionnaire() {
       if (!this.pageActive || this.submitting || !isCurrentSession(this.sessionGeneration)) return
       const requestSeq = ++this.questionnaireRequestSeq
-      this.draftAccountId = getQuestionnaireDraftAccountId()
       if (!this.productId) {
         uni.showToast({
           title: '缺少商品信息',
@@ -167,6 +180,10 @@ export default {
         this.loading = true
         this.questionnaireError = ''
         uni.showLoading({ title: '问卷加载中...' })
+        // 草稿归属使用本次接口确认的账号；会话版本负责隔离账号切换后的迟到响应。
+        const account = await fetchAccountProfile()
+        if (!this.isQuestionnaireSessionCurrent() || requestSeq !== this.questionnaireRequestSeq) return
+        this.draftAccountId = String(account.id)
         const response = await getQuestionnaireByProductId(this.productId)
         if (!this.isQuestionnaireSessionCurrent() || requestSeq !== this.questionnaireRequestSeq) return
         const questionnaire = response
@@ -256,23 +273,31 @@ export default {
     },
     saveDraft() {
       if (!this.isQuestionnaireSessionCurrent() || this.submitting || this.submissionCompleted) return
+      const actionLog = { ...PAGE_LOG, pageId: this.productId, actionCode: 'SAVE_QUESTIONNAIRE_DRAFT', accessTitle: '暂存健康问卷', accessDescription: '用户将当前商品问卷暂存到本地', extraData: { questionnaireId: this.questionnaireId } }
+      logButtonClick(actionLog)
       try {
         if (!this.draftAccountId || this.questionnaireError || this.loading || !this.questions.length) {
           throw new Error('问卷暂存信息不完整')
         }
         saveQuestionnaireDraft(this.draftAccountId, this.productId, this.questionnaireId, this.questions)
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
         uni.showToast({ title: '已暂存', icon: 'success' })
       } catch (_) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'DRAFT_NOT_SAVED' } })
         uni.showToast({ title: '暂存失败，请稍后重试', icon: 'none' })
       }
     },
     async submitAnswer() {
       if (!this.isQuestionnaireSessionCurrent() || this.submitting || this.submissionCompleted) return
+      const actionLog = { ...PAGE_LOG, pageId: this.productId, actionCode: 'SUBMIT_QUESTIONNAIRE', accessTitle: '提交健康问卷', accessDescription: '用户提交当前商品绑定的健康问卷以进行适用性校验', extraData: { questionnaireId: this.questionnaireId, skuId: this.skuId, flowAction: this.action } }
+      logButtonClick(actionLog)
       if (this.questionnaireError || !hasSupportedQuestionTypes(this.questions)) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'QUESTIONNAIRE_UNSUPPORTED' } })
         uni.showToast({ title: UNSUPPORTED_QUESTION_TYPE_MESSAGE, icon: 'none' })
         return
       }
       if (!this.productId) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'PRODUCT_REQUIRED' } })
         uni.showToast({
           title: '缺少商品信息',
           icon: 'none'
@@ -281,6 +306,7 @@ export default {
       }
 
       if (!this.questionnaireId) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'QUESTIONNAIRE_REQUIRED' } })
         uni.showToast({
           title: '问卷信息不完整',
           icon: 'none'
@@ -289,6 +315,7 @@ export default {
       }
 
       if (!hasRequiredQuestionnaireAnswers(this.questions)) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'REQUIRED_ANSWERS_MISSING' } })
         uni.showToast({
           title: '请完成所有必答题',
           icon: 'none'
@@ -298,10 +325,12 @@ export default {
 
       const answers = buildQuestionnaireAnswers(this.questions)
       if (!answers.length) {
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'ANSWERS_REQUIRED' } })
         uni.showToast({ title: '请先选择问卷答案', icon: 'none' })
         return
       }
       const sequence = ++this.submissionRequestSeq
+      let submitted = false
       this.submitting = true
       try {
         uni.showLoading({ title: '提交中...' })
@@ -313,6 +342,8 @@ export default {
         })
         if (!this.isSubmissionCurrent(sequence)) return
         const result = response
+        submitted = true
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', extraData: { ...actionLog.extraData, answerId: result.answerId, matched: Boolean(result.isMatch) } })
         if (this.draftAccountId) {
           try {
             clearQuestionnaireDraft(this.draftAccountId, this.productId, this.questionnaireId)
@@ -325,10 +356,12 @@ export default {
           const detail = await getProductDetail(this.productId)
           if (!this.isSubmissionCurrent(sequence)) return
           if (Number(detail.needQuestionnaire) !== 1 || String(detail.questionnaireId) !== String(this.questionnaireId)) {
+            logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionCode: 'CONTINUE_AFTER_QUESTIONNAIRE', accessTitle: '问卷后购前校验结果', accessDescription: '问卷提交后重新核对商品当前绑定的问卷和购买流程', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'QUESTIONNAIRE_CHANGED' } })
             uni.showToast({ title: '商品问卷已更新，请重新进入后填写', icon: 'none' })
             return
           }
           if (!(await this.ensureCartCompatible(detail))) {
+            if (this.isSubmissionCurrent(sequence)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionCode: 'CONTINUE_AFTER_QUESTIONNAIRE', accessTitle: '问卷后购前校验结果', accessDescription: '问卷提交后校验当前购物车与购买商品是否兼容', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'CART_INCOMPATIBLE' } })
             return
           }
 
@@ -354,8 +387,10 @@ export default {
           }
           // 混合结算只补最小商品 ID 的问卷凭据，不改原购物车数量或勾选。
           const success = this.action === 'repair' || this.action === 'checkout'
-            ? updateCartQuestionnaire(saleProduct, submission)
-            : addCartItem(saleProduct, this.getSelectedQuantity(), submission)
+            ? await updateCartQuestionnaire(saleProduct, submission)
+            : await addCartItem(saleProduct, this.getSelectedQuantity(), submission)
+          if (!this.isSubmissionCurrent(sequence)) return
+          logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionCode: 'SAVE_QUESTIONNAIRE_CART', accessTitle: '问卷凭据保存结果', accessDescription: '将已通过问卷的凭据保存到购物车', actionResult: success ? 'SUCCESS' : 'FAILED', extraData: { ...actionLog.extraData, answerId: result.answerId } })
           if (!success) {
             uni.showToast({
               title: this.action === 'repair' || this.action === 'checkout' ? '购物车商品已变化，请返回后重试' : '加入购物车失败',
@@ -399,6 +434,7 @@ export default {
         })
       } catch (error) {
         if (!this.isSubmissionCurrent(sequence)) return
+        logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionCode: submitted ? 'CONTINUE_AFTER_QUESTIONNAIRE' : 'SUBMIT_QUESTIONNAIRE', accessTitle: submitted ? '问卷后购买流程异常' : '健康问卷提交结果', accessDescription: submitted ? '问卷已提交，后续商品核对或购买流程未能完成' : '健康问卷提交接口未返回明确成功结果', actionResult: getActionFailureResult(error), extraData: { ...actionLog.extraData, reason: submitted ? 'POST_SUBMISSION_UNAVAILABLE' : 'SUBMISSION_UNAVAILABLE' } })
         console.error('event=questionnaire_submit result=failed')
         uni.showToast({
           title: error.message || '提交失败，请稍后重试',

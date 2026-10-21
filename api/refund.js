@@ -47,10 +47,11 @@ export const getRefundStats = () => get('/api/refund/stats', {}, {
  * 获取退货申请详情
  * @param {Number} refundApplicationId 退货申请ID
  */
-export const getRefundDetail = (refundApplicationId) => {
+export const getRefundDetail = (refundApplicationId, { showLoading = true, silent = false } = {}) => {
   return get(`/api/refund/detail/${refundApplicationId}`, {}, {
     needAuth: true,
-    showLoading: true
+    showLoading,
+    silent
   })
 }
 

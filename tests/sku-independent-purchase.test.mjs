@@ -9,14 +9,14 @@ import { checkoutEntries, parseDirectPurchase } from '../utils/checkout.js'
 const storage = new Map(), navigation = [], messages = []
 globalThis.uni = { getStorageSync: k => storage.get(k), setStorageSync: (k, v) => storage.set(k, v), removeStorageSync: k => storage.delete(k),
   $emit() {}, navigateTo: value => navigation.push(value), showToast: value => messages.push(value), showLoading() {}, hideLoading() {} }
-const cart = await import('../utils/cart.js')
+const cart = await import('./cart-api-fixture.mjs')
 const base = () => ({ id: '101', productName: '传统疗法服务', name: '传统疗法服务', categoryCode: '仅展示目录', goodsMerchantType: 1, productCategory: 3, status: 1,
   inventoryMode: 'HIS_AVAILABILITY', inventoryStatus: 'AVAILABLE', available: true, stock: null, price: 10, needQuestionnaire: 0,
   skus: [
     { id: '10', skuName: '基础款', price: 10, status: 1, defaultFlag: 1, stock: null, inventoryMode: 'HIS_AVAILABILITY', inventoryStatus: 'AVAILABLE', available: true },
     { id: '11', skuName: '加强款', price: 20, status: 1, stock: null, inventoryMode: 'HIS_AVAILABILITY', inventoryStatus: 'AVAILABLE', available: true }
   ] })
-beforeEach(() => { storage.clear(); navigation.length = 0; messages.length = 0 })
+beforeEach(async () => { storage.clear(); navigation.length = 0; messages.length = 0 })
 function therapy() {
   return loadSetup('pages/products/therapy_detail.vue', {
     ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }), getCurrentInstance: () => ({}), onLoad() {}, onShow() {},
@@ -26,7 +26,7 @@ function therapy() {
   }, ['product', 'applyProduct', 'quantity', 'selectedSkuId', 'saleProduct', 'selectSku', 'addCart', 'buyNow', 'canPurchase', 'priceInteger'])
 }
 
-test('explicit selected SKU is retained; missing or disabled SKU never becomes another SKU', () => {
+test('explicit selected SKU is retained; missing or disabled SKU never becomes another SKU', async () => {
   const product = base()
   assert.equal(resolveProductSku(product, '11').skuName, '加强款')
   assert.throws(() => resolveProductSku(product, '999'), /失效/)
@@ -35,7 +35,7 @@ test('explicit selected SKU is retained; missing or disabled SKU never becomes a
   assert.equal(isPurchaseAvailable(withProductSku(product, product.skus[0])), false)
 })
 
-test('SKU inventory is fail-closed and preserves null HIS stock independently of other SKUs', () => {
+test('SKU inventory is fail-closed and preserves null HIS stock independently of other SKUs', async () => {
   const product = base(), sku = product.skus[1]
   assert.equal(withProductSku(product, sku).stock, null)
   assert.equal(isPurchaseAvailable(withProductSku(product, { ...sku, inventoryStatus: undefined })), false)
@@ -77,7 +77,7 @@ test('one available SKU does not allow buying an unavailable or expired selected
   page.selectedSkuId.value = '999'; assert.equal(page.canPurchase.value, false); await page.buyNow(); assert.equal(navigation.length, 0)
 })
 
-test('local SKU quantity and parent purchase limits remain effective', () => {
+test('local SKU quantity and parent purchase limits remain effective', async () => {
   const product = { id: 1, stock: 9, price: 10, limitInfo: { enabled: true, remainingQuantity: 2 }, skus: [{ id: 3, stock: 4, price: 8, status: 1 }] }
   const sale = withProductSku(product, resolveProductSku(product))
   assert.equal(sale.stock, 4); assert.equal(sale.price, 8); assert.equal(resolvePurchaseQuantityLimit(sale), 2)
@@ -111,7 +111,7 @@ function confirmation(product, selected = ['101:11']) {
 
 test('confirmation always queries chosen SKU price and inventory on every load', async () => {
   const product = base(); product.skus[1] = { ...product.skus[1], available: false, inventoryStatus: 'UNAVAILABLE', stock: 0 }
-  cart.addCartItem(withProductSku(base(), base().skus[1]), 1)
+  await cart.addCartItem(withProductSku(base(), base().skus[1]), 1)
   const page = confirmation(product)
   await page.loadProducts(); assert.equal(page.requests(), 1)
   await page.loadProducts(); assert.equal(page.requests(), 2)
@@ -122,7 +122,7 @@ test('confirmation always queries chosen SKU price and inventory on every load',
 })
 
 test('confirmation retains an invalid selected SKU as unavailable, preventing partial or substitute checkout', async () => {
-  cart.addCartItem(withProductSku(base(), base().skus[1]), 1)
+  await cart.addCartItem(withProductSku(base(), base().skus[1]), 1)
   const product = base(); product.skus = [product.skus[0]]
   const page = confirmation(product); await page.loadProducts(true)
   assert.equal(page.categories.value[0].products[0].skuId, '11')
@@ -141,7 +141,7 @@ test('购物车缺失真实 SKU 时不能静默选择多规格中的任一项', 
 
 test('商品仅有一条真实 SKU 时也不为缺少 skuId 的购物车条目猜配', async () => {
   const product = base(); product.skus = [product.skus[0]]
-  assert.equal(cart.addCartItem(product, 2), false)
+  await assert.rejects(cart.addCartItem(product, 2), /规格/)
   cart.replaceCartData({ 101: { productId: '101', quantity: 2, available: true, stock: null } })
   const page = confirmation(product, ['101']); await page.loadProducts(true)
   assert.match(page.selectionIssue.value, /重新选择/)
@@ -149,7 +149,7 @@ test('商品仅有一条真实 SKU 时也不为缺少 skuId 的购物车条目�
   assert.equal(page.categories.value[0].products[0].skuId, null)
 })
 
-test('medicine detail retains explicit SKU through refresh and does not substitute a removed selection', () => {
+test('medicine detail retains explicit SKU through refresh and does not substitute a removed selection', async () => {
   const page = loadSetup('pages/products/medicine_detail.vue', {
     ref: value => ({ value }), computed: getter => ({ get value() { return getter() } }), getCurrentInstance: () => ({}),
     onLoad() {}, onShow() {}, onMounted() {}, onUnmounted() {}, getImageUrl: value => value, mapProductDetail: value => value,
