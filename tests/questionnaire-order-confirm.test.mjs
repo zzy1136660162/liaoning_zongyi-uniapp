@@ -24,7 +24,7 @@ const createPage = (questionnaireId = 8, passed = false, overrides = {}) => {
     queryFreight: async () => ({}), validateCheckoutStock: () => ({ valid: true }),
     ensureWeChatIdentity: async () => ({ openid: 'fixture-openid' }),
     createOrder: async order => { orders.push(order); return { id: 1 } }, wechatSinglePay: async () => ({}),
-    logButtonClick() {}, STORAGE_KEY_CURRENT_ORDER: 'fixture-order', STORAGE_KEY_DEFAULT_ADDRESS_ID: 'fixture-address',
+    logButtonClick() {},
     uni: {
       getStorageSync() {}, setStorageSync() {}, removeStorageSync() {}, showLoading() {}, hideLoading() {},
       showToast: toast => toasts.push(toast), navigateTo: navigation => navigations.push(navigation), redirectTo() {}

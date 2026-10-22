@@ -49,21 +49,23 @@ test('地址每次加载取新列表，接口失败不会恢复持久化旧地�
   assert.deepEqual(values.get('shipping_addresses'), [{ id: 'stale' }])
 })
 
-test('选择地址只传ID，确认页从最新地址列表解析且不使用旧对象', async () => {
-  const values = new Map([['temp_selected_address', 7], ['shipping_addresses', [{ id: 7, name: '旧地址' }]]])
-  let fail = false
+test('选择地址通过页面事件传ID，确认页从最新地址列表解析且不使用旧缓存', async () => {
+  const values = new Map([['temp_selected_address', 99], ['shipping_addresses', [{ id: 7, name: '旧地址' }]]])
+  let fail = false, addressSelected
   const page = loadSetup('pages/order/confirm.vue', {
     ...reactive, console: quiet, getCurrentCheckoutProductIds: () => [],
-    STORAGE_KEY_CURRENT_ORDER: 'current_order', STORAGE_KEY_DEFAULT_ADDRESS_ID: 'default_address_id',
     getAddressList: async () => { if (fail) throw new Error('offline'); return [{ id: 7, name: '最新地址' }] },
     queryFreight: async () => ({}),
     uni: { getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, value),
-      removeStorageSync: key => values.delete(key), showToast() {}, showLoading() {}, hideLoading() {} }
-  }, ['loadAddresses', 'selectedAddress', 'selectedRequiresShipping'])
+      removeStorageSync: key => values.delete(key), showToast() {}, showLoading() {}, hideLoading() {},
+      navigateTo: options => { addressSelected = options.events.addressSelected } }
+  }, ['loadAddresses', 'selectedAddress', 'selectedRequiresShipping', 'selectAddress'])
   page.selectedRequiresShipping.value = true
+  page.selectAddress()
+  addressSelected(7)
   await page.loadAddresses()
   assert.equal(page.selectedAddress.value.name, '最新地址')
-  assert.equal(values.has('temp_selected_address'), false)
+  assert.equal(values.get('temp_selected_address'), 99)
   fail = true
   await page.loadAddresses()
   assert.equal(page.selectedAddress.value, null)

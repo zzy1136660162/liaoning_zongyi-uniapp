@@ -34,7 +34,6 @@ for (const combination of combinations) {
       createOrder: async input => { orders.push(input); return { id: 70, payableAmount: 2 * combination.reduce((sum, category) => sum + category * 10, 0) } },
       ensureWeChatIdentity: () => assert.fail('确认页不能重复获取支付身份'),
       wechatSinglePay: async (...args) => { payments.push(args); return {} },
-      STORAGE_KEY_CURRENT_ORDER: 'current_order', STORAGE_KEY_DEFAULT_ADDRESS_ID: 'default_address_id',
       logButtonClick() {}, console: { debug() {}, error() {}, warn() {} }
     }, ['loadProducts', 'loadOrderInfo', 'orderInfo', 'submitOrder', 'requiresShipping', 'requiresConsultationPatient'])
     // 路由中的旧 therapy 标记不能把实物订单变成无地址疗法订单。

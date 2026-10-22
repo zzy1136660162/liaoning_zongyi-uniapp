@@ -17,10 +17,10 @@ export const ACCOUNT_STORAGE_KEYS = [
   storage.STORAGE_KEY_CURRENT_CONSULTATION_ID, storage.STORAGE_KEY_CHECKOUT_PRODUCT_IDS,
   storage.STORAGE_KEY_AI_CHAT_ID, storage.STORAGE_KEY_AI_CHAT_MESSAGES,
   'prescription_orders', storage.STORAGE_KEY_SELECTED_PRESCRIPTIONS,
-  storage.STORAGE_KEY_CURRENT_ORDER, 'shipping_addresses',
   storage.STORAGE_KEY_ORDER_SUBMISSION, storage.STORAGE_KEY_ORDER_CART_SNAPSHOTS,
-  storage.STORAGE_KEY_DEFAULT_ADDRESS_ID,
-  'temp_selected_address'
+  // 仅清理旧版残留，不再作为资料、订单或地址数据源。
+  'user_info', 'user_register_info', 'user_login_status', 'current_order',
+  'shipping_addresses', 'default_address_id', 'temp_selected_address'
 ]
 
 export const getSessionGeneration = () => generation

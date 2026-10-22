@@ -17,7 +17,7 @@ beforeEach(() => {
 const createPage = async failure => {
   const hooks = {}, timers = new Map(), callbacks = [], navigation = []
   const owner = { route: 'pages/order/confirm' }, stack = [{ route: 'pages/cart/cart' }, owner]
-  let nextTimer = 0, storageUnavailable = false
+  let nextTimer = 0
   const page = loadSetup('pages/order/confirm.vue', {
     ref: value => ({ value }), computed: get => ({ get value() { return get() } }),
     onLoad: callback => { hooks.load = callback }, onShow() {},
@@ -28,16 +28,14 @@ const createPage = async failure => {
     clearTimeout: id => timers.delete(id),
     getProductDetail: async () => ({ id: 10, productName: '测试商品', productCategory: 99, available: true,
       skus: [{ id: 11, price: 10, stock: 8, status: 1, delSign: 0 }] }),
+    loadCartItems: () => { throw new Error('fixture order calculation unavailable') },
     console: { debug() {}, error() {} },
-    uni: { ...uni, getStorageSync: key => {
-      if (storageUnavailable) throw new Error('fixture storage unavailable')
-      return values.get(key)
-    }, showLoading() {}, showToast() {}, navigateBack: () => navigation.push('back') }
-  }, ['loadProducts', 'loadOrderInfo'])
+    uni: { ...uni, showLoading() {}, showToast() {}, navigateBack: () => navigation.push('back') }
+  }, ['loadProducts', 'loadOrderInfo', 'categories'])
   hooks.load({ selectedItems: '10:11', buyQuantity: '1' })
   if (failure === 'product') await page.loadProducts()
   else {
-    storageUnavailable = true
+    page.categories.value = [{ products: [] }]
     page.loadOrderInfo()
   }
   assert.equal(timers.size, 1)

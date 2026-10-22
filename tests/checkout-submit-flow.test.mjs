@@ -10,9 +10,16 @@ import { withProductSku } from '../utils/product-sku.js'
 import { loadSetup } from './sfc-harness.mjs'
 
 const storage = new Map(), messages = [], navigations = [], redirects = [], channels = new Map(), modals = []
+let draftAccess = null
 globalThis.uni = {
-  getStorageSync: key => structuredClone(storage.get(key)),
-  setStorageSync: (key, value) => storage.set(key, structuredClone(value)),
+  getStorageSync: key => {
+    if (key === 'current_order' && draftAccess) { draftAccess.push('read'); throw new Error('fixture draft read unavailable') }
+    return structuredClone(storage.get(key))
+  },
+  setStorageSync: (key, value) => {
+    if (key === 'current_order' && draftAccess) { draftAccess.push('write'); throw new Error('fixture draft storage full') }
+    storage.set(key, structuredClone(value))
+  },
   removeStorageSync: key => storage.delete(key), $emit() {}, showLoading() {}, hideLoading() {},
   showToast: value => messages.push(value), redirectTo: value => redirects.push(value),
   navigateTo: value => {
@@ -23,6 +30,7 @@ globalThis.uni = {
 }
 beforeEach(async () => {
   storage.clear(); messages.length = 0; navigations.length = 0; redirects.length = 0; channels.clear(); modals.length = 0
+  draftAccess = null
   session.beginSession('account-A')
 })
 const product = (extra = {}, stock = 8) => ({ id: 10, productName: '测试商品', productCategory: 2,
@@ -57,11 +65,34 @@ async function confirm({ route = {}, readProduct = async () => product(), create
     console: { debug() {}, log() {}, warn() {}, error() {} }
   }, ['submitOrder', 'loadProducts', 'loadOrderInfo', 'orderInfo', 'selectedPatient', 'selectPatient',
     'patients', 'orderRemark', 'directPurchase', 'selectionEntries', 'selectionIssue', 'submitting', 'canSubmit',
-    'freightQuote', 'estimatedShippingFee', 'calculateShippingFee', 'selectedAddress', 'loadAddresses'])
+    'freightQuote', 'estimatedShippingFee', 'calculateShippingFee', 'selectedAddress', 'loadAddresses', 'selectAddress'])
   hooks.load({ selectedItems: '10:11', ...route })
   await hooks.show()
   page.selectPatient(page.patients.value[0])
   return { ...page, orders, payments, show: hooks.show, unload: hooks.unload }
+}
+
+for (const direct of [false, true]) {
+  test(`${direct ? '立即购买' : '购物车'}结算不访问旧订单草稿，缓存故障不影响刷新、下单和付款`, async () => {
+    await addToCart(2)
+    storage.set('current_order', { items: [{ id: '999:1', quantity: 99 }], cost: { medicineCost: 999, isDecocted: true } })
+    draftAccess = []
+    let price = 10
+    const page = await confirm({ route: direct ? { buyQuantity: '2' } : {}, readProduct: async () => product({
+      price, skus: [{ id: 11, status: 1, delSign: 0, price, stock: 8, defaultFlag: 1 }]
+    }) })
+    assert.equal(page.orderInfo.value.items[0].quantity, 2)
+    assert.equal(page.orderInfo.value.total, 20)
+    price = 12
+    await page.show()
+    assert.equal(page.orderInfo.value.total, 24)
+    await page.submitOrder()
+    assert.equal(page.orders.length, 1)
+    assert.equal(page.orders[0].items[0].quantity, 2)
+    assert.deepEqual(page.payments[0].args, [100])
+    assert.deepEqual(draftAccess, [])
+    assert.equal(messages.some(message => message.title === '加载订单失败'), false)
+  })
 }
 
 test('确认页显示5件后库存降至2件，实际submit拒绝且不截量或创建订单', async () => {
@@ -76,6 +107,21 @@ test('确认页显示5件后库存降至2件，实际submit拒绝且不截量或
   assert.equal(cart.getCartEntries()['10:11'].quantity, 5)
   assert.match(messages.at(-1).title, /库存不足/)
   assert.equal(page.submitting.value, false)
+})
+
+test('购物车清空后刷新确认页同步清空商品及金额，不能沿用上次内存合计', async () => {
+  await addToCart(2)
+  const page = await confirm()
+  assert.equal(page.orderInfo.value.total, 20)
+  await cart.clearCart()
+  await page.show()
+  assert.deepEqual(page.orderInfo.value.items, [])
+  assert.equal(page.orderInfo.value.cost.medicineCost, 0)
+  assert.equal(page.orderInfo.value.total, 0)
+  assert.equal(page.canSubmit.value, false)
+  await page.submitOrder()
+  assert.equal(page.orders.length, 0)
+  assert.equal(page.payments.length, 0)
 })
 
 test('直接购买3件时真实提交3件，同SKU购物车已有5件保持原样', async () => {
@@ -435,6 +481,22 @@ test('同一地址ID的详细地址变化后重新报价，旧报价不会继续
   await page.loadAddresses()
   assert.equal(page.estimatedShippingFee.value, 20)
   assert.equal(calls, 2)
+})
+
+test('本次选择的地址在提交前删除时阻止下单，不自动改用默认地址', async () => {
+  let deleted = false
+  const page = await confirm({ route: { buyQuantity: '1' }, readAddresses: async () =>
+    [{ id: 8, isDefault: true }, ...(deleted ? [] : [{ id: 9, isDefault: false }])] })
+  page.selectAddress()
+  navigations.at(-1).events.addressSelected(9)
+  await page.loadAddresses()
+  assert.equal(page.selectedAddress.value.id, 9)
+  deleted = true
+  await page.submitOrder()
+  assert.equal(page.selectedAddress.value, null)
+  assert.equal(page.orders.length, 0)
+  assert.equal(page.payments.length, 0)
+  assert.ok(messages.some(message => /重新选择/.test(message.title)))
 })
 
 test('快速切换地址后迟到的旧运费不能覆盖新地址报价', async () => {

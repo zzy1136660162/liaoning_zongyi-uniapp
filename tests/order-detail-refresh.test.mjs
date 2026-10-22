@@ -54,6 +54,22 @@ const createDetail = (kind = 'order', overrides = {}) => {
     unload: () => definition.onUnload.call(state), changeSession: () => { generation++ } }
 }
 
+test('订单详情按接口刷新确认收货分类，历史未记录不能沿用旧来源', async () => {
+  const detail = createDetail()
+  let pending = detail.load()
+  detail.calls.at(-1).resolve({ ...order(1), receiptConfirmType: 2 })
+  await pending
+  assert.equal(detail.state.receiptConfirmText, '系统超期自动确认')
+  pending = detail.load()
+  detail.calls.at(-1).resolve({ ...order(1), receiptConfirmType: 1 })
+  await pending
+  assert.equal(detail.state.receiptConfirmText, '客户手动确认')
+  pending = detail.load()
+  detail.calls.at(-1).resolve(order(1))
+  await pending
+  assert.equal(detail.state.receiptConfirmText, '')
+})
+
 for (const kind of ['order', 'refund']) {
   const response = fresh => kind === 'order' ? order(fresh ? 1 : 0)
     : { status: fresh ? 4 : 1, paymentRefundStatus: fresh ? 'SUCCESS' : 'PENDING', refundScene: 'GOODS_RETURN' }

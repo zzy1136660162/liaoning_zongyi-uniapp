@@ -24,9 +24,16 @@ const product = id => ({ id: Number(id), productName: `商品${id}`, productCate
 
 const harness = (overrides = {}, options = {}) => {
   let onLoad, onShow, onUnload, currentSession = true
-  const storage = new Map(), routes = [], toasts = [], prescriptionQueries = [], doctorQueries = []
+  const storage = new Map(), routes = [], toasts = [], prescriptionQueries = [], doctorQueries = [], draftAccess = []
   const uni = {
-    getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value),
+    getStorageSync: key => {
+      if (key === 'current_order') { draftAccess.push('read'); throw new Error('fixture draft read unavailable') }
+      return storage.get(key)
+    },
+    setStorageSync: (key, value) => {
+      if (key === 'current_order') { draftAccess.push('write'); throw new Error('fixture draft storage full') }
+      storage.set(key, value)
+    },
     removeStorageSync: key => storage.delete(key), $emit() {},
     showLoading() {}, hideLoading() {}, showToast: value => toasts.push(value.title),
     navigateTo: value => routes.push(value.url)
@@ -50,7 +57,7 @@ const harness = (overrides = {}, options = {}) => {
     getPrescriptionByConsultation: async id => { prescriptionQueries.push(id); return prescription() },
     getDoctorDetail: async id => { doctorQueries.push(id); return { id, name: '处方医生' } },
     getProductDetail: async id => product(id),
-    STORAGE_KEY_CURRENT_ORDER: 'current_order', uni,
+    uni,
     console: { debug() {}, warn() {}, error() {} }, ...overrides
   }
   const page = loadSetup('pages/order/prescription_list.vue', mocks, [
@@ -59,7 +66,7 @@ const harness = (overrides = {}, options = {}) => {
     'loadError', 'loading', 'goToOrder', 'toggleCartSelect', 'toggleCartSelectAll'
   ])
   onLoad({ selectedItems: itemKeys.join(','), consultationId: '123', patientId: '8', ...options })
-  return { ...page, storage, routes, toasts, prescriptionQueries, doctorQueries,
+  return { ...page, storage, routes, toasts, prescriptionQueries, doctorQueries, draftAccess,
     show: () => onShow(), unload: () => onUnload(), changeSession: () => { currentSession = false } }
 }
 
@@ -83,8 +90,8 @@ describe('处方清单普通购物车', () => {
     assert.equal(page.canSubmit.value, true)
     await page.goToOrder()
     assert.equal(page.routes[0], '/pages/order/confirm?selectedItems=10:11,10:12,20:21,30:31&consultationId=123&patientId=8')
-    assert.deepEqual(page.storage.get('current_order').items.map(item => [item.skuId, item.quantity]),
-      [['11', 2], ['12', 1], ['21', 3], ['31', 4]])
+    assert.deepEqual(page.draftAccess, [])
+    assert.equal(page.storage.has('current_order'), false)
     const template = readFileSync(new URL('../pages/order/prescription_list.vue', import.meta.url), 'utf8').split('<script')[0]
     assert.match(template, /currentPrescription\?\.diagnosis/)
     assert.match(template, /cartItem\.skuSpecText/)
@@ -227,7 +234,8 @@ describe('处方清单独立立即购买入口兼容', () => {
     page.toggleCartSelect('10:12')
     page.goToOrder()
     assert.equal(page.routes[0], '/pages/order/confirm?selectedItems=10:12&consultationId=123&patientId=8&buyQuantity=2&buyQuestionnaireId=90&buyAnswerId=91')
-    assert.equal(page.storage.get('current_order').items[0].quantity, 2)
+    assert.deepEqual(page.draftAccess, [])
+    assert.equal(page.storage.has('current_order'), false)
     assert.deepEqual(cart.getCartEntries(), before)
   })
 

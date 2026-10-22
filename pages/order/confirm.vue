@@ -257,13 +257,6 @@
               ¥{{ orderInfo.cost.medicineCost.toFixed(2) }}
             </text>
           </view>
-          <!-- <view class="cost-row">
-          <view class="label-with-checkbox">
-            <text class="label">代煎</text>
-            <view class="checkbox" :class="{ checked: orderInfo.cost.isDecocted }" @click="toggleDecocted"></view>
-          </view>
-          <text class="value">¥0.00</text>
-        </view> -->
           <view
             v-if="requiresShipping"
             class="cost-row"
@@ -318,10 +311,6 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
-import {
-  STORAGE_KEY_CURRENT_ORDER,
-  STORAGE_KEY_DEFAULT_ADDRESS_ID
-} from '@/utils/storage.js'
 import { refreshCart, buildOrderInfo, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds, validateCheckoutStock, updateCartQuestionnaire } from '@/utils/cart.js'
 import { parseDirectPurchase, directPurchaseQuery, checkoutEntries, getCheckoutQuestionnaireAnswer, QUESTIONNAIRE_RECHECK_REQUIRED } from '@/utils/checkout.js'
 import { getOrderSubmission, rememberCreatedOrder, releaseOrderSubmission, forgetOrderSubmission } from '@/utils/order-submission.js'
@@ -380,7 +369,6 @@ const orderInfo = ref({
   },
   cost: {
     medicineCost: 0,
-    isDecocted: false,
     shippingFee: 0
   },
   total: 0
@@ -388,6 +376,7 @@ const orderInfo = ref({
 
 const addresses = ref([])
 const selectedAddress = ref(null)
+let selectedAddressId = null
 const categories = ref([])
 const calculatingFreight = ref(false)
 const freightQuote = ref({ key: '', amount: null, id: null, expiresAt: 0, source: null })
@@ -653,7 +642,6 @@ const reloadSelection = async () => { await loadProducts(); loadOrderInfo() }
 const loadOrderInfo = () => {
   if (!isCurrentSession(pageSession)) return
   try {
-    const saved = uni.getStorageSync(STORAGE_KEY_CURRENT_ORDER)
     const cartItems = prescriptionId.value
       ? categories.value.flatMap(category => category.products || [])
       : categories.value.length > 0 ? loadCartItems(categories.value, false,
@@ -666,16 +654,10 @@ const loadOrderInfo = () => {
       ? buildOrderInfo(cartItems, currentSelectedIds, distributor)
       : null
 
-    orderInfo.value = rebuiltOrder || { ...orderInfo.value, prescriptions: [], items: [], total: 0 }
-
-    if (!orderInfo.value.cost) {
-      orderInfo.value.cost = { medicineCost: 0, isDecocted: false, shippingFee: 0 }
-    }
-    orderInfo.value.cost.isDecocted = !!saved?.cost?.isDecocted
+    orderInfo.value = rebuiltOrder || { ...orderInfo.value, prescriptions: [], items: [],
+      cost: { medicineCost: 0, shippingFee: 0 }, total: 0 }
 
     if (rebuiltOrder) {
-      orderInfo.value.prescriptions = rebuiltOrder.prescriptions
-      orderInfo.value.items = rebuiltOrder.items
       orderInfo.value.deliveryInfo = {
         ...(orderInfo.value.deliveryInfo || rebuiltOrder.deliveryInfo),
         distributor,
@@ -685,20 +667,14 @@ const loadOrderInfo = () => {
           : '药品配送-在线支付',
         shippingPaymentMethod: '到付（货到付款给快递员）'
       }
-      orderInfo.value.cost = {
-        ...orderInfo.value.cost,
-        medicineCost: rebuiltOrder.cost.medicineCost,
-        isDecocted: !!orderInfo.value.cost.isDecocted,
-        shippingFee: 0
-      }
+      orderInfo.value.cost.shippingFee = 0
     }
 
     if (!requiresShipping.value) {
-      orderInfo.value.cost.shippingFee = 0
       clearFreightQuote()
     }
-    calculateTotal()
-    uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
+    // 到付运费仅作参考，不计入商品合计。
+    orderInfo.value.total = orderInfo.value.cost.medicineCost
   } catch (e) {
     console.error('event=ui_order_confirm stage=load_order_info result=failed reason=operation_incomplete')
     uni.showToast({ title: '加载订单失败', icon: 'none' })
@@ -709,10 +685,9 @@ const loadOrderInfo = () => {
 const loadAddresses = async () => {
   if (!isCurrentSession(pageSession)) return
   const requestId = ++addressRefreshId
-  const addressSelection = uni.getStorageSync('temp_selected_address')
-  const selectedId = addressSelection?.id || addressSelection || selectedAddress.value?.id
-  uni.removeStorageSync('temp_selected_address')
+  const selectedId = selectedAddressId
   if (!requiresShipping.value) {
+    selectedAddressId = null
     selectedAddress.value = null
     clearFreightQuote()
     return
@@ -724,37 +699,16 @@ const loadAddresses = async () => {
     if (!pageActive || requestId !== addressRefreshId) return
     addresses.value = Array.isArray(remoteAddresses) ? remoteAddresses : []
 
-    // 加载默认地址
-    const defaultId = selectedId || uni.getStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID)
-    let defaultAddr = null
-
-    // 优先使用存储的默认地址ID
-    if (defaultId) {
-      defaultAddr = addresses.value.find(a => String(a.id) === String(defaultId))
-    }
-
-    // 如果没有找到默认地址，尝试从地址列表中找标记为默认的地址
-    if (!defaultAddr) {
-      defaultAddr = addresses.value.find(a => a.isDefault)
-      if (defaultAddr) {
-        // 更新默认地址ID到本地存储
-        uni.setStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID, defaultAddr.id)
-      }
-    }
-
-    // 如果找到了默认地址，设置为选中状态
-    if (defaultAddr) {
-      selectedAddress.value = defaultAddr
-      // 加载地址后计算快递费
-      await calculateShippingFee()
-    } else if (addresses.value.length > 0) {
-      // 如果没有默认地址，使用第一个
-      selectedAddress.value = addresses.value[0]
-      // 加载地址后计算快递费
+    // 默认地址只用于初始化；已选地址失效时不能替用户换一条继续下单。
+    selectedAddress.value = (selectedId == null
+      ? addresses.value.find(address => Number(address.isDefault) === 1)
+      : addresses.value.find(address => String(address.id) === String(selectedId))) || null
+    if (selectedAddress.value) {
+      selectedAddressId = selectedAddress.value.id
       await calculateShippingFee()
     } else {
-      selectedAddress.value = null
       clearFreightQuote()
+      if (selectedId != null) uni.showToast({ title: '所选地址已失效，请重新选择', icon: 'none' })
     }
   } catch (e) {
     if (!pageActive || requestId !== addressRefreshId || !isCurrentSession(pageSession)) return
@@ -795,27 +749,20 @@ const calculateShippingFee = async () => {
   }
 }
 
-const calculateTotal = () => {
-  let total = orderInfo.value.cost.medicineCost
-  if (orderInfo.value.cost.isDecocted) {
-    // 代煎费用（示例）
-    total += 0
-  }
-  // 到付：运费不计入合计，仅作参考展示
-  orderInfo.value.total = total
-}
-
-const toggleDecocted = () => {
-  orderInfo.value.cost.isDecocted = !orderInfo.value.cost.isDecocted
-  calculateTotal()
-  // 保存订单信息
-  uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
-}
-
 const selectAddress = () => {
+  if (!pageActive || !isCurrentSession(pageSession) || submitting.value) return
   logButtonClick({ ...PAGE_LOG, pageId: prescriptionId.value || '', actionCode: 'CHECKOUT_ADDRESS_SELECT', accessTitle: '选择收货地址', accessDescription: '从订单确认页进入地址列表，为当前订单选择配送地址' })
   uni.navigateTo({
-    url: '/pages/order/address_list?select=true'
+    url: '/pages/order/address_list?select=true',
+    events: {
+      addressSelected: addressId => {
+        if (!pageActive || !isCurrentSession(pageSession) || submitting.value || !addressId) return
+        selectedAddressId = addressId
+        selectedAddress.value = null
+        addressRefreshId += 1
+        clearFreightQuote()
+      }
+    }
   })
 }
 
@@ -1500,35 +1447,6 @@ const submitOrder = async () => {
 
 .cost-row:last-child {
   border-bottom: none;
-}
-
-.label-with-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-}
-
-.checkbox {
-  width: 36rpx;
-  height: 36rpx;
-  border: 2rpx solid #ddd;
-  border-radius: 50%;
-  position: relative;
-}
-
-.checkbox.checked {
-  background: #2a82e4;
-  border-color: #2a82e4;
-}
-
-.checkbox.checked::after {
-  content: '✓';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #fff;
-  font-size: 24rpx;
 }
 
 .footer {

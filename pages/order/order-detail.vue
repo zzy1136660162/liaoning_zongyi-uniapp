@@ -75,6 +75,17 @@
 
       <!-- 信息区域 -->
       <view
+        v-if="receiptConfirmText"
+        class="info-row"
+      >
+        <text class="info-label">
+          确认收货分类
+        </text>
+        <text class="info-value">
+          {{ receiptConfirmText }}
+        </text>
+      </view>
+      <view
         v-for="item in infoList"
         :key="item.label"
         class="info-row"
@@ -281,7 +292,7 @@
   import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
   import { isTherapyOrder } from '@/utils/therapy.js'
   import { buildItemRedeemVouchers } from '@/utils/order-redeem-vouchers.js'
-  import { canPayOrder, canShowRedeemCode, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
+  import { canPayOrder, canShowRedeemCode, getOrderStatusText, getRedeemStatusText, getReceiptConfirmText } from '@/utils/order-status.js'
   import { getSessionGeneration, isCurrentSession, assertCurrentSession } from '@/utils/session.js'
 
   const PAGE_LOG = { moduleCode: 'ORDER', accessType: '订单', pageType: 'ORDER_DETAIL', requestUri: '/pages/order/order-detail' }
@@ -309,6 +320,7 @@
           department: '',
           doctorId: null,
           orderStatus: null, // 订单状态：3为已完成
+          receiptConfirmType: null,
           orderType: null,
           payStatus: null,
           paymentFulfillmentStatus: null,
@@ -366,6 +378,9 @@
       this.detailRequestSequence++
     },
     computed: {
+      receiptConfirmText() {
+        return getReceiptConfirmText(this.order)
+      },
       displayCartItems() {
         let displayNo = 0
         return this.allCartItems.map(item => ({
@@ -754,6 +769,7 @@
           this.order.payableAmount = orderDetail.payableAmount || this.order.amount
           this.order.payTime = this.formatDateTime(orderDetail.payTime || '')
           this.order.orderStatus = orderDetail.orderStatus
+          this.order.receiptConfirmType = orderDetail.receiptConfirmType ?? null
           this.order.orderType = orderDetail.orderType ?? this.order.orderType
           this.order.payStatus = orderDetail.payStatus ?? this.order.payStatus
           this.order.paymentFulfillmentStatus = orderDetail.paymentFulfillmentStatus ?? null

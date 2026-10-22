@@ -32,7 +32,6 @@ const page = loadSetup('pages/order/confirm.vue', {
   createOrder: async order => { orders.push(order); return { id: 1 } },
   wechatSinglePay: async () => ({}),
   logButtonClick: () => {},
-  STORAGE_KEY_CURRENT_ORDER: 'mock-current-order',
   STORAGE_KEY_DEFAULT_ADDRESS_ID: 'mock-address-id',
   ORDER_TYPE_THERAPY: 4,
   uni: {

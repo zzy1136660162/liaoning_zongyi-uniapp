@@ -242,16 +242,10 @@ import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 // 时间处理库
 import dayjs from 'dayjs'
 
-// ==================== 存储键常量 ====================
-import {
-  STORAGE_KEY_CURRENT_ORDER,
-} from '@/utils/storage.js'
-
 // ==================== 工具函数 ====================
 import {
   loadCartItems,
   refreshCart,
-  buildOrderInfo,
   getCurrentCheckoutProductIds,
   updateProductSelection,
   updateMultipleSelections,
@@ -276,11 +270,6 @@ const PAGE_LOG = { moduleCode: 'PRESCRIPTION', accessType: '处方', pageType: '
 import { resolveProductTypeLabel } from '@/utils/product-biz.js'
 
 // ==================== 响应式数据 ====================
-/**
- * 医院名称 - 显示在页面顶部
- */
-  const hospitalName = ref('辽宁中医药大学附属医院')
-
 /**
  * 选中的购物车产品ID列表 - 用户选择要购买的处方
  */
@@ -647,18 +636,10 @@ const syncSelectedCartState = async () => {
     try {
       if (!pageActive) return
       assertCurrentSession(pageSession)
-      // 获取完整的购物车数据（包含数量等信息）
       logButtonClick({ ...PAGE_LOG, actionCode: 'PRESCRIPTION_CHECKOUT', accessTitle: '确认处方商品', accessDescription: '确认本次处方所选商品并进入订单确认', extraData: { consultationId: checkoutContext.value?.consultationId || '', selectedCount: selectedCartIds.value.length } })
-      const cartItems = cartItemsList.value
 
       // 获取用户选中的商品ID列表
       const selectedProductIds = selectedCartIds.value
-
-      // 使用工具函数构建订单信息
-      const orderInfo = buildOrderInfo(cartItems, selectedProductIds, hospitalName.value)
-
-      // 将订单信息保存到本地存储，供确认页面使用
-      uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo)
 
       // 跳转到订单确认页面
       if (!directPurchase.value) setCheckoutProductIds(selectedProductIds)

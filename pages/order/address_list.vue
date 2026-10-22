@@ -40,11 +40,8 @@
 <script setup>
 import { getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 const pageSession = getSessionGeneration()
-import { ref } from 'vue'
+import { ref, getCurrentInstance } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { 
-  STORAGE_KEY_DEFAULT_ADDRESS_ID
-} from '@/utils/storage.js'
 import { getAddressList, deleteAddress as delAddressApi, setDefaultAddress as setDefaultApi } from '@/api/address.js'
 import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 
@@ -52,6 +49,7 @@ const PAGE_LOG = { moduleCode: 'ADDRESS', accessType: '收货地址', pageType: 
 
 const addresses = ref([])
 const isSelectMode = ref(false)
+const pageInstance = getCurrentInstance()
 
 onLoad((options) => {
   // 检查是否是选择模式
@@ -86,16 +84,14 @@ const loadAddresses = async () => {
 const selectAddress = (address) => {
   if (!isCurrentSession(pageSession)) return
   if (isSelectMode.value) {
-    // 选择模式：返回选中的地址
-    const pages = getCurrentPages()
-    if (pages.length >= 2) {
-      const prevPage = pages[pages.length - 2]
-      // 通过事件总线或全局状态传递选中的地址
-      // 这里使用 storage 临时存储
-      uni.setStorageSync('temp_selected_address', address.id)
-      logButtonClick({ ...PAGE_LOG, actionCode: 'ADDRESS_SELECT', accessTitle: '选择收货地址', accessDescription: '为当前订单选用收货地址', extraData: { addressId: address.id } })
-      uni.navigateBack()
+    const eventChannel = pageInstance?.proxy?.getOpenerEventChannel?.()
+    if (!eventChannel?.emit) {
+      uni.showToast({ title: '请从订单页重新选择地址', icon: 'none' })
+      return
     }
+    eventChannel.emit('addressSelected', address.id)
+    logButtonClick({ ...PAGE_LOG, actionCode: 'ADDRESS_SELECT', accessTitle: '选择收货地址', accessDescription: '为当前订单选用收货地址', extraData: { addressId: address.id } })
+    uni.navigateBack()
   } else {
     // 非选择模式：设置为默认地址
     setDefaultAddress(address.id)
@@ -115,7 +111,6 @@ const setDefaultAddress = async (addressId) => {
     addresses.value.forEach(addr => {
       addr.isDefault = addr.id === addressId
     })
-    uni.setStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID, addressId)
     uni.showToast({ title: '已设为默认地址', icon: 'success' })
     
     // 重新加载列表

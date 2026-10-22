@@ -1,5 +1,10 @@
 import { isTherapyOrder, hasTherapyEntitlement } from './therapy.js'
 
+export const getReceiptConfirmText = order => ({
+  1: '客户手动确认',
+  2: '系统超期自动确认'
+})[Number(order?.receiptConfirmType)] || ''
+
 export const ORDER_STATUS_TEXT = {
   0: '待支付',
   1: '待发货',

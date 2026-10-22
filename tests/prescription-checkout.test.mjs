@@ -30,7 +30,6 @@ const harness = (overrides = {}) => {
     buildOrderInfo: items => ({ items, prescriptions: [], deliveryInfo: {}, cost: {
       medicineCost: items.reduce((sum, item) => sum + item.price * item.quantity, 0), shippingFee: 0 } }),
     logButtonClick() {}, logPageView() {}, ORDER_TYPE_THERAPY: 4,
-    STORAGE_KEY_CURRENT_ORDER: 'current_order', STORAGE_KEY_DEFAULT_ADDRESS_ID: 'default_address',
     console: { debug() {}, error() {}, warn() {} },
     uni: { getStorageSync: () => null, setStorageSync: (key, value) => writes.push({ key, value }), removeStorageSync() {},
       showLoading() {}, hideLoading() {}, showToast() {}, redirectTo: route => routes.push(route.url),
@@ -198,7 +197,7 @@ test('真实处方固定原患者，按每条明细一件和默认真实SKU展�
   if ('requestId' in orders[0]) assert.match(orders[0].requestId, /^\S+$/)
   assert.equal(page.orderInfo.value.total, 18, '创建成功后展示后台成交金额')
   assert.deepEqual(payments[0].args, [42], '支付身份和金额由统一支付入口及后台核定')
-  assert.ok(writes.every(write => ['current_order', 'default_address'].includes(write.key)), '不写虚拟购物车或旧数量键')
+  assert.deepEqual(writes, [], '处方确认与提交不写本地订单草稿或地址缓存')
 })
 
 test('默认SKU不存在或商品读取失败时禁止下单和支付，不恢复旧商品快照', async () => {

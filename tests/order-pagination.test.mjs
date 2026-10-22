@@ -331,7 +331,7 @@ test('处方订单主查询失败后按处方ID请求一条订单，匹配数字
   let response = { id: 42, prescriptionId: 321, orderStatus: 2, orderNo: 'fixture-order', logisticsNo: 'fixture-logistics' }
   const definition = loadOptions('pages/prescription/detail.vue', {
     getSessionGeneration, isCurrentSession, getImageUrl: value => value,
-    AI_DOCTOR: { name: 'fixture doctor' }, STORAGE_KEY_CURRENT_ORDER: 'current_order',
+    AI_DOCTOR: { name: 'fixture doctor' },
     getOrderByPrescriptionId: async id => { primaryIds.push(id); throw new Error('fixture primary failure') },
     getOrderPage: async params => { fallbackParams.push(params); return { rows: [response] } },
     console: { log() {}, error() {} }

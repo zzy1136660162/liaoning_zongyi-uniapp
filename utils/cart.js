@@ -907,7 +907,6 @@ export const buildOrderInfo = (
     },
     cost: {
       medicineCost,
-      isDecocted: false,
       shippingFee: 0
     },
     total: medicineCost

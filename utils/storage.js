@@ -87,41 +87,6 @@ export const STORAGE_KEY_AI_CHAT_MESSAGES = 'ai_chat_messages'
  */
 export const STORAGE_KEY_SELECTED_PRESCRIPTIONS = 'selected_prescriptions'
 
-/**
- * 当前订单信息
- * 存储格式: {
- *   prescriptions: string[],       // 选中的处方ID列表
- *   items: Array<{                 // 订单商品列表
- *     id: string,
- *     name: string,                // 商品名称
- *     type: string,                // 商品类型: '中药'
- *     price: number                // 单价
- *   }>,
- *   deliveryInfo: {                // 配送信息
- *     distributor: string,          // 配送方
- *     logistics: string,           // 物流公司
- *     purchaseMethod: string,       // 购药方式
- *     shippingPaymentMethod: string // 快递费支付方式
- *   },
- *   cost: {                        // 费用信息
- *     medicineCost: number,         // 药品费用
- *     isDecocted: boolean,          // 是否代煎
- *     shippingFee: number          // 快递费
- *   },
- *   total: number                  // 合计金额
- * }
- * 说明: 存储当前确认订单页面的订单信息
- */
-export const STORAGE_KEY_CURRENT_ORDER = 'current_order'
-
 /** 当前下单请求与按订单保存的购物车版本快照，均在账号边界清理。 */
 export const STORAGE_KEY_ORDER_SUBMISSION = 'order_submission'
 export const STORAGE_KEY_ORDER_CART_SNAPSHOTS = 'order_cart_snapshots'
-
-// ==================== 地址相关 ====================
-/**
- * 默认收货地址ID
- * 存储格式: string | null
- * 说明: 存储当前默认收货地址的ID，如果为null则表示没有默认地址
- */
-export const STORAGE_KEY_DEFAULT_ADDRESS_ID = 'default_address_id'
