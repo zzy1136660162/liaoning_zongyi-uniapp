@@ -273,6 +273,7 @@
   import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
   import { getOrderDetail } from '@/api/order.js'
   import { wechatSinglePay } from '@/api/payment.js'
+  import { formatFreightEstimate } from '@/utils/freight.js'
   import { checkCanApplyRefund } from '@/api/refund.js'
   import { getOrderItemRefundText, canOrderApplyRefund, shouldContactForPhysicalRefund } from '@/utils/refund.js'
   import { getImageUrl } from '@/utils/config.js'
@@ -317,6 +318,8 @@
           routeStatusDesc: '', // 顺丰最新路由描述
           logisticsNo: '', // 运单号
           shippingPaymentMethod: '', // 运费支付方式（到付）
+          estimatedFreight: null,
+          freightQuoteSource: null,
           patientId: null,
           patientName: '',
           patientGender: '',
@@ -406,7 +409,7 @@
           { label: '开方医生', labelKey: 'doctor', value: this.displayDoctorName },
           { label: '订单金额', labelKey: 'payableAmount', value: this.order.payableAmount ? Number(this.order.payableAmount).toFixed(2) : '' },
           { label: '支付时间', labelKey: 'payTime', value: this.formatDateTime(this.order.payTime) || '未支付' },
-          { label: '运费', labelKey: 'shippingPaymentMethod', value: therapyOnly ? '无' : (this.order.shippingPaymentMethod || '到付，以实际为准') }
+          { label: '预估运费', labelKey: 'shippingPaymentMethod', value: therapyOnly ? '无' : formatFreightEstimate(this.order.estimatedFreight, this.order.freightQuoteSource) }
         ]
         if (this.order.routeStatusDesc) {
           list.push({ label: '物流状态', labelKey: 'routeStatusDesc', value: this.order.routeStatusDesc })
@@ -774,6 +777,8 @@
             this.order.orderNo = orderDetail.orderNo || this.order.orderNo
             // 物流/运费（到付）信息
             this.order.shippingPaymentMethod = orderDetail.shippingPaymentMethod || '到付，以实际为准'
+            this.order.estimatedFreight = orderDetail.estimatedFreight ?? null
+            this.order.freightQuoteSource = orderDetail.freightQuoteSource ?? null
             this.order.routeStatusDesc = orderDetail.routeStatusDesc || ''
             this.order.logisticsNo = orderDetail.logisticsNo || ''
 
@@ -1475,6 +1480,7 @@
     font-size: 26rpx;
     color: #64748b;
     line-height: 1.5;
+    text-align: center;
   }
 
   .therapy-vouchers {

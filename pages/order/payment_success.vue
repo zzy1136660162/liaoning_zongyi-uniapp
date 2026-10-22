@@ -272,6 +272,7 @@ import { ref } from 'vue'
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { getOrderDetail } from '@/api/order.js'
+import { formatFreightEstimate } from '@/utils/freight.js'
 import { syncPaymentByOrder } from '@/api/payment.js'
 import { consumeOrderCart } from '@/utils/order-submission.js'
 import { logPageView, logButtonClick, logAccess } from '@/utils/accessLog.js'
@@ -355,11 +356,7 @@ const resolveShippingFeeText = (orderData = {}) => {
     return '传统疗法无需快递费'
   }
 
-  const shippingFee = toAmount(orderData.shippingFee, 0)
-  if (shippingFee > 0) {
-    return `约¥${shippingFee.toFixed(2)}（到付）`
-  }
-  return orderData.shippingPaymentMethod || '运费到付，由快递员收取，以实际支付为准'
+  return formatFreightEstimate(orderData.estimatedFreight, orderData.freightQuoteSource)
 }
 
 const applyTips = (orderData = {}) => {

@@ -273,7 +273,7 @@
                 运费（到付）
               </text>
               <text class="freight-note">
-                运费计算供参考，以实际支付为准
+                报价供参考，以快递员实际收取为准
               </text>
             </view>
             <view class="value-container">
@@ -287,7 +287,7 @@
                 v-else
                 class="value freight-ref"
               >
-                约¥{{ orderInfo.cost.shippingFee.toFixed(2) }}
+                {{ formatFreightEstimate(estimatedShippingFee, freightQuote.source) }}
               </text>
             </view>
           </view>
@@ -337,7 +337,8 @@ import { getProductDetail } from '@/api/product.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
 import { createPageReturn } from '@/utils/page-return.js'
-import { queryFreight } from '@/api/express.js'
+import { queryOrderFreight as queryFreight } from '@/api/express.js'
+import { formatFreightEstimate } from '@/utils/freight.js'
 import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { resolveProductFlow } from '@/utils/product-biz.js'
 import { resolveQuestionnaireState, buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
@@ -389,6 +390,9 @@ const addresses = ref([])
 const selectedAddress = ref(null)
 const categories = ref([])
 const calculatingFreight = ref(false)
+const freightQuote = ref({ key: '', amount: null, id: null, expiresAt: 0, source: null })
+let freightRefreshId = 0
+let addressRefreshId = 0
 const selectedProductIds = ref([])
 const selectedRequiresConsultation = ref(false)
 const selectedRequiresShipping = ref(false)
@@ -400,6 +404,24 @@ let patientSelectionCleared = false
 let patientRefreshId = 0
 
 const requiresShipping = computed(() => selectedRequiresShipping.value)
+const freightRequestData = () => ({
+  addressId: selectedAddress.value?.id,
+  items: orderInfo.value.items.map(item => ({ productId: item.productId, skuId: item.skuId || null, quantity: item.quantity }))
+})
+const currentFreightKey = computed(() => {
+  if (!requiresShipping.value || !selectedAddress.value || !orderInfo.value.items.length) return ''
+  const address = selectedAddress.value
+  return JSON.stringify({ ...freightRequestData(),
+    destination: [address.province, address.city, address.district, address.addressDetail || address.detail || ''],
+    weights: orderInfo.value.items.map(item => item.weight ?? null) })
+})
+const estimatedShippingFee = computed(() => currentFreightKey.value && freightQuote.value.key === currentFreightKey.value
+  ? freightQuote.value.amount : null)
+const clearFreightQuote = () => {
+  freightRefreshId++
+  freightQuote.value = { key: '', amount: null, id: null, expiresAt: 0, source: null }
+  calculatingFreight.value = false
+}
 const requiresConsultationPatient = computed(() => selectedRequiresConsultation.value)
 const selectionIssue = computed(() => {
   if (checkoutRouteError.value) return checkoutRouteError.value
@@ -667,15 +689,13 @@ const loadOrderInfo = () => {
         ...orderInfo.value.cost,
         medicineCost: rebuiltOrder.cost.medicineCost,
         isDecocted: !!orderInfo.value.cost.isDecocted,
-        shippingFee: orderInfo.value.cost.shippingFee
+        shippingFee: 0
       }
     }
 
-    if (orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null) {
-      orderInfo.value.cost.shippingFee = 18
-    }
     if (!requiresShipping.value) {
       orderInfo.value.cost.shippingFee = 0
+      clearFreightQuote()
     }
     calculateTotal()
     uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
@@ -688,19 +708,21 @@ const loadOrderInfo = () => {
 
 const loadAddresses = async () => {
   if (!isCurrentSession(pageSession)) return
+  const requestId = ++addressRefreshId
   const addressSelection = uni.getStorageSync('temp_selected_address')
   const selectedId = addressSelection?.id || addressSelection || selectedAddress.value?.id
   uni.removeStorageSync('temp_selected_address')
   if (!requiresShipping.value) {
     selectedAddress.value = null
+    clearFreightQuote()
     return
   }
 
   try {
     const remoteAddresses = await getAddressList()
     assertCurrentSession(pageSession)
+    if (!pageActive || requestId !== addressRefreshId) return
     addresses.value = Array.isArray(remoteAddresses) ? remoteAddresses : []
-    selectedAddress.value = null
 
     // 加载默认地址
     const defaultId = selectedId || uni.getStorageSync(STORAGE_KEY_DEFAULT_ADDRESS_ID)
@@ -730,82 +752,46 @@ const loadAddresses = async () => {
       selectedAddress.value = addresses.value[0]
       // 加载地址后计算快递费
       await calculateShippingFee()
+    } else {
+      selectedAddress.value = null
+      clearFreightQuote()
     }
   } catch (e) {
-    if (!isCurrentSession(pageSession)) return
+    if (!pageActive || requestId !== addressRefreshId || !isCurrentSession(pageSession)) return
     addresses.value = []
     selectedAddress.value = null
+    clearFreightQuote()
     uni.showToast({ title: '地址加载失败，请重试', icon: 'none' })
   }
 }
 
 // 计算快递费
 const calculateShippingFee = async () => {
-  if (!isCurrentSession(pageSession)) return
-  if (!requiresShipping.value) {
-    console.debug('event=ui_order_confirm stage=shipping_fee result=skipped reason=no_shipping_required')
-    orderInfo.value.cost.shippingFee = 0
-    calculateTotal()
-    uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
-    return
-  }
-  if (!selectedAddress.value) {
-    return
-  }
-
+  if (!pageActive || !isCurrentSession(pageSession)) return
+  const key = currentFreightKey.value
+  if (!key) { clearFreightQuote(); return }
+  if (freightQuote.value.key === key && freightQuote.value.amount !== null
+      && freightQuote.value.expiresAt > Date.now()) return
+  const requestId = ++freightRefreshId
+  freightQuote.value = { key, amount: null, id: null, expiresAt: 0, source: null }
+  calculatingFreight.value = true
+  const isCurrentQuote = () => pageActive && isCurrentSession(pageSession)
+    && requestId === freightRefreshId && key === currentFreightKey.value
   try {
-    calculatingFreight.value = true
-
-    // 调用后端查询运费接口（寄件人信息由后端配置提供）
-    const freightParams = {
-      expressType: '2', // 2-顺丰标快
-      parcelWeight: '1.0', // 默认1kg
-      // 只传递收件人信息，寄件人信息由后端配置提供
-      destProvince: selectedAddress.value.province,
-      destCity: selectedAddress.value.city,
-      destDistrict: selectedAddress.value.district,
-      destAddress: selectedAddress.value.addressDetail || selectedAddress.value.detail || ''
+    const result = await queryFreight(freightRequestData())
+    if (!isCurrentQuote()) return
+    const raw = result?.freight
+    if ((typeof raw !== 'number' && typeof raw !== 'string') || String(raw).trim() === ''
+        || !Number.isFinite(Number(raw)) || Number(raw) < 0) throw new Error('运费报价无效')
+    freightQuote.value = {
+      key, amount: Number(Number(raw).toFixed(2)), id: result.quoteId || null,
+      expiresAt: Number(result.quoteExpiresAt) || 0, source: result.quoteSource || null
     }
-
-    console.debug('event=ui_order_confirm stage=shipping_fee result=started')
-
-    const freightResult = await queryFreight(freightParams)
-
-    // 检查响应并提取运费
-    if (freightResult && freightResult.freight != null && freightResult.freight !== undefined) {
-      // 更新快递费（后端返回的是元，直接使用）
-      const freight = parseFloat(freightResult.freight)
-      if (!isNaN(freight) && freight >= 0) {
-        orderInfo.value.cost.shippingFee = parseFloat(freight.toFixed(2))
-        // 重新计算总价
-        calculateTotal()
-        // 保存更新后的订单信息
-        uni.setStorageSync(STORAGE_KEY_CURRENT_ORDER, orderInfo.value)
-
-        console.debug('event=ui_order_confirm stage=shipping_fee result=calculated')
-      } else {
-        console.warn('event=ui_order_confirm stage=shipping_fee result=fallback reason=invalid_freight_value')
-        orderInfo.value.cost.shippingFee = 18
-        calculateTotal()
-      }
-    } else {
-      console.warn('event=ui_order_confirm stage=shipping_fee result=fallback reason=missing_freight_value')
-      orderInfo.value.cost.shippingFee = 18
-      calculateTotal()
-    }
-
   } catch (error) {
-    console.error('event=ui_order_confirm stage=shipping_fee result=failed reason=request_failed')
-    // 失败时使用默认值
-    orderInfo.value.cost.shippingFee = 18
-    calculateTotal()
-    uni.showToast({
-      title: '运费计算失败，使用默认运费',
-      icon: 'none',
-      duration: 2000
-    })
+    if (!isCurrentQuote()) return
+    console.warn('event=ui_order_confirm stage=shipping_fee result=unavailable')
   } finally {
-    calculatingFreight.value = false
+    if (isCurrentQuote()) calculatingFreight.value = false
   }
 }
 
@@ -951,11 +937,6 @@ const submitOrder = async () => {
       return
     }
     if (requiresShipping.value) {
-      if ((!orderInfo.value.cost || orderInfo.value.cost.shippingFee === undefined || orderInfo.value.cost.shippingFee === null)
-          && selectedAddress.value) {
-        await calculateShippingFee()
-        if (!pageActive) return
-      }
       if (!selectedAddress.value) {
         logCheckoutBlocked('ADDRESS_REQUIRED')
         uni.showToast({ title: '请选择收货地址', icon: 'none' })
@@ -1027,6 +1008,8 @@ const submitOrder = async () => {
       const requestData = prescriptionId.value
         ? { prescriptionId: prescriptionId.value, addressId: selectedAddress.value.id, remark: orderRemark.value.trim(), ...questionnairePayload }
         : { ...orderData, ...questionnairePayload }
+      if (freightQuote.value.key === currentFreightKey.value && freightQuote.value.id
+          && freightQuote.value.expiresAt > Date.now()) requestData.freightQuoteId = freightQuote.value.id
       const cartSnapshot = prescriptionId.value || directPurchase.value ? null
         : Object.fromEntries(orderInfo.value.items.map(item => {
           const key = item.cartKey || item.id, entry = selectionEntries.value[key]
@@ -1448,6 +1431,8 @@ const submitOrder = async () => {
 .value-container {
   display: flex;
   align-items: center;
+  max-width: 58%;
+  text-align: right;
 }
 
 .value.calculating {

@@ -97,24 +97,18 @@
         </view>
         <view
           class="order-card"
-          @click="goToOrderListByStatus(1)"
+          @click="goToOrderListByStatus(2)"
         >
           <view class="order-card-icon">
             <uni-icons
-              type="checkbox"
+              type="gift"
               size="28"
               color="#4A90E2"
             />
           </view>
           <text class="order-card-text">
-            已支付
+            待收货
           </text>
-          <!-- <view
-            v-if="orderStats.paid > 0"
-            class="order-card-badge"
-          >
-            {{ orderStats.paid }}
-          </view> -->
         </view>
         <view
           class="order-card"
@@ -391,7 +385,7 @@ const goToOrderList = () => {
 const goToOrderListByStatus = (status) => {
   const statusMap = {
     0: '待支付',
-    1: '已支付',
+    2: '待收货',
     4: '已取消',
     refund: '退款'
   }
@@ -407,7 +401,6 @@ const goToOrderListByStatus = (status) => {
 
   const statusParamMap = {
     0: 'pending',
-    1: 'paid',
     2: 'received',
     3: 'completed',
     4: 'cancelled'

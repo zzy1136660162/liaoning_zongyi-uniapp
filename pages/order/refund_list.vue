@@ -73,7 +73,7 @@
           <view class="state-icon">
             <uni-icons
               type="refreshempty"
-              size="32"
+              size="26"
               color="#ff6b35"
             />
           </view>
@@ -91,7 +91,7 @@
           <view class="state-icon">
             <uni-icons
               type="info"
-              size="34"
+              size="26"
               color="#ff6b35"
             />
           </view>
@@ -115,7 +115,7 @@
           <view class="state-icon">
             <uni-icons
               type="list"
-              size="34"
+              size="26"
               color="#ff6b35"
             />
           </view>
@@ -798,9 +798,8 @@ export default {
   flex-direction: column;
   align-items: center;
   margin-top: 32rpx;
-  padding: 80rpx 40rpx;
-  border-radius: 24rpx;
-  background: #fff;
+  padding: 64rpx 32rpx;
+  background: transparent;
   text-align: center;
 }
 
@@ -808,25 +807,25 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 124rpx;
-  height: 124rpx;
-  margin-bottom: 30rpx;
+  width: 96rpx;
+  height: 96rpx;
+  margin-bottom: 20rpx;
   border-radius: 50%;
   background: #fff2eb;
 }
 
 .state-title {
   color: #444;
-  font-size: 30rpx;
-  font-weight: 500;
+  font-size: 26rpx;
+  font-weight: 400;
   line-height: 1.5;
 }
 
 .state-description {
   max-width: 100%;
-  margin-top: 14rpx;
+  margin-top: 10rpx;
   color: #999;
-  font-size: 25rpx;
+  font-size: 22rpx;
   line-height: 1.7;
   overflow-wrap: anywhere;
   word-break: break-all;
@@ -840,14 +839,14 @@ export default {
   border-radius: 40rpx;
   color: #ff6b35;
   background: #fff8f4;
-  font-size: 26rpx;
+  font-size: 24rpx;
   line-height: 1.5;
 }
 
 .list-status {
   padding: 10rpx 0 16rpx;
   color: #999;
-  font-size: 24rpx;
+  font-size: 22rpx;
   line-height: 1.6;
   text-align: center;
 }
@@ -859,7 +858,7 @@ export default {
   border: none;
   color: #ff6b35;
   background: transparent;
-  font-size: 25rpx;
+  font-size: 24rpx;
   line-height: 1.6;
 }
 

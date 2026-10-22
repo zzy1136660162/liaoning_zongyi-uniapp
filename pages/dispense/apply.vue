@@ -4,7 +4,7 @@
     <view class="safe-top" />
 
 
-    <view style="padding: 20rpx;">
+    <view class="content">
       <!-- 页面内容 -->
       <scroll-view
         class="body body-scroll"
@@ -187,9 +187,6 @@
             </view>
           </view>
         </view>
-
-        <!-- 占位（让页面更接近你示意图的空白） -->
-        <view style="height: 40vh" />
       </scroll-view>
     </view>
 
@@ -661,6 +658,7 @@ onShow(() => {
 <style scoped>
 /* Safe area 顶部填充（适配状态栏高度）*/
 .safe-top {
+  flex-shrink: 0;
   height: env(safe-area-inset-top);
   background: linear-gradient(135deg, #4a90e2, #67c6ff);
 }
@@ -668,7 +666,10 @@ onShow(() => {
 /* 整体背景 */
 .page {
   background: linear-gradient(180deg, #f0f6ff 0%, #f6f7fb 30%, #f6f7fb 100%);
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 白色导航栏 */
@@ -701,8 +702,16 @@ onShow(() => {
 }
 
 /* 页面滚动区 */
+.content {
+  flex: 1;
+  min-height: 0;
+  padding: 20rpx;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
 .body-scroll {
-  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
+  height: 100%;
 }
 
 /* 卡片 */
@@ -1081,12 +1090,10 @@ onShow(() => {
   justify-content: center;
 }
 
-/* footer 固定底部 */
+/* 提交栏参与页面布局，内容滚动区自动扣除实际高度。 */
 .footer {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
+  flex-shrink: 0;
   background: #fff;
   padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
   box-shadow: 0 -8rpx 30rpx rgba(0,0,0,0.08);

@@ -294,10 +294,12 @@ export const replaceCartData = (cartData) => {
   const next = normalizeCartData(cartData)
   Object.entries(next).forEach(([key, entry]) => {
     const previous = current[key]
+    const sameServerRow = previous?.serverCartItemId && previous.serverCartItemId === entry.serverCartItemId
     const unchanged = previous && cartUserState(previous) === cartUserState(entry) &&
       previous.serverCartItemId === entry.serverCartItemId && previous.serverCartVersion === entry.serverCartVersion
     entry.revision = unchanged && previous.revision ? previous.revision : newCartRevision()
-    if (unchanged) entry.timestamp = previous.timestamp
+    // 同一服务端行保留首次展示的排序时间；勾选、改量只更新数据和版本，不移动商品。
+    if (unchanged || sameServerRow) entry.timestamp = previous.timestamp
   })
   writeCartData(next)
 }
@@ -778,7 +780,7 @@ export const loadCartItems = (categories = [], onlySelected = false, { entries, 
       })
     })
 
-    return cartItems.sort((a, b) => toNumber(a.timestamp, 0) - toNumber(b.timestamp, 0))
+    return cartItems.sort((a, b) => toNumber(a.timestamp, 0) - toNumber(b.timestamp, 0) || a.id.localeCompare(b.id))
   } catch (error) {
     console.error('loadCartItems failed:', error)
     return []
@@ -872,6 +874,7 @@ export const buildOrderItems = (cartItems = [], selectedProductIds = null) => {
       type: resolveProductTypeLabel(item),
       specText: item.specText || item.skuSpecText || '',
       unitPrice: Number(unitPrice.toFixed(2)),
+      weight: item.weight ?? null,
       price: Number((unitPrice * quantity).toFixed(2)),
       quantity
     }

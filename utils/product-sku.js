@@ -28,6 +28,7 @@ export const withProductSku = (product, sku) => {
     skuName: sku.skuName || '',
     skuSpecText: sku.specText || sku.skuName || '',
     price: hasPrice ? price : 0,
+    weight: sku.weight == null ? product.weight : sku.weight,
     originalPrice: Number(product.originalPrice ?? 0),
     unit: sku.unit || product.unit,
     specText: sku.specText || sku.skuName || product.specText,

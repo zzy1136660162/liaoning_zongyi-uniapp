@@ -54,32 +54,32 @@ afterEach(() => {
   endSession()
 })
 
-test('个人中心已支付入口在 onShow 早于 mounted 时仍结束加载并显示订单', async () => {
+test('个人中心待支付入口在 onShow 早于 mounted 时仍结束加载并显示订单', async () => {
   let targetUrl
   const profile = loadSetup('pages/user/profile.vue', {
     ref: value => ({ value }), logButtonClick() {},
     fetchAccountProfile: async () => ({ id: 7, userName: '测试用户' }),
     uni: { navigateTo: ({ url }) => { targetUrl = url } }
   }, ['goToOrderListByStatus'])
-  profile.goToOrderListByStatus(1)
+  profile.goToOrderListByStatus(0)
   const target = new URL(targetUrl, 'https://fixture.invalid')
   assert.equal(target.pathname, '/pages/order/order_list')
-  assert.equal(target.searchParams.get('status'), 'paid')
+  assert.equal(target.searchParams.get('status'), 'pending')
 
   const { state, pageCalls } = createList(Object.fromEntries(target.searchParams))
-  assert.equal(state.activeTab.value, 'paid')
-  pageCalls[0].resolve(page([row('paid-order', { payStatus: 1 })])); await flush()
+  assert.equal(state.activeTab.value, 'pending')
+  pageCalls[0].resolve(page([row('pending-order', { payStatus: 0, orderStatus: 0 })])); await flush()
   assert.equal(state.loading.value, false, '接口已返回后必须退出加载态')
   assert.equal(state.hasLoaded.value, true)
-  assert.deepEqual(state.orders.value.map(order => order.id), ['paid-order'])
+  assert.deepEqual(state.orders.value.map(order => order.id), ['pending-order'])
   assert.equal(state.loadError.value, '')
   assert.equal(pageCalls.length, 1)
-  assert.deepEqual(pageCalls[0].params, { tab: 'paid', pageNum: 1, pageSize: 20 })
+  assert.deepEqual(pageCalls[0].params, { tab: 'pending', pageNum: 1, pageSize: 20 })
 })
 
-test('所有入口分类均在首次请求前确定，缺失或无效参数回退到全部', async () => {
+test('入口分类在首次请求前确定，旧已支付链接和缺失或无效参数回退到全部', async () => {
   for (const status of ['all', 'pending', 'paid', 'cancelled', 'shipping', 'received', 'completed', 'afterSale', '', undefined, 'invalid']) {
-    const expected = !status || status === 'invalid' ? 'all' : status
+    const expected = !status || status === 'invalid' || status === 'paid' ? 'all' : status
     const { state, pageCalls } = createList(status === undefined ? {} : { status })
     assert.equal(pageCalls.length, 1)
     assert.deepEqual(pageCalls[0].params, { tab: expected, pageNum: 1, pageSize: 20 })

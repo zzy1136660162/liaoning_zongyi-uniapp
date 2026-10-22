@@ -23,10 +23,10 @@ const createProfile = () => {
   return { state, requests, routes, hooks, changeSession: () => { generation++ } }
 }
 
-test('个人中心已支付和已取消使用独立筛选，退款继续进入退款列表', () => {
+test('个人中心待支付、待收货和已取消使用独立筛选，退款继续进入退款列表', () => {
   const { state, routes } = createProfile()
-  for (const status of [0, 1, 4, 'refund']) state.goToOrderListByStatus(status)
-  assert.deepEqual(routes, ['/pages/order/order_list?status=pending', '/pages/order/order_list?status=paid',
+  for (const status of [0, 2, 4, 'refund']) state.goToOrderListByStatus(status)
+  assert.deepEqual(routes, ['/pages/order/order_list?status=pending', '/pages/order/order_list?status=received',
     '/pages/order/order_list?status=cancelled', '/pages/order/refund_list'])
 })
 

@@ -7,7 +7,10 @@ export const getOrderSubmission = (kind, data, cartSnapshot = null) => {
     [key, entry.serverCartItemId && entry.serverCartVersion != null
       ? { id: entry.serverCartItemId, version: entry.serverCartVersion, quantity: entry.quantity }
       : { revision: entry.revision, quantity: entry.quantity, timestamp: entry.timestamp }]))
-  const fingerprint = JSON.stringify({ kind, data, cartSnapshot: cartIntent })
+  // 报价刷新不改变购买意图，支付取消或网络重试仍复用原订单。
+  const orderIntent = { ...data }
+  delete orderIntent.freightQuoteId
+  const fingerprint = JSON.stringify({ kind, data: orderIntent, cartSnapshot: cartIntent })
   const previous = uni.getStorageSync(STORAGE_KEY_ORDER_SUBMISSION)
   if (previous?.fingerprint === fingerprint) {
     const attempt = { ...previous, cartSnapshot }

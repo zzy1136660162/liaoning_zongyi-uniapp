@@ -114,7 +114,7 @@ test('购物车结算携带全部所选规格进入唯一目标须知，保持�
   const url = navigation.at(-1).url
   assert.match(url, /product_notice\?id=10/)
   assert.match(url, /action=checkout/)
-  assert.match(url, /selectedItems=20%3A11%2C10%3A11/)
+  assert.deepEqual(new URL(url, 'https://fixture.invalid').searchParams.get('selectedItems').split(',').sort(), ['10:11', '20:11'])
   assert.deepEqual(cart.getCartEntries(), before)
 })
 

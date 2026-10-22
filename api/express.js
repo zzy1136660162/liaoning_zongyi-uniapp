@@ -4,6 +4,13 @@
 
 import { post } from '@/utils/request.js'
 
+/** 订单运费试算：服务端按真实 SKU 重量和数量计算，只返回到付参考报价。 */
+export const queryOrderFreight = params => post('/api/orders/freight-estimate', params, {
+  needAuth: true,
+  showLoading: false,
+  silent: true
+})
+
 /**
  * 查询运费
  * @param {Object} params 查询参数

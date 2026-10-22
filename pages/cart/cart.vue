@@ -66,14 +66,7 @@
             <view
               class="checkbox"
               :class="{ checked: selectedItems.includes(item.id), disabled: !isItemSelectable(item) }"
-            >
-              <uni-icons
-                v-if="selectedItems.includes(item.id)"
-                type="checkmarkempty"
-                size="16"
-                color="#ffffff"
-              />
-            </view>
+            />
           </view>
 
           <!-- 商品信息 -->
@@ -155,14 +148,7 @@
         <view
           class="checkbox"
           :class="{ checked: isAllSelected }"
-        >
-          <uni-icons
-            v-if="isAllSelected"
-            type="checkmarkempty"
-            size="16"
-            color="#ffffff"
-          />
-        </view>
+        />
         <text class="select-all-text">
           全选
         </text>
@@ -671,7 +657,6 @@ export default {
   align-items: center;
   gap: 20rpx;
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
 }
@@ -684,7 +669,8 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  flex: 0 0 44rpx;
+  min-height: 72rpx;
 }
 
 .checkbox-wrapper.disabled {
@@ -692,22 +678,35 @@ export default {
 }
 
 .checkbox {
+  position: relative;
+  box-sizing: border-box;
+  flex: 0 0 44rpx;
   width: 44rpx;
   height: 44rpx;
-  border: 3rpx solid #e1e8ed;
+  border: 2rpx solid #e1e8ed;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   background: #ffffff;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
 }
 
 .checkbox.checked {
   background: #4A90E2;
   border-color: #4A90E2;
-  box-shadow: 0 2rpx 8rpx rgba(74, 144, 226, 0.3);
+}
+
+.checkbox.checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10rpx;
+  height: 20rpx;
+  border: solid #ffffff;
+  border-width: 0 3rpx 3rpx 0;
+  transform: translate(-50%, -60%) rotate(45deg);
 }
 
 .checkbox.disabled {
@@ -718,6 +717,7 @@ export default {
 
 .item-content {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 20rpx;
@@ -734,6 +734,7 @@ export default {
 
 .item-info {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -778,8 +779,10 @@ export default {
 
 .item-bottom {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 12rpx;
   margin-top: auto;
 }
 
@@ -792,7 +795,9 @@ export default {
 
 .quantity-controls {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
+  margin-left: auto;
   gap: 16rpx;
   background: #f5f5f5;
   border-radius: 30rpx;
@@ -858,12 +863,14 @@ export default {
 
 .select-all-wrapper {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 16rpx;
   margin-right: 24rpx;
 }
 
 .select-all-text {
+  white-space: nowrap;
   font-size: 28rpx;
   color: #2c3e50;
   font-weight: 500;
@@ -871,6 +878,7 @@ export default {
 
 .checkout-info {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
@@ -909,11 +917,6 @@ export default {
 .checkout-btn[disabled] {
   background-color: #cccccc;
   color: #999999;
-}
-
-.cart-item:hover {
-  transform: translateY(-2rpx);
-  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.1);
 }
 
 .go-shopping-btn:hover {

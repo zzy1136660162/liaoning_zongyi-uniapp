@@ -166,3 +166,13 @@ test('实际回执模板可编译，收货内容及复制、订单入口均连�
   assert.match(template, /@click="goToOrder"/)
   assert.match(template, /@click="goOrderList"/)
 })
+
+
+test('支付回执展示订单保存的到付报价，线上运费零值不清除预估且缺失快照不沿用旧价', async () => {
+  const { page } = createPage()
+  await page.applyOrderData({ ...order(), shippingFee: 0, estimatedFreight: 12, freightQuoteSource: 'SF_PROD' })
+  assert.match(page.paymentInfo.value.shippingFeeText, /预计 ¥12.00.*到付.*不计入/)
+  assert.equal(page.paymentInfo.value.amount, 36.6)
+  await page.applyOrderData({ ...order(), shippingFee: 0 })
+  assert.equal(page.paymentInfo.value.shippingFeeText, '运费到付，以快递员实际收取为准')
+})

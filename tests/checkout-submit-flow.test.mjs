@@ -36,16 +36,18 @@ const deferred = () => {
 }
 const flush = async () => { for (let index = 0; index < 30; index++) await Promise.resolve() }
 
-async function confirm({ route = {}, readProduct = async () => product(), create, pay } = {}) {
+async function confirm({ route = {}, readProduct = async () => product(), create, pay,
+  readAddresses = async () => [{ id: 8, isDefault: true }],
+  freight = async () => ({ freight: 12, quoteId: 'a'.repeat(32), quoteExpiresAt: Date.now() + 900000, quoteSource: 'SF_PROD' }) } = {}) {
   const hooks = {}, orders = [], payments = []
   const page = loadSetup('pages/order/confirm.vue', {
     ...cart, ...checkout, ...submission, ...session, ...consultation, ...storageKeys,
     ref: value => ({ value }), computed: get => ({ get value() { return get() } }),
     onLoad: callback => { hooks.load = callback }, onShow: callback => { hooks.show = callback },
     onUnload: callback => { hooks.unload = callback }, onMounted() {}, setTimeout: () => 0,
-    getProductDetail: id => readProduct(id), getAddressList: async () => [{ id: 8, isDefault: true }],
+    getProductDetail: id => readProduct(id), getAddressList: readAddresses,
     getPatientList: async () => [{ id: 7, name: '就诊人甲' }, { id: 9, name: '就诊人乙' }],
-    queryFreight: async () => ({ freight: 18 }), ensureWeChatIdentity: () => assert.fail('确认页不能重复获取支付身份'),
+    queryFreight: freight, ensureWeChatIdentity: () => assert.fail('确认页不能重复获取支付身份'),
     createOrder: async data => { orders.push(structuredClone(data)); return create ? create(data, orders.length) : { id: 100, payableAmount: 30 } },
     wechatSinglePay: async (...args) => {
       payments.push({ orderId: args[0], args })
@@ -54,7 +56,8 @@ async function confirm({ route = {}, readProduct = async () => product(), create
     logButtonClick() {}, logPageView() {},
     console: { debug() {}, log() {}, warn() {}, error() {} }
   }, ['submitOrder', 'loadProducts', 'loadOrderInfo', 'orderInfo', 'selectedPatient', 'selectPatient',
-    'patients', 'orderRemark', 'directPurchase', 'selectionEntries', 'selectionIssue', 'submitting', 'canSubmit'])
+    'patients', 'orderRemark', 'directPurchase', 'selectionEntries', 'selectionIssue', 'submitting', 'canSubmit',
+    'freightQuote', 'estimatedShippingFee', 'calculateShippingFee', 'selectedAddress', 'loadAddresses'])
   hooks.load({ selectedItems: '10:11', ...route })
   await hooks.show()
   page.selectPatient(page.patients.value[0])
@@ -382,4 +385,90 @@ test('重放已付款订单跳付款结果且保留receipt清理快照，同页�
   assert.notEqual(nextPage.orders[0].requestId, page.orders[0].requestId)
   assert.equal(nextPage.payments.length, 1)
   assert.equal(nextPage.payments[0].orderId, 101)
+})
+
+
+test('参考报价12在刷新商品、重复重建及提交时保留，线上金额不包含报价', async () => {
+  await addToCart(2)
+  let calls = 0, price = 10
+  const page = await confirm({ readProduct: async () => {
+    const detail = product(); detail.skus[0].price = price; return detail
+  }, freight: async () => { calls++; return { freight: 12, quoteId: 'a'.repeat(32), quoteExpiresAt: Date.now() + 900000 } } })
+  assert.equal(page.estimatedShippingFee.value, 12)
+  price = 15
+  await page.loadProducts()
+  page.loadOrderInfo(); page.loadOrderInfo()
+  assert.equal(page.estimatedShippingFee.value, 12)
+  assert.equal(page.orderInfo.value.total, 30)
+  assert.equal(page.orderInfo.value.cost.shippingFee, 0)
+  await page.submitOrder()
+  assert.equal(page.estimatedShippingFee.value, 12)
+  assert.equal(calls, 1, '同一地址和重量复用仍有效的报价')
+  assert.equal(page.orders[0].freightQuoteId, 'a'.repeat(32))
+  assert.equal(Object.hasOwn(page.orders[0], 'shippingFee'), false)
+  assert.equal(Object.hasOwn(page.orders[0], 'estimatedFreight'), false)
+})
+
+test('支付取消后报价刷新不会改变幂等标识，继续支付同一订单', async () => {
+  let quote = 'a'
+  const page = await confirm({ route: { buyQuantity: '2' },
+    pay: async () => { throw new Error('用户取消支付') },
+    freight: async () => ({ freight: 12, quoteId: quote.repeat(32), quoteExpiresAt: Date.now() + 900000 }) })
+  await page.submitOrder()
+  assert.equal(page.estimatedShippingFee.value, 12)
+  const requestId = page.orders[0].requestId
+  quote = 'b'; page.freightQuote.value.expiresAt = 0
+  await page.submitOrder()
+  assert.equal(page.orders[1].requestId, requestId)
+  assert.equal(page.orders[1].freightQuoteId, 'b'.repeat(32))
+  assert.deepEqual(page.payments.map(payment => payment.orderId), [100, 100])
+  assert.equal(page.orderInfo.value.cost.shippingFee, 0)
+})
+
+test('同一地址ID的详细地址变化后重新报价，旧报价不会继续沿用', async () => {
+  let detail = '地址甲', calls = 0
+  const page = await confirm({ route: { buyQuantity: '1' },
+    readAddresses: async () => [{ id: 8, isDefault: true, addressDetail: detail }],
+    freight: async () => ({ freight: ++calls === 1 ? 12 : 20, quoteExpiresAt: Date.now() + 900000 }) })
+  assert.equal(page.estimatedShippingFee.value, 12)
+  detail = '地址乙'
+  await page.loadAddresses()
+  assert.equal(page.estimatedShippingFee.value, 20)
+  assert.equal(calls, 2)
+})
+
+test('快速切换地址后迟到的旧运费不能覆盖新地址报价', async () => {
+  const old = deferred()
+  const page = await confirm({ route: { buyQuantity: '1' }, freight: async data => {
+    if (data.addressId === 9) return old.promise
+    return { freight: data.addressId === 10 ? 20 : 12, quoteExpiresAt: Date.now() + 900000 }
+  } })
+  page.selectedAddress.value = { id: 9 }
+  const waiting = page.calculateShippingFee()
+  page.selectedAddress.value = { id: 10 }
+  await page.calculateShippingFee()
+  old.resolve({ freight: 99, quoteExpiresAt: Date.now() + 900000 })
+  await waiting
+  assert.equal(page.estimatedShippingFee.value, 20)
+})
+
+test('运费查询失败不伪造0或18，也不阻止到付订单提交', async () => {
+  const page = await confirm({ route: { buyQuantity: '1' }, freight: async () => { throw new Error('fixture unavailable') } })
+  assert.equal(page.estimatedShippingFee.value, null)
+  await page.submitOrder()
+  assert.equal(page.orders.length, 1)
+  assert.equal(Object.hasOwn(page.orders[0], 'freightQuoteId'), false)
+  assert.equal(page.orderInfo.value.cost.shippingFee, 0)
+})
+
+test('页面卸载后迟到报价不再写回页面', async () => {
+  const pending = deferred()
+  const page = await confirm({ route: { buyQuantity: '1' }, freight: async data => data.addressId === 9
+    ? pending.promise : { freight: 12, quoteExpiresAt: Date.now() + 900000 } })
+  page.selectedAddress.value = { id: 9 }
+  const waiting = page.calculateShippingFee()
+  page.unload()
+  pending.resolve({ freight: 99 })
+  await waiting
+  assert.equal(page.estimatedShippingFee.value, null)
 })
