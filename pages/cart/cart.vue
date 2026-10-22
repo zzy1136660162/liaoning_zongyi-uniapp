@@ -1,5 +1,8 @@
 <template>
-  <view class="cart-container">
+  <view
+    class="cart-container"
+    :class="{ 'cart-container--empty': cartItems.length === 0 }"
+  >
     <!-- 购物车标题栏 -->
     <!-- <view class="cart-header">
       <view class="header-left">
@@ -30,16 +33,19 @@
         v-if="cartItems.length === 0"
         class="empty-cart"
       >
-        <image
-          class="empty-icon"
-          :src="getImageUrl('/profile/liaoning_zongyi/empty_cart.png')"
-          mode="aspectFit"
-        />
+        <view class="empty-illustration">
+          <uni-icons
+            type="cart"
+            size="50"
+            color="#4A90E2"
+          />
+        </view>
         <text class="empty-text">
           购物车还是空的
         </text>
         <button
           class="go-shopping-btn"
+          hover-class="go-shopping-btn--pressed"
           @click="goShopping"
         >
           去逛逛
@@ -534,6 +540,25 @@ export default {
   padding-bottom: calc(  env(safe-area-inset-bottom));
 }
 
+.cart-container--empty {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
+}
+
+.cart-container--empty .banner-section {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.cart-container--empty .cart-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64rpx 32rpx 96rpx;
+}
+
 .cart-header {
   display: flex;
   align-items: center;
@@ -607,39 +632,54 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 240rpx 0;
-  background: #ffffff;
-  border-radius: 16rpx;
-  margin: 20rpx 0;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+  width: 100%;
+  text-align: center;
 }
 
-.empty-icon {
-  width: 220rpx;
-  height: 220rpx;
-  margin-bottom: 40rpx;
-  opacity: 0.7;
-  filter: drop-shadow(0 4rpx 12rpx rgba(74, 144, 226, 0.15));
+.empty-illustration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 184rpx;
+  height: 184rpx;
+  margin-bottom: 36rpx;
 }
 
 .empty-text {
-  font-size: 30rpx;
-  color: #666666;
-  margin-bottom: 60rpx;
-  font-weight: 500;
-  letter-spacing: 1rpx;
+  font-size: 32rpx;
+  line-height: 1.5;
+  color: #334155;
+  font-weight: 600;
 }
 
 .go-shopping-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 260rpx;
+  height: 84rpx;
+  margin: 40rpx 0 0;
+  padding: 0;
   background: #4A90E2;
   color: #ffffff;
   font-size: 28rpx;
-  padding: 16rpx 48rpx;
+  line-height: 1.5;
   border-radius: 999rpx;
   border: none;
   font-weight: 500;
-  transition: all 0.3s ease;
+  box-shadow: 0 8rpx 20rpx rgba(74, 144, 226, 0.16);
+  transition: background-color 0.15s ease;
   letter-spacing: 1rpx;
+}
+
+.go-shopping-btn::after {
+  border: none;
+}
+
+.go-shopping-btn--pressed {
+  background: #3b7dcb;
 }
 
 .cart-list {
@@ -919,8 +959,4 @@ export default {
   color: #999999;
 }
 
-.go-shopping-btn:hover {
-  transform: translateY(-2rpx);
-  box-shadow: 0 12rpx 32rpx rgba(74, 144, 226, 0.4);
-}
 </style>
