@@ -1,5 +1,6 @@
 import { isTherapyOrder, hasTherapyEntitlement } from './therapy.js'
 
+// 仅展示接口明确记录的收货来源；NULL/未知值留空，不根据订单已完成状态推断人工或自动确认。
 export const getReceiptConfirmText = order => ({
   1: '客户手动确认',
   2: '系统超期自动确认'

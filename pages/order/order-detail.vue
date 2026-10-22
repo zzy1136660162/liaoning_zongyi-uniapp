@@ -769,6 +769,7 @@
           this.order.payableAmount = orderDetail.payableAmount || this.order.amount
           this.order.payTime = this.formatDateTime(orderDetail.payTime || '')
           this.order.orderStatus = orderDetail.orderStatus
+          // 每次以当前接口值覆盖；历史未记录时清空，避免沿用上一次详情响应的确认来源。
           this.order.receiptConfirmType = orderDetail.receiptConfirmType ?? null
           this.order.orderType = orderDetail.orderType ?? this.order.orderType
           this.order.payStatus = orderDetail.payStatus ?? this.order.payStatus
