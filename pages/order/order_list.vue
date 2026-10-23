@@ -120,7 +120,7 @@
         <view v-else class="order-products-empty">暂无商品明细</view>
 
         <view
-          v-if="hasRedeemEntitlement(order)"
+          v-if="redeemSummaryText(order)"
           class="order-redeem-summary"
         >
           {{ redeemSummaryText(order) }}
@@ -217,7 +217,7 @@ import { checkCanApplyRefund } from '@/api/refund.js'
 import { getOrderItemRefundText, canOrderApplyRefund, shouldContactForPhysicalRefund } from '@/utils/refund.js'
 import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
-import { canPayOrder, getOrderStatusText } from '@/utils/order-status.js'
+import { canPayOrder, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import { useProductImages } from '@/utils/product-image.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
@@ -300,6 +300,10 @@ const hasRedeemEntitlement = (order = {}) => {
 
 const redeemSummaryText = (order = {}) => {
   if (!hasRedeemEntitlement(order)) return ''
+  // 购买资格尚未生效时不提示核销：仅已支付(1)、进入履约(1/2/3)或售后(5/6/7)的订单可展示。
+  if (Number(order.payStatus) !== 1 || ![1, 2, 3, 5, 6, 7].includes(Number(order.status))) return ''
+  // 历史订单可没有履约标记；付款确认中、异常退款中不能按默认核销状态展示可用权益。
+  if (order.paymentFulfillmentStatus && order.paymentFulfillmentStatus !== 'READY') return ''
   const vouchers = flattenRedeemVouchers(order)
   if (vouchers.length > 0) {
     const redeemedCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 1).length
@@ -308,7 +312,7 @@ const redeemSummaryText = (order = {}) => {
     const refundedCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 2).length
     return `到店核销：可用 ${availableCount}，已核销 ${redeemedCount}，退款中 ${frozenCount}，已退废 ${refundedCount}`
   }
-  return Number(order.redeemStatus) === 1 ? '到店核销：已核销' : '到店核销：待核销'
+  return `到店核销：${getRedeemStatusText(order)}`
 }
 
 const resolveRawOrderItems = (order = {}) => {

@@ -106,7 +106,7 @@
       </view>
 
       <!-- 操作按钮 -->
-      <view
+<!--      <view
         v-if="order.statusText === '已完成'"
         class="action-buttons"
       >
@@ -128,7 +128,7 @@
         >
           再次复诊
         </button>
-      </view>
+      </view> -->
 
       <!-- 所有选择的药品列表 -->
       <view

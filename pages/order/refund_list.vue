@@ -470,13 +470,10 @@ export default {
     formatDateTime(dateTime) {
       if (!dateTime) return ''
       const date = new Date(dateTime)
-      return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+      if (Number.isNaN(date.getTime())) return ''
+      const pad = value => String(value).padStart(2, '0')
+      // 固定 24 小时制，避免不同设备的区域设置显示上午/下午。
+      return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
     }
   }
 }

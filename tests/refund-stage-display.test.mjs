@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { getPaymentRefundStatusText, getRefundStageText } from '../utils/refund.js'
 import { getImageUrl } from '../utils/config.js'
-import { loadOptions, PRODUCT_PLACEHOLDER } from './sfc-harness.mjs'
+import { loadOptions, loadSetup, PRODUCT_PLACEHOLDER } from './sfc-harness.mjs'
 
 const returned = { returnLogisticsCompany: '测试物流', returnLogisticsNo: 'TEST-123' }
 const stages = [
@@ -119,4 +119,36 @@ test('最新退款详情保持原商品数据并复用真实 JPG 占位及图片
   assert.match(source, /:src="getProductImageUrl\(item.productImage\)"/)
   assert.match(source, /@error="handleProductImageError\(item.productImage\)"/)
   assert.doesNotMatch(source, /product-placeholder\.png/)
+})
+
+test('订单列表点击退款记录后按申请ID加载详情，商品图片与订单列表一致', async () => {
+  let targetUrl
+  const list = loadSetup('pages/order/order_list.vue', {
+    ref: value => ({ value }), onUnmounted() {},
+    uni: { navigateTo: ({ url }) => { targetUrl = url } }
+  }, ['viewRefundApplication', 'getProductImageUrl'])
+  list.viewRefundApplication(501)
+  assert.equal(targetUrl, '/pages/order/refund_detail?refundApplicationId=501')
+  const response = { id: 501, status: 4, items: [
+    { id: 101, productId: 11, productImage: '/profile/product-a.jpg', productName: '商品甲' },
+    { id: 102, productId: 12, productImage: 'https://example.com/product-b.png', productName: '商品乙' },
+    { id: 103, productId: 13, productImage: null, productName: '缺图商品' }
+  ] }
+  const requests = []
+  const options = loadOptions('pages/order/refund_detail.vue', {
+    getRefundDetail: async id => { requests.push(id); return structuredClone(response) },
+    isCurrentSession: () => true, uni: { showLoading() {}, hideLoading() {} }
+  })
+  const page = { ...options.data(), ...options.methods, ...options.setup() }
+  options.onLoad.call(page, Object.fromEntries(new URLSearchParams(targetUrl.split('?')[1])))
+  await page.loadDetail()
+  assert.deepEqual(requests, ['501'])
+  for (const item of page.detail.items.slice(0, 2)) {
+    assert.equal(page.getProductImageUrl(item.productImage), list.getProductImageUrl(item.productImage))
+    assert.notEqual(page.getProductImageUrl(item.productImage), PRODUCT_PLACEHOLDER)
+  }
+  assert.equal(page.getProductImageUrl(page.detail.items[2].productImage), PRODUCT_PLACEHOLDER)
+  page.handleProductImageError(page.detail.items[0].productImage)
+  assert.equal(page.getProductImageUrl(page.detail.items[0].productImage), PRODUCT_PLACEHOLDER)
+  assert.equal(page.getProductImageUrl(page.detail.items[1].productImage), 'https://example.com/product-b.png')
 })
