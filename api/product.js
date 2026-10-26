@@ -42,7 +42,8 @@ export const getCategoryProducts = (
     payload.keyword = normalizedKeyword
   }
   return post(API_PATHS.CATEGORY.PRODUCTS, payload, {
-    needAuth: true,
+    // 后端公开查询不依赖账号；会话校验不可用时仍应允许浏览、搜索和分页。
+    needAuth: false,
     showLoading: pageNum <= 1
   })
 }

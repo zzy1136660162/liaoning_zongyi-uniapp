@@ -253,6 +253,7 @@ import { onShow, onUnload } from '@dcloudio/uni-app'
 import { ref } from 'vue'
 import { logout } from '@/api/auth.js'
 import { fetchAccountProfile } from '@/utils/account.js'
+import { waitForSessionRecovery } from '@/utils/auth-session.js'
 import { endSession, getSessionToken, getSessionGeneration, isCurrentSession } from '@/utils/session.js'
 import { getOrderStats } from '@/api/order.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
@@ -286,11 +287,27 @@ const loadUserProfile = async () => {
   const sequence = ++profileRequestSequence
   const session = getSessionGeneration()
   const isCurrentRequest = () => pageActive && sequence === profileRequestSequence && isCurrentSession(session)
-  // 重新进入或重试时立即清空上次展示，接口失败不能冒充资料仍然有效。
+  // 重新进入或重试时清空上次展示，接口失败不能冒充资料仍然有效。
   userInfo.value = emptyUserInfo()
+  profileError.value = ''
+  const recovery = waitForSessionRecovery({ retryUnavailable: true })
+  if (recovery) {
+    profileLoading.value = true
+    try { await recovery } catch (error) {
+      if (isCurrentRequest()) profileError.value = error.message || '登录校验暂不可用，请重试'
+      if (pageActive && sequence === profileRequestSequence) profileLoading.value = false
+      return
+    }
+    if (!isCurrentRequest()) {
+      if (pageActive && sequence === profileRequestSequence) {
+        profileLoading.value = false
+        isLoggedIn.value = Boolean(getSessionToken())
+      }
+      return
+    }
+  }
   isLoggedIn.value = Boolean(getSessionToken())
   profileLoading.value = false
-  profileError.value = ''
   if (!isLoggedIn.value) return
   profileLoading.value = true
   try {
@@ -312,6 +329,13 @@ const loadUserProfile = async () => {
 }
 
 const goToLogin = () => {
+  const recovery = waitForSessionRecovery()
+  if (recovery) {
+    recovery.then(() => { if (pageActive) goToLogin() }).catch(error => {
+      if (pageActive && error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message, icon: 'none' })
+    })
+    return
+  }
   if (getSessionToken()) return
   logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_LOGIN', accessTitle: '去登录', accessDescription: '从个人中心进入登录页，完成后返回个人中心' })
   uni.navigateTo({ url: `/pages/register/register?redirect=${encodeURIComponent('/pages/user/profile')}` })
@@ -353,11 +377,16 @@ const handleLogout = async () => {
 const loadOrderStats = async () => {
   if (!pageActive) return
   const sequence = ++statsRequestSequence
+  const session = getSessionGeneration()
+  const recovery = waitForSessionRecovery()
+  if (recovery) {
+    try { await recovery } catch (_) { return }
+    if (!pageActive || sequence !== statsRequestSequence || !isCurrentSession(session)) return
+  }
   if (!getSessionToken()) {
     orderStats.value = { pending: 0, paid: 0, cancelled: 0, refund: 0 }
     return
   }
-  const session = getSessionGeneration()
   const isCurrentRequest = () => pageActive && sequence === statsRequestSequence && isCurrentSession(session)
   try {
     const stats = (await getOrderStats({ silent: true })) || {}

@@ -135,7 +135,7 @@ import { useProductImages } from '@/utils/product-image.js'
 import { buildListCartCategories, getProductCartLines } from '@/utils/product-list-cart.js'
 import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
-import { getToken } from '@/utils/request.js'
+import { requireAccountSession } from '@/utils/auth-session.js'
 import { buildQuestionnaireNoticeUrl } from '@/utils/questionnaire-state.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
@@ -295,9 +295,8 @@ export default {
       const actionLog = { ...PAGE_LOG, actionCode: 'ADD_CART', accessTitle: '加入购物车', accessDescription: '用户从商品列表选择真实可售规格并保存到购物车', extraData: { productId: product?.id } }
       logButtonClick(actionLog)
       let productLoaded = false
-      if (!getToken()) {
+      if (!(await requireAccountSession('/pages/products/priducts_list'))) {
         logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
-        uni.navigateTo({ url: '/pages/register/register?redirect=/pages/products/priducts_list' })
         return
       }
       try {
@@ -372,11 +371,8 @@ export default {
       const session = getSessionGeneration()
       const actionLog = { ...PAGE_LOG, actionCode: 'START_CHECKOUT', accessTitle: '发起商品结算', accessDescription: '用户按列表中选中的商品发起问卷、复诊或订单确认流程', extraData: { selectedCount: this.selectedCartItems.length } }
       logButtonClick(actionLog)
-      if (!getToken()) {
+      if (!(await requireAccountSession('/pages/products/priducts_list'))) {
         logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
-        uni.navigateTo({
-          url: '/pages/register/register?redirect=/pages/products/priducts_list'
-        })
         return
       }
       if (this.selectedCartItems.length === 0) {

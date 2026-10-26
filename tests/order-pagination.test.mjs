@@ -6,11 +6,13 @@ import { beginSession, endSession, getSessionGeneration, isCurrentSession, onSes
 import { get } from '../utils/request.js'
 
 const values = new Map()
-let lists, requests, modals, stoppedSessionListeners, cancelled, confirmed
+let lists, requests, modals, stoppedSessionListeners, cancelled, confirmed, stoppedRefreshes, pageScrolls
 globalThis.uni = {
   getStorageSync: key => values.get(key), setStorageSync: (key, value) => values.set(key, value),
   removeStorageSync: key => values.delete(key), request: options => requests.push(options),
   showLoading() {}, hideLoading() {}, showToast() {}, $emit() {},
+  stopPullDownRefresh: () => { stoppedRefreshes++ },
+  pageScrollTo: options => pageScrolls.push(options),
   showModal: options => modals.push(options)
 }
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
@@ -18,11 +20,14 @@ const row = (id, extra = {}) => ({ id, orderStatus: 1, items: [{ id: `item-${id}
 const page = (rows, pageNum = 1, hasMore = false, total = rows.length) => ({ rows, pageNum, pageSize: 20, hasMore, total })
 const createList = (options = {}) => {
   const pageCalls = [], detailCalls = []
-  let load, mount, unmount, show
+  let load, mount, unmount, show, hide, pullDown, reachBottom
   const state = loadSetup('pages/order/order_list.vue', {
     ref: value => ({ value }), onMounted: callback => { mount = callback },
     onLoad: callback => { load = callback },
     onUnmounted: callback => { unmount = callback }, onShow: callback => { show = callback },
+    onHide: callback => { hide = callback },
+    onPullDownRefresh: callback => { pullDown = callback },
+    onReachBottom: callback => { reachBottom = callback },
     getSessionGeneration, isCurrentSession,
     onSessionChanged: handler => {
       const unsubscribe = onSessionChanged(handler)
@@ -36,7 +41,7 @@ const createList = (options = {}) => {
     getOrderStatusText: () => ''
   }, ['activeTab', 'orders', 'pageNum', 'total', 'hasMore', 'hasLoaded', 'loading', 'refreshing', 'loadError',
     'loadOrders', 'loadMoreOrders', 'refreshOrders', 'retryOrders', 'switchTab', 'handleCancelOrder', 'handleConfirmReceipt'])
-  const list = { state, pageCalls, detailCalls, unmount, show }
+  const list = { state, pageCalls, detailCalls, unmount, show, hide, pullDown, reachBottom }
   lists.push(list)
   // 小程序先触发页面 onLoad、onShow，再触发组件 mounted。
   load?.(options)
@@ -47,6 +52,7 @@ const createList = (options = {}) => {
 
 beforeEach(() => {
   values.clear(); lists = []; requests = []; modals = []; stoppedSessionListeners = 0; cancelled = 0; confirmed = 0
+  stoppedRefreshes = 0; pageScrolls = []
   beginSession('fixture-A')
 })
 afterEach(() => {
@@ -121,29 +127,93 @@ test('带筛选入口进入后切换分类，返回页面保留当前分类并�
 })
 
 test('第一页加载期间不显示空态，触底按页追加并去重，到末页不再请求', async () => {
-  const { state, pageCalls } = createList()
+  const { state, pageCalls, reachBottom } = createList()
   assert.equal(state.hasLoaded.value, false)
   assert.equal(state.loading.value, true)
   assert.deepEqual(pageCalls[0].params, { tab: 'all', pageNum: 1, pageSize: 20 })
   pageCalls[0].resolve(page([row(1), row(2)], 1, true, 3)); await flush()
   assert.equal(state.total.value, 3)
-  const next = state.loadMoreOrders()
-  state.loadMoreOrders()
+  const next = reachBottom()
+  reachBottom()
   assert.equal(pageCalls.length, 2)
   assert.deepEqual(pageCalls[1].params, { tab: 'all', pageNum: 2, pageSize: 20 })
   pageCalls[1].resolve(page([row(2), row(3)], 2, false, 3)); await next
   assert.deepEqual(state.orders.value.map(order => order.id), [1, 2, 3])
   assert.equal(state.pageNum.value, 2)
-  state.loadMoreOrders()
+  reachBottom()
   assert.equal(pageCalls.length, 2)
 
   const source = readFileSync(new URL('../pages/order/order_list.vue', import.meta.url), 'utf8')
   assert.match(source, /v-if="hasLoaded && !loading && !loadError && orders.length === 0"/)
-  assert.match(source, /@scrolltolower="loadMoreOrders"/)
-  assert.match(source, /@refresherrefresh="refreshOrders"/)
   assert.match(source, /@click="retryOrders"/)
   assert.doesNotMatch(source, /filteredOrders|getRefundList/)
+  const config = JSON.parse(readFileSync(new URL('../pages.json', import.meta.url), 'utf8'))
+  const style = config.subPackages.find(group => group.root === 'pages/order')
+    .pages.find(entry => entry.path === 'order_list').style
+  assert.equal(style.enablePullDownRefresh, true)
+  assert.equal(style.onReachBottomDistance, 120)
+  assert.notEqual(style.disableScroll, true)
 })
+
+for (const failed of [false, true]) {
+  test(`原生下拉刷新${failed ? '失败' : '成功'}后收起动画，重复下拉不叠加请求`, async () => {
+    const { state, pageCalls, pullDown } = createList({ status: 'completed' })
+    pageCalls[0].resolve(page([row('before')])); await flush()
+    const refreshing = pullDown()
+    pullDown()
+    assert.equal(state.refreshing.value, true)
+    assert.equal(pageCalls.length, 2)
+    assert.deepEqual(pageCalls[1].params, { tab: 'completed', pageNum: 1, pageSize: 20 })
+    if (failed) pageCalls[1].reject(new Error('刷新失败'))
+    else pageCalls[1].resolve(page([row('refreshed')]))
+    await refreshing
+    assert.equal(stoppedRefreshes, 1)
+    assert.equal(state.refreshing.value, false)
+    assert.equal(state.loading.value, false)
+    assert.equal(state.loadError.value, failed ? '刷新失败' : '')
+    assert.deepEqual(state.orders.value.map(order => order.id), failed ? [] : ['refreshed'])
+  })
+}
+
+test('切换分类回到页面顶部，旧刷新不能提前结束新分类的原生刷新', async () => {
+  const { state, pageCalls, pullDown } = createList()
+  pageCalls[0].resolve(page([row('before')])); await flush()
+  const oldRefresh = pullDown()
+  const switched = state.switchTab('completed')
+  assert.equal(stoppedRefreshes, 1)
+  assert.deepEqual(pageScrolls, [{ scrollTop: 0, duration: 0 }])
+  state.switchTab('completed')
+  state.switchTab('invalid')
+  assert.equal(pageScrolls.length, 1)
+  const currentRefresh = pullDown()
+  pageCalls[1].resolve(page([row('stale-refresh')]))
+  pageCalls[2].resolve(page([row('stale-tab')]))
+  await Promise.all([oldRefresh, switched])
+  assert.equal(stoppedRefreshes, 1)
+  assert.equal(state.refreshing.value, true)
+  assert.deepEqual(state.orders.value, [])
+  pageCalls[3].resolve(page([row('current')]))
+  await currentRefresh
+  assert.equal(stoppedRefreshes, 2)
+  assert.equal(state.refreshing.value, false)
+  assert.deepEqual(state.orders.value.map(order => order.id), ['current'])
+})
+
+for (const action of ['hide', 'unmount', 'session']) {
+  test(`原生刷新在${{ hide: '离开页面', unmount: '页面卸载', session: '切换账号' }[action]}时收起，迟到响应不重复收起`, async () => {
+    const list = createList()
+    list.pageCalls[0].resolve(page([row('before')])); await flush()
+    const refreshing = list.pullDown()
+    if (action === 'session') beginSession('fixture-B')
+    else list[action]()
+    assert.equal(stoppedRefreshes, 1)
+    assert.equal(list.state.refreshing.value, false)
+    list.pageCalls[1].resolve(page([row('late')]))
+    await refreshing
+    assert.equal(stoppedRefreshes, 1)
+    if (action === 'session') assert.deepEqual(list.state.orders.value, [])
+  })
+}
 
 test('每次返回订单列表都重新请求当前分类第一页', async () => {
   const list = createList()

@@ -7,7 +7,7 @@ const safeNumber = value => typeof value === 'number' && Number.isFinite(value) 
 // Only fixed route words may appear in logs; dynamic segments and query values are never logged.
 const routeWords = new Set(('api auth wechat login login-by-openid logout send-sms openid phone payment single combine ' +
   'create-by-order sync-by-order notify refund-notify refund apply cancel detail list audit revoke internal admin ' +
-  'orders order patients user profile consultation consultations prescriptions prescription redeem vouchers manual ' +
+  'orders order patients user profile session recover cart items consultation consultations prescriptions prescription redeem vouchers manual ' +
   'confirm complete delivery logistics status access-log categories products').split(' '))
 export const diagnosticRoute = url => {
   const path = typeof url === 'string' ? url.split(/[?#]/, 1)[0] : ''
@@ -42,4 +42,13 @@ export const logRequestDiagnostic = fields => {
 }
 export const logPaymentDiagnostic = (event, orderId, reason) => {
   try { writePaymentDiagnostic(event, orderId, reason) } catch (_) { /* Keep the original payment behavior. */ }
+}
+
+const authReasons = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'TOKEN_EXPIRED', 'SESSION_MISSING',
+  'SESSION_REPLACED', 'SESSION_REVOKED', 'ACCOUNT_UNAVAILABLE', 'ACCOUNT_NOT_REGISTERED', 'ACCOUNT_MISMATCH'])
+export const logSessionDiagnostic = (status, reason, generation) => {
+  try {
+    console.info('[diagnostic] event=auth_session status=' + safeWord(status) +
+      ' reason=' + (authReasons.has(reason) ? reason : 'none') + ' generation=' + safeNumber(generation))
+  } catch (_) { /* 日志不可用不能影响登录恢复。 */ }
 }

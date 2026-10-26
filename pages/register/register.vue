@@ -92,6 +92,19 @@
 			</view>
 			
 			<!-- 登录按钮 -->
+      <view
+        v-if="waitingForRecovery"
+        class="session-notice"
+      >
+        正在恢复登录，请稍候…
+      </view>
+      <view
+        v-else-if="recoveryUnavailable"
+        class="session-notice"
+        @click="retryRecovery"
+      >
+        登录校验暂不可用，点击重试
+      </view>
 			<button 
 				class="login-btn" 
 				:class="{ disabled: !canSubmit }"
@@ -110,7 +123,7 @@ import { STORAGE_KEY_AGREEMENT_ACCEPTED } from '@/utils/storage.js'
 import { sendSmsCode, login, getWeChatLoginCode, getWeChatUserProfile } from '@/api/auth.js'
 import { establishAccountSession } from '@/utils/account.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
-import { refreshCart } from '@/utils/cart.js'
+import { beginManualAccountLogin, getAccountSessionState, onAccountSessionState, waitForSessionRecovery, restoreAccountSession } from '@/utils/auth-session.js'
 import { assertCurrentSession, getSessionGeneration } from '@/utils/session.js'
 import { ID_TYPE_OPTIONS, patientHisSyncNotice } from '@/utils/patient.js'
 
@@ -135,6 +148,9 @@ export default {
 			countdown: 0,
 			countdownTimer: null,
 			loggingIn: false,
+			waitingForRecovery: false,
+			recoveryUnavailable: false,
+			stopAccountState: null,
 			redirectUrl: '' // 登录成功后的跳转地址
 		}
 	},
@@ -154,14 +170,36 @@ export default {
 			this.redirectUrl = decodeURIComponent(options.redirect || options.redirectUrl)
 		}
 		this.loadAgreementPreference()
+		this.waitingForRecovery = Boolean(waitForSessionRecovery())
+		this.recoveryUnavailable = getAccountSessionState().status === 'unavailable'
+		this.stopAccountState = onAccountSessionState(this.updateRecoveryState)
+		if (getAccountSessionState().status === 'authenticated' && !this.loggingIn) {
+			redirectToWithFallback(this.redirectUrl || '/pages/products/medicine_list')
+		}
 	},
 	onUnload() {
+		this.stopAccountState?.()
 		// 离开页面后停止短信倒计时。
 		if (this.countdownTimer) {
 			clearInterval(this.countdownTimer)
 		}
 	},
 	methods: {
+		updateRecoveryState(state) {
+			if (this.waitingForRecovery && !this.loggingIn && state.status === 'authenticated') {
+				this.waitingForRecovery = false
+				redirectToWithFallback(this.redirectUrl || '/pages/products/medicine_list')
+			}
+			this.waitingForRecovery = ['checking', 'recovering'].includes(state.status)
+			this.recoveryUnavailable = state.status === 'unavailable'
+		},
+		async retryRecovery() {
+			if (this.loggingIn || this.waitingForRecovery) return
+			try { await restoreAccountSession({ retry: true }) }
+			catch (error) {
+				if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: '登录校验暂不可用，请稍后重试', icon: 'none' })
+			}
+		},
 		// 仅恢复设备上的协议偏好，姓名、证件和手机号不保存草稿。
 		loadAgreementPreference() {
 			try {
@@ -268,6 +306,8 @@ export default {
 
 			logButtonClick({ ...PAGE_LOG, actionCode: 'LOGIN', accessTitle: '提交注册登录', accessDescription: '用户提交注册登录并进行微信及身份验证' })
 			this.loggingIn = true
+			this.waitingForRecovery = false
+			const finishManualLogin = beginManualAccountLogin()
 			const session = getSessionGeneration()
 			let expectedSession = session
 			try {
@@ -308,11 +348,6 @@ export default {
 				const result = await login(loginData)
 				assertCurrentSession(session)
 				expectedSession = establishAccountSession(result)
-				refreshCart().catch(error => {
-					if (getSessionGeneration() === expectedSession && error.code !== 'SESSION_CHANGED') {
-						uni.showToast({ title: error.message || '购物车加载失败', icon: 'none' })
-					}
-				})
 				
 				logAccess({ ...PAGE_LOG, actionCode: 'LOGIN', accessTitle: '注册登录成功', accessDescription: '服务端已返回有效凭证并建立本次登录会话', actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
 				uni.hideLoading()
@@ -343,6 +378,7 @@ export default {
 					icon: 'none'
 				})
 			} finally {
+				finishManualLogin()
 				this.loggingIn = false
 			}
 		},
@@ -500,6 +536,13 @@ export default {
 
 .link-text {
 	color: #87CEEB;
+}
+
+.session-notice {
+  padding: 16rpx 0;
+  color: #3284ed;
+  font-size: 26rpx;
+  text-align: center;
 }
 
 .login-btn {

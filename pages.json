@@ -151,7 +151,9 @@
           "path": "order_list",
           "style": {
             "navigationBarTitleText": "我的订单",
-            "navigationBarBackgroundColor": "#ffffff"
+            "navigationBarBackgroundColor": "#ffffff",
+            "enablePullDownRefresh": true,
+            "onReachBottomDistance": 120
           }
         },
         {

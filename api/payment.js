@@ -6,6 +6,7 @@ import { getSessionGeneration, getSessionToken, isCurrentSession, sessionChanged
 import { post } from '../utils/request.js'
 import { ensureWeChatIdentity } from './auth.js'
 import { logPaymentDiagnostic } from '../utils/diagnostics.js'
+import { waitForSessionRecovery, rejectUnavailableSession } from '../utils/auth-session.js'
 
 const isPaymentSessionCurrent = (session, token) => isCurrentSession(session) && getSessionToken() === token
 const assertPaymentSession = (session, token) => {
@@ -37,7 +38,11 @@ export const createPrepay = async (channel, orderId) => {
   if (channel !== 'wechat') {
     throw new Error('暂不支持该支付渠道')
   }
-  return prepareWechatPayment(orderId, getSessionGeneration(), getSessionToken())
+  const session = getSessionGeneration()
+  const recovery = waitForSessionRecovery({ retryUnavailable: true })
+  if (recovery && !(await recovery)) return rejectUnavailableSession()
+  if (!isCurrentSession(session)) throw sessionChangedError()
+  return prepareWechatPayment(orderId, session, getSessionToken())
 }
 
 /**
@@ -68,6 +73,9 @@ export const syncPaymentByOrder = async (orderId, outTradeNo) => {
  */
 export const wechatSinglePay = async (orderId) => {
   const session = getSessionGeneration()
+  const recovery = waitForSessionRecovery({ retryUnavailable: true })
+  if (recovery && !(await recovery)) return rejectUnavailableSession()
+  if (!isCurrentSession(session)) throw sessionChangedError()
   const token = getSessionToken()
   try {
     logPaymentDiagnostic('client_pay_prepare', orderId)

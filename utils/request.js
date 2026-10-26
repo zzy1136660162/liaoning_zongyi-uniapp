@@ -5,7 +5,7 @@
 
 import { BASE_URL, TIMEOUT } from './config.js'
 import { createTraceId, logRequestDiagnostic } from './diagnostics.js'
-import { handleAuthenticationFailure } from './auth-failure.js'
+import { recoverAuthenticationFailure, waitForSessionRecovery, rejectUnavailableSession } from './auth-session.js'
 import { endSession, getSessionGeneration, isCurrentSession, sessionChangedError, getSessionToken } from './session.js'
 
 /**
@@ -34,7 +34,8 @@ export const clearToken = () => {
  */
 export const request = (options = {}) => {
   const session = getSessionGeneration()
-  return new Promise((resolve, reject) => {
+  const execute = (attempt = 0) => new Promise((resolve, reject) => {
+    if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
     const {
       url,
       method = 'GET',
@@ -83,7 +84,7 @@ export const request = (options = {}) => {
       data: data,
       header: requestHeader,
       timeout: TIMEOUT,
-      success: (res) => {
+      success: async (res) => {
         logRequestDiagnostic({ traceId, url, method: method.toUpperCase(),
           httpStatus: res.statusCode, businessCode: res.data && res.data.code,
           durationMs: Date.now() - startTime, stale: !isCurrentSession(session) })
@@ -99,8 +100,14 @@ export const request = (options = {}) => {
         const { statusCode, data: responseData } = res
 
         if (statusCode === 401 || Number(responseData?.code) === 401) {
-          reject(handleAuthenticationFailure({ generation: session, token: sentToken, required: needAuth,
-            redirect: authRedirect, message: responseData?.message }))
+          try {
+            await recoverAuthenticationFailure({ generation: session, token: sentToken, required: needAuth,
+              redirect: authRedirect, message: responseData?.message, authReason: responseData?.data?.authReason,
+              allowRecovery: attempt === 0 })
+            // 已发出的写请求绝不自动重放；GET 只在本轮恢复后重新读取一次。
+            if (method.toUpperCase() === 'GET' && attempt === 0) resolve(execute(1))
+            else reject(Object.assign(new Error('登录已恢复，请再次确认操作'), { code: 'AUTH_RETRY_REQUIRED' }))
+          } catch (error) { reject(error) }
           return
         }
 
@@ -116,16 +123,10 @@ export const request = (options = {}) => {
         }
 
         // 业务状态码检查
-        if (responseData.code === 200) {
+        if (responseData?.code === 200) {
           // 普通接口返回 data；分页接口可显式保留顶层元数据。
           resolve(returnResponse ? responseData : responseData.data)
         } else {
-          // 其他业务错误
-          // uni.showToast({
-          //   title: responseData.message || '请求失败',
-          //   icon: 'none',
-          //   duration: 2000
-          // })
           reject(responseData)
         }
       },
@@ -141,25 +142,16 @@ export const request = (options = {}) => {
         if (showLoading) {
           uni.hideLoading()
         }
-
-
-        let errorMessage = '网络请求失败'
-        if (err.errMsg) {
-          if (err.errMsg.includes('timeout')) {
-            errorMessage = '请求超时，请检查网络'
-          } else if (err.errMsg.includes('fail')) {
-            errorMessage = '网络连接失败'
-          }
-        }
-        // uni.showToast({
-        //   title: errorMessage,
-        //   icon: 'none',
-        //   duration: 2000
-        // })
-
         reject(err)
       }
     })
+  })
+  const pending = options.needAuth !== false ? waitForSessionRecovery({ retryUnavailable: true }) : null
+  if (!pending) return execute()
+  return pending.then(ready => {
+    if (!ready) return rejectUnavailableSession(options.authRedirect !== false)
+    if (!isCurrentSession(session)) throw sessionChangedError()
+    return execute()
   })
 }
 

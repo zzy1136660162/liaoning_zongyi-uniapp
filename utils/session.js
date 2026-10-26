@@ -1,9 +1,11 @@
 import * as storage from './storage.js'
 
 const LOGOUT_KEY = 'explicit_logout'
+const LOGIN_REQUIRED_KEY = 'auth_login_required'
 let generation = 0
 let analyticsId = ''
 const listeners = new Set()
+const renewedTokens = new Set()
 
 export const getSessionToken = () => {
   try { return uni.getStorageSync(storage.STORAGE_KEY_TOKEN) || '' }
@@ -36,20 +38,23 @@ export const onSessionChanged = callback => {
 const advanceSession = () => {
   generation += 1
   analyticsId = ''
+  renewedTokens.clear()
   listeners.forEach(callback => callback())
 }
 
 export const isExplicitlyLoggedOut = () => uni.getStorageSync(LOGOUT_KEY) === true
+export const getLoginRequiredReason = () => uni.getStorageSync(LOGIN_REQUIRED_KEY) || ''
 
 const clearUserStorage = () => {
   ACCOUNT_STORAGE_KEYS.forEach(key => uni.removeStorageSync(key))
 }
 
 // 用户数据在账号边界清理，不把上一账号购物车合并到新账号。
-export const endSession = ({ explicit = true } = {}) => {
+export const endSession = ({ explicit = true, reason = '' } = {}) => {
   advanceSession()
   clearUserStorage()
   uni.setStorageSync(LOGOUT_KEY, explicit)
+  uni.setStorageSync(LOGIN_REQUIRED_KEY, reason)
   uni.hideLoading?.()
   uni.$emit?.('cartUpdated')
 }
@@ -61,7 +66,25 @@ export const beginSession = token => {
   if (previousToken !== token) clearUserStorage()
   uni.setStorageSync(storage.STORAGE_KEY_TOKEN, token)
   uni.setStorageSync(LOGOUT_KEY, false)
+  uni.removeStorageSync(LOGIN_REQUIRED_KEY)
 }
+
+// 恢复接口已核验原账号和本次微信身份。同账号换凭证不切换代次，不丢弃当前业务草稿。
+export const acceptRecoveredSession = (result, expectedGeneration, expectedToken) => {
+  assertCurrentSession(expectedGeneration)
+  if (getSessionToken() !== expectedToken) throw sessionChangedError()
+  if (typeof result?.token !== 'string' || !result.token.trim() || !/^[1-9]\d*$/.test(String(result.userId))) {
+    throw new Error('登录恢复结果不完整，请重新登录')
+  }
+  if (!expectedToken) clearUserStorage()
+  uni.setStorageSync(storage.STORAGE_KEY_TOKEN, result.token)
+  uni.setStorageSync(LOGOUT_KEY, false)
+  uni.removeStorageSync(LOGIN_REQUIRED_KEY)
+  if (expectedToken) renewedTokens.add(expectedToken)
+}
+
+export const isCurrentOrRenewedCredential = (value, token) =>
+  isCurrentSession(value) && (getSessionToken() === token || renewedTokens.has(token))
 
 export const getAnalyticsSessionId = () => {
   if (!analyticsId) analyticsId = `visit_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`

@@ -57,6 +57,27 @@
         v-else
         class="cart-list"
       >
+        <view class="cart-toolbar">
+          <view
+            class="select-all-wrapper"
+            @click="toggleSelectAll"
+          >
+            <view
+              class="checkbox"
+              :class="{ checked: isAllSelected }"
+            />
+            <text class="select-all-text">
+              全选
+            </text>
+          </view>
+          <button
+            class="clear-selected-btn"
+            :disabled="selectedItems.length === 0 || selectionSaving || removingSelected"
+            @click="removeSelectedItems"
+          >
+            清空选中
+          </button>
+        </view>
         <view
           v-for="item in cartItems"
           :key="item.id"
@@ -147,19 +168,6 @@
       v-if="cartItems.length > 0"
       class="checkout-bar"
     >
-      <view
-        class="select-all-wrapper"
-        @click="toggleSelectAll"
-      >
-        <view
-          class="checkbox"
-          :class="{ checked: isAllSelected }"
-        />
-        <text class="select-all-text">
-          全选
-        </text>
-      </view>
-
       <view class="checkout-info">
         <text class="total-text">
           合计：<text class="total-price">
@@ -173,7 +181,7 @@
 
       <button
         class="checkout-btn"
-        :disabled="selectedItems.length === 0"
+        :disabled="selectedItems.length === 0 || selectionSaving || removingSelected"
         @click="goToCheckout"
       >
         {{ isEditMode ? '删除' : '结算' }}
@@ -210,7 +218,7 @@ import {
 } from '@/utils/cart-events.js'
 import { getImageUrl } from '@/utils/config.js'
 import { useProductImages } from '@/utils/product-image.js'
-import { getToken } from '@/utils/request.js'
+import { requireAccountSession } from '@/utils/auth-session.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { logPageView, logButtonClick, logAccess } from '@/utils/accessLog.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
@@ -236,6 +244,7 @@ export default {
       isEditMode: false,
       currentTab: 'cart',
       selectionSaving: false,
+      removingSelected: false,
       loading: false,
       // 加载期间再次进入页面，只排队一次后续查询，避免丢掉最新后台状态。
       pendingServerRefresh: false,
@@ -339,7 +348,7 @@ export default {
       this.isEditMode = !this.isEditMode
     },
     async toggleItemSelection(itemId) {
-      if (this.selectionSaving) return
+      if (this.selectionSaving || this.removingSelected) return
       const normalizedId = itemId
       const item = this.cartItems.find(cartItem => cartItem.id === normalizedId)
       if (!this.isItemSelectable(item)) {
@@ -354,7 +363,7 @@ export default {
       finally { this.selectionSaving = false }
     },
     async toggleSelectAll() {
-      if (this.selectionSaving) return
+      if (this.selectionSaving || this.removingSelected) return
       const nextSelected = !this.isAllSelected
       const selectionMap = {}
       this.cartItems.forEach(item => {
@@ -435,40 +444,58 @@ export default {
         url: '/pages/products/medicine_list'
       })
     },
-    async goToCheckout() {
-      if (this.selectionSaving) return
-      const session = getSessionGeneration()
-      const actionLog = { ...PAGE_LOG, actionCode: this.isEditMode ? 'REMOVE_CART_ITEMS' : 'START_CHECKOUT', accessTitle: this.isEditMode ? '批量删除购物车商品' : '发起购物车结算', accessDescription: this.isEditMode ? '用户确认移除购物车中选中的商品规格' : '用户按选中商品发起问卷、复诊或订单确认流程', extraData: { selectedCount: this.selectedItems.length } }
-      logButtonClick(actionLog)
-      if (this.isEditMode) {
-        if (this.selectedItems.length === 0) {
-          logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'NO_SELECTION' } })
-          uni.showToast({ title: '请选择要删除的商品', icon: 'none' })
-          return
-        }
-        uni.showModal({
-          title: '确认删除',
-          content: '确定要删除选中的 ' + this.selectedItems.length + ' 个商品吗？',
-          success: async (res) => {
-            if (!res.confirm) {
-              if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'CANCELLED' })
-              return
-            }
-            if (!isCurrentSession(session)) return
-            try {
-              await removeFromCart(this.selectedItems)
-              this.loadCartData()
-              this.isEditMode = false
-              logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
-              uni.showToast({ title: '删除成功', icon: 'success' })
-            } catch (error) {
-              if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED' })
-              this.showCartError(error)
-            }
-          }
-        })
+    removeSelectedItems() {
+      if (this.selectionSaving || this.removingSelected) return
+      if (this.selectedItems.length === 0) {
+        uni.showToast({ title: '请选择要清空的商品', icon: 'none' })
         return
       }
+      const session = getSessionGeneration()
+      const selectedIds = [...this.selectedItems]
+      const actionLog = { ...PAGE_LOG, actionCode: 'REMOVE_CART_ITEMS', accessTitle: '批量删除购物车商品', accessDescription: '用户确认移除购物车中选中的商品规格', extraData: { selectedCount: selectedIds.length } }
+      logButtonClick(actionLog)
+      this.removingSelected = true
+      uni.showModal({
+        title: '清空选中商品',
+        content: '确定要从购物车移除选中的 ' + selectedIds.length + ' 项商品吗？',
+        confirmText: '确认清空',
+        success: async (res) => {
+          try {
+            if (!isCurrentSession(session)) return
+            if (!res.confirm) {
+              logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'CANCELLED' })
+              return
+            }
+            await removeFromCart(selectedIds)
+            if (!isCurrentSession(session)) return
+            this.loadCartData()
+            this.isEditMode = false
+            logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
+            uni.showToast({ title: '清空成功', icon: 'success' })
+          } catch (error) {
+            if (isCurrentSession(session)) {
+              logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED' })
+              this.showCartError(error)
+            }
+          } finally {
+            this.removingSelected = false
+          }
+        },
+        fail: (error) => {
+          this.removingSelected = false
+          if (isCurrentSession(session)) this.showCartError(error)
+        }
+      })
+    },
+    async goToCheckout() {
+      if (this.selectionSaving || this.removingSelected) return
+      if (this.isEditMode) {
+        this.removeSelectedItems()
+        return
+      }
+      const session = getSessionGeneration()
+      const actionLog = { ...PAGE_LOG, actionCode: 'START_CHECKOUT', accessTitle: '发起购物车结算', accessDescription: '用户按选中商品发起问卷、复诊或订单确认流程', extraData: { selectedCount: this.selectedItems.length } }
+      logButtonClick(actionLog)
 
       if (this.selectedItems.length === 0) {
         logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'NO_SELECTION' } })
@@ -483,9 +510,8 @@ export default {
         return
       }
 
-      if (!getToken()) {
+      if (!(await requireAccountSession('/pages/cart/cart'))) {
         logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
-        uni.navigateTo({ url: '/pages/register/register' })
         return
       }
 
@@ -687,6 +713,33 @@ export default {
   flex-direction: column;
   gap: 20rpx;
   padding: 0;
+}
+
+.cart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24rpx;
+}
+
+.clear-selected-btn {
+  margin: 0;
+  padding: 0 8rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
+  font-size: 26rpx;
+  color: #4A90E2;
+  background: transparent;
+  border: none;
+}
+
+.clear-selected-btn::after {
+  border: none;
+}
+
+.clear-selected-btn[disabled] {
+  color: #a8b7c7;
+  background: transparent;
 }
 
 .cart-item {
@@ -906,7 +959,7 @@ export default {
   flex-shrink: 0;
   align-items: center;
   gap: 16rpx;
-  margin-right: 24rpx;
+  min-height: 88rpx;
 }
 
 .select-all-text {

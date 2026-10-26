@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { test, beforeEach, afterEach, mock } from 'node:test'
 import { beginSession, endSession, getSessionGeneration, getSessionToken, isCurrentSession, isExplicitlyLoggedOut, assertCurrentSession } from '../utils/session.js'
 import { request } from '../utils/request.js'
-import { handleAuthenticationFailure } from '../utils/auth-failure.js'
 import { uploadFile } from '../api/common.js'
 import { logout } from '../api/logout.js'
 import { getRefundStageText } from '../utils/refund.js'
@@ -85,49 +84,6 @@ test('注销失败只重试一次，并固定使用退出前凭证', async () =>
   retry.fail({}); assert.deepEqual(await p, { confirmed: false, attempts: 2 })
   mock.timers.tick(5000); assert.equal(calls.length, 0); assert.equal(getSessionToken(), 'fixture-B')
 })
-test('首页旧凭证失效后只恢复一次登录，新会话资料由业务页按需读取', async () => {
-  let loginCount = 0, profileCount = 0
-  const page = loadOptions('pages/index/index.vue', {
-    getSessionGeneration, isCurrentSession, isExplicitlyLoggedOut, assertCurrentSession,
-    getToken: getSessionToken, establishAccountSession: result => { beginSession(result.token); return getSessionGeneration() },
-    getWeChatLoginCode: async () => 'fixture-fresh-code',
-    loginByWeChatCode: async () => { loginCount++; return { token: 'fixture-B' } },
-    fetchAccountProfile: async options => {
-      assert.deepEqual(options, { authRedirect: false })
-      profileCount++
-      if (profileCount === 1) throw handleAuthenticationFailure({ generation: getSessionGeneration(), token: getSessionToken(), required: true, redirect: false })
-      return { id: 7, userName: 'fixture' }
-    }
-  })
-  await page.methods.loadCurrentUser.call({})
-  assert.equal(loginCount, 1); assert.equal(profileCount, 1); assert.equal(getSessionToken(), 'fixture-B')
-  assert.equal(values.has('user_info'), false); assert.equal(values.has('user_register_info'), false)
-  assert.equal(redirects, 0); assert.equal(prompts, 0)
-})
-
-test('首页新登录无需资料初始化，主动退出不自动登录，旧微信授权不能建立后来会话', async () => {
-  let loginCount = 0, profileCount = 0, finishCode
-  const mocks = {
-    getSessionGeneration, isCurrentSession, isExplicitlyLoggedOut, assertCurrentSession, getToken: getSessionToken,
-    establishAccountSession: result => { beginSession(result.token); return getSessionGeneration() },
-    getWeChatLoginCode: async () => 'fixture-code',
-    loginByWeChatCode: async () => { loginCount++; return { token: 'fixture-B' } },
-    fetchAccountProfile: async () => { profileCount++; throw new Error('must not initialize profile') }
-  }
-  endSession({ explicit: false })
-  await loadOptions('pages/index/index.vue', mocks).methods.loadCurrentUser.call({})
-  assert.equal(loginCount, 1); assert.equal(profileCount, 0); assert.equal(getSessionToken(), 'fixture-B')
-  endSession()
-  await loadOptions('pages/index/index.vue', mocks).methods.loadCurrentUser.call({})
-  assert.equal(loginCount, 1)
-  endSession({ explicit: false })
-  const page = loadOptions('pages/index/index.vue', { ...mocks,
-    getWeChatLoginCode: () => new Promise(resolve => { finishCode = resolve }) })
-  const pending = page.methods.loadCurrentUser.call({})
-  beginSession('fixture-C'); finishCode('old-code'); await pending
-  assert.equal(loginCount, 1); assert.equal(getSessionToken(), 'fixture-C')
-})
-
 test('注册登录保留授权拒绝后的身份登录和会话保护，延迟跳转不能影响后来账号', async () => {
   mock.timers.enable({ apis: ['setTimeout'] })
   const options = loadOptions('pages/register/register.vue', {

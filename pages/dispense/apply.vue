@@ -21,8 +21,9 @@
             <view class="med-left">
               <image
                 class="med-thumb"
-                :src="getImageUrl(item.image)"
+                :src="getProductImageUrl(item.image)"
                 mode="aspectFill"
+                @error="handleProductImageError(item.image)"
               />
               <view
                 v-if="item.quantity"
@@ -312,7 +313,7 @@ import { getPatientList } from '@/api/patient.js'
 import { getPatientProfileNotice } from '@/utils/patient.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
-import { getImageUrl } from '@/utils/config.js'
+import { useProductImages } from '@/utils/product-image.js'
 import { resolveProductFlow } from '@/utils/product-biz.js'
 import {
   CONSULTATION_MODE_AI,
@@ -320,6 +321,7 @@ import {
   getConsultationDoctorByMode
 } from '@/utils/consultation-mode.js'
 
+const { getProductImageUrl, handleProductImageError } = useProductImages()
 const cartItems = ref([])
 const quantityRenderVersion = ref(0)
 const categories = ref([])

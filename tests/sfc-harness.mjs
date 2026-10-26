@@ -20,9 +20,14 @@ import { getActionFailureResult } from '../utils/accessLog.js'
 import { deriveBirthDateFromId, getPatientProfileNotice } from '../utils/patient.js'
 import { createPageReturn } from '../utils/page-return.js'
 import { formatFreightEstimate } from '../utils/freight.js'
+import { waitForSessionRecovery, beginManualAccountLogin, getAccountSessionState, onAccountSessionState } from '../utils/auth-session.js'
 
-const logMocks = { formatFreightEstimate, getCurrentInstance: () => ({}), onLoad() {}, onShow() {}, onHide() {}, onResize() {}, logPageView() {}, logButtonClick() {}, logAccess() {}, getActionFailureResult,
+const logMocks = { formatFreightEstimate, getCurrentInstance: () => ({}), onLoad() {}, onShow() {}, onHide() {}, onResize() {}, onPullDownRefresh() {}, onReachBottom() {}, logPageView() {}, logButtonClick() {}, logAccess() {}, getActionFailureResult,
   getSessionToken, onSessionChanged, sessionChangedError,
+  waitForSessionRecovery, beginManualAccountLogin, getAccountSessionState, onAccountSessionState,
+  // 页面测试隔离身份服务；真实恢复与导航在 auth-session.test 中验证。
+  requireAccountSession: async () => true,
+  restoreAccountSession: async () => false,
   // 页面单测默认使用合成账户；账户传输、鉴权与无缓存契约由 account-profile.test 单独验证。
   fetchAccountProfile: async () => ({ id: 7, userName: '测试账户', phone: '13800000000', idType: '身份证', idCardNo: '110101199001011237', avatarUrl: '' }),
   refreshCart: async () => [], changeCartItemQuantity: async () => true }

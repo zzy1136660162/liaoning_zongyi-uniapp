@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createTraceId, diagnosticRoute, logRequestDiagnostic, logPaymentDiagnostic } from '../utils/diagnostics.js'
+import { createTraceId, diagnosticRoute, logRequestDiagnostic, logPaymentDiagnostic, logSessionDiagnostic } from '../utils/diagnostics.js'
 import { request } from '../utils/request.js'
 
 test('trace IDs are bounded and query strings / dynamic routes never appear in diagnostics', () => {
@@ -65,8 +65,21 @@ test('a broken console cannot interrupt request resolution or client payment dia
     call.success({ statusCode: 200, data: { code: 200, data: { id: 123 } } })
     assert.deepEqual(await response, { id: 123 })
     assert.doesNotThrow(() => logPaymentDiagnostic('client_pay_failed', 123, 'sdk_failure'))
+    assert.doesNotThrow(() => logSessionDiagnostic('recovering', 'SESSION_MISSING', 1))
   } finally {
     console.info = originalInfo
     console.warn = originalWarn
   }
+})
+
+test('登录恢复日志只接受固定原因，不输出服务器传回的未知内容', () => {
+  const lines = [], original = console.info
+  console.info = line => lines.push(line)
+  try {
+    logSessionDiagnostic('recovering', 'SESSION_MISSING', 3)
+    logSessionDiagnostic('guest', 'private-token-value', 4)
+    assert.match(lines[0], /reason=SESSION_MISSING generation=3/)
+    assert.match(lines[1], /reason=none generation=4/)
+    assert.ok(lines.every(line => !line.includes('private')))
+  } finally { console.info = original }
 })

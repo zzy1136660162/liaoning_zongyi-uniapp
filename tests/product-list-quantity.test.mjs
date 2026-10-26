@@ -146,6 +146,7 @@ for (const name of ['medicine_detail', 'therapy_detail']) {
     cart.replaceCartData({ '10:11': { productId: 10, skuId: 11, quantity: 1, stock: 6, price: 5, available: true } })
     const pending = [], page = recommendation(() => new Promise(resolve => pending.push(resolve)))
     const first = page.flyToCart({}, { id: 10 }), second = page.flyToCart({}, { id: 10 })
+    await Promise.resolve(); await Promise.resolve()
     pending[1](detail()); await second
     pending[0](detail()); await first
     assert.equal(cart.getCartEntries()['10:11'].quantity, 3)
@@ -155,11 +156,13 @@ for (const name of ['medicine_detail', 'therapy_detail']) {
     cart.replaceCartData({ '10:11': { productId: 10, skuId: 11, quantity: 2, stock: 6, available: true } })
     let finish
     const request = recommendation(() => new Promise(resolve => { finish = resolve })).flyToCart({}, { id: 10 })
+    await Promise.resolve(); await Promise.resolve()
     cart.replaceCartData({
       '10:11': { productId: 10, skuId: 11, quantity: 2, stock: 6, available: true },
       '10:12': { productId: 10, skuId: 12, quantity: 3, stock: 9, available: true }
     })
     const before = structuredClone(cart.getCartEntries())
+    await Promise.resolve(); await Promise.resolve()
     finish(detail()); await request
     assert.deepEqual(cart.getCartEntries(), before)
     assert.equal(navigations.at(-1).url, '/pages/cart/cart')

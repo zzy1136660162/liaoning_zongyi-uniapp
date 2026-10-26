@@ -16,12 +16,7 @@
 
 <script>
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
-import { getWeChatLoginCode, loginByWeChatCode } from '@/api/auth.js'
-import { establishAccountSession, fetchAccountProfile } from '@/utils/account.js'
-import { getToken } from '@/utils/request.js'
 import { getImageUrl } from '@/utils/config.js'
-import { refreshCart } from '@/utils/cart.js'
-import { assertCurrentSession, getSessionGeneration, isExplicitlyLoggedOut, isCurrentSession } from '@/utils/session.js'
 
 const PAGE_LOG = { moduleCode: 'ENTRY', accessType: '就诊引导', pageType: 'INDEX', requestUri: '/pages/index/index', pageId: '' }
 
@@ -37,7 +32,6 @@ export default {
 		}
 	},
 	onLoad() {
-		this.loadCurrentUser()
 		this.startCountdown()
 	},
 	onUnload() {
@@ -46,42 +40,6 @@ export default {
 		}
 	},
 	methods: {
-		async loadCurrentUser() {
-			try {
-				if (isExplicitlyLoggedOut()) return
-				let session = getSessionGeneration()
-				const signIn = async () => {
-					const code = await getWeChatLoginCode()
-					assertCurrentSession(session)
-					const result = await loginByWeChatCode(code)
-					assertCurrentSession(session)
-					// 登录只建立会话，个人资料由实际使用页面向接口读取。
-					session = establishAccountSession(result)
-					const signedInSession = session
-					refreshCart().catch(error => {
-						if (isCurrentSession(signedInSession) && error.code !== 'SESSION_CHANGED') {
-							uni.showToast({ title: error.message || '购物车加载失败', icon: 'none' })
-						}
-					})
-				}
-				if (!getToken()) {
-					await signIn()
-					return
-				}
-				// 静默校验已有凭证；401 时允许在启动页恢复登录，不弹出登录跳转。
-				try { await fetchAccountProfile({ authRedirect: false }) }
-				catch (error) {
-					if (!error.invalidated || !isCurrentSession(error.sessionGeneration) || isExplicitlyLoggedOut()) throw error
-					session = error.sessionGeneration
-					await signIn()
-				}
-				assertCurrentSession(session)
-			} catch (error) {
-				// 未注册或登录态变化时保留访客流程，由用户主动登录。
-				if (error?.code !== 'SESSION_CHANGED') console.warn('event=ui_index_index stage=restore_account_session result=warning reason=operation_incomplete')
-			}
-		},
-		
 		startCountdown() {
 			this.timer = setInterval(() => {
 				this.countdown--

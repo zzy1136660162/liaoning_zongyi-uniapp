@@ -1,37 +1,30 @@
 <template>
   <view class="order-list-page">
     <!-- 标签页 -->
-    <scroll-view
-      class="tabs"
-      scroll-x
-      :scroll-into-view="'order-tab-' + activeTab"
-      :show-scrollbar="false"
-    >
-      <view class="tabs-content">
-        <view
-          v-for="tab in tabs"
-          :id="'order-tab-' + tab.key"
-          :key="tab.key"
-          class="tab-item"
-          :class="{ active: activeTab === tab.key }"
-          @click="switchTab(tab.key)"
-        >
-          {{ tab.label }}
+    <view class="tabs-sticky">
+      <scroll-view
+        class="tabs"
+        scroll-x
+        :scroll-into-view="'order-tab-' + activeTab"
+        :show-scrollbar="false"
+      >
+        <view class="tabs-content">
+          <view
+            v-for="tab in tabs"
+            :id="'order-tab-' + tab.key"
+            :key="tab.key"
+            class="tab-item"
+            :class="{ active: activeTab === tab.key }"
+            @click="switchTab(tab.key)"
+          >
+            {{ tab.label }}
+          </view>
         </view>
-      </view>
-    </scroll-view>
+      </scroll-view>
+    </view>
 
     <!-- 订单列表 -->
-    <scroll-view
-      :key="activeTab"
-      class="order-list"
-      scroll-y
-      refresher-enabled
-      :refresher-triggered="refreshing"
-      :lower-threshold="120"
-      @refresherrefresh="refreshOrders"
-      @scrolltolower="loadMoreOrders"
-    >
+    <view class="order-list">
       <view
         v-if="hasLoaded && !loading && !loadError && orders.length === 0"
         class="empty"
@@ -201,7 +194,7 @@
           没有更多订单了
         </text>
       </view>
-    </scroll-view>
+    </view>
 
     <TabBar
       current="order"
@@ -211,7 +204,7 @@
 
 <script setup>
 import { ref, onUnmounted } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/order.js'
 import { checkCanApplyRefund } from '@/api/refund.js'
 import { getOrderItemRefundText, canOrderApplyRefund, shouldContactForPhysicalRefund } from '@/utils/refund.js'
@@ -405,6 +398,12 @@ const hydrateMissingOrderItems = async (pageOrders, isCurrentRequest) => {
   })
 }
 
+const stopRefreshing = () => {
+  if (!refreshing.value) return
+  refreshing.value = false
+  uni.stopPullDownRefresh()
+}
+
 const fetchOrderPage = async (nextPage) => {
   const sequence = ++requestSequence
   const session = getSessionGeneration()
@@ -432,7 +431,7 @@ const fetchOrderPage = async (nextPage) => {
   } finally {
     if (isCurrentRequest()) {
       loading.value = false
-      refreshing.value = false
+      stopRefreshing()
     }
   }
 }
@@ -459,6 +458,7 @@ const retryOrders = () => {
 }
 
 const refreshOrders = () => {
+  if (disposed || refreshing.value) return
   refreshing.value = true
   return loadOrders()
 }
@@ -470,7 +470,9 @@ const refundActionText = (order = {}) => {
 // 切换标签
 const switchTab = (key) => {
   if (key === activeTab.value || !tabs.value.some(tab => tab.key === key)) return
+  stopRefreshing()
   activeTab.value = key
+  uni.pageScrollTo({ scrollTop: 0, duration: 0 })
   logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_FILTER', accessTitle: '筛选订单', accessDescription: '切换订单列表的状态筛选', extraData: { statusFilter: key } })
   return loadOrders()
 }
@@ -696,7 +698,7 @@ onLoad((options = {}) => {
     hasMore.value = false
     hasLoaded.value = false
     loading.value = false
-    refreshing.value = false
+    stopRefreshing()
     loadError.value = '登录状态已变更'
   })
 })
@@ -706,7 +708,13 @@ onShow(() => {
   loadOrders()
 })
 
+onPullDownRefresh(refreshOrders)
+onReachBottom(loadMoreOrders)
+// 原生刷新动画属于当前页面，离开时结束，避免迟到响应影响其他页面。
+onHide(stopRefreshing)
+
 onUnmounted(() => {
+  stopRefreshing()
   disposed = true
   requestSequence += 1
   unsubscribeSessionChanged?.()
@@ -727,19 +735,20 @@ $success: #10b981;
 $info: #3b82f6;
 
 .order-list-page {
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
   background: $order-bg;
-  display: flex;
-  flex-direction: column;
   color: $text;
 }
 
-/* 顶部 Tabs：更“粘性 + 质感” */
-.tabs {
+/* 普通容器承担吸顶和完整遮挡，避免列表透过横向滚动组件的上沿。 */
+.tabs-sticky {
   position: sticky;
   top: 0;
   z-index: 20;
+  background: $card-bg;
+}
+
+.tabs {
   flex-shrink: 0;
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.92);
@@ -795,9 +804,6 @@ $info: #3b82f6;
 
 /* 列表容器：底部留安全区 */
 .order-list {
-  flex: 1;
-  height: 0;
-  min-height: 0;
   padding: 20rpx 20rpx calc(140rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }

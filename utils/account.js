@@ -1,7 +1,8 @@
 import { getUserProfile } from '../api/auth.js'
 import { STORAGE_KEY_WECHAT_OPENID } from './storage.js'
-import { beginSession, getSessionGeneration, getSessionToken, isCurrentSession,
-  onSessionChanged, sessionChangedError } from './session.js'
+import { waitForSessionRecovery, rejectUnavailableSession, confirmManualAccountSession } from './auth-session.js'
+import { beginSession, getSessionGeneration, getSessionToken, isCurrentOrRenewedCredential,
+  onSessionChanged, isCurrentSession, sessionChangedError } from './session.js'
 
 /**
  * 账户资料的唯一业务入口。
@@ -27,13 +28,19 @@ onSessionChanged(() => profileRequests.clear())
 /** @returns {Promise<Readonly<AccountProfile>>} 接口失败直接抛错，由调用页面展示重试。 */
 export const fetchAccountProfile = ({ authRedirect = true } = {}) => {
   const session = getSessionGeneration()
+  const recovery = waitForSessionRecovery({ retryUnavailable: true })
+  if (recovery) return recovery.then(ready => {
+    if (!ready) return rejectUnavailableSession(authRedirect)
+    if (!isCurrentSession(session)) throw sessionChangedError()
+    return fetchAccountProfile({ authRedirect })
+  })
   const token = getSessionToken()
   const pending = profileRequests.get(authRedirect)
   if (pending && pending.session === session && pending.token === token) return pending.promise
 
   const operation = { session, token }
   operation.promise = getUserProfile({ authRedirect }).then(profile => {
-    if (!isCurrentSession(session) || getSessionToken() !== token) throw sessionChangedError()
+    if (!isCurrentOrRenewedCredential(session, token)) throw sessionChangedError()
     if (!profile || typeof profile !== 'object' || Array.isArray(profile)
         || !['string', 'number'].includes(typeof profile.id)
         || !/^[1-9]\d*$/.test(String(profile.id))
@@ -60,6 +67,7 @@ export const establishAccountSession = loginResponse => {
   }
   try {
     beginSession(loginResponse.token)
+    confirmManualAccountSession(loginResponse.token)
   } catch (_) {
     throw Object.assign(new Error('登录凭证保存失败，请重试'), {
       code: 'SESSION_STORAGE_FAILED', sessionGeneration: getSessionGeneration()

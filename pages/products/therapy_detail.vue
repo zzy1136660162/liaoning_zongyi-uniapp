@@ -820,7 +820,7 @@ import {
   normalizePurchaseQuantity,
   resolvePurchaseQuantityLimit
 } from '@/utils/purchase-quantity.js'
-import { getToken } from '@/utils/request.js'
+import { requireAccountSession } from '@/utils/auth-session.js'
 import { checkoutEntries, directPurchaseQuery } from '@/utils/checkout.js'
 import {
   getDeliverySummary,
@@ -1101,15 +1101,7 @@ const buildDetailRedirect = () => {
   return product.value.id ? `/pages/products/therapy_detail?id=${product.value.id}` : '/pages/products/therapy_detail'
 }
 
-const ensureLogin = () => {
-  if (getToken()) {
-    return true
-  }
-  uni.navigateTo({
-    url: `/pages/register/register?redirect=${encodeURIComponent(buildDetailRedirect())}`
-  })
-  return false
-}
+const ensureLogin = () => requireAccountSession(buildDetailRedirect())
 
 const ensureCartCompatible = (targetProduct) => {
   const result = resolveCartCompatibility(targetProduct)
@@ -1175,7 +1167,7 @@ const handlePurchaseAction = async (mode, targetProduct = product.value, selecte
     uni.showToast({ title: error.message, icon: 'none' }); return false
   }
 
-  if (!ensureLogin()) {
+  if (!(await ensureLogin())) {
     logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
     return false
   }
@@ -1353,7 +1345,7 @@ const animateFlyToCart = () => {
 const flyToCart = async (event, item) => {
   const actionLog = { ...PAGE_LOG, pageId: routeProductId.value, actionCode: 'ADD_CART', accessTitle: '推荐商品加入购物车', accessDescription: '用户从详情页推荐区域为指定商品规格增加购物车数量', extraData: { productId: item.id, entry: 'recommend', addedQuantity: 1 } }
   logButtonClick(actionLog)
-  if (!ensureLogin()) {
+  if (!(await ensureLogin())) {
     logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_REQUIRED' } })
     return
   }

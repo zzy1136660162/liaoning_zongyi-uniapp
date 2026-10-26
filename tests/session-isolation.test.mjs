@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import * as storage from '../utils/storage.js'
 import { endSession, beginSession, isExplicitlyLoggedOut, getAnalyticsSessionId } from '../utils/session.js'
 import { request, getToken } from '../utils/request.js'
-import { getWeChatLoginCode, getWeChatOpenId, loginByWeChatCode, login } from '../api/auth.js'
+import { getWeChatLoginCode, getWeChatOpenId, login } from '../api/auth.js'
 import { uploadFile } from '../api/common.js'
 
 const values = new Map()
@@ -115,7 +115,7 @@ test('同凭证会话初始化保留下单重试标识、付款清理快照和�
   assert.deepEqual(values.get(storage.STORAGE_KEY_CHECKOUT_PRODUCT_IDS), ['10:11'])
 })
 
-test('openid查询、code登录、注册分别消费新code且不存sessionKey', async () => {
+test('openid查询与注册分别消费新code且不存sessionKey', async () => {
   requests = []
   const identity = getWeChatOpenId()
   await Promise.resolve()
@@ -127,17 +127,10 @@ test('openid查询、code登录、注册分别消费新code且不存sessionKey',
   assert.equal('sessionKey' in info, false)
   assert.equal(values.has('wechat_session_key'), false)
   requests = []
-  const code = await getWeChatLoginCode()
-  const signIn = loginByWeChatCode(code)
-  const signInCall = take()
-  assert.deepEqual(signInCall.data, { code: 'fresh-2' })
-  ok(signInCall, { token: 'fixture-token' })
-  await signIn
-  requests = []
   const wechatCode = await getWeChatLoginCode()
   const register = login({ wechatCode, phone: 'fixture-phone', code: 'fixture-sms' })
   const registerCall = take()
-  assert.equal(registerCall.data.wechatCode, 'fresh-3')
+  assert.equal(registerCall.data.wechatCode, 'fresh-2')
   assert.equal(registerCall.data.wechatOpenid, undefined)
   ok(registerCall, { token: 'fixture-token' })
   await register

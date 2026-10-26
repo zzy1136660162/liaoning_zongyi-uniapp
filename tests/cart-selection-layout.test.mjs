@@ -5,7 +5,7 @@ import { cartApiFixture as api, installCartApi } from './cart-api-fixture.mjs'
 import { shouldReloadCartFromServer, subscribeCartUpdated } from '../utils/cart-events.js'
 import { loadOptions } from './sfc-harness.mjs'
 
-const storage = new Map(), listeners = new Set(), pages = [], frames = [], messages = []
+const storage = new Map(), listeners = new Set(), pages = [], frames = [], messages = [], modals = []
 let mutationTime
 const product = (productId, skuId = 1) => ({ productId, skuId, productName: `测试商品${productId}`,
   price: 5, stock: 20, available: true, productCategory: 2, goodsMerchantType: 1 })
@@ -17,10 +17,11 @@ const entries = () => Object.fromEntries(initialKeys.map((key, index) => {
 }))
 
 beforeEach(() => {
-  storage.clear(); listeners.clear(); pages.length = 0; frames.length = 0; messages.length = 0; mutationTime = 10
+  storage.clear(); listeners.clear(); pages.length = 0; frames.length = 0; messages.length = 0; modals.length = 0; mutationTime = 10
   globalThis.uni = {
     getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value),
     removeStorageSync: key => storage.delete(key), showToast: message => messages.push(message),
+    showModal: options => modals.push(options),
     $on: (_event, handler) => listeners.add(handler), $off: (_event, handler) => listeners.delete(handler),
     $emit: (event, payload) => {
       if (event !== 'cartUpdated') return
@@ -45,10 +46,10 @@ beforeEach(() => {
 
 afterEach(() => pages.forEach(({ definition, state }) => definition.onUnload.call(state)))
 
-const createPage = () => {
+const createPage = (mocks = {}) => {
   const definition = loadOptions('pages/cart/cart.vue', {
     ...cart, TabBar: {}, shouldReloadCartFromServer, subscribeCartUpdated,
-    console: { log() {}, info() {}, error() {} }
+    console: { log() {}, info() {}, error() {} }, ...mocks
   })
   const state = { ...definition.data(), ...definition.methods }
   for (const [key, getter] of Object.entries(definition.computed)) {
@@ -160,4 +161,121 @@ test('商品排序时间相同且接口倒序返回时，刷新和全选仍保�
 
   assertStableFrames()
   assert.equal(state.isAllSelected, true)
+})
+
+test('清空选中按规格批量删除，保留未选规格并同步金额和购物车数量', async () => {
+  const state = createPage()
+  await state.toggleItemSelection('10:1')
+  await state.toggleItemSelection('20:1')
+
+  state.removeSelectedItems()
+  assert.match(modals[0].content, /2 项商品/)
+  assert.deepEqual(state.cartItems.map(item => item.id), initialKeys, '确认前保留商品')
+  await modals[0].success({ confirm: true })
+
+  const deletion = api.requests.find(request => request.method === 'DELETE')
+  assert.equal(deletion.path, '/api/cart/items')
+  assert.equal(new URLSearchParams(deletion.query).get('itemKeys'), '10:1,20:1')
+  assert.deepEqual(state.cartItems.map(item => item.id), ['10:2'])
+  assert.deepEqual(api.rows.map(item => `${item.productId}:${item.skuId}`), ['10:2'])
+  assert.deepEqual(state.selectedItems, [])
+  assert.equal(state.selectedTotalPrice, 0)
+  assert.equal(state.cartCount, 2)
+  assert.equal(cart.getCartTotalQuantity(), 2, '角标使用的完整购物车数量同步更新')
+  assert.equal(state.removingSelected, false)
+  assert.equal(messages.at(-1).title, '清空成功')
+})
+
+test('全选后清空进入空购物车状态，刷新接口后仍为空', async () => {
+  const state = createPage()
+  await state.toggleSelectAll()
+  state.removeSelectedItems()
+  await modals[0].success({ confirm: true })
+  await state.loadCartFromServer()
+  assert.deepEqual(state.cartItems, [])
+  assert.equal(state.cartCount, 0)
+  assert.equal(state.isAllSelected, false)
+  assert.equal(cart.getCartTotalQuantity(), 0)
+})
+
+test('没有选中或勾选保存期间不发起清空，取消确认与弹窗失败均允许再次操作', async () => {
+  const state = createPage()
+  state.removeSelectedItems()
+  assert.equal(modals.length, 0)
+  assert.equal(messages.at(-1).title, '请选择要清空的商品')
+  await state.toggleItemSelection('10:1')
+  state.selectionSaving = true
+  state.removeSelectedItems()
+  assert.equal(modals.length, 0)
+  state.selectionSaving = false
+  state.removeSelectedItems()
+  state.removeSelectedItems()
+  assert.equal(modals.length, 1, '连续点击只弹出一次确认')
+  await modals[0].success({ confirm: false })
+  assert.equal(state.removingSelected, false)
+  assert.deepEqual(state.selectedItems, ['10:1'])
+  state.removeSelectedItems()
+  modals[1].fail({ errMsg: 'showModal:fail' })
+  assert.equal(state.removingSelected, false)
+  assert.equal(api.requests.filter(request => request.method === 'DELETE').length, 0)
+  assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
+})
+
+test('删除等待期间阻止重复提交和结算，失败保留选择与商品并可重试', async () => {
+  const state = createPage()
+  await state.toggleItemSelection('10:1')
+  let held
+  api.onRequest = (options, execute) => {
+    if (options.method === 'DELETE') held = options
+    else execute()
+  }
+  state.removeSelectedItems()
+  const pending = modals[0].success({ confirm: true })
+  await new Promise(setImmediate)
+  assert.ok(held)
+  state.removeSelectedItems()
+  await state.toggleSelectAll()
+  await state.toggleItemSelection('10:2')
+  await state.goToCheckout()
+  assert.equal(modals.length, 1)
+  assert.deepEqual(state.selectedItems, ['10:1'])
+  assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
+  held.fail({ errMsg: 'request:fail timeout' })
+  await pending
+  assert.equal(state.removingSelected, false)
+  assert.deepEqual(state.selectedItems, ['10:1'])
+  assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
+  assert.equal(api.rows.length, 3)
+  assert.ok(!messages.some(message => message.title === '清空成功'))
+
+  api.onRequest = null
+  state.removeSelectedItems()
+  await modals[1].success({ confirm: true })
+  assert.deepEqual(state.cartItems.map(item => item.id), ['10:2', '20:1'])
+  assert.equal(state.removingSelected, false)
+})
+
+test('确认期间后台改变勾选，仍只删除弹窗确认的原选中范围', async () => {
+  const state = createPage()
+  await state.toggleItemSelection('10:1')
+  state.removeSelectedItems()
+  await cart.updateProductSelection('10:1', false)
+  await cart.updateProductSelection('10:2', true)
+  await modals[0].success({ confirm: true })
+  assert.deepEqual(state.cartItems.map(item => item.id), ['10:2', '20:1'])
+  assert.deepEqual(state.selectedItems, ['10:2'])
+  assert.equal(state.selectedTotalPrice, 10)
+})
+
+test('确认弹窗期间切换账号，旧确认不能删除新账号商品', async () => {
+  let active = true
+  const state = createPage({ getSessionGeneration: () => 1, isCurrentSession: () => active })
+  await state.toggleItemSelection('10:1')
+  state.removeSelectedItems()
+  active = false
+  await modals[0].success({ confirm: true })
+  assert.equal(api.requests.filter(request => request.method === 'DELETE').length, 0)
+  assert.equal(state.removingSelected, false)
+  assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
+  assert.ok(!messages.some(message => message.title === '清空成功'))
 })

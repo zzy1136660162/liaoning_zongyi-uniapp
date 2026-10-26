@@ -5,6 +5,8 @@
 import { get, post } from '../utils/request.js'
 import { API_PATHS } from '../utils/config.js'
 import { assertCurrentSession, getSessionGeneration, getSessionToken, sessionChangedError } from '../utils/session.js'
+import { getWeChatLoginCode } from '../utils/auth-transport.js'
+export { getWeChatLoginCode } from '../utils/auth-transport.js'
 import { 
   STORAGE_KEY_WECHAT_OPENID, 
   STORAGE_KEY_WECHAT_UNIONID
@@ -55,21 +57,6 @@ export const getUserProfile = ({ authRedirect = true } = {}) => {
     showLoading: false
   })
 }
-
-/** 使用本次 uni.login 的一次性 code 登录；不能使用本地 openid 作为凭证。 */
-export const loginByWeChatCode = (code) => post(API_PATHS.AUTH.LOGIN_BY_WECHAT_CODE, { code }, {
-  needAuth: false,
-  showLoading: false,
-  header: { 'Content-Type': 'application/x-www-form-urlencoded' }
-})
-
-export const getWeChatLoginCode = () => new Promise((resolve, reject) => {
-  uni.login({
-    provider: 'weixin',
-    success: result => result.code ? resolve(result.code) : reject(new Error('微信登录未返回授权码')),
-    fail: () => reject(new Error('微信登录失败，请重试'))
-  })
-})
 
 /**
  * 退出登录

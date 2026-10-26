@@ -39,7 +39,7 @@ assert.doesNotMatch(orderListPage, /tab-badge/)
 assert.doesNotMatch(orderListPage, /tab\.count/)
 assert.doesNotMatch(orderListPage, /updateTabCounts/)
 assert.match(orderListPage, /key:\s*['"]completed['"]/)
-assert.match(orderListPage, /@scrolltolower="loadMoreOrders"/)
+assert.match(orderListPage, /onReachBottom\(loadMoreOrders\)/)
 assert.doesNotMatch(orderListPage, /class="therapy-qr-image"/)
 
 assert.match(prescriptionDetailPage, /resolvePrescriptionDoctorName/)

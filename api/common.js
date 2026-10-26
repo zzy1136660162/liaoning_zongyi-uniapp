@@ -1,18 +1,20 @@
 import { getSessionGeneration, isCurrentSession, sessionChangedError, getSessionToken } from '../utils/session.js'
-import { handleAuthenticationFailure } from '../utils/auth-failure.js'
+import { recoverAuthenticationFailure, waitForSessionRecovery, rejectUnavailableSession } from '../utils/auth-session.js'
 import { API_PATHS, BASE_URL, TIMEOUT } from '../utils/config.js'
 
 export const parseUploadResponse = (res = {}) => {
-  if (res.statusCode !== 200) {
-    throw Object.assign(new Error(`上传失败(${res.statusCode || 0})`), { code: res.statusCode })
-  }
-
   const responseData = typeof res.data === 'string'
     ? JSON.parse(res.data || '{}')
     : (res.data || {})
 
+  if (res.statusCode !== 200) {
+    throw Object.assign(new Error(`上传失败(${res.statusCode || 0})`), {
+      code: res.statusCode, authReason: responseData.data?.authReason
+    })
+  }
+
   if (responseData.code !== 200) {
-    throw Object.assign(new Error(responseData.message || '上传失败'), { code: responseData.code })
+    throw Object.assign(new Error(responseData.message || '上传失败'), { code: responseData.code, authReason: responseData.data?.authReason })
   }
 
   const data = typeof responseData.data === 'string' ? { url: responseData.data } : (responseData.data || {})
@@ -28,7 +30,7 @@ export const uploadFile = (filePath, options = {}) => {
   const startTime = Date.now()
   const url = options.url || API_PATHS.COMMON.UPLOAD
 
-  return new Promise((resolve, reject) => {
+  const execute = () => new Promise((resolve, reject) => {
     const required = options.needAuth !== false
     const token = required ? getSessionToken() : ''
     const header = {
@@ -48,7 +50,7 @@ export const uploadFile = (filePath, options = {}) => {
       formData: options.formData || {},
       header,
       timeout: options.timeout || TIMEOUT,
-      success: (res) => {
+      success: async (res) => {
         if (!isCurrentSession(session)) { reject(sessionChangedError()); return }
         const durationMs = Date.now() - startTime
         try {
@@ -56,11 +58,13 @@ export const uploadFile = (filePath, options = {}) => {
           console.info('event=common_upload stage=response result=success durationMs=%s', durationMs)
           resolve(data)
         } catch (error) {
-          const uploadError = Number(error.code) === 401
-            ? handleAuthenticationFailure({ generation: session, token: sentToken, required, redirect: options.authRedirect !== false })
-            : error
           console.warn('event=common_upload stage=response result=failed reason=parse_error durationMs=%s', durationMs)
-          reject(uploadError)
+          if (Number(error.code) !== 401) { reject(error); return }
+          try {
+            await recoverAuthenticationFailure({ generation: session, token: sentToken, required,
+              redirect: options.authRedirect !== false, authReason: error.authReason, message: error.message })
+            reject(Object.assign(new Error('登录已恢复，请重新确认上传'), { code: 'AUTH_RETRY_REQUIRED' }))
+          } catch (failure) { reject(failure) }
         }
       },
       fail: (error) => {
@@ -70,5 +74,12 @@ export const uploadFile = (filePath, options = {}) => {
         reject(error)
       }
     })
+  })
+  const pending = options.needAuth !== false ? waitForSessionRecovery({ retryUnavailable: true }) : null
+  if (!pending) return execute()
+  return pending.then(ready => {
+    if (!ready) return rejectUnavailableSession(options.authRedirect !== false)
+    if (!isCurrentSession(session)) throw sessionChangedError()
+    return execute()
   })
 }

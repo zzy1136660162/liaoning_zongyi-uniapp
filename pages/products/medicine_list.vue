@@ -414,7 +414,7 @@ import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 import { buildListCartCategories, getProductCartLines } from '@/utils/product-list-cart.js'
 import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
-import { getToken } from '@/utils/request.js'
+import { requireAccountSession } from '@/utils/auth-session.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { buildCategoryTree, normalizeCategoryId } from '@/utils/category-tree.js'
 import { subscribeCartUpdated } from '@/utils/cart-events.js'
@@ -948,13 +948,7 @@ export default {
       return '/pages/products/medicine_list'
     },
     ensureLogin() {
-      if (getToken()) {
-        return true
-      }
-      uni.navigateTo({
-        url: `/pages/register/register?redirect=${encodeURIComponent(this.buildListRedirect())}`
-      })
-      return false
+      return requireAccountSession(this.buildListRedirect())
     },
     ensureCartCompatible(product) {
       const result = resolveCartCompatibility(product)
@@ -972,7 +966,7 @@ export default {
       const actionLog = { ...PAGE_LOG, actionCode: 'ADD_CART', accessTitle: '加入购物车', accessDescription: '用户从商品列表选择真实可售规格并保存到购物车', extraData: { productId: product?.id } }
       logButtonClick(actionLog)
       let productLoaded = false
-      if (!product?.id || !this.ensureLogin()) {
+      if (!product?.id || !(await this.ensureLogin())) {
         logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'LOGIN_OR_PRODUCT_REQUIRED' } })
         return
       }

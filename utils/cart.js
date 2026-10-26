@@ -14,22 +14,30 @@ import { resolveQuestionnaireState, resolveCheckoutQuestionnaire } from './quest
 import { getCartList, upsertCartItem, updateCartItem, deleteCartItem, deleteCartItems, cleanupPurchasedCartItems } from '../api/cart.js'
 import { buildCartSyncPayload } from './cart-sync-payload.js'
 import { getSessionToken, getSessionGeneration, assertCurrentSession, onSessionChanged } from './session.js'
+import { waitForSessionRecovery } from './auth-session.js'
 
 let confirmedCart = {}
 let cartLoaded = false
 let requestQueue = Promise.resolve()
+let pendingRead = null
 
 onSessionChanged(() => {
   confirmedCart = {}
   cartLoaded = false
   requestQueue = Promise.resolve()
+  pendingRead = null
   uni.$emit?.('cartUpdated', { source: 'session' })
 })
 
 // 同一客户端的读写按顺序执行，增量在执行时读取最新确认数量，旧账号响应不能回写。
-const requestCart = action => {
+const requestCart = (action, { readOnly = false } = {}) => {
+  // 写操作入队即断开读取合并；后来的读取必须排在该写操作之后。
+  if (!readOnly) pendingRead = null
   const session = getSessionGeneration()
   const pending = requestQueue.then(async () => {
+    assertCurrentSession(session)
+    const recovery = waitForSessionRecovery()
+    if (recovery) await recovery
     assertCurrentSession(session)
     const result = await action(session)
     assertCurrentSession(session)
@@ -81,14 +89,20 @@ const ensureCartLoaded = async session => {
   assertCurrentSession(session)
 }
 
-export const refreshCart = () => requestCart(async session => {
-  if (!getSessionToken()) {
-    replaceCartData({})
-    return []
-  }
-  await fetchCart(session)
-  return Object.values(readCartData())
-})
+export const refreshCart = () => {
+  if (pendingRead?.session === getSessionGeneration()) return pendingRead.promise
+  const read = { session: getSessionGeneration() }
+  read.promise = requestCart(async session => {
+    if (!getSessionToken()) {
+      replaceCartData({})
+      return []
+    }
+    await fetchCart(session)
+    return Object.values(readCartData())
+  }, { readOnly: true }).finally(() => { if (pendingRead === read) pendingRead = null })
+  pendingRead = read
+  return read.promise
+}
 
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value)

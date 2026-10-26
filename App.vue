@@ -1,4 +1,12 @@
 <script>
+import { restoreAccountSession, getAccountSessionState } from './utils/auth-session.js'
+
+const restoreOnShow = () => {
+  if (!['unchecked', 'unavailable'].includes(getAccountSessionState().status)) return
+  restoreAccountSession({ retry: getAccountSessionState().status === 'unavailable' }).catch(error => {
+    if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '登录校验暂不可用，请重试', icon: 'none' })
+  })
+}
 
 export default {
 	globalData: {
@@ -6,12 +14,14 @@ export default {
 	},
 	onLaunch: function() {
 		this.globalData.mallIntroPlayed = false
+		restoreOnShow()
 		console.warn('当前组件仅支持 uni_modules 目录结构 ，请升级 HBuilderX 到 3.1.0 版本以上！')
 		console.log('App Launch')
 	},
-		onShow: function() {
-			console.log('App Show')
-		},
+	onShow: function() {
+		console.log('App Show')
+		restoreOnShow()
+	},
 	onHide: function() {
 		console.log('App Hide')
 	}
