@@ -150,6 +150,7 @@
             v-for="category in categories"
             :key="category.id"
             class="category-group"
+            @click="switchCategory(category.id)"
           >
             <view
               class="category-item"
