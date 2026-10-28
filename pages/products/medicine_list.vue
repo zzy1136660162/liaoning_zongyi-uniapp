@@ -8,17 +8,17 @@
         class="top-banner-img"
         src="https://smf.lntcm.com/static/img/yiyuan1.jpg"
         mode="widthFix"
+        @load="measureBannerGap"
       />
     </view>
     <view
       id="mall-content"
       class="mall-content"
       :class="{
-        'intro-collapsing': introMotion === 'collapse',
-        'intro-expanding': introMotion === 'expand'
+        'following-finger': isFollowFinger,
+        'no-transition': noTransition
       }"
-      :style="{ marginTop: imageCollapsed ? '-320rpx' : '-40rpx' }"
-      @animationend="onIntroAnimationEnd"
+      :style="mallContentStyle"
     >
       <view
         class="hospital-intro"
@@ -30,7 +30,7 @@
         <view class="logo-wrap">
           <image
             class="hospital-logo"
-            src="https://shop.lntcm.com/assets_files/upload/2026/01/26/logotou.png"
+            src="https://smf.lntcm.com/static/shop/logo.png"
             mode="aspectFit"
           />
           <view class="logo-badge">
@@ -150,6 +150,7 @@
             v-for="category in categories"
             :key="category.id"
             class="category-group"
+            @click="switchCategory(category.id)"
           >
             <view
               class="category-item"
@@ -163,6 +164,7 @@
             <view
               v-if="currentCategoryId === category.id && category.children && category.children.length > 0 && !isCategoryCollapsed(category.id)"
               class="sub-category-inline"
+              @click="switchCategory(category.id)"
             >
               <view
                 v-for="subCategory in getInlineSubCategories(category)"
@@ -465,18 +467,41 @@ export default {
       sortType: '',
       sortOrder: 'desc',
       shouldPlayIntro,
+      // 首图上划等待列表渲染完成后再播放
+      pendingIntro: shouldPlayIntro,
+      introFallbackTimer: null,
+      // 列表是否已加载过，返回页面时不重复请求
+      productsLoaded: false,
       imageCollapsed: !shouldPlayIntro,
       introSafeTop: 0,
-      introMotion: '',
+      // 布局是否已折叠（折叠后 margin 收缩，文档高度同步变化）
+      layoutCollapsed: !shouldPlayIntro,
+      // 折叠动画的视觉位移，只走 transform，避免触发布局重排
+      visualOffset: 0,
+      noTransition: false,
+      settleTimer: null,
       unsubscribeCartUpdated: null,
       searchTimer: null,
       requestSeq: 0,
       pullStartY: null,
-      isPullingIntro: false,
-      collapseTimer: null
+      collapseTimer: null,
+      pullCurrentY: null,
+      isFollowFinger: false,
+      // 展开态用于抵消 banner 底部空白，使内容正好从图片下沿开始
+      bannerGapPx: 0,
+      // 折叠态相对展开态的位移量（px）
+      collapseRangePx: 0
     }
   },
   computed: {
+    mallContentStyle() {
+      // margin 只在折叠布局切换时变化，动画期间恒定；位移全部交给 transform，走合成层不重排。
+      const baseMargin = -this.bannerGapPx - (this.layoutCollapsed ? this.collapseRangePx : 0)
+      return {
+        marginTop: `${baseMargin}px`,
+        transform: `translateY(${this.visualOffset}px)`
+      }
+    },
     currentCategory() {
       return this.categories.find(cat => cat.id === this.currentCategoryId) || null
     },
@@ -497,6 +522,8 @@ export default {
   },
   onLoad() {
     this.updateIntroSafeTop()
+    // 折叠位移量 440rpx，换算为 px 与手指位移统一单位
+    this.collapseRangePx = uni.upx2px(440)
     // 首次进入即消费标记，动画中途离开也不重播。
     getApp().globalData.mallIntroPlayed = true
     this.currentTab = 'home'
@@ -506,13 +533,19 @@ export default {
     })
   },
   onReady() {
-    if (this.shouldPlayIntro) {
-      this.scheduleImageCollapse()
+    this.measureBannerGap()
+    if (this.pendingIntro) {
+      // 兜底：列表加载异常或超时也要正常播放首图上划
+      this.introFallbackTimer = setTimeout(() => {
+        this.introFallbackTimer = null
+        this.playIntroCollapse()
+      }, 4500)
     }
   },
   async onShow() {
     logPageView({ ...PAGE_LOG, extraData: { categoryId: this.currentCategoryId, subCategoryId: this.currentSubCategoryId } })
-    this.loadProducts()
+    // 返回页面复用已有列表，不重复请求，保留页面高度与滚动位置
+    if (!this.productsLoaded) this.loadProducts()
     try {
       await refreshCart()
       this.updateCartView()
@@ -524,10 +557,11 @@ export default {
     this.handleRefreshProducts()
   },
   onHide() {
-    this.finishIntro()
+    this.stopIntro()
   },
   onUnload() {
-    this.finishIntro()
+    this.stopIntro()
+    this.clearSettleTimer()
     uni.$off('refreshProductsList', this.updateCartView)
     if (this.unsubscribeCartUpdated) {
       this.unsubscribeCartUpdated()
@@ -561,34 +595,97 @@ export default {
       }
       // #endif
     },
-    scheduleImageCollapse(delay = 800) {
+    measureBannerGap() {
+      const query = uni.createSelectorQuery().in(this)
+      query.select('.top-banner').boundingClientRect()
+      query.select('.top-banner-img').boundingClientRect()
+      query.exec((res) => {
+        const banner = res && res[0]
+        const image = res && res[1]
+        if (!banner || !image) return
+        // banner 底部与图片底部的差值即多余空白，展开态需要抵消掉，使内容正好从图片下沿开始
+        const gap = Math.max(0, (banner.top + banner.height) - (image.top + image.height))
+        if (Math.abs(gap - this.bannerGapPx) > 0.5) {
+          this.bannerGapPx = gap
+        }
+      })
+    },
+    clearSettleTimer() {
+      if (this.settleTimer) {
+        clearTimeout(this.settleTimer)
+        this.settleTimer = null
+      }
+    },
+    // 折叠：先 transform 上移（合成层动画），结束后再把位移换成布局收缩，避免动画期间重排
+    runCollapse() {
+      if (this.layoutCollapsed) return
+      this.clearSettleTimer()
+      this.imageCollapsed = true
+      this.visualOffset = -this.collapseRangePx
+      this.settleTimer = setTimeout(() => {
+        this.settleTimer = null
+        this.settleLayout(true)
+      }, 1500)
+    },
+    // 展开：先 transform 下移，结束后恢复展开布局
+    runExpand() {
+      if (!this.layoutCollapsed) return
+      this.clearSettleTimer()
+      this.imageCollapsed = false
+      this.visualOffset = this.collapseRangePx
+      this.settleTimer = setTimeout(() => {
+        this.settleTimer = null
+        this.settleLayout(false)
+      }, 1500)
+    },
+    // 位移归零与布局切换在同一帧完成，视觉位置不变；期间临时关闭过渡避免反向动画
+    settleLayout(collapsed) {
+      this.noTransition = true
+      this.layoutCollapsed = collapsed
+      this.imageCollapsed = collapsed
+      this.visualOffset = 0
+      setTimeout(() => {
+        this.noTransition = false
+      }, 32)
+    },
+    playIntroCollapse() {
+      if (!this.pendingIntro) return
+      this.pendingIntro = false
+      if (this.introFallbackTimer) {
+        clearTimeout(this.introFallbackTimer)
+        this.introFallbackTimer = null
+      }
+      // 列表已渲染，再停留一段时间让首屏稳定，然后开始上划
+      this.scheduleImageCollapse(1800)
+    },
+    scheduleImageCollapse(delay = 1800) {
       clearTimeout(this.collapseTimer)
       this.collapseTimer = setTimeout(() => {
-        if (!this.imageCollapsed) {
-          this.introMotion = 'collapse'
-          this.imageCollapsed = true
-        }
         this.collapseTimer = null
+        this.runCollapse()
       }, delay)
     },
-    finishIntro() {
+    stopIntro() {
       clearTimeout(this.collapseTimer)
       this.collapseTimer = null
-      this.shouldPlayIntro = false
-      this.introMotion = ''
-      this.imageCollapsed = true
-      this.pullStartY = null
-      this.isPullingIntro = false
-    },
-    onIntroAnimationEnd(e) {
-      if (e.target.id === 'mall-content') {
-        this.introMotion = ''
+      if (this.introFallbackTimer) {
+        clearTimeout(this.introFallbackTimer)
+        this.introFallbackTimer = null
       }
+      this.pendingIntro = false
+      this.shouldPlayIntro = false
+      this.pullStartY = null
+      this.pullCurrentY = null
+      // 离开时若正在跟手，回到当前折叠位置；不改折叠布局，返回后保留页面高度
+      this.isFollowFinger = false
+      this.visualOffset = 0
     },
     onPullStart(e) {
       this.pullStartY = null
-      this.isPullingIntro = false
-      if (this.introMotion) return
+      this.isFollowFinger = false
+      this.pullCurrentY = null
+      // 折叠动画进行中或已展开时不允许下拉，避免与动画抢占位移
+      if (this.settleTimer || !this.layoutCollapsed) return
       // 如果触摸目标是 .internet-hospital-toggle 或其子元素，不启动下拉
       const target = e.target || e.currentTarget
       if (target) {
@@ -605,21 +702,37 @@ export default {
       this.pullStartY = e.touches[0].clientY
     },
     onPullMove(e) {
-      if (this.pullStartY === null || this.isPullingIntro) return
-      if (e.touches[0].clientY - this.pullStartY <= 7.5) return
-      this.isPullingIntro = true
-      clearTimeout(this.collapseTimer)
-      this.collapseTimer = null
-      if (this.imageCollapsed) {
-        this.introMotion = 'expand'
-        this.imageCollapsed = false
+      if (this.pullStartY === null) return
+      const currentY = e.touches[0].clientY
+      const distance = currentY - this.pullStartY
+
+      // 下拉距离太小时不触发
+      if (distance <= 7.5 && !this.isFollowFinger) return
+
+      // 开始跟随手指
+      if (!this.isFollowFinger) {
+        this.isFollowFinger = true
+        clearTimeout(this.collapseTimer)
+        this.collapseTimer = null
       }
+
+      // 直接写 transform 位移，上限 collapseRangePx，最多露出图片底部
+      this.visualOffset = Math.max(0, Math.min(distance, this.collapseRangePx))
     },
     onPullEnd() {
       this.pullStartY = null
-      if (!this.isPullingIntro) return
-      this.isPullingIntro = false
-      this.scheduleImageCollapse(2000)
+      this.pullCurrentY = null
+      if (!this.isFollowFinger) return
+      this.isFollowFinger = false
+
+      if (this.visualOffset > this.collapseRangePx * 0.5) {
+        // 过半则继续展开到底，动画结束后再切布局
+        this.runExpand()
+        this.scheduleImageCollapse(3000)
+      } else {
+        // 未过半，回弹收起
+        this.visualOffset = 0
+      }
     },
     toggleSort(type) {
       if (type === '') {
@@ -837,11 +950,16 @@ export default {
         this.syncCurrentSubCategory()
         await this.fetchProductPage(this.currentCategoryId, { reset: true })
         this.updateCartView()
+        this.productsLoaded = true
       } catch (error) {
         console.error('loadProducts failed:', error)
         uni.showToast({ title: '加载失败', icon: 'none' })
       } finally {
         uni.hideLoading()
+        // 等列表数据渲染到视图后再播放首图上划
+        if (this.pendingIntro) {
+          this.$nextTick(() => this.playIntroCollapse())
+        }
       }
     },
     async loadAllProducts() {
@@ -1662,29 +1780,22 @@ scroll-view ::-webkit-scrollbar {
   display: block;
 }
 
-/* 布局一次到位，再用反向位移衔接首帧，避免逐帧重排商品区域。 */
-.intro-collapsing {
-  animation: intro-collapse 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+/* 折叠位移只走 transform，由合成层完成，动画期间不触发页面重排 */
+#mall-content {
+  transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
-.intro-expanding {
-  animation: intro-expand 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-@keyframes intro-collapse {
-  from { transform: translateY(280rpx); }
-  to { transform: translateY(0); }
-}
-
-@keyframes intro-expand {
-  from { transform: translateY(-280rpx); }
-  to { transform: translateY(0); }
+/* 跟手与布局校正期间不补间，避免和手指位移、布局切换打架 */
+#mall-content.following-finger,
+#mall-content.no-transition {
+  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .intro-collapsing,
-  .intro-expanding {
-    animation-duration: 1ms;
+  #mall-content {
+    transition-duration: 1ms;
   }
 }
 
