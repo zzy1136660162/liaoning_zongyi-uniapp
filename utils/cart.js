@@ -11,7 +11,7 @@ import { inventoryFields } from './inventory.js'
 import { resolvePurchaseQuantityLimit } from './purchase-quantity.js'
 import { resolveQuestionnaireState, resolveCheckoutQuestionnaire } from './questionnaire-state.js'
 
-import { getCartList, upsertCartItem, updateCartItem, deleteCartItem, deleteCartItems, cleanupPurchasedCartItems } from '../api/cart.js'
+import { getCartList, upsertCartItem, updateCartItem, removeCartItems, deleteCartItems, cleanupPurchasedCartItems } from '../api/cart.js'
 import { buildCartSyncPayload } from './cart-sync-payload.js'
 import { getSessionToken, getSessionGeneration, assertCurrentSession, onSessionChanged } from './session.js'
 import { waitForSessionRecovery } from './auth-session.js'
@@ -543,27 +543,46 @@ export const updateCartQuestionnaire = (product, submission) => requestCart(asyn
   return true
 })
 
-const removeCartKeys = async (ids, session) => {
+const removeCartKeys = async (ids, session, snapshot = readCartData()) => {
   if (!ids.length) return true
-  if (ids.length === 1) await deleteCartItem(ids[0])
-  else await deleteCartItems(ids)
+  if (ids.length > 200) throw new Error('单次最多删除200项商品，请分批删除')
+  const items = ids.map(key => {
+    const entry = snapshot[key]
+    if (!/^[1-9]\d*$/.test(String(entry?.serverCartItemId || '')) || !/^\d+$/.test(String(entry?.serverCartVersion ?? ''))) {
+      throw new Error('购物车商品已变化，请刷新后重新删除')
+    }
+    return { id: entry.serverCartItemId, cartVersion: entry.serverCartVersion }
+  })
+  try {
+    await removeCartItems(items)
+  } catch (error) {
+    if (Number(error.code) === 409) {
+      // 跨设备修改后旧确认被拒绝，展示最新购物车供用户重新确认。
+      assertCurrentSession(session)
+      try { await fetchCart(session) } catch (_) { /* 保留原始删除错误，下次操作重新查询。 */ }
+    }
+    throw error
+  }
   assertCurrentSession(session)
   const cart = readCartData()
-  ids.forEach(id => {
-    const { productId, skuId } = splitCartItemKey(id)
-    Object.keys(cart).forEach(key => {
-      if (key === id || (!skuId && cart[key].productId === productId)) delete cart[key]
-    })
+  const removedKeys = []
+  ids.forEach((key, index) => {
+    if (String(cart[key]?.serverCartItemId) === String(items[index].id) &&
+        String(cart[key]?.serverCartVersion) === String(items[index].cartVersion)) {
+      delete cart[key]
+      removedKeys.push(key)
+    }
   })
   writeCartData(cart)
-  updateCheckoutIdsAfterRemoval(ids)
+  updateCheckoutIdsAfterRemoval(removedKeys)
+  await fetchCart(session)
   return true
 }
 
 const setCartQuantity = async (cartKey, quantity, session) => {
-  if (!readCartData()[cartKey]?.skuId) throw new Error('购物车商品已变化，请刷新后重试')
   if (!Number.isInteger(Number(quantity))) throw new Error('购物车数量必须是整数')
   if (Number(quantity) <= 0) return removeCartKeys([cartKey], session)
+  if (!readCartData()[cartKey]?.skuId) throw new Error('购物车商品已变化，请刷新后重试')
   const item = await updateCartItem(cartKey, { quantity: Number(quantity) })
   assertCurrentSession(session)
   applyServerItem(cartKey, item)
@@ -584,9 +603,9 @@ export const changeCartItemQuantity = (productId, delta) => requestCart(async se
   return setCartQuantity(cartKey, entry.quantity + delta, session)
 })
 
-export const removeFromCart = productIds => requestCart(async session => {
+export const removeFromCart = (productIds, snapshot) => requestCart(async session => {
   await ensureCartLoaded(session)
-  return removeCartKeys(uniqueIds(productIds), session)
+  return removeCartKeys(uniqueIds(productIds), session, snapshot)
 })
 
 /** 付款清理只提交下单时的服务端行及版本；重启后也不依赖内存匹配或按 SKU 猜测删除。 */

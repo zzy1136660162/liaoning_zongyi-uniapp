@@ -49,8 +49,9 @@ test('连续增减不丢数量，减至零精确删除当前SKU', async () => {
   await Promise.all([cart.changeCartItemQuantity('10:1', -1), cart.changeCartItemQuantity('10:1', -1), cart.changeCartItemQuantity('10:1', -1)])
   assert.equal(cart.getCartEntries()['10:1'], undefined)
   assert.equal(cart.getCartEntries()['10:2'].quantity, 3)
-  assert.equal(api.requests.at(-1).method, 'DELETE')
-  assert.equal(api.requests.at(-1).query, '?skuId=1')
+  const deletion = api.requests.find(item => item.path === '/api/cart/items/remove')
+  assert.deepEqual(deletion.data.items, [{ id: '700', cartVersion: '4' }])
+  assert.equal(api.requests.at(-1).method, 'GET')
 })
 
 test('旧GET与后续加购串行，旧快照不能覆盖加购结果', async () => {

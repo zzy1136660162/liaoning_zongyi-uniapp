@@ -13,7 +13,7 @@ const pendingOrder = () => ({
 })
 
 const createDetail = (extra = {}) => {
-  const calls = { pay: [], redirects: [], toasts: [] }
+  const calls = { pay: [], redirects: [], toasts: [], modals: [] }
   let generation = 1
   const options = loadOptions('pages/order/order-detail.vue', {
     canPayOrder, getOrderStatusText, buildItemRedeemVouchers,
@@ -23,7 +23,7 @@ const createDetail = (extra = {}) => {
     getOrderDetail: async () => pendingOrder(),
     wechatSinglePay: async id => { calls.pay.push(id); return { outTradeNo: 'fixture-trade' } },
     logButtonClick() {}, getImageUrl: value => value,
-    uni: { showLoading() {}, hideLoading() {}, showToast: value => calls.toasts.push(value), redirectTo: value => calls.redirects.push(value) },
+    uni: { showLoading() {}, hideLoading() {}, showToast: value => calls.toasts.push(value), showModal: value => calls.modals.push(value), redirectTo: value => calls.redirects.push(value) },
     console: { debug() {}, error() {}, warn() {} },
     ...extra
   })
@@ -94,6 +94,18 @@ test('重复点击只发起一次支付，取消付款后允许重试且不进�
   assert.equal(page.paying, false)
   assert.equal(page.canPay, true)
   assert.deepEqual(calls.redirects, [])
+})
+
+test('续付前置校验失败完整显示顺丰错误，不跳转支付成功页', async () => {
+  const message = 'B9999：下运单失败；BSP下运单失败:收方地址不详细，请填写更为详细的地址后重新下单'
+  const { page, calls } = createDetail({ wechatSinglePay: async () => { throw { code: 500, message } } })
+  await page.loadOrderDetail(205)
+  await page.handlePayOrder()
+  assert.equal(calls.modals.length, 1)
+  assert.equal(calls.modals[0].content, message)
+  assert.equal(calls.modals[0].showCancel, false)
+  assert.deepEqual(calls.redirects, [])
+  assert.equal(page.paying, false)
 })
 
 test('支付期间账号变化或页面关闭后不继续付款或跳转', async () => {

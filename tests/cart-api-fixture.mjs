@@ -73,6 +73,16 @@ export const installCartApi = () => {
         let result
         const input = options.data || {}
         if (options.method === 'GET' && path === '/api/cart') result = [...rows.values()]
+        else if (options.method === 'POST' && path === '/api/cart/items/remove') {
+          for (const item of input.items || []) for (const row of rows.values()) {
+            if (String(row.id) === String(item.id) && String(row.cartVersion) !== String(item.cartVersion)) {
+              throw Object.assign(new Error('购物车商品已变化，请刷新后重新删除'), { code: 409 })
+            }
+          }
+          for (const item of input.items || []) for (const [key, row] of rows) {
+            if (String(row.id) === String(item.id) && String(row.cartVersion) === String(item.cartVersion)) rows.delete(key)
+          }
+        }
         else if (options.method === 'POST' && path === '/api/cart/purchased-cleanup') {
           for (const item of input.items || []) for (const [key, row] of rows) {
             if (String(row.id) === String(item.id) && String(row.cartVersion) === String(item.cartVersion)) rows.delete(key)
@@ -107,7 +117,7 @@ export const installCartApi = () => {
         } else throw new Error(`未模拟的请求 ${options.method} ${path}`)
         options.success({ statusCode: 200, data: { code: 200, data: clone(result) } })
       } catch (error) {
-        options.success({ statusCode: 200, data: { code: 400, message: error.message } })
+        options.success({ statusCode: 200, data: { code: error.code || 400, message: error.message } })
       }
     }
     if (cartApiFixture.onRequest) cartApiFixture.onRequest(options, execute)

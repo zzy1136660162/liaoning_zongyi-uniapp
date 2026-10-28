@@ -173,9 +173,9 @@ test('清空选中按规格批量删除，保留未选规格并同步金额和�
   assert.deepEqual(state.cartItems.map(item => item.id), initialKeys, '确认前保留商品')
   await modals[0].success({ confirm: true })
 
-  const deletion = api.requests.find(request => request.method === 'DELETE')
-  assert.equal(deletion.path, '/api/cart/items')
-  assert.equal(new URLSearchParams(deletion.query).get('itemKeys'), '10:1,20:1')
+  const deletion = api.requests.find(request => request.path === '/api/cart/items/remove')
+  assert.equal(deletion.method, 'POST')
+  assert.deepEqual(deletion.data.items.map(item => item.id), ['700', '702'])
   assert.deepEqual(state.cartItems.map(item => item.id), ['10:2'])
   assert.deepEqual(api.rows.map(item => `${item.productId}:${item.skuId}`), ['10:2'])
   assert.deepEqual(state.selectedItems, [])
@@ -217,7 +217,7 @@ test('没有选中或勾选保存期间不发起清空，取消确认与弹窗�
   state.removeSelectedItems()
   modals[1].fail({ errMsg: 'showModal:fail' })
   assert.equal(state.removingSelected, false)
-  assert.equal(api.requests.filter(request => request.method === 'DELETE').length, 0)
+  assert.equal(api.requests.filter(request => request.path === '/api/cart/items/remove').length, 0)
   assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
 })
 
@@ -226,7 +226,7 @@ test('删除等待期间阻止重复提交和结算，失败保留选择与商�
   await state.toggleItemSelection('10:1')
   let held
   api.onRequest = (options, execute) => {
-    if (options.method === 'DELETE') held = options
+    if (options.url.endsWith('/api/cart/items/remove')) held = options
     else execute()
   }
   state.removeSelectedItems()
@@ -255,16 +255,17 @@ test('删除等待期间阻止重复提交和结算，失败保留选择与商�
   assert.equal(state.removingSelected, false)
 })
 
-test('确认期间后台改变勾选，仍只删除弹窗确认的原选中范围', async () => {
+test('确认期间其他设备改变勾选和版本，拒绝旧确认并刷新最新状态', async () => {
   const state = createPage()
   await state.toggleItemSelection('10:1')
   state.removeSelectedItems()
   await cart.updateProductSelection('10:1', false)
   await cart.updateProductSelection('10:2', true)
   await modals[0].success({ confirm: true })
-  assert.deepEqual(state.cartItems.map(item => item.id), ['10:2', '20:1'])
+  assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
   assert.deepEqual(state.selectedItems, ['10:2'])
   assert.equal(state.selectedTotalPrice, 10)
+  assert.match(messages.at(-1).title, /已变化/)
 })
 
 test('确认弹窗期间切换账号，旧确认不能删除新账号商品', async () => {
@@ -274,8 +275,100 @@ test('确认弹窗期间切换账号，旧确认不能删除新账号商品', as
   state.removeSelectedItems()
   active = false
   await modals[0].success({ confirm: true })
-  assert.equal(api.requests.filter(request => request.method === 'DELETE').length, 0)
+  assert.equal(api.requests.filter(request => request.path === '/api/cart/items/remove').length, 0)
   assert.equal(state.removingSelected, false)
   assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
   assert.ok(!messages.some(message => message.title === '清空成功'))
+})
+
+const withInvalidRow = () => {
+  cart.replaceCartData({ ...entries(), '10': { ...entries()['10:1'], skuId: null,
+    available: false, stock: 0, inventoryReason: 'SKU_REQUIRED', serverCartItemId: '800', serverCartVersion: '0' } })
+  return createPage()
+}
+
+test('历史缺规格行可以单独删除，同商品有效规格保持可结算且刷新后不恢复旧行', async () => {
+  const state = withInvalidRow()
+  await state.toggleItemSelection('10:1')
+  const invalid = state.cartItems.find(item => item.id === '10')
+  assert.match(state.getUnavailableText(invalid), /未选择规格/)
+  await state.toggleItemSelection('10')
+  assert.deepEqual(state.selectedItems, ['10:1'])
+  assert.equal(state.selectedTotalPrice, 5)
+  state.removeItem('10')
+  assert.equal(state.removingSelected, true)
+  state.removeItem('10')
+  assert.equal(modals.length, 1)
+  await modals[0].success({ confirm: true })
+  const request = api.requests.find(item => item.path === '/api/cart/items/remove')
+  assert.deepEqual(request.data.items, [{ id: '800', cartVersion: '0' }])
+  assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
+  assert.equal(state.selectedTotalPrice, 5)
+  assert.equal(state.removingSelected, false)
+  await state.loadCartFromServer()
+  assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
+})
+
+test('全部不可购买时仍可逐项删除进入空购物车，未删除前不可结算', async () => {
+  cart.replaceCartData({ '10': { ...entries()['10:1'], skuId: null, available: false, stock: 0, inventoryReason: 'SKU_REQUIRED' } })
+  const state = createPage()
+  assert.equal(state.isAllSelected, false)
+  assert.equal(state.selectedItems.length, 0)
+  await state.goToCheckout()
+  assert.equal(messages.at(-1).title, '请选择要结算的商品')
+  state.removeItem('10')
+  await modals[0].success({ confirm: true })
+  assert.deepEqual(state.cartItems, [])
+  assert.equal(cart.getCartTotalQuantity(), 0)
+})
+
+test('单行删除支持取消、弹窗失败和接口失败重试，不提前移除失效行', async () => {
+  const state = withInvalidRow()
+  state.removeItem('10')
+  await modals[0].success({ confirm: false })
+  assert.ok(cart.getCartEntries()['10'])
+  state.removeItem('10')
+  modals[1].fail({ message: '弹窗失败' })
+  assert.equal(state.removingSelected, false)
+  state.removeItem('10')
+  api.failNext = { errMsg: 'request:fail timeout' }
+  await modals[2].success({ confirm: true })
+  assert.ok(cart.getCartEntries()['10'])
+  assert.equal(state.removingSelected, false)
+  assert.ok(!messages.some(message => message.title === '删除成功'))
+  state.removeItem('10')
+  await modals[3].success({ confirm: true })
+  assert.equal(cart.getCartEntries()['10'], undefined)
+})
+
+test('弹窗打开后同规格删后重加，旧确认不删除新行', async () => {
+  const state = createPage()
+  state.removeItem('10:1')
+  const fresh = cart.getCartEntries()
+  api.seed({ ...fresh, '10:1': { ...fresh['10:1'], serverCartItemId: '999', serverCartVersion: '0' } })
+  await state.loadCartFromServer()
+  await modals[0].success({ confirm: true })
+  assert.equal(cart.getCartEntries()['10:1'].serverCartItemId, '999')
+  assert.equal(api.rows.length, 3)
+})
+
+test('缺少行身份的删除快照不能降级为商品删除，空数组也不能全清空', async () => {
+  withInvalidRow()
+  await assert.rejects(cart.removeFromCart(['10'], { '10': { skuId: null } }), /已变化/)
+  await cart.removeFromCart([])
+  assert.equal(api.requests.filter(item => item.path === '/api/cart/items/remove' || item.method === 'DELETE').length, 0)
+  assert.equal(api.rows.length, 4)
+})
+
+test('不同不可购买原因显示对应提示，兼容旧服务端缺规格原因', () => {
+  const state = createPage()
+  for (const [item, expected] of [
+    [{ inventoryReason: 'PRODUCT_DISABLED', skuId: null }, /已下架/],
+    [{ inventoryReason: 'PRODUCT_MISSING', skuId: 1 }, /商品已失效/],
+    [{ inventoryReason: 'SKU_DISABLED', skuId: null }, /未选择规格/],
+    [{ inventoryReason: 'SKU_DISABLED', skuId: 1 }, /规格已失效/],
+    [{ inventoryReason: 'LOCAL_SHORTAGE', skuId: 1 }, /库存不足/],
+    [{ inventoryMode: 'HIS_AVAILABILITY', skuId: 1 }, /医院库存/],
+    [{ inventoryReason: 'UNKNOWN', skuId: 1 }, /暂不可购买/]
+  ]) assert.match(state.getUnavailableText(item), expected)
 })

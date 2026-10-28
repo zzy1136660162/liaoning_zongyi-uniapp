@@ -154,3 +154,16 @@ test('支付接口失败或缺少支付参数时不能调起SDK，不以本地�
   assert.equal(sdkCalls.length, 0)
   assert.equal(getSessionToken(), 'fixture-token-A')
 })
+
+test('顺丰预校验拒绝保留完整错误，三种付款入口都不能拉起微信支付', async () => {
+  const message = 'B9999：下运单失败；BSP下运单失败:收方地址不详细，请填写更为详细的地址后重新下单'
+  for (const start of [() => createPrepay('wechat', 10), () => wechatPay(10), () => wechatSinglePay(10)]) {
+    const index = requests.length, pending = start()
+    const rejected = assert.rejects(pending, error => error.code === 500 && error.message === message)
+    await flush()
+    requests[index].success({ statusCode: 200, data: { code: 500, message } })
+    await rejected
+  }
+  assert.equal(sdkCalls.length, 0)
+  assert.equal(getSessionToken(), 'fixture-token-A')
+})

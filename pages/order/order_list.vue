@@ -73,7 +73,10 @@
           </text>
         </view>
 
-        <view class="order-products" v-if="order.items && order.items.length > 0">
+        <view
+          v-if="order.items && order.items.length > 0"
+          class="order-products"
+        >
           <view
             v-for="item in visibleOrderItems(order)"
             :key="item.id"
@@ -87,8 +90,15 @@
                 @error="handleProductImageError(item.productImage)"
               />
               <view class="product-text">
-                <text class="product-name">{{ item.productName }}</text>
-                <text v-if="formatOrderItemMeta(item)" class="order-product-meta">{{ formatOrderItemMeta(item) }}</text>
+                <text class="product-name">
+                  {{ item.productName }}
+                </text>
+                <text
+                  v-if="formatOrderItemMeta(item)"
+                  class="order-product-meta"
+                >
+                  {{ formatOrderItemMeta(item) }}
+                </text>
                 <text
                   v-if="getOrderItemRefundText(item)"
                   class="product-refund-summary"
@@ -98,8 +108,12 @@
               </view>
             </view>
             <view class="product-side">
-              <text class="product-quantity">×{{ item.quantity }}</text>
-              <text class="product-subtotal">¥{{ orderItemSubtotal(item).toFixed(2) }}</text>
+              <text class="product-quantity">
+                ×{{ item.quantity }}
+              </text>
+              <text class="product-subtotal">
+                ¥{{ orderItemSubtotal(item).toFixed(2) }}
+              </text>
             </view>
           </view>
           <view
@@ -110,7 +124,12 @@
             还有 {{ remainingOrderItemCount(order) }} 件商品，查看详情
           </view>
         </view>
-        <view v-else class="order-products-empty">暂无商品明细</view>
+        <view
+          v-else
+          class="order-products-empty"
+        >
+          暂无商品明细
+        </view>
 
         <view
           v-if="redeemSummaryText(order)"
@@ -119,7 +138,34 @@
           {{ redeemSummaryText(order) }}
         </view>
 
-        <view v-if="shouldContactForPhysicalRefund(order)" class="refund-contact-tip">
+        <view
+          v-if="order.logisticsNo"
+          class="order-logistics"
+          @click.stop
+        >
+          <view class="order-logistics-info">
+            <text class="order-logistics-label">
+              {{ order.logisticsCompany || '物流' }}单号
+            </text>
+            <text
+              class="order-logistics-no"
+              selectable
+            >
+              {{ order.logisticsNo }}
+            </text>
+          </view>
+          <button
+            class="copy-logistics-btn"
+            @click.stop="copyLogisticsNo(order.logisticsNo)"
+          >
+            复制
+          </button>
+        </view>
+
+        <view
+          v-if="shouldContactForPhysicalRefund(order)"
+          class="refund-contact-tip"
+        >
           实物商品已发货，如需退款请线下联系客服。
         </view>
         <view class="order-footer">
@@ -346,6 +392,8 @@ const mapOrderListItem = (order = {}) => ({
   status: order.orderStatus,
   payableAmount: order.payableAmount,
   shippingFee: Number(order.shippingFee) || 0,
+  logisticsCompany: String(order.logisticsCompany || '').trim(),
+  logisticsNo: String(order.logisticsNo || '').trim(),
   createTime: order.createdAt,
   refundApplicationId: order.refundApplicationId ?? null,
   refundStatus: order.refundStatus ?? null,
@@ -393,6 +441,8 @@ const hydrateMissingOrderItems = async (pageOrders, isCurrentRequest) => {
       redeemStatus: order.redeemStatus ?? detail.redeemStatus,
       displayStatusText: order.displayStatusText || detail.displayStatusText || '',
       verifyQrBase64: order.verifyQrBase64 || detail.verifyQrBase64 || '',
+      logisticsCompany: order.logisticsCompany || String(detail.logisticsCompany || '').trim(),
+      logisticsNo: order.logisticsNo || String(detail.logisticsNo || '').trim(),
       items: detailItems
     }
   })
@@ -594,6 +644,8 @@ const handleConfirmReceipt = async (orderId) => {
     }
   })
 }
+
+const copyLogisticsNo = (value) => copyOrderNo(value)
 
 const copyOrderNo = (value) => {
   const orderNo = String(value ?? '').trim()
@@ -1084,6 +1136,37 @@ $info: #3b82f6;
   gap: 12rpx;
   align-items: center;
 }
+
+.order-logistics {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 18rpx 0;
+  border-top: 1rpx solid #f1f5f9;
+}
+
+.order-logistics-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx 16rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.order-logistics-label { color: #64748b; }
+.order-logistics-no { color: #334155; word-break: break-all; }
+.copy-logistics-btn {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0 18rpx;
+  line-height: 52rpx;
+  font-size: 24rpx;
+  color: #2563eb;
+  background: #eff6ff;
+}
+.copy-logistics-btn::after { border: none; }
 
 /* 按钮：统一高度、圆角、字重、阴影；取消用描边更“克制” */
 .action-btn {

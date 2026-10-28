@@ -40,6 +40,12 @@ export const deleteCartItems = (productIds = []) => {
   })
 }
 
+/** 人工删除使用确认时的行 ID 和版本；不得退回按商品删除或空参数清空。 */
+export const removeCartItems = (items) => post(`${API_PATHS.CART.LIST}/items/remove`, { items }, {
+  needAuth: true,
+  showLoading: false
+})
+
 export const cleanupPurchasedCartItems = async (items = []) => {
   const session = getSessionGeneration()
   for (let offset = 0; offset < items.length; offset += 200) {

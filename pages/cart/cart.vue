@@ -110,24 +110,28 @@
                 class="item-name"
                 @click="goToProductDetail(item)"
               >
-                {{ item.name }}
+                {{ item.name || '商品已失效' }}
               </text>
               <text class="item-desc">
                 规格：{{ item.specText || '—' }}
               </text>
               <text
-                v-if="item.available === false"
+                v-if="!isItemSelectable(item)"
                 class="item-unavailable"
               >
-                商品已下架
+                {{ getUnavailableText(item) }}
               </text>
               <view class="item-bottom">
                 <text class="item-price">
                   ¥{{ formatPrice(item.price) }}
                 </text>
-                <view class="quantity-controls">
+                <view
+                  v-if="isItemSelectable(item)"
+                  class="quantity-controls"
+                >
                   <button
                     class="quantity-btn"
+                    :disabled="selectionSaving || removingSelected"
                     @click="decreaseQuantity(item)"
                   >
                     -
@@ -138,26 +142,29 @@
                   <button
                     class="quantity-btn"
                     :class="{ disabled: isQuantityAtStockLimit(item) }"
+                    :disabled="selectionSaving || removingSelected || isQuantityAtStockLimit(item)"
                     @click="increaseQuantity(item)"
                   >
                     +
                   </button>
                 </view>
+                <text
+                  v-else
+                  class="quantity-text"
+                >
+                  数量：{{ item.quantity }}
+                </text>
+              </view>
+              <view class="item-actions">
+                <button
+                  class="delete-btn"
+                  :disabled="selectionSaving || removingSelected"
+                  @click.stop="removeItem(item.id)"
+                >
+                  删除
+                </button>
               </view>
             </view>
-          </view>
-
-          <!-- 删除按钮（编辑模式下显示） -->
-          <view
-            v-if="isEditMode"
-            class="delete-btn"
-            @click="removeItem(item.id)"
-          >
-            <uni-icons
-              type="trash"
-              size="20"
-              color="#ff6b6b"
-            />
           </view>
         </view>
       </view>
@@ -184,7 +191,7 @@
         :disabled="selectedItems.length === 0 || selectionSaving || removingSelected"
         @click="goToCheckout"
       >
-        {{ isEditMode ? '删除' : '结算' }}
+        结算
       </button>
     </view>
 
@@ -241,7 +248,6 @@ export default {
       cartItems: [],
       categories: [],
       selectedItems: [],
-      isEditMode: false,
       currentTab: 'cart',
       selectionSaving: false,
       removingSelected: false,
@@ -301,6 +307,17 @@ export default {
       }
       return true
     },
+    getUnavailableText(item = {}) {
+      const reason = item.inventoryReason
+      if (reason === 'PRODUCT_MISSING') return '商品已失效，可从购物车删除'
+      if (reason === 'PRODUCT_DISABLED') return '商品已下架'
+      // 兼容旧接口把缺规格也返回 SKU_DISABLED 的情况。
+      if (reason === 'SKU_REQUIRED' || !item.skuId) return '未选择规格，请重新选择后加入购物车'
+      if (reason === 'SKU_DISABLED') return '所选规格已失效，请重新选择'
+      if (reason === 'LOCAL_SHORTAGE') return '库存不足，暂不可购买'
+      if (item.inventoryMode === 'HIS_AVAILABILITY') return '医院库存暂不可购买'
+      return '暂不可购买，可从购物车删除'
+    },
     isQuantityAtStockLimit(item) {
       if (!item || item.stock === undefined || item.stock === null) {
         return false
@@ -344,15 +361,12 @@ export default {
         .filter(item => item.selected !== false && this.isItemSelectable(item))
         .map(item => item.id)
     },
-    toggleEditMode() {
-      this.isEditMode = !this.isEditMode
-    },
     async toggleItemSelection(itemId) {
       if (this.selectionSaving || this.removingSelected) return
       const normalizedId = itemId
       const item = this.cartItems.find(cartItem => cartItem.id === normalizedId)
       if (!this.isItemSelectable(item)) {
-        uni.showToast({ title: '商品已下架或库存不足', icon: 'none' })
+        uni.showToast({ title: this.getUnavailableText(item), icon: 'none' })
         return
       }
       this.selectionSaving = true
@@ -380,6 +394,7 @@ export default {
       if (error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message || '购物车操作失败', icon: 'none' })
     },
     async increaseQuantity(item) {
+      if (this.selectionSaving || this.removingSelected) return
       if (!this.isItemSelectable(item)) return
       if (this.isQuantityAtStockLimit(item)) {
         uni.showToast({ title: '已达库存上限', icon: 'none' })
@@ -397,6 +412,7 @@ export default {
       }
     },
     async decreaseQuantity(item) {
+      if (this.selectionSaving || this.removingSelected || !this.isItemSelectable(item)) return
       const actionLog = { ...PAGE_LOG, actionCode: 'CHANGE_CART_QUANTITY', accessTitle: '修改购物车数量', accessDescription: '减少当前购物车规格的购买数量，减至零时移除该行', extraData: { cartKey: item.id } }
       logButtonClick(actionLog)
       try {
@@ -409,24 +425,11 @@ export default {
       }
     },
     removeItem(itemId) {
-      const session = getSessionGeneration()
+      if (!this.cartItems.some(item => item.id === itemId)) return
       const actionLog = { ...PAGE_LOG, actionCode: 'REMOVE_CART_ITEM', accessTitle: '删除购物车商品', accessDescription: '通过确认弹窗删除指定商品规格', extraData: { cartKey: itemId } }
-      logButtonClick(actionLog)
-      uni.showModal({
-        title: '确认删除', content: '确定要删除这个商品吗？',
-        success: async (res) => {
-          if (!isCurrentSession(session)) return
-          if (!res.confirm) { logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'CANCELLED' }); return }
-          try {
-            await removeFromCart(itemId)
-            this.loadCartData()
-            logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
-            uni.showToast({ title: '删除成功', icon: 'success' })
-          } catch (error) {
-            if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED' })
-            this.showCartError(error)
-          }
-        }
+      this.confirmRemoveItems([itemId], {
+        title: '确认删除', content: '确定要从购物车删除这个商品吗？',
+        confirmText: '确认删除', successText: '删除成功', actionLog
       })
     },
     goToProductDetail(item) {
@@ -450,15 +453,22 @@ export default {
         uni.showToast({ title: '请选择要清空的商品', icon: 'none' })
         return
       }
-      const session = getSessionGeneration()
       const selectedIds = [...this.selectedItems]
       const actionLog = { ...PAGE_LOG, actionCode: 'REMOVE_CART_ITEMS', accessTitle: '批量删除购物车商品', accessDescription: '用户确认移除购物车中选中的商品规格', extraData: { selectedCount: selectedIds.length } }
+      this.confirmRemoveItems(selectedIds, {
+        title: '清空选中商品', content: '确定要从购物车移除选中的 ' + selectedIds.length + ' 项商品吗？',
+        confirmText: '确认清空', successText: '清空成功', actionLog
+      })
+    },
+    confirmRemoveItems(ids, { title, content, confirmText, successText, actionLog }) {
+      if (this.selectionSaving || this.removingSelected || !ids.length) return
+      const session = getSessionGeneration()
+      // 弹窗打开时冻结行身份和版本，刷新、另一设备改量或删后重加不能扩大删除范围。
+      const snapshot = getCartEntries()
       logButtonClick(actionLog)
       this.removingSelected = true
       uni.showModal({
-        title: '清空选中商品',
-        content: '确定要从购物车移除选中的 ' + selectedIds.length + ' 项商品吗？',
-        confirmText: '确认清空',
+        title, content, confirmText,
         success: async (res) => {
           try {
             if (!isCurrentSession(session)) return
@@ -466,14 +476,14 @@ export default {
               logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'CANCELLED' })
               return
             }
-            await removeFromCart(selectedIds)
+            await removeFromCart(ids, snapshot)
             if (!isCurrentSession(session)) return
             this.loadCartData()
-            this.isEditMode = false
             logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
-            uni.showToast({ title: '清空成功', icon: 'success' })
+            uni.showToast({ title: successText, icon: 'success' })
           } catch (error) {
             if (isCurrentSession(session)) {
+              this.loadCartData()
               logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED' })
               this.showCartError(error)
             }
@@ -489,10 +499,6 @@ export default {
     },
     async goToCheckout() {
       if (this.selectionSaving || this.removingSelected) return
-      if (this.isEditMode) {
-        this.removeSelectedItems()
-        return
-      }
       const session = getSessionGeneration()
       const actionLog = { ...PAGE_LOG, actionCode: 'START_CHECKOUT', accessTitle: '发起购物车结算', accessDescription: '用户按选中商品发起问卷、复诊或订单确认流程', extraData: { selectedCount: this.selectedItems.length } }
       logButtonClick(actionLog)
@@ -506,7 +512,7 @@ export default {
       const unavailableSelected = this.cartItems.filter(item => this.selectedItems.includes(item.id) && !this.isItemSelectable(item))
       if (unavailableSelected.length > 0) {
         logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'PRODUCT_UNAVAILABLE' } })
-        uni.showToast({ title: '所选商品含已下架商品', icon: 'none' })
+        uni.showToast({ title: '所选商品中有暂不可购买的商品', icon: 'none' })
         return
       }
 
@@ -755,7 +761,7 @@ export default {
 }
 
 .cart-item.unavailable {
-  opacity: 0.65;
+  background: #fafafa;
 }
 
 .checkbox-wrapper {
@@ -926,16 +932,25 @@ export default {
   text-align: center;
 }
 
-.delete-btn {
-  width: 56rpx;
-  height: 56rpx;
+.item-actions {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: #ff6b6b;
-  border-radius: 50%;
-  transition: all 0.3s ease;
+  justify-content: flex-end;
+  margin-top: 12rpx;
+}
+
+.delete-btn {
+  margin: 0;
+  min-width: 96rpx;
+  padding: 4rpx 20rpx;
+  line-height: 52rpx;
+  font-size: 24rpx;
+  color: #c0392b;
+  background: #fff;
+  border-radius: 8rpx;
+}
+
+.delete-btn::after {
+  border-color: #e6b5b0;
 }
 
 .checkout-bar {

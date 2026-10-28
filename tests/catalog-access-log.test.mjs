@@ -18,9 +18,11 @@ test('购物车删除分别记录点击、取消和接口删除结果，不把�
   uni.showModal = value => { confirmation = value }
   const definition = loadOptions('pages/cart/cart.vue', {
     TabBar: {}, ...logMocks, getSessionGeneration: () => 1, isCurrentSession: () => true,
+    getCartEntries: () => ({ '123:11': { serverCartItemId: '700', serverCartVersion: '0' } }),
     removeFromCart: () => { removed++; return true }
   })
   const page = { ...definition.data(), ...definition.methods, loadCartData() {} }
+  page.cartItems = [{ id: '123:11' }]
   page.removeItem('123:11')
   assert.equal(logs.length, 1)
   await confirmation.success({ confirm: false })

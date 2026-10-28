@@ -17,7 +17,7 @@ const createPages = (order = {}) => {
   const list = loadSetup('pages/order/order_list.vue', {
     ref: value => ({ value }), onLoad() {}, onUnmounted() {}, onShow() {},
     hasTherapyEntitlement, isTherapyOrder, getRedeemStatusText, uni
-  }, ['copyOrderNo', 'hasRedeemEntitlement', 'redeemSummaryText', 'mapOrderListItem'])
+  }, ['copyOrderNo', 'copyLogisticsNo', 'hasRedeemEntitlement', 'redeemSummaryText', 'mapOrderListItem'])
   const definition = loadOptions('pages/order/order-detail.vue', {
     getOrderDetail: async () => order, getOrderStatusText, canShowRedeemCode,
     buildItemRedeemVouchers, hasTherapyEntitlement, isTherapyOrder,
@@ -49,6 +49,23 @@ test('列表和详情复制完整订单号，保留前导零且不触发导航',
     const template = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').split('<script')[0]
     assert.ok(template.includes(`@click.stop="${handler}"`), '复制入口阻止冒泡到订单卡片')
   }
+})
+
+test('我的订单保留真实物流单号并支持完整复制，无运单的订单不造号', () => {
+  const { list, calls } = createPages()
+  const logisticsNo = '0000123456789012345678901234567890'
+  const order = list.mapOrderListItem({ id: 1, logisticsCompany: ' 顺丰速运 ', logisticsNo: ` ${logisticsNo} ` })
+  assert.equal(order.logisticsNo, logisticsNo)
+  assert.equal(order.logisticsCompany, '顺丰速运')
+  list.copyLogisticsNo(order.logisticsNo)
+  assert.deepEqual(calls.copies.map(copy => copy.data), [logisticsNo])
+  assert.deepEqual(calls.navigation, [])
+  for (const value of [null, undefined, '', '   ']) {
+    const missing = list.mapOrderListItem({ id: 2, logisticsNo: value })
+    assert.equal(missing.logisticsNo, '')
+    list.copyLogisticsNo(missing.logisticsNo)
+  }
+  assert.equal(calls.copies.length, 1)
 })
 
 test('空订单号不写剪贴板，复制失败明确提示且不进入订单', () => {

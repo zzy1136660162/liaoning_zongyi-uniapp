@@ -510,7 +510,8 @@
           if (!this.paymentPageActive || !isCurrentSession(session) || error.code === 'SESSION_CHANGED') return
           logAccess({ ...PAGE_LOG, pageId: orderId, actionType: 'BEHAVIOR', actionCode: 'ORDER_PAYMENT_CLIENT_RESULT', actionResult: getActionFailureResult(error), accessTitle: '发起订单支付', accessDescription: '本次支付流程未取得服务端支付成功确认', extraData: { reason: error.message === '用户取消支付' ? 'USER_CANCELLED' : 'PAYMENT_NOT_CONFIRMED' } })
           if (error.message !== '用户取消支付') {
-            uni.showToast({ title: error.message || '支付未完成，请稍后重试', icon: 'none' })
+            // 顺丰等前置校验可能包含长错误码和原因，使用可完整阅读的弹窗。
+            uni.showModal({ title: '暂时无法支付', content: error.message || '支付未完成，请稍后重试', showCancel: false })
           }
         } finally {
           this.paying = false
