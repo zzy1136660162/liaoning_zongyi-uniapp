@@ -119,6 +119,7 @@
       <view class="drug-reminder">
         {{ product.isPrescription === 1 ? '处方药，请在医师指导下购买和使用' : '制剂，请按说明书或医生指导使用' }}
       </view>
+      <view class="goods-divider" />
       <view
         v-if="product.limitInfo && product.limitInfo.enabled"
         class="limit-reminder"
@@ -1510,7 +1511,8 @@ onShow(async () => {
   align-items: center;
   padding: 0 24rpx;
   z-index: 100;
-  border-bottom: 1rpx solid #eee;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
 }
 
 .header-left, .header-right {
@@ -1519,6 +1521,12 @@ onShow(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.header-left:active, .header-right:active {
+  background-color: rgba(0, 0, 0, 0.04);
 }
 
 .icon-back {
@@ -1538,6 +1546,7 @@ onShow(async () => {
   font-size: 34rpx;
   font-weight: bold;
   color: #333;
+  letter-spacing: 0.5rpx;
 }
 
 .banner-wrapper {
@@ -1552,17 +1561,21 @@ onShow(async () => {
 .banner-img {
   width: 100%;
   height: 100%;
+  display: block;
 }
 
 .banner-index {
   position: absolute;
   right: 24rpx;
   bottom: 24rpx;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.38);
   color: #fff;
   padding: 8rpx 20rpx;
   border-radius: 30rpx;
   font-size: 24rpx;
+  font-weight: 500;
+  letter-spacing: 1rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.18);
 }
 
 .price-box {
@@ -1591,32 +1604,37 @@ onShow(async () => {
 
 .price-tag {
   display: inline-block;
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.22);
   color: #fff;
   font-size: 18rpx;
   padding: 4rpx 14rpx;
   border-radius: 20rpx;
-  margin-bottom: 8rpx;
+  margin-bottom: 10rpx;
   width: fit-content;
   font-weight: bold;
+  letter-spacing: 1rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.35);
 }
 
 .price-info {
   display: flex;
   align-items: baseline;
   color: #fff;
+  line-height: 1;
 }
 
 .price-unit {
   font-size: 22rpx;
   font-weight: bold;
   color: #fff;
+  margin-right: 2rpx;
 }
 
 .price-num {
-  font-size: 44rpx;
+  font-size: 46rpx;
   font-weight: bold;
   color: #fff;
+  letter-spacing: 0.5rpx;
 }
 
 .price-decimal {
@@ -1643,16 +1661,17 @@ onShow(async () => {
 
 .sales-count {
   font-size: 22rpx;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.88);
+  letter-spacing: 0.5rpx;
 }
 
 .trust-badges {
   display: flex;
   justify-content: flex-start;
   gap: 20rpx;
-  margin-top: 16rpx;
-  padding-top: 14rpx;
-  border-top: 1rpx dashed rgba(255, 255, 255, 0.3);
+  margin-top: 18rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx dashed rgba(255, 255, 255, 0.25);
   flex-wrap: wrap;
 }
 
@@ -1675,10 +1694,13 @@ onShow(async () => {
 }
 
 .goods-info {
+  position: relative;
+  z-index: 2;
   margin-top: -50rpx;
   background: #fff;
-  padding: 30rpx 30rpx 2rpx;
-  border-radius: 32rpx;
+  padding: 32rpx 30rpx 4rpx;
+  border-radius: 28rpx;
+  box-shadow: 0 -8rpx 28rpx rgba(0, 0, 0, 0.04);
 }
 
 .goods-name-row {
@@ -1702,12 +1724,13 @@ onShow(async () => {
 .limit-tag {
   font-size: 20rpx;
   padding: 4rpx 10rpx;
-  border-radius: 4rpx;
+  border-radius: 8rpx;
   font-weight: bold;
   flex-shrink: 0;
   margin-right: 12rpx;
   margin-bottom: 8rpx;
   display: inline;
+  letter-spacing: 0.5rpx;
 }
 
 .self-developed-tag {
@@ -1738,21 +1761,29 @@ onShow(async () => {
 .goods-name {
   font-size: 32rpx;
   font-weight: bold;
-  color: #222;
-  line-height: 1.4;
+  color: #1f2937;
+  line-height: 1.45;
+  letter-spacing: 0.2rpx;
   word-break: break-all;
 }
 
 .goods-sub {
   font-size: 26rpx;
-  color: #888;
-  margin-top: 8rpx;
+  color: #8a9099;
+  margin-top: 10rpx;
+  letter-spacing: 0.2rpx;
 }
 
 .drug-reminder {
   font-size: 24rpx;
   color: #666;
   margin-top: 8rpx;
+}
+
+.goods-divider {
+  height: 1rpx;
+  background: #eceef1;
+  margin: 16rpx 0 14rpx;
 }
 
 .limit-reminder {
@@ -1765,7 +1796,8 @@ onShow(async () => {
   display: flex;
   align-items: center;
   background: #fff;
-  padding: 16rpx 30rpx;
+  padding: 18rpx 30rpx;
+  border-top: 1rpx solid #f5f6f8;
 }
 
 .policy-row .policy-text {
@@ -1796,9 +1828,10 @@ onShow(async () => {
   left: 0;
   right: 0;
   background: #fff;
-  border-radius: 24rpx 24rpx 0 0;
+  border-radius: 28rpx 28rpx 0 0;
   max-height: 85vh;
   height: auto;
+  box-shadow: 0 -12rpx 40rpx rgba(0, 0, 0, 0.14);
 }
 
 .policy-header,
@@ -1807,7 +1840,7 @@ onShow(async () => {
   align-items: center;
   justify-content: center;
   padding: 30rpx;
-  border-bottom: 1rpx solid #eee;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.05);
   position: relative;
 }
 
@@ -1869,13 +1902,21 @@ onShow(async () => {
 }
 
 .policy-confirm-btn {
-  background: linear-gradient(135deg, #ffd000, #ffb800);
-  color: #333;
+  background: linear-gradient(135deg, #ffd94d, #ffb800);
+  color: #5c3d00;
   font-size: 32rpx;
   font-weight: bold;
   text-align: center;
   padding: 24rpx 0;
   border-radius: 44rpx;
+  letter-spacing: 1rpx;
+  box-shadow: 0 8rpx 20rpx rgba(255, 184, 0, 0.28);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.policy-confirm-btn:active {
+  transform: scale(0.98);
+  box-shadow: 0 4rpx 12rpx rgba(255, 184, 0, 0.22);
 }
 
 .sku-section {
@@ -1902,19 +1943,21 @@ onShow(async () => {
   max-width: 100%;
   padding: 16rpx 18rpx;
   border: 2rpx solid #e5e7eb;
-  border-radius: 8rpx;
+  border-radius: 14rpx;
   background: #f9fafb;
   color: #1f2937;
   display: flex;
   flex-direction: column;
   gap: 6rpx;
   box-sizing: border-box;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .sku-option.active {
   border-color: #ef4444;
   background: #fff5f5;
   color: #b91c1c;
+  box-shadow: 0 4rpx 14rpx rgba(239, 68, 68, 0.12);
 }
 
 .sku-option.disabled {
@@ -1981,6 +2024,13 @@ onShow(async () => {
   font-size: 32rpx;
   line-height: 48rpx;
   text-align: center;
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.quantity-button:active {
+  background: #f5f5f5;
+  transform: scale(0.94);
 }
 
 .quantity-button::after {
@@ -2062,8 +2112,9 @@ onShow(async () => {
 }
 
 .drug-manual-card {
-  background: #f5f5f5;
-  border-radius: 16rpx;
+  background: #f7f8fa;
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.03);
   margin: 20rpx 30rpx;
   padding: 24rpx;
   display: flex;
@@ -2127,70 +2178,73 @@ onShow(async () => {
 
 .split-line {
   height: 20rpx;
-  background: #f4f4f4;
+  background: #f5f6f9;
 }
 
 .recommend-section {
-  padding: 30rpx 0;
+  padding: 24rpx 0 8rpx;
   width: 100%;
 }
 
 .recommend-section.combo-section {
-  background: linear-gradient(180deg, #c8e6c9, #fff);
+  background: linear-gradient(180deg, #eef9f2 0%, #fff 55%);
 }
 
 .recommend-section.star-section {
-  background: linear-gradient(180deg, #ffecb3, #fff);
+  background: linear-gradient(180deg, #fff6e3 0%, #fff 55%);
 }
 
 .recommend-tabs {
   display: flex;
+  align-items: flex-end;
   justify-content: flex-start;
-  gap: 60rpx;
-  padding-left: 30rpx;
-  margin-bottom: 24rpx;
+  gap: 48rpx;
+  padding: 0 30rpx;
+  margin-bottom: 20rpx;
 }
 
 .recommend-tab {
   font-size: 28rpx;
-  color: #333;
-  padding-bottom: 8rpx;
+  color: #666;
+  padding-bottom: 12rpx;
   position: relative;
+  transition: color 0.2s ease;
 }
 
 .recommend-tab.active {
-  color: #e63939;
-  font-weight: bold;
+  color: #ff3b30;
+  font-weight: 700;
+  font-size: 30rpx;
 }
 
 .recommend-tab.active::after {
   content: '';
   position: absolute;
   bottom: 0;
-  left: 0;
-  width: 50rpx;
-  height: 4rpx;
-  background: #e63939;
-  border-radius: 2rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40rpx;
+  height: 6rpx;
+  background: linear-gradient(90deg, #ff3b30, #ff7a45);
+  border-radius: 3rpx;
 }
 
 .recommend-more {
-  padding: 0 30rpx 24rpx;
+  padding: 4rpx 30rpx 20rpx;
   text-align: right;
-  font-size: 26rpx;
-  color: #e63939;
+  font-size: 24rpx;
+  color: #999;
 }
 
 .combo-disclaimer {
   font-size: 22rpx;
-  color: #999;
+  color: #bbb;
   padding: 0 30rpx 16rpx;
-  letter-spacing: 1rpx;
+  letter-spacing: 0.5rpx;
 }
 
 .recommend-content {
-  padding: 20rpx 30rpx;
-  border-radius: 16rpx;
+  padding: 16rpx 24rpx 20rpx;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
@@ -2203,20 +2257,25 @@ onShow(async () => {
 
 .recommend-item {
   display: inline-block;
-  width: 200rpx;
-  margin-right: 20rpx;
+  width: 208rpx;
+  margin-right: 16rpx;
+  margin-bottom: 8rpx;
   vertical-align: top;
+  background: #fff;
+  border-radius: 16rpx;
+  overflow: hidden;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.06);
 }
 
 .recommend-img {
-  width: 200rpx;
-  height: 200rpx;
-  border-radius: 12rpx;
-  background: #f5f5f5;
+  width: 100%;
+  height: 208rpx;
+  display: block;
+  background: #f7f8fa;
 }
 
 .recommend-info {
-  padding: 12rpx 0;
+  padding: 12rpx 16rpx 16rpx;
 }
 
 .recommend-name {
@@ -2226,13 +2285,14 @@ onShow(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-bottom: 8rpx;
+  margin-bottom: 10rpx;
 }
 
 .recommend-price {
-  font-size: 26rpx;
-  color: #e63939;
-  font-weight: bold;
+  font-size: 28rpx;
+  color: #ff3b30;
+  font-weight: 800;
+  letter-spacing: 0.2rpx;
 }
 
 .recommend-bottom {
@@ -2242,9 +2302,9 @@ onShow(async () => {
 }
 
 .recommend-add-btn {
-  width: 40rpx;
-  height: 40rpx;
-  background: linear-gradient(135deg, #e63939, #ff4b4b);
+  width: 44rpx;
+  height: 44rpx;
+  background: linear-gradient(135deg, #ff5a3c, #ff3b30);
   color: #fff;
   border-radius: 50%;
   display: flex;
@@ -2253,10 +2313,16 @@ onShow(async () => {
   font-size: 28rpx;
   font-weight: bold;
   line-height: 1;
+  box-shadow: 0 4rpx 12rpx rgba(255, 59, 48, 0.28);
+  transition: transform 0.15s ease;
+}
+
+.recommend-add-btn:active {
+  transform: scale(0.9);
 }
 
 .recommend-add-btn.has-quantity {
-  background: linear-gradient(135deg, #ff4b4b, #ff6b6b);
+  background: linear-gradient(135deg, #ff8a65, #ff5a3c);
   font-size: 22rpx;
 }
 
@@ -2340,7 +2406,7 @@ onShow(async () => {
 .detail-header {
   background: #fff;
   display: flex;
-  border-bottom: 1rpx solid #eee;
+  border-bottom: 1rpx solid #f2f3f5;
 }
 
 .detail-tab {
@@ -2350,11 +2416,12 @@ onShow(async () => {
   font-size: 28rpx;
   color: #666;
   position: relative;
+  transition: color 0.2s ease;
 }
 
 .detail-tab.active {
-  color: #ff4b4b;
-  font-weight: bold;
+  color: #ff3b30;
+  font-weight: 700;
 }
 
 .detail-tab.active::after {
@@ -2363,64 +2430,82 @@ onShow(async () => {
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 48rpx;
-  height: 4rpx;
-  background: #ff4b4b;
-  border-radius: 2rpx;
+  width: 40rpx;
+  height: 6rpx;
+  background: linear-gradient(90deg, #ff3b30, #ff7a45);
+  border-radius: 3rpx;
 }
 
 .detail-body {
   background: #fff;
-  padding: 30rpx;
+  padding: 32rpx 30rpx 40rpx;
 }
 
 .detail-title,
 .usage-title {
+  position: relative;
+  padding-left: 18rpx;
   font-size: 30rpx;
-  font-weight: bold;
+  font-weight: 700;
   color: #222;
+  line-height: 1.4;
   margin-bottom: 24rpx;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 6rpx;
+    height: 28rpx;
+    border-radius: 4rpx;
+    background: linear-gradient(180deg, #ff5a3c, #ff3b30);
+  }
 }
 
 .detail-richtext {
-  font-size: 28rpx;
-  color: #555;
-  line-height: 1.8;
+  font-size: 26rpx;
+  color: #333;
+  line-height: 1.7;
+  letter-spacing: 0.2rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #f5f6f9;
   width: 100%;
   overflow: hidden;
   word-break: break-word;
 }
 
 .detail-images {
-  margin-top: 30rpx;
+  margin-top: 24rpx;
 }
 
 .detail-img {
   width: 100%;
   display: block;
-  margin-bottom: 20rpx;
+  margin-bottom: 16rpx;
+  border-radius: 12rpx;
 }
 
 .spec-list,
 .usage-list {
-  background: #f9f9f9;
-  border-radius: 12rpx;
-  padding: 24rpx;
+  border-radius: 16rpx;
+  padding: 4rpx 0;
 }
 
 .spec-title {
   font-size: 30rpx;
-  font-weight: bold;
-  color: #333;
+  font-weight: 700;
+  color: #222;
   padding: 20rpx 0 16rpx;
-  border-bottom: 2rpx solid #eee;
+  border-bottom: 2rpx solid #f2f3f5;
   margin-bottom: 8rpx;
 }
 
 .spec-item {
   display: flex;
   padding: 16rpx 0;
-  border-bottom: 1rpx solid #eee;
+  border-bottom: 1rpx solid #f5f6f9;
 }
 
 .spec-item:last-child {
@@ -2440,43 +2525,53 @@ onShow(async () => {
 }
 
 .usage-box {
-  margin-top: 30rpx;
+  margin-top: 32rpx;
 }
 
 .usage-item {
-  margin-bottom: 20rpx;
+  display: flex;
+  align-items: flex-start;
+  padding: 16rpx 0;
+  margin-bottom: 0;
+  border-bottom: 1rpx solid #f5f6f9;
 }
 
 .usage-item:last-child {
-  margin-bottom: 0;
+  border-bottom: none;
 }
 
 .usage-label {
+  width: 160rpx;
+  flex-shrink: 0;
   font-size: 26rpx;
   color: #999;
-  display: block;
-  margin-bottom: 8rpx;
+  line-height: 1.65;
+  margin-bottom: 0;
 }
 
 .usage-text {
+  flex: 1;
   font-size: 26rpx;
   color: #333;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 .empty-block {
-  font-size: 28rpx;
-  color: #999;
+  font-size: 26rpx;
+  color: #bbb;
   text-align: center;
-  padding: 40rpx 0;
+  padding: 60rpx 0;
+  letter-spacing: 1rpx;
 }
 
 .reminder-bar {
-  background: #fffbe6;
-  padding: 20rpx 30rpx;
+  background: #fffbea;
+  padding: 20rpx 24rpx;
   display: flex;
   align-items: center;
-  margin: 20rpx 0;
+  margin: 20rpx 30rpx;
+  border-radius: 16rpx;
+  border: 1rpx solid #ffe9a8;
 }
 
 .reminder-icon {
@@ -2514,7 +2609,8 @@ onShow(async () => {
   align-items: center;
   padding: 0 24rpx;
   padding-bottom: env(safe-area-inset-bottom);
-  border-top: 1rpx solid #eee;
+  border-top: 1rpx solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 -6rpx 24rpx rgba(0, 0, 0, 0.05);
   z-index: 100;
 }
 
@@ -2531,6 +2627,12 @@ onShow(async () => {
   flex-direction: column;
   align-items: center;
   margin-right: 32rpx;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.action-icon-btn:active {
+  opacity: 0.65;
+  transform: scale(0.94);
 }
 
 .action-icon {
@@ -2550,14 +2652,17 @@ onShow(async () => {
   right: -16rpx;
   min-width: 32rpx;
   height: 32rpx;
-  background: #ff4b4b;
+  background: linear-gradient(135deg, #ff4b4b, #ff6b6b);
   color: #fff;
   border-radius: 16rpx;
   font-size: 20rpx;
+  font-weight: 500;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 6rpx;
+  border: 2rpx solid #fff;
+  box-shadow: 0 2rpx 8rpx rgba(255, 75, 75, 0.35);
 }
 
 .bottom-right {
@@ -2570,6 +2675,8 @@ onShow(async () => {
   border-radius: 40rpx;
   font-size: 28rpx;
   font-weight: bold;
+  letter-spacing: 1rpx;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .btn-service {
@@ -2579,9 +2686,15 @@ onShow(async () => {
 }
 
 .btn-add-cart {
-  background: #ffa940;
+  background: linear-gradient(135deg, #ffb84d, #ff9a2e);
   color: #fff;
   margin-right: 16rpx;
+  box-shadow: 0 6rpx 16rpx rgba(255, 154, 46, 0.28);
+}
+
+.btn-add-cart:active,
+.btn-buy:active {
+  transform: scale(0.96);
 }
 
 .btn-add-cart.disabled,
@@ -2589,10 +2702,12 @@ onShow(async () => {
   background: #ccc !important;
   color: #999;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-buy {
   background: linear-gradient(135deg, #ff4b4b, #ff6b6b);
   color: #fff;
+  box-shadow: 0 6rpx 16rpx rgba(255, 75, 75, 0.3);
 }
 </style>

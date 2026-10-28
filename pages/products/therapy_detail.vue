@@ -85,6 +85,7 @@
       >
         {{ product.indications }}
       </text>
+      <view class="goods-divider" />
       <view
         v-if="product.limitInfo && product.limitInfo.enabled"
         class="limit-reminder"
@@ -688,14 +689,6 @@
             </text>
           </view>
         </view>
-        <view class="usage-tip">
-          <text
-            class="usage-text"
-            selectable="true"
-          >
-            凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
-          </text>
-        </view>
       </view>
     </view>
 
@@ -708,14 +701,14 @@
       </view>
     </view>
 
-    <!-- <view class="reminder-bar">
+    <view class="reminder-bar">
       <text class="reminder-icon" selectable="true">
         !
       </text>
       <text class="reminder-text" selectable="true">
         凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
       </text>
-    </view> -->
+    </view>
 
 
 
@@ -1682,6 +1675,12 @@ onShow(async () => {
   margin-top: 8rpx;
 }
 
+.goods-divider {
+  height: 1rpx;
+  background: #eceef1;
+  margin: 16rpx 0 14rpx;
+}
+
 .limit-reminder {
   font-size: 24rpx;
   color: #ea580c;
@@ -2249,10 +2248,25 @@ onShow(async () => {
 
 .detail-title,
 .usage-title {
+  position: relative;
+  padding-left: 18rpx;
   font-size: 30rpx;
-  font-weight: bold;
+  font-weight: 700;
   color: #222;
+  line-height: 1.4;
   margin-bottom: 24rpx;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 6rpx;
+    height: 28rpx;
+    border-radius: 4rpx;
+    background: linear-gradient(180deg, #ff5a3c, #ff3b30);
+  }
 }
 
 .detail-richtext {
@@ -2276,9 +2290,8 @@ onShow(async () => {
 
 .spec-list,
 .usage-list {
-  background: #f9f9f9;
-  border-radius: 12rpx;
-  padding: 24rpx;
+  border-radius: 16rpx;
+  padding: 4rpx 0;
 }
 
 .spec-title {
@@ -2313,32 +2326,62 @@ onShow(async () => {
 }
 
 .usage-box {
-  margin-top: 30rpx;
+  margin-top: 32rpx;
 }
 
 .usage-item {
-  margin-bottom: 20rpx;
+  display: flex;
+  align-items: flex-start;
+  padding: 16rpx 0;
+  margin-bottom: 0;
+  border-bottom: 1rpx solid #f5f6f9;
 }
 
 .usage-item:last-child {
-  margin-bottom: 0;
+  border-bottom: none;
 }
 
 .usage-label {
+  width: 160rpx;
+  flex-shrink: 0;
   font-size: 26rpx;
   color: #999;
-  display: block;
-  margin-bottom: 8rpx;
+  line-height: 1.65;
+  margin-bottom: 0;
 }
 
 .usage-text {
+  flex: 1;
   font-size: 26rpx;
   color: #333;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 .usage-tip {
+  position: relative;
   margin-top: 20rpx;
+  padding: 18rpx 24rpx 18rpx 26rpx;
+  background: #fff8f0;
+  border: 1rpx solid #ffe1c7;
+  border-radius: 12rpx;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 6rpx;
+    background: linear-gradient(180deg, #ff8a5c, #ff5a3c);
+  }
+}
+
+.usage-tip .usage-text {
+  display: block;
+  font-size: 24rpx;
+  color: #c2410c;
+  line-height: 1.7;
 }
 
 .empty-block {
@@ -2349,11 +2392,13 @@ onShow(async () => {
 }
 
 .reminder-bar {
-  background: #fffbe6;
-  padding: 20rpx 30rpx;
+  background: #fffbea;
+  padding: 20rpx 24rpx;
   display: flex;
   align-items: center;
-  margin: 20rpx 0;
+  margin: 20rpx 30rpx;
+  border-radius: 16rpx;
+  border: 1rpx solid #ffe9a8;
 }
 
 .reminder-icon {
