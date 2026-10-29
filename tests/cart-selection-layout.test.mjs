@@ -5,7 +5,7 @@ import { cartApiFixture as api, installCartApi } from './cart-api-fixture.mjs'
 import { shouldReloadCartFromServer, subscribeCartUpdated } from '../utils/cart-events.js'
 import { loadOptions } from './sfc-harness.mjs'
 
-const storage = new Map(), listeners = new Set(), pages = [], frames = [], messages = [], modals = []
+const storage = new Map(), listeners = new Set(), pages = [], frames = [], messages = [], modals = [], navigations = []
 let mutationTime
 const product = (productId, skuId = 1) => ({ productId, skuId, productName: `测试商品${productId}`,
   price: 5, stock: 20, available: true, productCategory: 2, goodsMerchantType: 1 })
@@ -17,11 +17,12 @@ const entries = () => Object.fromEntries(initialKeys.map((key, index) => {
 }))
 
 beforeEach(() => {
-  storage.clear(); listeners.clear(); pages.length = 0; frames.length = 0; messages.length = 0; modals.length = 0; mutationTime = 10
+  storage.clear(); listeners.clear(); pages.length = 0; frames.length = 0; messages.length = 0; modals.length = 0; navigations.length = 0; mutationTime = 10
   globalThis.uni = {
     getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value),
     removeStorageSync: key => storage.delete(key), showToast: message => messages.push(message),
     showModal: options => modals.push(options),
+    navigateTo: options => navigations.push(options),
     $on: (_event, handler) => listeners.add(handler), $off: (_event, handler) => listeners.delete(handler),
     $emit: (event, payload) => {
       if (event !== 'cartUpdated') return
@@ -49,6 +50,7 @@ afterEach(() => pages.forEach(({ definition, state }) => definition.onUnload.cal
 const createPage = (mocks = {}) => {
   const definition = loadOptions('pages/cart/cart.vue', {
     ...cart, TabBar: {}, shouldReloadCartFromServer, subscribeCartUpdated,
+    STORAGE_KEY_CURRENT_CONSULTATION_ID: 'current_consultation_id',
     console: { log() {}, info() {}, error() {} }, ...mocks
   })
   const state = { ...definition.data(), ...definition.methods }
@@ -287,63 +289,91 @@ const withInvalidRow = () => {
   return createPage()
 }
 
-test('历史缺规格行可以单独删除，同商品有效规格保持可结算且刷新后不恢复旧行', async () => {
+test('历史缺规格行可勾选清空，混选时阻止结算，清空后同商品有效规格仍可购买', async () => {
   const state = withInvalidRow()
   await state.toggleItemSelection('10:1')
   const invalid = state.cartItems.find(item => item.id === '10')
   assert.match(state.getUnavailableText(invalid), /未选择规格/)
   await state.toggleItemSelection('10')
-  assert.deepEqual(state.selectedItems, ['10:1'])
+  assert.deepEqual(new Set(state.selectedItems), new Set(['10:1', '10']))
   assert.equal(state.selectedTotalPrice, 5)
-  state.removeItem('10')
+  await state.goToCheckout()
+  assert.equal(messages.at(-1).title, '所选商品中有暂不可购买的商品')
+  assert.equal(navigations.length, 0)
+  await state.toggleItemSelection('10:1')
+  state.removeSelectedItems()
   assert.equal(state.removingSelected, true)
-  state.removeItem('10')
+  state.removeSelectedItems()
   assert.equal(modals.length, 1)
   await modals[0].success({ confirm: true })
   const request = api.requests.find(item => item.path === '/api/cart/items/remove')
   assert.deepEqual(request.data.items, [{ id: '800', cartVersion: '0' }])
   assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
-  assert.equal(state.selectedTotalPrice, 5)
+  assert.equal(state.selectedTotalPrice, 0)
   assert.equal(state.removingSelected, false)
   await state.loadCartFromServer()
   assert.deepEqual(state.cartItems.map(item => item.id), initialKeys)
+  await state.toggleItemSelection('10:1')
+  await state.goToCheckout()
+  assert.equal(navigations.at(-1).url, '/pages/order/confirm?selectedItems=10:1')
 })
 
-test('全部不可购买时仍可逐项删除进入空购物车，未删除前不可结算', async () => {
-  cart.replaceCartData({ '10': { ...entries()['10:1'], skuId: null, available: false, stock: 0, inventoryReason: 'SKU_REQUIRED' } })
+test('各类不可购买商品可全选及取消全选，结算被阻止但清空选中可全部移除', async () => {
+  const reasons = ['SKU_REQUIRED', 'SKU_DISABLED', 'PRODUCT_DISABLED', 'PRODUCT_MISSING', 'LOCAL_SHORTAGE', 'HIS_UNAVAILABLE']
+  cart.replaceCartData(Object.fromEntries(reasons.map((reason, index) => {
+    const productId = 10 + index, skuId = index === 0 ? null : 1
+    return [skuId ? `${productId}:${skuId}` : String(productId), { ...product(productId, skuId),
+      available: false, stock: 0, inventoryReason: reason, inventoryMode: index === 5 ? 'HIS_AVAILABILITY' : 'LOCAL_COUNT',
+      serverCartItemId: String(800 + index), serverCartVersion: '0', quantity: 1, selected: false }]
+  })))
   const state = createPage()
   assert.equal(state.isAllSelected, false)
   assert.equal(state.selectedItems.length, 0)
+  await state.toggleSelectAll()
+  assert.equal(state.isAllSelected, true)
+  assert.equal(state.selectedItems.length, reasons.length)
+  assert.equal(state.selectedTotalPrice, 0)
+  assert.equal(api.requests.filter(request => request.method === 'PUT').length, 0)
   await state.goToCheckout()
-  assert.equal(messages.at(-1).title, '请选择要结算的商品')
-  state.removeItem('10')
+  assert.equal(messages.at(-1).title, '所选商品中有暂不可购买的商品')
+  assert.equal(navigations.length, 0)
+  await state.toggleSelectAll()
+  assert.deepEqual(state.selectedItems, [])
+  await state.toggleSelectAll()
+  state.removeSelectedItems()
   await modals[0].success({ confirm: true })
   assert.deepEqual(state.cartItems, [])
   assert.equal(cart.getCartTotalQuantity(), 0)
+  assert.deepEqual(state.cleanupSelectedRowIds, [])
+  await state.loadCartFromServer()
+  assert.deepEqual(state.cartItems, [])
 })
 
-test('单行删除支持取消、弹窗失败和接口失败重试，不提前移除失效行', async () => {
+test('清空选中的失效行支持取消、弹窗失败和接口失败重试，不提前移除商品', async () => {
   const state = withInvalidRow()
-  state.removeItem('10')
+  await state.toggleItemSelection('10')
+  state.removeSelectedItems()
   await modals[0].success({ confirm: false })
   assert.ok(cart.getCartEntries()['10'])
-  state.removeItem('10')
+  state.removeSelectedItems()
   modals[1].fail({ message: '弹窗失败' })
   assert.equal(state.removingSelected, false)
-  state.removeItem('10')
+  state.removeSelectedItems()
   api.failNext = { errMsg: 'request:fail timeout' }
   await modals[2].success({ confirm: true })
   assert.ok(cart.getCartEntries()['10'])
   assert.equal(state.removingSelected, false)
-  assert.ok(!messages.some(message => message.title === '删除成功'))
-  state.removeItem('10')
+  assert.deepEqual(state.selectedItems, ['10'])
+  assert.ok(!messages.some(message => message.title === '清空成功'))
+  state.removeSelectedItems()
   await modals[3].success({ confirm: true })
   assert.equal(cart.getCartEntries()['10'], undefined)
 })
 
 test('弹窗打开后同规格删后重加，旧确认不删除新行', async () => {
   const state = createPage()
-  state.removeItem('10:1')
+  await state.toggleItemSelection('10:1')
+  state.removeSelectedItems()
   const fresh = cart.getCartEntries()
   api.seed({ ...fresh, '10:1': { ...fresh['10:1'], serverCartItemId: '999', serverCartVersion: '0' } })
   await state.loadCartFromServer()
@@ -351,6 +381,86 @@ test('弹窗打开后同规格删后重加，旧确认不删除新行', async ()
   assert.equal(cart.getCartEntries()['10:1'].serverCartItemId, '999')
   assert.equal(api.rows.length, 3)
 })
+
+test('失效行勾选在购物车刷新和正常商品改选后保留，不写入服务端购买选择', async () => {
+  const state = withInvalidRow()
+  await state.toggleItemSelection('10')
+  assert.equal(api.requests.length, 0)
+  await state.toggleItemSelection('10:1')
+  await state.loadCartFromServer()
+  assert.deepEqual(new Set(state.selectedItems), new Set(['10:1', '10']))
+  assert.equal(cart.getCartEntries()['10'].selected, false)
+  assert.deepEqual(cart.getSelectedProductIds(), ['10:1'])
+  await state.toggleItemSelection('10')
+  assert.deepEqual(state.selectedItems, ['10:1'])
+})
+
+test('混合购物车全选包含失效行，取消全选可清空两种选择', async () => {
+  const state = withInvalidRow()
+  await state.toggleSelectAll()
+  assert.equal(state.isAllSelected, true)
+  assert.equal(state.selectedItems.length, 4)
+  assert.equal(state.selectedTotalPrice, 30)
+  assert.equal(api.requests.filter(request => request.method === 'PUT').length, 3)
+  await state.toggleSelectAll()
+  assert.deepEqual(state.selectedItems, [])
+  assert.equal(state.isAllSelected, false)
+})
+
+test('失效商品删后重加不继承旧行的勾选，旧确认不能删除新行', async () => {
+  const state = withInvalidRow()
+  await state.toggleItemSelection('10')
+  state.removeSelectedItems()
+  const fresh = cart.getCartEntries()
+  api.seed({ ...fresh, '10': { ...fresh['10'], serverCartItemId: '999', serverCartVersion: '0' } })
+  await state.loadCartFromServer()
+  assert.deepEqual(state.selectedItems, [])
+  await modals[0].success({ confirm: true })
+  assert.equal(cart.getCartEntries()['10'].serverCartItemId, '999')
+  assert.equal(api.rows.length, 4)
+})
+
+test('失效行重新可售后不把清理选择自动变成购买选择', async () => {
+  cart.replaceCartData({ '10:1': { ...entries()['10:1'], available: false, stock: 0 } })
+  const state = createPage()
+  await state.toggleItemSelection('10:1')
+  api.seed({ '10:1': { ...cart.getCartEntries()['10:1'], available: true, stock: 20, selected: false } })
+  await state.loadCartFromServer()
+  assert.deepEqual(state.selectedItems, [])
+  assert.deepEqual(state.cleanupSelectedRowIds, [])
+})
+
+test('库存降到低于购物车数量时可勾选清空，也能减至可售数量后重新选择结算', async () => {
+  cart.replaceCartData({ '10:1': { ...entries()['10:1'], quantity: 3, stock: 2 } })
+  const state = createPage()
+  await state.toggleItemSelection('10:1')
+  assert.deepEqual(state.selectedItems, ['10:1'])
+  assert.equal(api.requests.length, 0)
+  await state.goToCheckout()
+  assert.equal(navigations.length, 0)
+  assert.match(state.getUnavailableText(state.cartItems[0]), /库存不足/)
+  state.removeSelectedItems()
+  await modals[0].success({ confirm: false })
+  await state.decreaseQuantity(state.cartItems[0])
+  assert.equal(state.cartItems[0].quantity, 2)
+  await state.toggleItemSelection('10:1')
+  await state.goToCheckout()
+  assert.equal(navigations.at(-1).url, '/pages/order/confirm?selectedItems=10:1')
+})
+
+for (const change of ['unavailable', 'deleted']) {
+  test(`结算刷新时已选商品变为 ${change}，不能悄悄剔除后仅购买其他商品`, async () => {
+    const state = createPage()
+    await state.toggleSelectAll()
+    const fresh = cart.getCartEntries()
+    if (change === 'deleted') delete fresh['10:1']
+    else fresh['10:1'] = { ...fresh['10:1'], available: false, stock: 0 }
+    api.seed(fresh)
+    await state.goToCheckout()
+    assert.equal(navigations.length, 0)
+    assert.match(messages.at(-1).title, /已失效|已售罄或下架/)
+  })
+}
 
 test('缺少行身份的删除快照不能降级为商品删除，空数组也不能全清空', async () => {
   withInvalidRow()

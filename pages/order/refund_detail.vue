@@ -207,6 +207,13 @@
           审核信息
         </text>
       </view>
+      <!-- 核查结论保存为中文，患者读取本申请实际批准结果，不查询后台字典或内部物流快照。 -->
+      <view v-if="detail.logisticsReviewResult" class="info-row">
+        <!-- 明确区分物流核查结论与支付渠道到账结果。 -->
+        <text class="info-label">物流核查结论</text>
+        <!-- 历史结论原样展示，不受后台字典后续启停影响。 -->
+        <text class="info-value">{{ detail.logisticsReviewResult }}</text>
+      </view>
       <view
         v-if="detail.reviewTime"
         class="info-row"

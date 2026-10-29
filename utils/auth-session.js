@@ -53,11 +53,11 @@ onSessionChanged(() => {
   publish({ status: 'unchecked', reason: '' })
 })
 
-const returnPath = explicit => {
+export const accountReturnPath = explicit => {
   if (typeof explicit === 'string' && /^\/pages\/[\w/-]+(?:\?.*)?$/.test(explicit)
-      && !explicit.startsWith('/pages/register/')) return explicit
+      && !/^\/pages\/(register|login)\//.test(explicit)) return explicit
   const page = typeof getCurrentPages === 'function' ? getCurrentPages().slice(-1)[0] : null
-  if (!page?.route || page.route === 'pages/register/register') return '/pages/products/medicine_list'
+  if (!page?.route || /^pages\/(register|login)\//.test(page.route)) return '/pages/products/medicine_list'
   const query = Object.entries(page.options || {}).filter(([key]) => !/token|password|authorization/i.test(key))
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&')
   return `/${page.route}${query ? '?' + query : ''}`
@@ -65,10 +65,10 @@ const returnPath = explicit => {
 export const navigateToAccountLogin = (redirect, message) => {
   if (operation) return
   const current = typeof getCurrentPages === 'function' ? getCurrentPages().slice(-1)[0] : null
-  if (current?.route === 'pages/register/register' || navigatedGeneration === getSessionGeneration()) return
+  if (/^pages\/(register|login)\//.test(current?.route || '') || navigatedGeneration === getSessionGeneration()) return
   navigatedGeneration = getSessionGeneration()
   if (message) uni.showToast({ title: message, icon: 'none' })
-  uni.reLaunch({ url: `/pages/register/register?redirect=${encodeURIComponent(returnPath(redirect))}`,
+  uni.reLaunch({ url: `/pages/login/login?redirect=${encodeURIComponent(accountReturnPath(redirect))}`,
     fail: () => { navigatedGeneration = null } })
 }
 

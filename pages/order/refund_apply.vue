@@ -46,7 +46,7 @@
       </view>
 
       <view class="refund-policy-tip">
-        制剂、健康产品未发货时可直接申请原路退款，发货后请线下联系客服。
+        制剂、健康产品可提交退款申请；已有运单或已发货时，由后台核查物流后处理。请在退款记录查看进度。
       </view>
       <!-- 商品列表 -->
       <view class="products-section">
@@ -234,7 +234,7 @@ import { getImageUrl } from '@/utils/config.js'
 import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 
 const PAGE_LOG = { moduleCode: 'REFUND', accessType: '退款售后', pageType: 'REFUND_APPLY', requestUri: '/pages/order/refund_apply' }
-import { hasMixedTherapyAndNormalRefundItems, isTherapyRefundItem, resolveRefundType, createRefundRequestId } from '@/utils/refund.js'
+import { hasMixedTherapyAndNormalRefundItems, isTherapyRefundItem, resolveRefundType, createRefundRequestId, getRefundErrorModal } from '@/utils/refund.js'
 
 export default {
   name: 'RefundApply',
@@ -377,10 +377,11 @@ export default {
       } catch (error) {
         if (!isCurrent()) return
         console.error('event=ui_order_refund_apply stage=load_order_detail result=failed reason=operation_incomplete')
-        if (!silent) uni.showToast({
-          title: error.message || '加载失败',
-          icon: 'none'
-        })
+        if (!silent) {
+          const modal = getRefundErrorModal(error)
+          if (modal) uni.showModal(modal)
+          else uni.showToast({ title: error.message || '加载失败', icon: 'none' })
+        }
       } finally {
         if (isCurrent()) {
           this.loading = false
@@ -597,7 +598,9 @@ export default {
         logAccess({ ...PAGE_LOG, pageId: this.orderId || '', actionType: 'BEHAVIOR', actionCode: 'REFUND_SUBMIT_RESULT', actionResult: getActionFailureResult(error), accessTitle: '提交退款申请', accessDescription: '退款申请未获得服务端受理确认', extraData: { reason: 'SUBMISSION_NOT_CONFIRMED' } })
         console.error('event=ui_order_refund_apply stage=submit_refund result=failed reason=operation_incomplete')
         uni.hideLoading()
-        uni.showToast({
+        const modal = getRefundErrorModal(error)
+        if (modal) uni.showModal(modal)
+        else uni.showToast({
           title: this.pendingSubmission ? '申请结果未确认，请重试确认' : error.message || '提交失败',
           icon: 'none'
         })

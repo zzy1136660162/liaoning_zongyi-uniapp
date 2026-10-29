@@ -115,7 +115,7 @@ test('注册忽略全部旧草稿，仅恢复协议偏好，既有证件选项�
     Object.assign(env.mocks, {
       getWeChatLoginCode: async () => 'fixture-code',
       getWeChatUserProfile: async () => ({ avatarUrl: '/fixture-avatar.jpg', gender: 2 }),
-      login: async payload => { requests.push(payload); return { token: 'fixture-token', userId: 7 } },
+      register: async payload => { requests.push(payload); return { token: 'fixture-token', userId: 7 } },
       establishAccountSession: () => { env.changeSession(); return 2 }
     })
     env.values.set('register', cached)
@@ -135,8 +135,8 @@ test('注册忽略全部旧草稿，仅恢复协议偏好，既有证件选项�
     page.onIdTypeChange({ detail: { value: page.idTypeList.indexOf('护照') } })
     assert.equal(page.canSubmit, true)
     await page.handleLogin()
-    assert.deepEqual(requests, [{ wechatCode: 'fixture-code', phone: '13800138000', code: 'fixture-sms-code',
-      userName: '注册用户', idType: '护照', idCardNo: 'P12345678', avatarUrl: '/fixture-avatar.jpg', gender: 2 }])
+    assert.deepEqual(requests, [{ phone: '13800138000', code: 'fixture-sms-code',
+      userName: '注册用户', idType: '护照', idCardNo: 'P12345678' }])
     assert.equal(env.values.get('register'), cached)
     assert.equal(env.values.has('user'), false)
     assert.equal(env.values.has('logged-in'), false)

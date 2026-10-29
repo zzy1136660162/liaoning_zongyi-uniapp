@@ -211,6 +211,13 @@
       </view>
     </view>
 
+    <view v-if="isLoggedIn" class="settings-section">
+      <view class="settings-item" @click="goToWechatBinding">
+        <text class="settings-text">微信绑定管理</text>
+        <uni-icons type="right" size="16" color="#999999" />
+      </view>
+    </view>
+
     <view class="settings-section">
       <view class="section-title">
         设置
@@ -338,7 +345,12 @@ const goToLogin = () => {
   }
   if (getSessionToken()) return
   logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_LOGIN', accessTitle: '去登录', accessDescription: '从个人中心进入登录页，完成后返回个人中心' })
-  uni.navigateTo({ url: `/pages/register/register?redirect=${encodeURIComponent('/pages/user/profile')}` })
+  uni.navigateTo({ url: `/pages/login/login?redirect=${encodeURIComponent('/pages/user/profile')}` })
+}
+
+const goToWechatBinding = () => {
+  if (!getSessionToken()) return goToLogin()
+  uni.navigateTo({ url: '/pages/user/wechat_binding' })
 }
 
 const handleAuthAction = () => {
@@ -365,7 +377,7 @@ const handleLogout = async () => {
       const endedGeneration = getSessionGeneration()
       isLoggedIn.value = false
       userInfo.value = emptyUserInfo()
-      uni.reLaunch({ url: '/pages/register/register' })
+      uni.reLaunch({ url: '/pages/login/login' })
       const result = await revocation
       if (!result.confirmed && isCurrentSession(endedGeneration)) {
         uni.showToast({ title: '本机已退出，服务端注销暂未确认', icon: 'none', duration: 3000 })

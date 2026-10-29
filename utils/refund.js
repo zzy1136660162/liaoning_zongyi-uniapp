@@ -1,5 +1,13 @@
 const normalizeId = value => String(value ?? '')
 
+/** 退款状态冲突使用弹窗完整展示处理指引，其他失败仍沿用页面原有提示。 */
+export const getRefundErrorModal = (error) => Number(error?.code) === 409 ? {
+  title: '退款提示',
+  content: error.message,
+  showCancel: false,
+  confirmText: '我知道了'
+} : null
+
 export const createRefundRequestId = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {
   const random = Math.floor(Math.random() * 16)
   return (char === 'x' ? random : (random & 3) | 8).toString(16)
@@ -16,10 +24,11 @@ export const getPaymentRefundStatusText = status => ({
 export const getRefundStageText = (detail = {}) => {
   if (['PROCESSING', 'UNKNOWN', 'SUCCESS'].includes(detail.paymentRefundStatus)) return getPaymentRefundStatusText(detail.paymentRefundStatus)
   if (detail.status === 4) return '退款成功'
-  if (detail.status === 0) return '申请已提交，等待审核'
+  if (detail.status === 0) return detail.refundScene === 'PHYSICAL_REVIEW' ? '申请已提交，待物流核查' : '申请已提交，等待审核' // 已受理申请可直接查看进度，不要求患者重新联系建单。
   if (detail.status === 2) return '申请未通过审核'
   if (detail.status === 5) return '申请已关闭'
   if (detail.paymentRefundStatus === 'FAILED') return getPaymentRefundStatusText('FAILED')
+  if (detail.refundScene === 'PHYSICAL_REVIEW' && detail.status === 3) return '审核通过，等待退款' // 审核通过与支付渠道执行分开显示，避免误称已经到账。
   const needsReturn = !String(detail.refundScene || '').startsWith('THERAPY_') && !['FORMULATION_PRE_SHIP', 'ADMIN_PHYSICAL'].includes(detail.refundScene)
   if (needsReturn && (detail.status === 1 || detail.status === 3)) return '请线下联系客服处理退款'
   return '等待执行退款'
@@ -45,10 +54,10 @@ export const canOrderApplyRefund = (order = {}) => {
   return Boolean(order.id) && Number(order.payStatus) === 1 && ![0, 4, 7].includes(status) &&
     (!fulfillment || fulfillment === 'READY') &&
     (order.items || []).some(item => Number(item.refundableQuantity || 0) > 0 &&
-      (isTherapyRefundItem(item, order) || status === 1))
+      (isTherapyRefundItem(item, order) || [1, 2, 3].includes(status))) // 已发货、已完成实物可提交申请，是否人工核查由服务端当前物流决定。
 }
 
-export const shouldContactForPhysicalRefund = (order = {}) => {
+export const shouldReviewPhysicalRefund = (order = {}) => { // 仅展示人工核查说明，是否可申请仍由购买快照与剩余可退数量决定。
   const status = Number(order.orderStatus ?? order.status)
   return Number(order.payStatus) === 1 && [2, 3].includes(status) &&
     (order.items || []).some(item => !isTherapyRefundItem(item, order) &&

@@ -108,7 +108,7 @@ test('购物车结算携带全部所选规格进入唯一目标须知，保持�
   const definition = loadOptions('pages/cart/cart.vue', { ...cart, TabBar: {}, getToken: () => 'fixture',
     getImageUrl: value => value, STORAGE_KEY_CURRENT_CONSULTATION_ID: 'consultation' })
   const page = { ...definition.data(), ...definition.methods, categories: categories(products), selectedItems: ['20:11', '10:11'],
-    cartItems: cart.loadCartItems(categories(products)), isItemSelectable: () => true }
+    cartItems: cart.loadCartItems(categories(products)), isItemPurchasable: () => true }
   const before = structuredClone(cart.getCartEntries())
   await page.goToCheckout()
   const url = navigation.at(-1).url

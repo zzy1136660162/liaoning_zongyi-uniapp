@@ -91,10 +91,10 @@ const walk = (node, visit, ancestors = []) => {
   }
 }
 
-test('pages.json的全部33页具有唯一onShow访问入口，逐页执行日志对象通过发送合同', () => {
+test('pages.json的全部35页具有唯一onShow访问入口，逐页执行日志对象通过发送合同', () => {
   const config = JSON.parse(read('pages.json'))
   const routes = [...config.pages.map(page => page.path), ...config.subPackages.flatMap(group => group.pages.map(page => `${group.root}/${page.path}`))]
-  assert.equal(routes.length, 33)
+  assert.equal(routes.length, 35)
   const value = new Proxy(() => value, { get: (_, key) => key === Symbol.toPrimitive ? () => '123' : key === 'toJSON' ? () => '123' : key === 'length' ? 1 : value, apply: () => value })
   for (const route of routes) {
     const script = read(`${route}.vue`).match(/<script\b[^>]*>([\s\S]*?)<\/script>/)[1]

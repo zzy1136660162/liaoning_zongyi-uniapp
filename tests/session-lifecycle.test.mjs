@@ -91,7 +91,7 @@ test('注册登录保留授权拒绝后的身份登录和会话保护，延迟�
     getSessionGeneration, assertCurrentSession,
     getWeChatLoginCode: async () => 'fixture-code',
     getWeChatUserProfile: async () => { throw new Error('authorization denied') },
-    login: async payload => { assert.equal(payload.avatarUrl, ''); return { token: 'fixture-B' } },
+    register: async payload => { assert.equal(payload.wechatCode, undefined); return { token: 'fixture-B' } },
     establishAccountSession: result => { beginSession(result.token); return getSessionGeneration() },
     patientHisSyncNotice: () => '', redirectToWithFallback: () => { redirects++ }
   })
@@ -110,7 +110,7 @@ test('注册页凭证保存失败即使已推进会话代次仍展示失败且�
   const options = loadOptions('pages/register/register.vue', {
     ID_TYPE_OPTIONS, getSessionGeneration, assertCurrentSession,
     getWeChatLoginCode: async () => 'fixture-code', getWeChatUserProfile: async () => ({}),
-    login: async () => ({ token: 'fixture-B' }),
+    register: async () => ({ token: 'fixture-B' }),
     establishAccountSession: () => {
       endSession({ explicit: false })
       throw Object.assign(new Error('登录凭证保存失败，请重试'), {

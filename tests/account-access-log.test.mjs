@@ -49,11 +49,11 @@ test('签名画布初始化不记重签，主动重签明确记录医生ID且不
   }
 })
 
-test('微信登录原生Promise迟到失败不能把旧操作结果记到新账号', async () => {
+test('注册请求迟到失败不能把旧操作结果记到新账号', async () => {
   const env = fixture()
   let rejectCode
   const definition = loadOptions('pages/register/register.vue', { ...env.mocks,
-    getWeChatLoginCode: () => new Promise((_, reject) => { rejectCode = reject })
+    register: () => new Promise((_, reject) => { rejectCode = reject })
   })
   const page = { ...definition.data(), ...definition.methods, canSubmit: true }
   const pending = page.handleLogin()
@@ -69,7 +69,7 @@ test('登录主动建立新会话后仍能记录成功，日志不含登录表�
   const env = fixture()
   const definition = loadOptions('pages/register/register.vue', { ...env.mocks,
     getWeChatLoginCode: async () => 'fixture-code', getWeChatUserProfile: async () => ({}),
-    login: async () => ({ token: 'fixture-token' }), establishAccountSession: () => { env.changeSession(); return 2 }
+    register: async () => ({ token: 'fixture-token' }), establishAccountSession: () => { env.changeSession(); return 2 }
   })
   const page = { ...definition.data(), ...definition.methods, canSubmit: true }
   Object.assign(page.formData, { realName: 'SYNTHETIC_PRIVATE', phone: 'SYNTHETIC_PRIVATE', verifyCode: 'SYNTHETIC_PRIVATE' })

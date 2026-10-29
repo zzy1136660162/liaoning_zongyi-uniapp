@@ -38,7 +38,7 @@ test('未登录点击资料栏或设置入口直接去登录，携带返回个�
   assert.equal(routes.length, 2)
   for (const route of routes) {
     const url = new URL(route, 'https://test.invalid')
-    assert.equal(url.pathname, '/pages/register/register')
+    assert.equal(url.pathname, '/pages/login/login')
     assert.equal(url.searchParams.get('redirect'), '/pages/user/profile')
   }
   assert.deepEqual(modals, [])

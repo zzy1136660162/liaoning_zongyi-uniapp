@@ -90,7 +90,7 @@ export const API_PATHS = {
     // 认证模块
     AUTH: {
         SEND_SMS: '/api/auth/send-sms',           // 发送短信验证码
-        LOGIN: '/api/auth/login',                 // 登录/注册
+        LOGIN: '/api/auth/login',                 // 仅登录已注册账号
         LOGOUT: '/api/auth/logout',               // 退出登录
         USER_PROFILE: '/api/user/profile',        // 获取用户信息
     },

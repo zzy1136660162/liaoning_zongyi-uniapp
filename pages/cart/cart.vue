@@ -87,12 +87,11 @@
           <!-- 选择框 -->
           <view
             class="checkbox-wrapper"
-            :class="{ disabled: !isItemSelectable(item) }"
             @click="toggleItemSelection(item.id)"
           >
             <view
               class="checkbox"
-              :class="{ checked: selectedItems.includes(item.id), disabled: !isItemSelectable(item) }"
+              :class="{ checked: selectedItems.includes(item.id) }"
             />
           </view>
 
@@ -116,7 +115,7 @@
                 规格：{{ item.specText || '—' }}
               </text>
               <text
-                v-if="!isItemSelectable(item)"
+                v-if="!isItemPurchasable(item)"
                 class="item-unavailable"
               >
                 {{ getUnavailableText(item) }}
@@ -126,7 +125,7 @@
                   ¥{{ formatPrice(item.price) }}
                 </text>
                 <view
-                  v-if="isItemSelectable(item)"
+                  v-if="item.available !== false"
                   class="quantity-controls"
                 >
                   <button
@@ -154,15 +153,6 @@
                 >
                   数量：{{ item.quantity }}
                 </text>
-              </view>
-              <view class="item-actions">
-                <button
-                  class="delete-btn"
-                  :disabled="selectionSaving || removingSelected"
-                  @click.stop="removeItem(item.id)"
-                >
-                  删除
-                </button>
               </view>
             </view>
           </view>
@@ -248,6 +238,8 @@ export default {
       cartItems: [],
       categories: [],
       selectedItems: [],
+      // 失效商品的勾选只用于本页清理，按服务端行 ID 隔离删后重加的商品。
+      cleanupSelectedRowIds: [],
       currentTab: 'cart',
       selectionSaving: false,
       removingSelected: false,
@@ -265,12 +257,11 @@ export default {
       return this.selectedItems.length
     },
     selectedTotalPrice() {
-      const selectedCartItems = this.cartItems.filter(item => this.selectedItems.includes(item.id) && this.isItemSelectable(item))
+      const selectedCartItems = this.cartItems.filter(item => this.selectedItems.includes(item.id) && this.isItemPurchasable(item))
       return calculateTotalPrice(selectedCartItems)
     },
     isAllSelected() {
-      const selectableItems = this.cartItems.filter(item => this.isItemSelectable(item))
-      return selectableItems.length > 0 && selectableItems.every(item => this.selectedItems.includes(item.id))
+      return this.cartItems.length > 0 && this.cartItems.every(item => this.selectedItems.includes(item.id))
     }
   },
   onLoad() {
@@ -298,25 +289,26 @@ export default {
     formatPrice(price) {
       return Number(price || 0).toFixed(2)
     },
-    isItemSelectable(item) {
+    isItemPurchasable(item) {
       if (!item || item.available === false) {
         return false
       }
-      if (item.stock !== undefined && item.stock !== null && Number(item.stock) <= 0) {
+      if (item.stock !== undefined && item.stock !== null &&
+          (Number(item.stock) <= 0 || Number(item.quantity) > Number(item.stock))) {
         return false
       }
       return true
     },
     getUnavailableText(item = {}) {
       const reason = item.inventoryReason
-      if (reason === 'PRODUCT_MISSING') return '商品已失效，可从购物车删除'
+      if (reason === 'PRODUCT_MISSING') return '商品已失效，可勾选后清空'
       if (reason === 'PRODUCT_DISABLED') return '商品已下架'
       // 兼容旧接口把缺规格也返回 SKU_DISABLED 的情况。
       if (reason === 'SKU_REQUIRED' || !item.skuId) return '未选择规格，请重新选择后加入购物车'
       if (reason === 'SKU_DISABLED') return '所选规格已失效，请重新选择'
-      if (reason === 'LOCAL_SHORTAGE') return '库存不足，暂不可购买'
+      if (reason === 'LOCAL_SHORTAGE' || (item.stock != null && Number(item.quantity) > Number(item.stock))) return '库存不足，暂不可购买'
       if (item.inventoryMode === 'HIS_AVAILABILITY') return '医院库存暂不可购买'
-      return '暂不可购买，可从购物车删除'
+      return '暂不可购买，可勾选后清空'
     },
     isQuantityAtStockLimit(item) {
       if (!item || item.stock === undefined || item.stock === null) {
@@ -357,16 +349,22 @@ export default {
       const entries = getCartEntries()
       this.categories = [{ id: 'cart_items', name: '购物车商品', products: Object.values(entries) }]
       this.cartItems = loadCartItems(this.categories)
+      const unavailableRowIds = new Set(this.cartItems.filter(item => !this.isItemPurchasable(item)).map(item => item.serverCartItemId))
+      this.cleanupSelectedRowIds = this.cleanupSelectedRowIds.filter(id => unavailableRowIds.has(id))
       this.selectedItems = this.cartItems
-        .filter(item => item.selected !== false && this.isItemSelectable(item))
+        .filter(item => this.isItemPurchasable(item) ? item.selected !== false : this.cleanupSelectedRowIds.includes(item.serverCartItemId))
         .map(item => item.id)
     },
     async toggleItemSelection(itemId) {
       if (this.selectionSaving || this.removingSelected) return
       const normalizedId = itemId
       const item = this.cartItems.find(cartItem => cartItem.id === normalizedId)
-      if (!this.isItemSelectable(item)) {
-        uni.showToast({ title: this.getUnavailableText(item), icon: 'none' })
+      if (!item) return
+      if (!this.isItemPurchasable(item)) {
+        const rowId = item.serverCartItemId
+        this.cleanupSelectedRowIds = this.cleanupSelectedRowIds.includes(rowId)
+          ? this.cleanupSelectedRowIds.filter(id => id !== rowId) : [...this.cleanupSelectedRowIds, rowId]
+        this.loadCartData()
         return
       }
       this.selectionSaving = true
@@ -381,11 +379,14 @@ export default {
       const nextSelected = !this.isAllSelected
       const selectionMap = {}
       this.cartItems.forEach(item => {
-        selectionMap[item.id] = this.isItemSelectable(item) ? nextSelected : false
+        if (this.isItemPurchasable(item)) selectionMap[item.id] = nextSelected
       })
+      this.cleanupSelectedRowIds = nextSelected
+        ? this.cartItems.filter(item => !this.isItemPurchasable(item)).map(item => item.serverCartItemId) : []
+      this.loadCartData()
       this.selectionSaving = true
       try {
-        await updateMultipleSelections(selectionMap)
+        if (Object.keys(selectionMap).length) await updateMultipleSelections(selectionMap)
         this.loadCartData()
       } catch (error) { this.loadCartData(); this.showCartError(error) }
       finally { this.selectionSaving = false }
@@ -395,7 +396,7 @@ export default {
     },
     async increaseQuantity(item) {
       if (this.selectionSaving || this.removingSelected) return
-      if (!this.isItemSelectable(item)) return
+      if (!this.isItemPurchasable(item)) return
       if (this.isQuantityAtStockLimit(item)) {
         uni.showToast({ title: '已达库存上限', icon: 'none' })
         return
@@ -412,7 +413,7 @@ export default {
       }
     },
     async decreaseQuantity(item) {
-      if (this.selectionSaving || this.removingSelected || !this.isItemSelectable(item)) return
+      if (this.selectionSaving || this.removingSelected || item.available === false) return
       const actionLog = { ...PAGE_LOG, actionCode: 'CHANGE_CART_QUANTITY', accessTitle: '修改购物车数量', accessDescription: '减少当前购物车规格的购买数量，减至零时移除该行', extraData: { cartKey: item.id } }
       logButtonClick(actionLog)
       try {
@@ -423,14 +424,6 @@ export default {
         logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED' })
         this.showCartError(error)
       }
-    },
-    removeItem(itemId) {
-      if (!this.cartItems.some(item => item.id === itemId)) return
-      const actionLog = { ...PAGE_LOG, actionCode: 'REMOVE_CART_ITEM', accessTitle: '删除购物车商品', accessDescription: '通过确认弹窗删除指定商品规格', extraData: { cartKey: itemId } }
-      this.confirmRemoveItems([itemId], {
-        title: '确认删除', content: '确定要从购物车删除这个商品吗？',
-        confirmText: '确认删除', successText: '删除成功', actionLog
-      })
     },
     goToProductDetail(item) {
       const page = isTraditionalTherapyProduct(item) ? 'therapy_detail' : 'medicine_detail'
@@ -500,6 +493,7 @@ export default {
     async goToCheckout() {
       if (this.selectionSaving || this.removingSelected) return
       const session = getSessionGeneration()
+      const selectedIds = [...this.selectedItems]
       const actionLog = { ...PAGE_LOG, actionCode: 'START_CHECKOUT', accessTitle: '发起购物车结算', accessDescription: '用户按选中商品发起问卷、复诊或订单确认流程', extraData: { selectedCount: this.selectedItems.length } }
       logButtonClick(actionLog)
 
@@ -509,7 +503,7 @@ export default {
         return
       }
 
-      const unavailableSelected = this.cartItems.filter(item => this.selectedItems.includes(item.id) && !this.isItemSelectable(item))
+      const unavailableSelected = this.cartItems.filter(item => selectedIds.includes(item.id) && !this.isItemPurchasable(item))
       if (unavailableSelected.length > 0) {
         logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'PRODUCT_UNAVAILABLE' } })
         uni.showToast({ title: '所选商品中有暂不可购买的商品', icon: 'none' })
@@ -528,7 +522,8 @@ export default {
         await fetchAccountProfile()
         if (!isCurrentSession(session)) return
 
-        const checkout = prepareCheckout(this.selectedItems, this.categories)
+        // 刷新不能悄悄剔除刚失效的已选商品后继续结算其他商品。
+        const checkout = prepareCheckout(selectedIds, this.categories)
         if (!checkout.valid) {
           if (checkout.questionnaireCheck?.state === 'required') {
             uni.navigateTo({ url: buildQuestionnaireNoticeUrl(checkout.questionnaireCheck.item,
@@ -772,10 +767,6 @@ export default {
   min-height: 72rpx;
 }
 
-.checkbox-wrapper.disabled {
-  opacity: 0.45;
-}
-
 .checkbox {
   position: relative;
   box-sizing: border-box;
@@ -806,12 +797,6 @@ export default {
   border: solid #ffffff;
   border-width: 0 3rpx 3rpx 0;
   transform: translate(-50%, -60%) rotate(45deg);
-}
-
-.checkbox.disabled {
-  background: #f1f3f5;
-  border-color: #d8dee4;
-  box-shadow: none;
 }
 
 .item-content {
@@ -930,27 +915,6 @@ export default {
   color: #333333;
   min-width: 36rpx;
   text-align: center;
-}
-
-.item-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12rpx;
-}
-
-.delete-btn {
-  margin: 0;
-  min-width: 96rpx;
-  padding: 4rpx 20rpx;
-  line-height: 52rpx;
-  font-size: 24rpx;
-  color: #c0392b;
-  background: #fff;
-  border-radius: 8rpx;
-}
-
-.delete-btn::after {
-  border-color: #e6b5b0;
 }
 
 .checkout-bar {

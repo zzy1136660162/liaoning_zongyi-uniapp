@@ -86,7 +86,7 @@ test('同会话同选项只合并进行中的请求，静默与跳转选项各�
   await flush(); unauthorized(requests[2]); await rejected
   t.mock.timers.tick(2000)
   assert.equal(redirects.length, 1)
-  assert.equal(redirects[0].url, '/pages/register/register?redirect=%2Fpages%2Fproducts%2Fmedicine_list')
+  assert.equal(redirects[0].url, '/pages/login/login?redirect=%2Fpages%2Fproducts%2Fmedicine_list')
 })
 
 test('切换账号后旧成功、失败和401均不能污染新会话或拆掉新请求的合并状态', async () => {

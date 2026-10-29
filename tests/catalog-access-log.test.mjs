@@ -23,17 +23,18 @@ test('购物车删除分别记录点击、取消和接口删除结果，不把�
   })
   const page = { ...definition.data(), ...definition.methods, loadCartData() {} }
   page.cartItems = [{ id: '123:11' }]
-  page.removeItem('123:11')
+  page.selectedItems = ['123:11']
+  page.removeSelectedItems()
   assert.equal(logs.length, 1)
   await confirmation.success({ confirm: false })
   assert.equal(removed, 0)
   assert.equal(logs.at(-1).actionResult, 'CANCELLED')
-  page.removeItem('123:11')
+  page.removeSelectedItems()
   await confirmation.success({ confirm: true })
   assert.equal(removed, 1)
   assert.equal(logs.at(-1).actionResult, 'SUCCESS')
   assert.equal(logs.at(-1).requestUri, '/pages/cart/cart')
-  assert.match(logs.at(-1).accessDescription, /指定商品规格/)
+  assert.match(logs.at(-1).accessDescription, /选中的商品规格/)
 })
 
 test('商品列表的按钮检索只记白名单上下文，不上报用户输入原文', () => {

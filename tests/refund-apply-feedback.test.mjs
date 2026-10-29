@@ -140,6 +140,23 @@ test('接口拒绝时保留具体失败提示并允许重新提交', async () =>
   assert.equal(page.canSubmit, true)
 })
 
+test('提交时物流状态变化展示客服核查弹窗，清除被拒申请并保留刷新流程', async () => {
+  const modals = [], notices = []
+  const message = '当前物流状态暂不支持在线退款。请联系客服核查物流信息，确认未发货后再申请；如已发货，请由客服协助处理退款。'
+  const { page } = createPage({
+    applyRefund: async () => { throw { code: 409, message } },
+    checkCanApplyRefund: async () => { throw { code: 409, message } },
+    uni: { showLoading() {}, hideLoading() {}, showModal: value => modals.push(value), showToast: value => notices.push(value.title) }
+  })
+  page.selectReason('其他')
+  await page.submitRefund()
+  for (let i = 0; i < 12; i++) await Promise.resolve()
+  assert.deepEqual(modals, [{ title: '退款提示', content: message, showCancel: false, confirmText: '我知道了' }])
+  assert.deepEqual(notices, [])
+  assert.equal(page.pendingSubmission, null)
+  assert.equal(page.canSubmit, true)
+})
+
 test('明确拒绝后的后台刷新不会用加载提示覆盖错误原因', async () => {
   const feedback = []
   const { page } = createPage({

@@ -1,8 +1,8 @@
 <template>
 	<view class="register-container">
 		<view class="header">
-			<view class="title">注册/登录</view>
-			<view class="subtitle">未注册用户登录默认注册账号</view>
+			<view class="title">注册账号</view>
+			<view class="subtitle">请填写本人真实资料，注册成功后自动登录</view>
 		</view>
 		
 		<view class="form-container">
@@ -13,7 +13,7 @@
 					class="input-field" 
 					type="text" 
 					v-model="formData.realName"
-					placeholder="请输入真实姓名 (成人)"
+					placeholder="请输入本人真实姓名 (成人)"
 					placeholder-style="color: #999999"
 				/>
 			</view>
@@ -91,7 +91,7 @@
 				</text>
 			</view>
 			
-			<!-- 登录按钮 -->
+			<!-- 注册按钮 -->
       <view
         v-if="waitingForRecovery"
         class="session-notice"
@@ -111,8 +111,9 @@
 				:disabled="!canSubmit"
 				@click="handleLogin"
 			>
-				登录
+				注册并登录
 			</button>
+      <button class="switch-auth" @click="goToLogin">已有账号？去登录</button>
 		</view>
 	</view>
 </template>
@@ -120,9 +121,10 @@
 <script>
 import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { STORAGE_KEY_AGREEMENT_ACCEPTED } from '@/utils/storage.js'
-import { sendSmsCode, login, getWeChatLoginCode, getWeChatUserProfile } from '@/api/auth.js'
+import { sendSmsCode, register } from '@/api/auth.js'
 import { establishAccountSession } from '@/utils/account.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
+import { accountReturnPath } from '@/utils/auth-session.js'
 import { beginManualAccountLogin, getAccountSessionState, onAccountSessionState, waitForSessionRecovery, restoreAccountSession } from '@/utils/auth-session.js'
 import { assertCurrentSession, getSessionGeneration } from '@/utils/session.js'
 import { ID_TYPE_OPTIONS, patientHisSyncNotice } from '@/utils/patient.js'
@@ -131,8 +133,10 @@ const PAGE_LOG = { moduleCode: 'AUTH', accessType: '用户登录', pageType: 'RE
 
 export default {
   onShow() {
+    this.pageActive = true
     logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问注册登录页', accessDescription: '进入注册登录页面，准备完成身份验证' })
   },
+  onHide() { this.pageActive = false },
 	data() {
 		return {
 			formData: {
@@ -146,8 +150,11 @@ export default {
 			idTypeIndex: 0,
 			isAgreed: false,
 			countdown: 0,
+			sendingCode: false,
 			countdownTimer: null,
 			loggingIn: false,
+            pageActive: true,
+            returnTimer: null,
 			waitingForRecovery: false,
 			recoveryUnavailable: false,
 			stopAccountState: null,
@@ -167,8 +174,14 @@ export default {
 	onLoad(options) {
 		// 保留登录前的业务入口，成功后返回原流程。
 		if (options && (options.redirect || options.redirectUrl)) {
-			this.redirectUrl = decodeURIComponent(options.redirect || options.redirectUrl)
+			this.redirectUrl = accountReturnPath(decodeURIComponent(options.redirect || options.redirectUrl))
 		}
+        const channel = this.getOpenerEventChannel?.()
+        channel?.on('registration-phone', data => {
+          if (this.loggingIn) return
+          this.formData.phone = data.phone || ''
+          this.formData.verifyCode = data.code || ''
+        })
 		this.loadAgreementPreference()
 		this.waitingForRecovery = Boolean(waitForSessionRecovery())
 		this.recoveryUnavailable = getAccountSessionState().status === 'unavailable'
@@ -178,6 +191,9 @@ export default {
 		}
 	},
 	onUnload() {
+        this.pageActive = false
+        clearTimeout(this.returnTimer)
+        this.formData.verifyCode = ''
 		this.stopAccountState?.()
 		// 离开页面后停止短信倒计时。
 		if (this.countdownTimer) {
@@ -186,7 +202,7 @@ export default {
 	},
 	methods: {
 		updateRecoveryState(state) {
-			if (this.waitingForRecovery && !this.loggingIn && state.status === 'authenticated') {
+			if (this.pageActive && this.waitingForRecovery && !this.loggingIn && state.status === 'authenticated') {
 				this.waitingForRecovery = false
 				redirectToWithFallback(this.redirectUrl || '/pages/products/medicine_list')
 			}
@@ -218,6 +234,7 @@ export default {
 		
 		// 通过短信验证注册手机号。
 		async getVerifyCode() {
+			if (this.sendingCode || this.countdown > 0) return
 			// 先检查手机号，避免发送无效请求。
 			if (!this.formData.phone) {
 				uni.showToast({
@@ -237,11 +254,13 @@ export default {
 			}
 			
 			const smsSession = getSessionGeneration()
+			this.sendingCode = true
 			try {
 				// 请求短信验证码。
 				logButtonClick({ ...PAGE_LOG, actionCode: 'SEND_SMS_CODE', accessTitle: '获取登录验证码', accessDescription: '用户请求发送登录验证码' })
 				await sendSmsCode(this.formData.phone)
 				assertCurrentSession(smsSession)
+				if (!this.pageActive) return
 				logAccess({ ...PAGE_LOG, actionCode: 'SEND_SMS_CODE', accessTitle: '验证码请求已受理', accessDescription: '短信服务已受理发送请求，不代表用户已收到短信', actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
 				
 				// 当前会话发送成功后开始倒计时。
@@ -255,14 +274,14 @@ export default {
 				}, 1000)
 				
 			} catch (error) {
-				if (getSessionGeneration() !== smsSession) return
+				if (!this.pageActive || getSessionGeneration() !== smsSession) return
 				logAccess({ ...PAGE_LOG, actionCode: 'SEND_SMS_CODE', accessTitle: '验证码请求未完成', accessDescription: '未取得短信发送受理的明确成功结果', actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { reason: 'sms_request_incomplete' } })
 				console.error('event=ui_register_register stage=sms_request result=failed reason=request_failed')
 				uni.showToast({
 					title: error.message || '发送失败，请重试',
 					icon: 'none'
 				})
-			}
+			} finally { this.sendingCode = false }
 		},
 		
 		// 协议勾选是设备偏好，不与个人资料或登录状态混存。
@@ -294,7 +313,7 @@ export default {
 		},
 
 		
-		// 微信授权与短信身份验证都属于本次页面登录操作。
+		// 注册表单只用于创建账号，微信绑定在注册成功后单独确认。
 		async handleLogin() {
 			if (!this.canSubmit) {
 				uni.showToast({
@@ -304,77 +323,54 @@ export default {
 				return
 			}
 
-			logButtonClick({ ...PAGE_LOG, actionCode: 'LOGIN', accessTitle: '提交注册登录', accessDescription: '用户提交注册登录并进行微信及身份验证' })
+			logButtonClick({ ...PAGE_LOG, actionCode: 'LOGIN', accessTitle: '提交注册登录', accessDescription: '用户提交注册资料及短信验证' })
 			this.loggingIn = true
 			this.waitingForRecovery = false
 			const finishManualLogin = beginManualAccountLogin()
 			const session = getSessionGeneration()
 			let expectedSession = session
 			try {
-				uni.showLoading({ title: '获取微信信息...' })
-				
-				// 取得一次性微信授权码，不能把本地 openid 当作登录凭证。
-				const wechatCode = await getWeChatLoginCode()
-				assertCurrentSession(session)
-				
-				// 微信头像授权可拒绝，身份验证仍按注册表单继续。
-				let wechatUserInfo = {}
-				try {
-					wechatUserInfo = await getWeChatUserProfile()
+                uni.showLoading({ title: '注册中...' })
+                const loginData = {
+                    phone: this.formData.phone,
+                    code: this.formData.verifyCode,
+                    userName: this.formData.realName,
+                    idType: this.formData.idType,
+                    idCardNo: this.formData.idNumber
+                }
 
-				} catch (userInfoError) {
-					console.error('event=ui_register_register stage=wechat_profile result=failed reason=provider_error')
-				}
-				assertCurrentSession(session)
-				
-				uni.showLoading({ title: '登录中...' })
-				
-				// 本次表单仅用于请求，不写入本地资料或草稿。
-				const loginData = {
-					wechatCode,
-					phone: this.formData.phone,
-					code: this.formData.verifyCode,
-					userName: this.formData.realName,
-					idType: this.formData.idType,
-					idCardNo: this.formData.idNumber,
-					avatarUrl: wechatUserInfo.avatarUrl || '',
-					gender: this.parseGender(wechatUserInfo.gender),
-				}
-				
-
-				
 				// 服务端验证身份后建立新会话，后续页面自行请求资料。
 				assertCurrentSession(session)
-				const result = await login(loginData)
+				const result = await register(loginData)
 				assertCurrentSession(session)
+				if (!this.pageActive) return
 				expectedSession = establishAccountSession(result)
+                this.formData.verifyCode = ''
 				
 				logAccess({ ...PAGE_LOG, actionCode: 'LOGIN', accessTitle: '注册登录成功', accessDescription: '服务端已返回有效凭证并建立本次登录会话', actionType: 'BEHAVIOR', actionResult: 'SUCCESS' })
 				uni.hideLoading()
 				const syncNotice = patientHisSyncNotice(result.hisBindingStatus)
 				uni.showToast({
-					title: syncNotice || '登录成功',
+					title: syncNotice || '注册成功',
 					icon: syncNotice ? 'none' : 'success',
 					duration: syncNotice ? 2500 : 1500
 				})
 				
 				// 延迟跳转只属于本次登录，避免退出或切号后跳回旧流程。
 				const signedInSession = expectedSession
-				setTimeout(() => {
-					if (signedInSession !== getSessionGeneration()) return
-					const rawUrl = this.redirectUrl || '/pages/products/medicine_list'
-					const targetUrl = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`
-					redirectToWithFallback(targetUrl)
+				this.returnTimer = setTimeout(() => {
+					if (!this.pageActive || signedInSession !== getSessionGeneration()) return
+					this.continueAfterRegistration()
 				}, syncNotice ? 2500 : 1500)
 				
 			} catch (error) {
 				const failureSession = error?.code === 'SESSION_STORAGE_FAILED' ? error.sessionGeneration : expectedSession
-				if (error?.code === 'SESSION_CHANGED' || getSessionGeneration() !== failureSession) return
+				if (!this.pageActive || error?.code === 'SESSION_CHANGED' || getSessionGeneration() !== failureSession) return
 				logAccess({ ...PAGE_LOG, actionCode: 'LOGIN', accessTitle: '注册登录未完成', accessDescription: '本次登录未取得有效登录完成结果', actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { reason: 'login_incomplete' } })
 				console.error('event=ui_register_register stage=login result=failed reason=login_incomplete')
 				uni.hideLoading()
 				uni.showToast({
-					title: error.message || '登录失败，请重试',
+					title: error.message || '注册失败，请重试',
 					icon: 'none'
 				})
 			} finally {
@@ -383,17 +379,26 @@ export default {
 			}
 		},
 		
-		// 微信性别：0 未知、1 男、2 女。
-		parseGender(wechatGender) {
-			if (wechatGender === 1) return 1
-			if (wechatGender === 2) return 2
-			return 0
-		}
+        continueAfterRegistration() {
+          const session = getSessionGeneration()
+          const target = this.redirectUrl || '/pages/products/medicine_list'
+          uni.showModal({ title: '注册成功', content: '是否绑定当前微信，方便下次自动登录？',
+            confirmText: '去绑定', cancelText: '稍后再说',
+            success: res => {
+              if (!this.pageActive || session !== getSessionGeneration()) return
+              redirectToWithFallback(res.confirm ? `/pages/user/wechat_binding?redirect=${encodeURIComponent(target)}` : target)
+            }, fail: () => { if (this.pageActive && session === getSessionGeneration()) redirectToWithFallback(target) } })
+        },
+        goToLogin() {
+          redirectToWithFallback(`/pages/login/login?redirect=${encodeURIComponent(this.redirectUrl || '/pages/products/medicine_list')}`)
+        },
 	}
 }
 </script>
 
 <style scoped>
+.switch-auth { margin-top: 28rpx; background: transparent; color: #2875a8; font-size: 28rpx; }
+.switch-auth::after { border: 0; }
 .register-container {
 	min-height: 100vh;
 	background-color: #ffffff;

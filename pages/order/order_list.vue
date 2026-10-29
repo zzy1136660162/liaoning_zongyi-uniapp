@@ -63,16 +63,6 @@
           </text>
         </view>
 
-        <!-- 订单日期 -->
-        <view class="order-date">
-          <text class="date-label">
-            下单时间:
-          </text>
-          <text class="date-value">
-            {{ formatDate(order.createTime) }}
-          </text>
-        </view>
-
         <view
           v-if="order.items && order.items.length > 0"
           class="order-products"
@@ -108,11 +98,11 @@
               </view>
             </view>
             <view class="product-side">
-              <text class="product-quantity">
-                ×{{ item.quantity }}
-              </text>
               <text class="product-subtotal">
                 ¥{{ orderItemSubtotal(item).toFixed(2) }}
+              </text>
+              <text class="product-quantity">
+                ×{{ item.quantity }}
               </text>
             </view>
           </view>
@@ -163,19 +153,31 @@
         </view>
 
         <view
-          v-if="shouldContactForPhysicalRefund(order)"
+          v-if="shouldReviewPhysicalRefund(order)"
           class="refund-contact-tip"
         >
-          实物商品已发货，如需退款请线下联系客服。
+          实物商品已发货，可提交退款申请，由后台核查物流后处理。
         </view>
         <view class="order-footer">
-          <view class="order-amount">
-            <text class="amount-label">
-              实付款:
-            </text>
-            <text class="amount-value">
-              ¥{{ (Number(order.payableAmount || 0) + Number(order.shippingFee || 0)).toFixed(2) }}
-            </text>
+          <view class="order-summary">
+            <view class="order-date">
+              <text class="date-label">
+                下单时间:
+              </text>
+              <text class="date-value">
+                {{ formatDate(order.createTime) }}
+              </text>
+            </view>
+            <view class="order-amount">
+              <text class="amount-label">
+                实付款:
+              </text>
+              <text class="amount-value">
+                <text class="amount-currency">
+                  ¥
+                </text>{{ (Number(order.payableAmount || 0) + Number(order.shippingFee || 0)).toFixed(2) }}
+              </text>
+            </view>
           </view>
           <view class="order-actions">
             <button
@@ -253,7 +255,7 @@ import { ref, onUnmounted } from 'vue'
 import { onLoad, onShow, onHide, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/order.js'
 import { checkCanApplyRefund } from '@/api/refund.js'
-import { getOrderItemRefundText, canOrderApplyRefund, shouldContactForPhysicalRefund } from '@/utils/refund.js'
+import { getOrderItemRefundText, canOrderApplyRefund, shouldReviewPhysicalRefund, getRefundErrorModal } from '@/utils/refund.js'
 import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
 import { canPayOrder, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
@@ -704,7 +706,9 @@ const applyRefund = async (orderId) => {
     if (disposed || !isCurrentSession(session)) return
     logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_REFUND_OPEN_RESULT', actionResult: getActionFailureResult(error), accessTitle: '申请退款售后', accessDescription: '未能确认订单的退款申请条件', extraData: { orderId, reason: 'ELIGIBILITY_NOT_CONFIRMED' } })
     console.error('event=ui_order_order_list stage=apply_refund result=failed reason=operation_incomplete')
-    uni.showToast({
+    const modal = getRefundErrorModal(error)
+    if (modal) uni.showModal(modal)
+    else uni.showToast({
       title: error.message || '操作失败',
       icon: 'none'
     })
@@ -803,60 +807,38 @@ $info: #3b82f6;
 .tabs {
   flex-shrink: 0;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1rpx solid rgba(231, 238, 248, 0.9);
-  box-shadow: 0 8rpx 18rpx rgba(15, 23, 42, 0.04);
+  border-bottom: 1rpx solid $border;
 }
 
 .tabs-content {
   display: inline-flex;
   min-width: 100%;
+  padding: 18rpx 24rpx;
+  gap: 16rpx;
+  box-sizing: border-box;
   vertical-align: top;
 }
 
 .tab-item {
   flex: 1 0 auto;
   text-align: center;
-  padding: 26rpx 24rpx 22rpx;
+  padding: 14rpx 24rpx;
   font-size: 28rpx;
-  color: rgba(100, 116, 139, 0.95);
-  position: relative;
-  letter-spacing: 0.2rpx;
-
-  /* 让点击区域更“稳” */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10rpx;
+  line-height: 1.5;
+  color: $muted;
+  background: #f6f7fb;
+  border-radius: 12rpx;
 }
 
 .tab-item.active {
   color: $primary;
+  background: #eff6ff;
   font-weight: 700;
-}
-
-.tab-item::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 0;
-  height: 4rpx;
-  border-radius: 999rpx;
-  background: $primary;
-  transform: translateX(-50%);
-  transition: width 180ms ease;
-}
-
-.tab-item.active::after {
-  width: 64rpx;
 }
 
 /* 列表容器：底部留安全区 */
 .order-list {
-  padding: 20rpx 20rpx calc(140rpx + env(safe-area-inset-bottom));
+  padding: 20rpx 24rpx calc(140rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
@@ -877,7 +859,6 @@ $info: #3b82f6;
   border: none;
 }
 
-/* 空态：更干净 */
 .empty {
   text-align: center;
   padding: 220rpx 0;
@@ -888,29 +869,23 @@ $info: #3b82f6;
   color: rgba(100, 116, 139, 0.9);
 }
 
-/* 卡片：更高级的层级与边框 */
 .order-item {
   background: $card-bg;
-  border-radius: 18rpx;
-  margin-bottom: 18rpx;
-  padding: 20rpx 20rpx 18rpx;
-  border: 1rpx solid rgba(231, 238, 248, 0.9);
-  box-shadow: 0 10rpx 26rpx rgba(15, 23, 42, 0.06);
+  border-radius: 20rpx;
+  margin-bottom: 20rpx;
+  padding: 24rpx;
   overflow: hidden;
-  transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
 .order-item--hover {
-  transform: translateY(-2rpx);
-  box-shadow: 0 14rpx 34rpx rgba(15, 23, 42, 0.08);
+  background: #f8fafc;
 }
 
-/* Header：订单号弱化为信息，状态强调 */
 .order-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding-bottom: 12rpx;
+  padding-bottom: 24rpx;
 }
 
 .order-number {
@@ -923,9 +898,8 @@ $info: #3b82f6;
 
 .order-no {
   min-width: 0;
-  font-size: 26rpx;
-  color: rgba(15, 23, 42, 0.92);
-  font-weight: 700;
+  font-size: 24rpx;
+  color: $muted;
   line-height: 1.5;
   word-break: break-all;
 }
@@ -933,84 +907,73 @@ $info: #3b82f6;
 .copy-order-no {
   flex-shrink: 0;
   margin-left: 12rpx;
-  padding: 2rpx 0;
+  padding: 4rpx 10rpx;
   font-size: 22rpx;
-  line-height: 1.5;
+  line-height: 1.3;
   color: $primary;
+  background: #eff6ff;
+  border-radius: 6rpx;
 }
 
-/* 状态徽标：class 驱动，颜色/背景一致 */
 .order-status {
   flex-shrink: 0;
-  font-size: 22rpx;
-  font-weight: 700;
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
-  border: 1rpx solid transparent;
-  line-height: 1.2;
-  white-space: nowrap;
+  max-width: 42%;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: right;
+  word-break: break-all;
 }
 
 /* 0待支付 1待发货 2待收货 3已完成 4已取消 */
-.order-status.s-0 { color: $warning; background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.18); }
-.order-status.s-1 { color: $info;    background: rgba(59, 130, 246, 0.10); border-color: rgba(59, 130, 246, 0.18); }
-.order-status.s-2 { color: $info;    background: rgba(59, 130, 246, 0.10); border-color: rgba(59, 130, 246, 0.18); }
-.order-status.s-3 { color: $success; background: rgba(16, 185, 129, 0.10); border-color: rgba(16, 185, 129, 0.18); }
-.order-status.s-4 { color: #94a3b8;  background: rgba(148, 163, 184, 0.14); border-color: rgba(148, 163, 184, 0.22); }
+.order-status.s-0 { color: $warning; }
+.order-status.s-1 { color: $info; }
+.order-status.s-2 { color: $info; }
+.order-status.s-3 { color: $success; }
+.order-status.s-4 { color: #94a3b8; }
 
 /* 退货状态 */
-.order-status.s-5 { color: #ff6b35; background: rgba(255, 107, 53, 0.10); border-color: rgba(255, 107, 53, 0.18); }
-.order-status.s-6 { color: #007aff; background: rgba(0, 122, 255, 0.10); border-color: rgba(0, 122, 255, 0.18); }
-.order-status.s-7 { color: #ff9500; background: rgba(255, 149, 0, 0.10); border-color: rgba(255, 149, 0, 0.18); }
+.order-status.s-5 { color: #ff6b35; }
+.order-status.s-6 { color: #007aff; }
+.order-status.s-7 { color: #ff9500; }
 
-/* 日期信息：做成“信息条”更像产品 */
 .order-date {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10rpx;
-  padding: 10rpx 12rpx;
-  border-radius: 12rpx;
-  background: #f8fafc;
-  border: 1rpx solid rgba(231, 238, 248, 0.9);
-  margin-bottom: 12rpx;
-}
-
-.date-label {
-  font-size: 24rpx;
-  color: rgba(100, 116, 139, 0.95);
+  gap: 4rpx 8rpx;
+  min-width: 0;
+  font-size: 22rpx;
+  color: $muted;
+  line-height: 1.5;
 }
 
 .date-value {
-  font-size: 24rpx;
-  color: rgba(15, 23, 42, 0.9);
-  font-weight: 600;
+  word-break: break-all;
 }
 
-/* 商品列表：紧凑、分隔更细 */
 .order-products {
-  margin-bottom: 14rpx;
-  padding: 4rpx 0;
+  margin-bottom: 20rpx;
 }
 
 .product-item {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18rpx;
-  padding: 14rpx 0;
-  border-bottom: 1rpx dashed rgba(231, 238, 248, 0.9);
+  gap: 16rpx;
+  padding-bottom: 24rpx;
 }
 
 .product-item:last-child {
-  border-bottom: none;
   padding-bottom: 0;
 }
 
 .product-name {
-  font-size: 26rpx;
-  color: rgba(15, 23, 42, 0.88);
-  line-height: 1.45;
+  font-size: 28rpx;
+  color: $text;
+  line-height: 1.5;
   font-weight: 600;
+  word-break: break-all;
 }
 
 .product-main {
@@ -1025,8 +988,9 @@ $info: #3b82f6;
 .product-image {
   width: 160rpx;
   height: 160rpx;
-  border-radius: 8rpx;
+  border-radius: 12rpx;
   flex-shrink: 0;
+  background: #f6f7fb;
 }
 
 .product-text {
@@ -1034,31 +998,39 @@ $info: #3b82f6;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6rpx;
+  gap: 10rpx;
 }
 
 .order-product-meta {
   font-size: 24rpx;
-  color: rgba(100, 116, 139, 0.9);
-  line-height: 1.35;
+  color: $muted;
+  line-height: 1.5;
+  word-break: break-all;
 }
 
 .product-side {
-  min-width: 140rpx;
+  flex-shrink: 0;
+  min-width: 96rpx;
+  max-width: 190rpx;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6rpx;
+  gap: 10rpx;
+  text-align: right;
+  word-break: break-all;
 }
 
 .product-refund-summary {
   font-size: 22rpx;
   color: #b45309;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .refund-contact-tip {
   margin-bottom: 14rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 12rpx;
+  background: #f8fafc;
   font-size: 24rpx;
   color: #64748b;
   line-height: 1.5;
@@ -1066,22 +1038,23 @@ $info: #3b82f6;
 
 .product-quantity {
   font-size: 24rpx;
-  color: rgba(100, 116, 139, 0.92);
+  color: $muted;
+  line-height: 1.5;
 }
 
 .product-subtotal {
-  font-size: 26rpx;
-  color: rgba(15, 23, 42, 0.92);
-  font-weight: 700;
+  font-size: 28rpx;
+  color: $text;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .order-more {
   margin-top: 8rpx;
-  padding: 12rpx 0 2rpx;
+  padding: 16rpx 0 0;
   font-size: 24rpx;
   color: $primary;
   text-align: right;
-  font-weight: 700;
 }
 
 .order-products-empty {
@@ -1094,46 +1067,61 @@ $info: #3b82f6;
 }
 
 .order-redeem-summary {
-  margin: 10rpx 0 8rpx;
-  padding: 10rpx 14rpx;
-  border-radius: 10rpx;
+  margin-bottom: 16rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 12rpx;
   background: #eff6ff;
   color: $primary;
   font-size: 24rpx;
-  font-weight: 700;
+  line-height: 1.6;
 }
 
-/* Footer：金额更突出，按钮更规范 */
 .order-footer {
+  padding-top: 8rpx;
+}
+
+.order-summary {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: center;
-  padding-top: 14rpx;
-  margin-top: 12rpx;
-  border-top: 1rpx solid rgba(231, 238, 248, 0.9);
+  align-items: baseline;
+  gap: 12rpx 16rpx;
 }
 
 .order-amount {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: baseline;
+  margin-left: auto;
   gap: 8rpx;
+  max-width: 100%;
 }
 
 .amount-label {
   font-size: 24rpx;
-  color: rgba(100, 116, 139, 0.95);
+  color: $text;
+  white-space: nowrap;
 }
 
 .amount-value {
-  font-size: 34rpx;
+  font-size: 36rpx;
   color: $danger;
-  font-weight: 800;
-  letter-spacing: 0.2rpx;
+  font-weight: 700;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.amount-currency {
+  margin-right: 2rpx;
+  font-size: 24rpx;
 }
 
 .order-actions {
   display: flex;
-  gap: 12rpx;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0 12rpx;
   align-items: center;
 }
 
@@ -1141,8 +1129,10 @@ $info: #3b82f6;
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 18rpx 0;
-  border-top: 1rpx solid #f1f5f9;
+  padding: 14rpx 18rpx;
+  margin-bottom: 16rpx;
+  background: #f8fafc;
+  border-radius: 12rpx;
 }
 
 .order-logistics-info {
@@ -1163,19 +1153,23 @@ $info: #3b82f6;
   padding: 0 18rpx;
   line-height: 52rpx;
   font-size: 24rpx;
-  color: #2563eb;
+  color: $primary;
   background: #eff6ff;
+  border-radius: 8rpx;
 }
 .copy-logistics-btn::after { border: none; }
 
-/* 按钮：统一高度、圆角、字重、阴影；取消用描边更“克制” */
 .action-btn {
-  height: 56rpx;
-  line-height: 56rpx;
-  padding: 0 22rpx;
+  flex-shrink: 0;
+  min-width: 152rpx;
+  height: 72rpx;
+  line-height: 70rpx;
+  margin: 22rpx 0 0;
+  padding: 0 24rpx;
   font-size: 26rpx;
-  border-radius: 999rpx;
-  font-weight: 700;
+  border-radius: 12rpx;
+  font-weight: 500;
+  white-space: nowrap;
   border: 1rpx solid transparent;
   box-sizing: border-box;
   transition: transform 100ms ease, opacity 100ms ease;
@@ -1191,33 +1185,33 @@ $info: #3b82f6;
 }
 
 .cancel-btn {
-  background: #ffffff;
-  color: rgba(100, 116, 139, 0.95);
-  border-color: rgba(203, 213, 225, 0.9);
+  background: #f6f7fb;
+  color: $muted;
 }
 
 .pay-btn {
+  order: 1;
   background: $danger;
   color: #fff;
-  box-shadow: 0 10rpx 18rpx rgba(239, 68, 68, 0.20);
+  font-weight: 600;
 }
 
 .confirm-btn {
+  order: 1;
   background: $primary;
   color: #fff;
-  box-shadow: 0 10rpx 18rpx rgba(37, 99, 235, 0.20);
+  font-weight: 600;
 }
 
 .refund-btn {
-  background: #ff6b35;
-  color: #fff;
-  box-shadow: 0 10rpx 18rpx rgba(255, 107, 53, 0.20);
+  background: rgba(255, 107, 53, 0.08);
+  color: #ff6b35;
+  border-color: rgba(255, 107, 53, 0.2);
 }
 
 .view-refund-btn {
-  background: $primary;
-  color: #fff;
-  box-shadow: 0 10rpx 18rpx rgba(37, 99, 235, 0.20);
+  background: #eff6ff;
+  color: $primary;
 }
 
 </style>

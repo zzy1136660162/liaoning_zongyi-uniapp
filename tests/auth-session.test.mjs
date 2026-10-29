@@ -133,7 +133,7 @@ for (const reason of ['SESSION_REPLACED', 'SESSION_REVOKED', 'ACCOUNT_UNAVAILABL
     const rejected = Promise.all([assert.rejects(first, { code: 401, authReason: reason }), assert.rejects(second, { code: 401, authReason: reason })])
     await flush(); fail(take('/api/auth/session'), reason); assert.equal(await restore, false); await rejected
     assert.equal(logins.length, 0); assert.equal(navigations.length, 1)
-    assert.equal(navigations[0].url, '/pages/register/register?redirect=%2Fpages%2Forder%2Forder-detail%3Fid%3D18')
+    assert.equal(navigations[0].url, '/pages/login/login?redirect=%2Fpages%2Forder%2Forder-detail%3Fid%3D18')
     assert.equal(getSessionToken(), ''); assert.equal(isExplicitlyLoggedOut(), false)
     assert.equal(await restoreAccountSession({ retry: true }), false)
     assert.equal(logins.length, 0)

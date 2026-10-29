@@ -242,8 +242,9 @@
         </view>
       </view>
 
-      <view v-if="showOfflineRefundNotice" class="refund-contact-tip">
-        实物商品已发货，如需退款请线下联系客服。
+      <!-- 已发货实物仍可在线提交申请，后台核查物流后决定退款。 -->
+      <view v-if="showPhysicalRefundReviewNotice" class="refund-contact-tip">
+        实物商品已发货，可提交退款申请，由后台核查物流后处理。
       </view>
       <!-- 底部按钮 -->
       <view class="btn-row">
@@ -286,7 +287,7 @@
   import { wechatSinglePay } from '@/api/payment.js'
   import { formatFreightEstimate } from '@/utils/freight.js'
   import { checkCanApplyRefund } from '@/api/refund.js'
-  import { getOrderItemRefundText, canOrderApplyRefund, shouldContactForPhysicalRefund } from '@/utils/refund.js'
+  import { getOrderItemRefundText, canOrderApplyRefund, shouldReviewPhysicalRefund, getRefundErrorModal } from '@/utils/refund.js'
   import { getImageUrl } from '@/utils/config.js'
   import { useProductImages } from '@/utils/product-image.js'
   import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
@@ -458,8 +459,8 @@
       canApplyRefund() {
         return canOrderApplyRefund({ ...this.order, items: this.allCartItems })
       },
-      showOfflineRefundNotice() {
-        return shouldContactForPhysicalRefund({ ...this.order, items: this.allCartItems })
+      showPhysicalRefundReviewNotice() {
+        return shouldReviewPhysicalRefund({ ...this.order, items: this.allCartItems }) // 与列表共用规则，混合单保留独立的疗法退款入口。
       },
       refundActionText() {
         const hasRefundApplication = !!this.order.refundApplicationId || Number(this.order.refundStatus) > 0
@@ -1103,7 +1104,9 @@
           if (!this.paymentPageActive || !isCurrentSession(session)) return
           logAccess({ ...PAGE_LOG, pageId: this.order.id || '', actionType: 'BEHAVIOR', actionCode: 'ORDER_REFUND_OPEN_RESULT', actionResult: getActionFailureResult(error), accessTitle: '申请退款售后', accessDescription: '未能确认当前订单的退款申请条件', extraData: { reason: 'ELIGIBILITY_NOT_CONFIRMED' } })
           console.error('event=ui_order_order_detail stage=apply_refund result=failed reason=operation_incomplete')
-          uni.showToast({
+          const modal = getRefundErrorModal(error)
+          if (modal) uni.showModal(modal)
+          else uni.showToast({
             title: error.message || '操作失败',
             icon: 'none'
           })

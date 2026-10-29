@@ -2,7 +2,7 @@
  * 认证模块API
  */
 
-import { get, post } from '../utils/request.js'
+import { get, post, del } from '../utils/request.js'
 import { API_PATHS } from '../utils/config.js'
 import { assertCurrentSession, getSessionGeneration, getSessionToken, sessionChangedError } from '../utils/session.js'
 import { getWeChatLoginCode } from '../utils/auth-transport.js'
@@ -34,7 +34,7 @@ export const sendSmsCode = (phone) => {
 }
 
 /**
- * 手机号验证码登录/注册
+ * 手机号验证码登录
  * @param {Object} params
  * @param {String} params.phone 手机号
  * @param {String} params.code 验证码
@@ -45,6 +45,11 @@ export const login = (params) => {
     showLoading: true
   })
 }
+
+export const register = params => post('/api/auth/register', params, { needAuth: false })
+export const getWechatBinding = () => get('/api/auth/wechat-binding', {}, { showLoading: false })
+export const bindWechat = params => post('/api/auth/wechat-binding', params)
+export const unbindWechat = params => del('/api/auth/wechat-binding', params)
 
 /**
  * 获取当前登录用户资料的 HTTP 协议层；业务页面统一调用 utils/account.js。
