@@ -144,7 +144,9 @@ export default {
 .agreement { display: flex; align-items: center; font-size: 26rpx; color: #526570; }
 .agreement-links { margin: 12rpx 0 32rpx; font-size: 26rpx; color: #526570; }
 .agreement-links text { color: #2875a8; }
-.primary { background: #2875a8; color: #fff; border-radius: 44rpx; font-size: 32rpx; margin-top: 28rpx; }
+.primary { background: #1677ff; color: #fff; border-radius: 44rpx; font-size: 32rpx; margin-top: 28rpx; }
+.primary::after { border: 0; }
+.primary[disabled] { background: #9db8e8; color: #fff; }
 .secondary { color: #2875a8; background: transparent; font-size: 28rpx; margin-top: 24rpx; }
 .secondary::after { border: 0; }
 .hint { padding: 20rpx 0; color: #2875a8; font-size: 26rpx; }

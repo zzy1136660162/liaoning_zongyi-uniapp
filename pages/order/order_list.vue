@@ -43,17 +43,21 @@
         @click="goToOrderDetail(order.id)"
       >
         <view class="order-header">
-          <view class="order-number">
-            <text class="order-no">
-              订单号: {{ order.orderNo }}
+          <view class="order-shop">
+            <image
+              class="order-shop-logo"
+              src="https://smf.lntcm.com/static/shop/icon.png"
+              mode="aspectFit"
+            />
+            <text class="order-shop-name">
+              辽宁中医院互联网医院
             </text>
-            <text
-              v-if="order.orderNo"
-              class="copy-order-no"
-              @click.stop="copyOrderNo(order.orderNo)"
+            <view
+              class="order-shop-arrow"
+              @click.stop="goToMedicineList"
             >
-              复制
-            </text>
+              ›
+            </view>
           </view>
           <text
             class="order-status"
@@ -179,44 +183,58 @@
               </text>
             </view>
           </view>
-          <view class="order-actions">
-            <button
-              v-if="order.status === 0"
-              class="action-btn cancel-btn"
-              @click.stop="handleCancelOrder(order.id)"
-            >
-              取消订单
-            </button>
-            <button
-              v-if="canPayOrder(order)"
-              class="action-btn pay-btn"
-              @click.stop="handlePayOrder(order)"
-            >
-              去支付
-            </button>
-            <button
-              v-if="order.status === 2"
-              class="action-btn confirm-btn"
-              @click.stop="handleConfirmReceipt(order.id)"
-            >
-              确认收货
-            </button>
-            <!-- 按逐项可退数量显示入口，部分核销或已有退款不影响剩余项目申请。 -->
-            <button
-              v-if="canOrderApplyRefund(order)"
-              class="action-btn refund-btn"
-              @click.stop="applyRefund(order.id)"
-            >
-              {{ refundActionText(order) }}
-            </button>
-            <!-- 申请记录与继续退款是两种操作，可以同时显示。 -->
-            <button
-              v-if="order.refundApplicationId"
-              class="action-btn view-refund-btn"
-              @click.stop="viewRefundApplication(order.refundApplicationId)"
-            >
-              退款记录
-            </button>
+          <view class="order-extra-row">
+            <view class="order-extra-actions">
+              <button
+                class="extra-btn"
+                @click.stop="consultDoctor(order)"
+              >
+                咨询医生
+              </button>
+              <!-- 按逐项可退数量显示入口，部分核销或已有退款不影响剩余项目申请。 -->
+              <button
+                v-if="canOrderApplyRefund(order)"
+                class="extra-btn"
+                @click.stop="applyRefund(order.id)"
+              >
+                {{ refundActionText(order) }}
+              </button>
+              <!-- 申请记录与继续退款是两种操作，可以同时显示。 -->
+              <button
+                v-if="order.refundApplicationId"
+                class="extra-btn"
+                @click.stop="viewRefundApplication(order.refundApplicationId)"
+              >
+                退款记录
+              </button>
+              <button
+                class="extra-btn"
+                @click.stop="rebuyOrder(order)"
+              >
+                再次购买
+              </button>
+              <button
+                v-if="order.status === 0"
+                class="extra-btn cancel-btn"
+                @click.stop="handleCancelOrder(order.id)"
+              >
+                取消订单
+              </button>
+              <button
+                v-if="canPayOrder(order)"
+                class="extra-btn pay-btn"
+                @click.stop="handlePayOrder(order)"
+              >
+                去支付
+              </button>
+              <button
+                v-if="order.status === 2"
+                class="extra-btn confirm-btn"
+                @click.stop="handleConfirmReceipt(order.id)"
+              >
+                确认收货
+              </button>
+            </view>
           </view>
         </view>
       </view>
@@ -260,6 +278,8 @@ import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
 import { canPayOrder, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
 import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
+import { openCustomerServiceChat } from '@/utils/customer-service.js'
+import { redirectToWithFallback } from '@/utils/navigate.js'
 import { useProductImages } from '@/utils/product-image.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 
@@ -362,6 +382,8 @@ const resolveRawOrderItems = (order = {}) => {
 
 const mapOrderItem = (item = {}) => ({
   id: item.id,
+  productId: item.productId ?? null,
+  skuId: item.skuId ?? null,
   productName: item.productName,
   productImage: item.productImage,
   specText: item.specText || '',
@@ -679,6 +701,41 @@ const goToOrderDetail = (orderId, actionCode = 'ORDER_DETAIL_OPEN') => {
   })
 }
 
+// 进入互联网医院商城
+const goToMedicineList = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_SHOP_OPEN', accessTitle: '进入医院商城', accessDescription: '用户从订单列表进入制剂商品列表', extraData: {} })
+  redirectToWithFallback('/pages/products/medicine_list')
+}
+
+// 咨询医生：复用企业微信客服会话
+const consultDoctor = (order = {}) => {
+  const orderId = order.id
+  const session = getSessionGeneration()
+  const actionLog = { ...PAGE_LOG, actionCode: 'ORDER_CONSULT_DOCTOR', accessTitle: '咨询医生', accessDescription: '用户从订单列表发起医生咨询', extraData: { orderId } }
+  logButtonClick(actionLog)
+  Promise.resolve(openCustomerServiceChat()).then(result => {
+    if (!disposed && isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: result ? 'SUCCESS' : 'FAILED' })
+  }).catch(error => {
+    if (!disposed && isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { orderId, reason: 'CUSTOMER_SERVICE_UNAVAILABLE' } })
+  })
+}
+
+// 再买一次：回到订单首个商品的详情页重新选购
+const rebuyOrder = (order = {}) => {
+  const orderId = order.id
+  const item = (order.items || []).find(orderItem => orderItem.productId)
+  if (!item) {
+    logAccess({ ...PAGE_LOG, actionType: 'BEHAVIOR', actionCode: 'ORDER_REBUY_RESULT', actionResult: 'FAILED', accessTitle: '再买一次', accessDescription: '订单缺少商品标识，无法重新购买', extraData: { orderId, reason: 'PRODUCT_ID_MISSING' } })
+    uni.showToast({ title: '商品信息缺失，请到商城中重新选购', icon: 'none' })
+    return
+  }
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_REBUY', accessTitle: '再买一次', accessDescription: '用户从订单列表重新购买订单内商品', extraData: { orderId, productId: item.productId } })
+  const page = isTherapyOrder(order) ? '/pages/products/therapy_detail' : '/pages/products/medicine_detail'
+  const query = [`id=${encodeURIComponent(item.productId)}`]
+  if (item.skuId) query.push(`skuId=${encodeURIComponent(item.skuId)}`)
+  uni.navigateTo({ url: `${page}?${query.join('&')}` })
+}
+
 // 申请退货
 const applyRefund = async (orderId) => {
   const session = getSessionGeneration()
@@ -761,7 +818,8 @@ onLoad((options = {}) => {
 
 onShow(() => {
   if (!disposed) logPageView({ ...PAGE_LOG, actionCode: 'ORDER_LIST_VIEW', accessTitle: '我的订单', accessDescription: '进入我的订单列表，查看当前状态筛选下的订单', extraData: { statusFilter: activeTab.value } })
-  loadOrders()
+  // 返回页面复用已有列表，避免重复请求并保留滚动位置
+  if (!hasLoaded.value && !loading.value) loadOrders()
 })
 
 onPullDownRefresh(refreshOrders)
@@ -888,31 +946,39 @@ $info: #3b82f6;
   padding-bottom: 24rpx;
 }
 
-.order-number {
+.order-shop {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   flex: 1;
   min-width: 0;
   margin-right: 16rpx;
 }
 
-.order-no {
-  min-width: 0;
-  font-size: 24rpx;
-  color: $muted;
-  line-height: 1.5;
-  word-break: break-all;
+.order-shop-logo {
+  width: 36rpx;
+  height: 36rpx;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+  border-radius: 6rpx;
 }
 
-.copy-order-no {
+.order-shop-name {
+  font-size: 30rpx;
+  font-family: 'PingFang SC';
+  font-weight: 500;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-shop-arrow {
   flex-shrink: 0;
-  margin-left: 12rpx;
-  padding: 4rpx 10rpx;
-  font-size: 22rpx;
-  line-height: 1.3;
-  color: $primary;
-  background: #eff6ff;
-  border-radius: 6rpx;
+  margin-left: 6rpx;
+  padding: 0 6rpx;
+  font-size: 32rpx;
+  line-height: 1;
+  color: #9ca3af;
 }
 
 .order-status {
@@ -1117,12 +1183,47 @@ $info: #3b82f6;
   font-size: 24rpx;
 }
 
-.order-actions {
+.order-extra-row {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0 12rpx;
   align-items: center;
+  justify-content: flex-end;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #f1f2f4;
+}
+
+.order-extra-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12rpx;
+  overflow: hidden;
+}
+
+.extra-btn {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0 12rpx;
+  height: 52rpx;
+  line-height: 50rpx;
+  font-size: 22rpx;
+  border-radius: 8rpx;
+  background: #f6f7fb;
+  color: #1f2937;
+  border: 1rpx solid #eceef1;
+  box-sizing: border-box;
+  white-space: nowrap;
+  transition: transform 100ms ease, opacity 100ms ease;
+}
+
+.extra-btn::after {
+  border: none;
+}
+
+.extra-btn:active {
+  transform: scale(0.98);
+  opacity: 0.92;
 }
 
 .order-logistics {
@@ -1159,31 +1260,6 @@ $info: #3b82f6;
 }
 .copy-logistics-btn::after { border: none; }
 
-.action-btn {
-  flex-shrink: 0;
-  min-width: 152rpx;
-  height: 72rpx;
-  line-height: 70rpx;
-  margin: 22rpx 0 0;
-  padding: 0 24rpx;
-  font-size: 26rpx;
-  border-radius: 12rpx;
-  font-weight: 500;
-  white-space: nowrap;
-  border: 1rpx solid transparent;
-  box-sizing: border-box;
-  transition: transform 100ms ease, opacity 100ms ease;
-}
-
-.action-btn::after {
-  border: none;
-}
-
-.action-btn:active {
-  transform: scale(0.98);
-  opacity: 0.92;
-}
-
 .cancel-btn {
   background: #f6f7fb;
   color: $muted;
@@ -1201,17 +1277,6 @@ $info: #3b82f6;
   background: $primary;
   color: #fff;
   font-weight: 600;
-}
-
-.refund-btn {
-  background: rgba(255, 107, 53, 0.08);
-  color: #ff6b35;
-  border-color: rgba(255, 107, 53, 0.2);
-}
-
-.view-refund-btn {
-  background: #eff6ff;
-  color: $primary;
 }
 
 </style>
