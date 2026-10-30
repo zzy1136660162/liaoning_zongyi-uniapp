@@ -264,6 +264,9 @@
                 v-for="product in filteredProducts"
                 :key="product.id"
                 class="product-item"
+                hover-class="product-item--hover"
+                hover-stay-time="80"
+                @click="goToDetail(product)"
               >
                 <view class="image-wrapper">
                   <image
@@ -271,7 +274,6 @@
                     :src="getProductImageUrl(product.image)"
                     mode="aspectFill"
                     @error="handleProductImageError(product.image)"
-                    @click="goToDetail(product)"
                   />
                   <view
                     v-if="product.isNewProduct === 1"
@@ -281,10 +283,7 @@
                   </view>
                 </view>
                 <view class="product-info">
-                  <text
-                    class="product-name"
-                    @click="goToDetail(product)"
-                  >
+                  <text class="product-name">
                     <text
                       v-if="product.productCategory === 3"
                       class="therapy-tag"
@@ -347,6 +346,7 @@
                       <view
                         v-else-if="getProductQuantity(product.id) > 0"
                         class="quantity-selector"
+                        @click.stop
                       >
                         <uni-number-box
                           :key="`${product.id}-${quantityRenderVersion}`"
@@ -1460,6 +1460,10 @@ scroll-view ::-webkit-scrollbar {
   box-sizing: border-box;
   padding: 20rpx;
   gap: 20rpx;
+}
+
+.product-item--hover {
+  background-color: #f2f2f2;
 }
 
 .product-image {
