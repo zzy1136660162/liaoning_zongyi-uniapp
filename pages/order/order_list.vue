@@ -18,6 +18,10 @@
             @click="switchTab(tab.key)"
           >
             {{ tab.label }}
+            <view
+              v-if="tab.key === 'pending' && pendingCount > 0"
+              class="tab-dot"
+            />
           </view>
         </view>
       </scroll-view>
@@ -94,6 +98,12 @@
                   {{ formatOrderItemMeta(item) }}
                 </text>
                 <text
+                  v-if="isMedicineItem(item)"
+                  class="product-no-reason-tip"
+                >
+                  不支持7天无理由退货
+                </text>
+                <text
                   v-if="getOrderItemRefundText(item)"
                   class="product-refund-summary"
                 >
@@ -138,6 +148,11 @@
           @click.stop
         >
           <view class="order-logistics-info">
+            <image
+              class="order-logistics-logo"
+              src="https://smf.lntcm.com/static/shop/sf.png"
+              mode="aspectFit"
+            />
             <text class="order-logistics-label">
               {{ order.logisticsCompany || '物流' }}单号
             </text>
@@ -271,13 +286,13 @@
 <script setup>
 import { ref, onUnmounted } from 'vue'
 import { onLoad, onShow, onHide, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
-import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt } from '@/api/order.js'
+import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt, getOrderStats } from '@/api/order.js'
 import { checkCanApplyRefund } from '@/api/refund.js'
 import { getOrderItemRefundText, canOrderApplyRefund, shouldReviewPhysicalRefund, getRefundErrorModal } from '@/utils/refund.js'
 import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
 import { canPayOrder, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
-import { getSessionGeneration, isCurrentSession, onSessionChanged } from '@/utils/session.js'
+import { getSessionGeneration, getSessionToken, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
 import { useProductImages } from '@/utils/product-image.js'
@@ -296,6 +311,7 @@ const loading = ref(false)
 const refreshing = ref(false)
 const loadError = ref('')
 const navigatingOrderId = ref(null)
+const pendingCount = ref(0)
 const ORDER_LIST_PREVIEW_LIMIT = 2
 const ORDER_PAGE_SIZE = 20
 let unsubscribeSessionChanged = null
@@ -341,6 +357,9 @@ const formatOrderItemMeta = (item = {}) => {
   ].filter(Boolean)
   return parts.join(' / ')
 }
+
+// 制剂（实物商品）不支持七天无理由退货，治疗类商品不展示该提示。
+const isMedicineItem = (item = {}) => Number(item.productCategorySnapshot) !== 3
 
 const visibleOrderItems = (order = {}) => {
   return (order.items || []).slice(0, ORDER_LIST_PREVIEW_LIMIT)
@@ -510,9 +529,27 @@ const fetchOrderPage = async (nextPage) => {
   }
 }
 
+// 待支付数量用于「待支付」标签的红点提醒，统计失败不影响列表展示。
+const loadPendingCount = async () => {
+  if (!getSessionToken()) {
+    pendingCount.value = 0
+    return
+  }
+  const session = getSessionGeneration()
+  try {
+    const stats = (await getOrderStats({ silent: true })) || {}
+    if (disposed || !isCurrentSession(session)) return
+    pendingCount.value = Number(stats.pending) || 0
+  } catch (error) {
+    if (disposed || !isCurrentSession(session)) return
+    console.warn('event=ui_order_order_list stage=load_pending_count result=failed reason=operation_incomplete')
+  }
+}
+
 // 取消、收货和下拉刷新都重新读取当前分类的第一页。
 const loadOrders = () => {
   if (disposed) return
+  loadPendingCount()
   orders.value = []
   pageNum.value = 0
   total.value = 0
@@ -813,13 +850,18 @@ onLoad((options = {}) => {
     loading.value = false
     stopRefreshing()
     loadError.value = '登录状态已变更'
+    pendingCount.value = 0
   })
 })
 
 onShow(() => {
   if (!disposed) logPageView({ ...PAGE_LOG, actionCode: 'ORDER_LIST_VIEW', accessTitle: '我的订单', accessDescription: '进入我的订单列表，查看当前状态筛选下的订单', extraData: { statusFilter: activeTab.value } })
   // 返回页面复用已有列表，避免重复请求并保留滚动位置
-  if (!hasLoaded.value && !loading.value) loadOrders()
+  if (!hasLoaded.value && !loading.value) {
+    loadOrders()
+  } else {
+    loadPendingCount()
+  }
 })
 
 onPullDownRefresh(refreshOrders)
@@ -878,6 +920,7 @@ $info: #3b82f6;
 }
 
 .tab-item {
+  position: relative;
   flex: 1 0 auto;
   text-align: center;
   padding: 14rpx 24rpx;
@@ -886,6 +929,17 @@ $info: #3b82f6;
   color: $muted;
   background: #f6f7fb;
   border-radius: 12rpx;
+}
+
+/* 有待支付订单时在标签右上角显示红点提醒 */
+.tab-dot {
+  position: absolute;
+  top: 8rpx;
+  right: 10rpx;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #ff3b30;
 }
 
 .tab-item.active {
@@ -1086,6 +1140,12 @@ $info: #3b82f6;
   word-break: break-all;
 }
 
+.product-no-reason-tip {
+  font-size: 22rpx;
+  color: #9e6e40;
+  line-height: 1.5;
+}
+
 .product-refund-summary {
   font-size: 22rpx;
   color: #b45309;
@@ -1197,7 +1257,7 @@ $info: #3b82f6;
   flex-wrap: nowrap;
   justify-content: flex-end;
   align-items: center;
-  gap: 12rpx;
+  gap: 8rpx;
   overflow: hidden;
 }
 
@@ -1205,10 +1265,10 @@ $info: #3b82f6;
   flex-shrink: 0;
   margin: 0;
   padding: 0 12rpx;
-  height: 52rpx;
-  line-height: 50rpx;
-  font-size: 22rpx;
-  border-radius: 8rpx;
+  height: 58rpx;
+  line-height: 56rpx;
+  font-size: 24rpx;
+  border-radius: 10rpx;
   background: #f6f7fb;
   color: #1f2937;
   border: 1rpx solid #eceef1;
@@ -1244,6 +1304,13 @@ $info: #3b82f6;
   gap: 8rpx 16rpx;
   font-size: 24rpx;
   line-height: 1.6;
+}
+
+.order-logistics-logo {
+  flex-shrink: 0;
+  align-self: center;
+  width: 32rpx;
+  height: 32rpx;
 }
 
 .order-logistics-label { color: #64748b; }
