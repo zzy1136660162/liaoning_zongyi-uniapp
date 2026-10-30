@@ -1504,9 +1504,7 @@ scroll-view ::-webkit-scrollbar {
   font-size: 28rpx;
   font-weight: 500;
   color: #333333;
-  margin-bottom: 8rpx;
   line-height: 1.4;
-  word-wrap: break-word;
   word-break: break-all;
   overflow: hidden;
   -webkit-line-clamp: 2;
@@ -1517,13 +1515,14 @@ scroll-view ::-webkit-scrollbar {
 .self-tag,
 .self-tag2,
 .self-tag3 {
-  display: inline-block;
+  display: inline;
   color: #fff;
   font-size: 20rpx;
+  line-height: 1.4;
   padding: 2rpx 8rpx;
   border-radius: 4rpx;
   margin-right: 8rpx;
-  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .therapy-tag {
@@ -1531,10 +1530,12 @@ scroll-view ::-webkit-scrollbar {
   background: linear-gradient(135deg, #4a90e2, #67c6ff);
   color: #fff;
   font-size: 20rpx;
-  padding: 4rpx 12rpx;
+  line-height: 1.4;
+  padding: 2rpx 12rpx;
   border-radius: 6rpx;
   font-weight: bold;
   margin-right: 8rpx;
+  white-space: nowrap;
 }
 
 .self-tag {
