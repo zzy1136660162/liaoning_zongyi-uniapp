@@ -155,7 +155,6 @@
             <view
               class="category-item"
               :class="{ active: currentCategoryId === category.id }"
-              @click="switchCategory(category.id)"
             >
               <text class="category-name">
                 {{ category.name }}
@@ -164,7 +163,6 @@
             <view
               v-if="currentCategoryId === category.id && category.children && category.children.length > 0 && !isCategoryCollapsed(category.id)"
               class="sub-category-inline"
-              @click="switchCategory(category.id)"
             >
               <view
                 v-for="subCategory in getInlineSubCategories(category)"
