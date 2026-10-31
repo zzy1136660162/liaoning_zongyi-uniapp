@@ -155,7 +155,6 @@
             <view
               class="category-item"
               :class="{ active: currentCategoryId === category.id }"
-              @click="switchCategory(category.id)"
             >
               <text class="category-name">
                 {{ category.name }}
@@ -164,7 +163,6 @@
             <view
               v-if="currentCategoryId === category.id && category.children && category.children.length > 0 && !isCategoryCollapsed(category.id)"
               class="sub-category-inline"
-              @click="switchCategory(category.id)"
             >
               <view
                 v-for="subCategory in getInlineSubCategories(category)"
@@ -266,6 +264,9 @@
                 v-for="product in filteredProducts"
                 :key="product.id"
                 class="product-item"
+                hover-class="product-item--hover"
+                hover-stay-time="80"
+                @click="goToDetail(product)"
               >
                 <view class="image-wrapper">
                   <image
@@ -273,7 +274,6 @@
                     :src="getProductImageUrl(product.image)"
                     mode="aspectFill"
                     @error="handleProductImageError(product.image)"
-                    @click="goToDetail(product)"
                   />
                   <view
                     v-if="product.isNewProduct === 1"
@@ -283,10 +283,7 @@
                   </view>
                 </view>
                 <view class="product-info">
-                  <text
-                    class="product-name"
-                    @click="goToDetail(product)"
-                  >
+                  <text class="product-name">
                     <text
                       v-if="product.productCategory === 3"
                       class="therapy-tag"
@@ -349,6 +346,7 @@
                       <view
                         v-else-if="getProductQuantity(product.id) > 0"
                         class="quantity-selector"
+                        @click.stop
                       >
                         <uni-number-box
                           :key="`${product.id}-${quantityRenderVersion}`"
@@ -1464,6 +1462,10 @@ scroll-view ::-webkit-scrollbar {
   gap: 20rpx;
 }
 
+.product-item--hover {
+  background-color: #f2f2f2;
+}
+
 .product-image {
   width: 200rpx;
   height: 200rpx;
@@ -1502,9 +1504,7 @@ scroll-view ::-webkit-scrollbar {
   font-size: 28rpx;
   font-weight: 500;
   color: #333333;
-  margin-bottom: 8rpx;
   line-height: 1.4;
-  word-wrap: break-word;
   word-break: break-all;
   overflow: hidden;
   -webkit-line-clamp: 2;
@@ -1515,13 +1515,14 @@ scroll-view ::-webkit-scrollbar {
 .self-tag,
 .self-tag2,
 .self-tag3 {
-  display: inline-block;
+  display: inline;
   color: #fff;
   font-size: 20rpx;
+  line-height: 1.4;
   padding: 2rpx 8rpx;
   border-radius: 4rpx;
   margin-right: 8rpx;
-  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .therapy-tag {
@@ -1529,10 +1530,12 @@ scroll-view ::-webkit-scrollbar {
   background: linear-gradient(135deg, #4a90e2, #67c6ff);
   color: #fff;
   font-size: 20rpx;
-  padding: 4rpx 12rpx;
+  line-height: 1.4;
+  padding: 2rpx 12rpx;
   border-radius: 6rpx;
   font-weight: bold;
   margin-right: 8rpx;
+  white-space: nowrap;
 }
 
 .self-tag {

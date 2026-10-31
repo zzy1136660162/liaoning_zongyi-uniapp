@@ -1,38 +1,22 @@
 <template>
   <view class="auth-page">
-    <view class="auth-content">
-      <view class="auth-header">
-        <view class="auth-title">手机号登录</view>
-        <view class="auth-subtitle">验证码登录，继续使用健康服务</view>
-      </view>
-      <view class="auth-field">
-        <uni-icons type="phone" size="18" color="#82929b" class="auth-icon" />
-        <input v-model="phone" class="auth-input" type="number" maxlength="11" placeholder="请输入手机号" placeholder-style="color: #929da3" aria-label="手机号" />
-      </view>
-      <view class="auth-field auth-code-field">
-        <uni-icons type="locked" size="18" color="#82929b" class="auth-icon" />
-        <input v-model="code" class="auth-input" type="number" maxlength="6" placeholder="请输入验证码" placeholder-style="color: #929da3" aria-label="短信验证码" />
-        <button class="auth-code-button" hover-class="auth-pressed" :disabled="sending || countdown > 0" @click="sendCode">{{ countdown > 0 ? countdown + '秒后重发' : sending ? '发送中…' : '获取验证码' }}</button>
-      </view>
-      <checkbox-group @change="changeAgreement">
-        <view class="auth-agreement">
-          <label class="auth-checkbox-hit" for="login-agreement">
-            <checkbox id="login-agreement" value="agreed" class="auth-checkbox" :checked="agreed" color="#377b9b" aria-label="同意用户服务协议和隐私协议" />
-          </label>
-          <view class="auth-agreement-text">
-            <label for="login-agreement">我已阅读并同意</label>
-            <text class="auth-link" @click="showAgreement('用户服务协议')">用户服务协议</text>
-            <text class="auth-agreement-separator">和</text>
-            <text class="auth-link" @click="showAgreement('用户隐私协议')">用户隐私协议</text>
-          </view>
-        </view>
-      </checkbox-group>
-      <view v-if="recoveryUnavailable" class="auth-notice" @click="retryRecovery">登录校验暂不可用，点击重试</view>
-      <view class="auth-actions">
-        <button class="auth-submit" hover-class="auth-pressed" :disabled="loggingIn || !phone || !code || !agreed" @click="handleLogin">{{ loggingIn ? '登录中…' : '登录' }}</button>
-        <button class="auth-switch" hover-class="auth-pressed" :disabled="loggingIn" @click="goRegister(false)">还没有账号？<text class="auth-switch-action">去注册</text></button>
-      </view>
+    <view class="title">手机号登录</view>
+    <view class="subtitle">登录后继续使用您的订单、就诊人和个人资料</view>
+    <input v-model="phone" class="field" type="number" maxlength="11" placeholder="请输入手机号" aria-label="手机号" />
+    <view class="sms-row">
+      <input v-model="code" class="field" type="number" maxlength="6" placeholder="请输入验证码" aria-label="短信验证码" />
+      <button class="sms-button" :disabled="sending || countdown > 0" @click="sendCode">{{ countdown > 0 ? countdown + '秒' : '获取验证码' }}</button>
     </view>
+    <checkbox-group @change="changeAgreement">
+      <label class="agreement"><checkbox value="agreed" :checked="agreed" color="#2875a8" />我已阅读并同意</label>
+    </checkbox-group>
+    <view class="agreement-links">
+      <text @click="showAgreement('用户服务协议')">用户服务协议</text> 与
+      <text @click="showAgreement('用户隐私协议')">用户隐私协议</text>
+    </view>
+    <view v-if="recoveryUnavailable" class="hint" @click="retryRecovery">登录校验暂不可用，点击重试</view>
+    <button class="primary" :disabled="loggingIn || !phone || !code || !agreed" @click="handleLogin">{{ loggingIn ? '登录中…' : '登录' }}</button>
+    <button class="secondary" :disabled="loggingIn" @click="goRegister(false)">还没有账号？去注册</button>
   </view>
 </template>
 
@@ -149,6 +133,21 @@ export default {
 }
 </script>
 
-<style lang="scss" scoped>
-@import "../../styles/auth.scss";
+<style scoped>
+.auth-page { padding: 72rpx 40rpx; background: #fff; min-height: 100vh; box-sizing: border-box; }
+.title { font-size: 44rpx; font-weight: 600; color: #243b4b; margin-bottom: 18rpx; }
+.subtitle { color: #667985; font-size: 26rpx; line-height: 1.7; margin-bottom: 48rpx; }
+.field { min-width: 0; height: 96rpx; padding: 0 24rpx; background: #f4f7f9; border-radius: 16rpx; margin-bottom: 24rpx; font-size: 30rpx; }
+.sms-row { display: flex; gap: 16rpx; align-items: flex-start; }
+.sms-row .field { flex: 1; }
+.sms-button { height: 96rpx; line-height: 96rpx; font-size: 26rpx; color: #2875a8; background: #edf5fa; }
+.agreement { display: flex; align-items: center; font-size: 26rpx; color: #526570; }
+.agreement-links { margin: 12rpx 0 32rpx; font-size: 26rpx; color: #526570; }
+.agreement-links text { color: #2875a8; }
+.primary { background: #1677ff; color: #fff; border-radius: 44rpx; font-size: 32rpx; margin-top: 28rpx; }
+.primary::after { border: 0; }
+.primary[disabled] { background: #9db8e8; color: #fff; }
+.secondary { color: #2875a8; background: transparent; font-size: 28rpx; margin-top: 24rpx; }
+.secondary::after { border: 0; }
+.hint { padding: 20rpx 0; color: #2875a8; font-size: 26rpx; }
 </style>
