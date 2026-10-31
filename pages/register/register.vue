@@ -1,121 +1,57 @@
 <template>
-	<view class="register-container">
-		<view class="header">
-			<view class="title">注册账号</view>
-			<view class="subtitle">请填写本人真实资料，注册成功后自动登录</view>
-		</view>
-		
-		<view class="form-container">
-			<!-- 真实姓名 -->
-			<view class="input-group">
-				<uni-icons type="contact" size="18" color="#666666" class="input-icon"></uni-icons>
-				<input 
-					class="input-field" 
-					type="text" 
-					v-model="formData.realName"
-					placeholder="请输入本人真实姓名 (成人)"
-					placeholder-style="color: #999999"
-				/>
-			</view>
-			
-			<!-- 证件类型和号码 -->
-			<view class="input-group">
-				<uni-icons type="wallet" size="18" color="#666666" class="input-icon"></uni-icons>
-				<picker 
-					mode="selector" 
-					:range="idTypeList" 
-					:value="idTypeIndex"
-					@change="onIdTypeChange"
-					class="picker-wrapper"
-				>
-					<view class="picker-display">
-						<text class="picker-text">{{ formData.idType || '请选择' }}</text>
-						<text class="picker-arrow">v</text>
-					</view>
-				</picker>
-			</view>
-			
-			<view class="input-group">
-				<uni-icons type="paperclip" size="18" color="#666666" class="input-icon"></uni-icons>
-				<input 
-					class="input-field" 
-					type="text" 
-					v-model="formData.idNumber"
-					placeholder="请输入证件号码"
-					placeholder-style="color: #999999"
-				/>
-			</view>
-			
-			<!-- 手机号 -->
-			<view class="input-group">
-				<uni-icons type="phone" size="18" color="#666666" class="input-icon"></uni-icons>
-				<input 
-					class="input-field" 
-					type="number" 
-					v-model="formData.phone"
-					placeholder="请输入手机号"
-					placeholder-style="color: #999999"
-					maxlength="11"
-				/>
-			</view>
-			
-			<!-- 验证码 -->
-			<view class="input-group verify-code-group">
-				<uni-icons type="locked" size="18" color="#666666" class="input-icon"></uni-icons>
-				<input 
-					class="input-field verify-code-input" 
-					type="number" 
-					v-model="formData.verifyCode"
-					placeholder="请输入验证码"
-					placeholder-style="color: #999999"
-					maxlength="6"
-				/>
-				<button 
-					class="verify-code-btn" 
-					:disabled="countdown > 0"
-					@click="getVerifyCode"
-				>
-					{{ countdown > 0 ? `${countdown}秒` : '获取验证码' }}
-				</button>
-			</view>
-			
-			<!-- 用户协议 -->
-			<view class="agreement-group" @click="toggleAgreement">
-				<view class="checkbox" :class="{ checked: isAgreed }">
-					<uni-icons v-if="isAgreed" type="checkmarkempty" size="16" color="#ffffff" class="checkbox-icon"></uni-icons>
-				</view>
-				<text class="agreement-text">
-					我已阅读并同意
-					<text class="link-text" @click.stop="viewServiceAgreement">用户服务协议</text>
-					<text class="link-text" @click.stop="viewPrivacyAgreement">用户隐私协议</text>
-				</text>
-			</view>
-			
-			<!-- 注册按钮 -->
-      <view
-        v-if="waitingForRecovery"
-        class="session-notice"
-      >
-        正在恢复登录，请稍候…
+  <view class="auth-page">
+    <view class="auth-content">
+      <view class="auth-header">
+        <view class="auth-title">注册账号</view>
+        <view class="auth-subtitle">填写本人资料，注册后即可使用</view>
       </view>
-      <view
-        v-else-if="recoveryUnavailable"
-        class="session-notice"
-        @click="retryRecovery"
-      >
-        登录校验暂不可用，点击重试
+      <view class="auth-field">
+        <uni-icons type="contact" size="18" color="#82929b" class="auth-icon" />
+        <input v-model="formData.realName" class="auth-input" type="text" placeholder="请输入本人真实姓名（成人）" placeholder-style="color: #929da3" aria-label="本人真实姓名" />
       </view>
-			<button 
-				class="login-btn" 
-				:class="{ disabled: !canSubmit }"
-				:disabled="!canSubmit"
-				@click="handleLogin"
-			>
-				注册并登录
-			</button>
-      <button class="switch-auth" @click="goToLogin">已有账号？去登录</button>
-		</view>
-	</view>
+      <view class="auth-field">
+        <uni-icons type="wallet" size="18" color="#82929b" class="auth-icon" />
+        <picker class="auth-picker" mode="selector" :range="idTypeList" :value="idTypeIndex" aria-label="证件类型" @change="onIdTypeChange">
+          <view class="auth-picker-display">
+            <text>{{ formData.idType || '请选择证件类型' }}</text>
+            <uni-icons type="bottom" size="14" color="#929da3" />
+          </view>
+        </picker>
+      </view>
+      <view class="auth-field">
+        <uni-icons type="paperclip" size="18" color="#82929b" class="auth-icon" />
+        <input v-model="formData.idNumber" class="auth-input" type="text" placeholder="请输入证件号码" placeholder-style="color: #929da3" aria-label="证件号码" />
+      </view>
+      <view class="auth-field">
+        <uni-icons type="phone" size="18" color="#82929b" class="auth-icon" />
+        <input v-model="formData.phone" class="auth-input" type="number" maxlength="11" placeholder="请输入手机号" placeholder-style="color: #929da3" aria-label="手机号" />
+      </view>
+      <view class="auth-field auth-code-field">
+        <uni-icons type="locked" size="18" color="#82929b" class="auth-icon" />
+        <input v-model="formData.verifyCode" class="auth-input" type="number" maxlength="6" placeholder="请输入验证码" placeholder-style="color: #929da3" aria-label="短信验证码" />
+        <button class="auth-code-button" hover-class="auth-pressed" :disabled="sendingCode || countdown > 0" @click="getVerifyCode">{{ countdown > 0 ? countdown + '秒后重发' : sendingCode ? '发送中…' : '获取验证码' }}</button>
+      </view>
+      <checkbox-group @change="toggleAgreement">
+        <view class="auth-agreement">
+          <label class="auth-checkbox-hit" for="register-agreement">
+            <checkbox id="register-agreement" value="agreed" class="auth-checkbox" :checked="isAgreed" color="#377b9b" aria-label="同意用户服务协议和隐私协议" />
+          </label>
+          <view class="auth-agreement-text">
+            <label for="register-agreement">我已阅读并同意</label>
+            <text class="auth-link" @click="viewServiceAgreement">用户服务协议</text>
+            <text class="auth-agreement-separator">和</text>
+            <text class="auth-link" @click="viewPrivacyAgreement">用户隐私协议</text>
+          </view>
+        </view>
+      </checkbox-group>
+      <view v-if="waitingForRecovery" class="auth-notice">正在恢复登录，请稍候…</view>
+      <view v-else-if="recoveryUnavailable" class="auth-notice" @click="retryRecovery">登录校验暂不可用，点击重试</view>
+      <view class="auth-actions">
+        <button class="auth-submit" hover-class="auth-pressed" :disabled="!canSubmit" @click="handleLogin">{{ loggingIn ? '注册中…' : '注册并登录' }}</button>
+        <button class="auth-switch" hover-class="auth-pressed" :disabled="loggingIn" @click="goToLogin">已有账号？<text class="auth-switch-action">去登录</text></button>
+      </view>
+    </view>
+  </view>
 </template>
 
 <script>
@@ -396,182 +332,6 @@ export default {
 }
 </script>
 
-<style scoped>
-.switch-auth { margin-top: 28rpx; background: transparent; color: #2875a8; font-size: 28rpx; }
-.switch-auth::after { border: 0; }
-.register-container {
-	min-height: 100vh;
-	background-color: #ffffff;
-	padding: 60rpx 40rpx;
-	box-sizing: border-box;
-}
-
-.header {
-	margin-bottom: 60rpx;
-}
-
-.title {
-	font-size: 48rpx;
-	font-weight: bold;
-	color: #333333;
-	margin-bottom: 16rpx;
-}
-
-.subtitle {
-	font-size: 26rpx;
-	color: #999999;
-}
-
-.form-container {
-	width: 100%;
-}
-
-.input-group {
-	display: flex;
-	align-items: center;
-	background-color: #f5f5f5;
-	border-radius: 12rpx;
-	padding: 24rpx 20rpx;
-	margin-bottom: 32rpx;
-}
-
-.input-icon {
-	margin-right: 20rpx;
-	flex-shrink: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.input-field {
-	flex: 1;
-	font-size: 30rpx;
-	color: #333333;
-}
-
-.picker-wrapper {
-	flex: 1;
-}
-
-.picker-display {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	width: 100%;
-}
-
-.picker-text {
-	font-size: 30rpx;
-	color: #333333;
-}
-
-.picker-arrow {
-	font-size: 24rpx;
-	color: #999999;
-	margin-left: 10rpx;
-}
-
-.verify-code-group {
-	padding-right: 0;
-}
-
-.verify-code-input {
-	flex: 1;
-	margin-right: 20rpx;
-}
-
-.verify-code-btn {
-	width: 180rpx;
-	height: 64rpx;
-	line-height: 64rpx;
-	background-color: #87CEEB;
-	color: #ffffff;
-	font-size: 26rpx;
-	border-radius: 8rpx;
-	border: none;
-	flex-shrink: 0;
-	padding: 0;
-	margin: 0;
-}
-
-.verify-code-btn:disabled {
-	background-color: #cccccc;
-	color: #999999;
-}
-
-.agreement-group {
-	display: flex;
-	align-items: flex-start;
-	margin-bottom: 60rpx;
-	padding: 0 10rpx;
-}
-
-.checkbox {
-	width: 32rpx;
-	height: 32rpx;
-	border: 2rpx solid #cccccc;
-	border-radius: 6rpx;
-	margin-right: 16rpx;
-	margin-top: 4rpx;
-	flex-shrink: 0;
-	display: flex;
-	justify-content: center;
-	align-items: center;
-	background-color: #ffffff;
-	transition: all 0.3s;
-}
-
-.checkbox.checked {
-	background-color: #87CEEB;
-	border-color: #87CEEB;
-}
-
-.checkbox-icon {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.agreement-text {
-	font-size: 26rpx;
-	color: #666666;
-	line-height: 1.6;
-	flex: 1;
-}
-
-.link-text {
-	color: #87CEEB;
-}
-
-.session-notice {
-  padding: 16rpx 0;
-  color: #3284ed;
-  font-size: 26rpx;
-  text-align: center;
-}
-
-.login-btn {
-	width: 100%;
-	height: 88rpx;
-	line-height: 88rpx;
-	background-color: #87CEEB;
-	color: #ffffff;
-	font-size: 32rpx;
-	font-weight: 500;
-	border-radius: 44rpx;
-	border: none;
-	box-shadow: 0 8rpx 20rpx rgba(135, 206, 235, 0.3);
-	transition: all 0.3s;
-}
-
-.login-btn.disabled {
-	background-color: #cccccc;
-	color: #999999;
-	box-shadow: none;
-}
-
-.login-btn:active:not(.disabled) {
-	transform: scale(0.98);
-	box-shadow: 0 4rpx 12rpx rgba(135, 206, 235, 0.2);
-}
+<style lang="scss" scoped>
+@import "../../styles/auth.scss";
 </style>

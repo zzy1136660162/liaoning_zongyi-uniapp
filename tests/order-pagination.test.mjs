@@ -83,9 +83,9 @@ test('个人中心待支付入口在 onShow 早于 mounted 时仍结束加载并
   assert.deepEqual(pageCalls[0].params, { tab: 'pending', pageNum: 1, pageSize: 20 })
 })
 
-test('入口分类在首次请求前确定，旧已支付链接和缺失或无效参数回退到全部', async () => {
+test('入口分类在首次请求前确定，旧已支付和待发货链接及无效参数回退到全部', async () => {
   for (const status of ['all', 'pending', 'paid', 'cancelled', 'shipping', 'received', 'completed', 'afterSale', '', undefined, 'invalid']) {
-    const expected = !status || status === 'invalid' || status === 'paid' ? 'all' : status
+    const expected = !status || ['invalid', 'paid', 'shipping'].includes(status) ? 'all' : status
     const { state, pageCalls } = createList(status === undefined ? {} : { status })
     assert.equal(pageCalls.length, 1)
     assert.deepEqual(pageCalls[0].params, { tab: expected, pageNum: 1, pageSize: 20 })
@@ -98,14 +98,14 @@ test('入口分类在首次请求前确定，旧已支付链接和缺失或无�
 })
 
 test('带筛选参数的首次请求失败会结束加载，重试继续请求原分类', async () => {
-  const { state, pageCalls } = createList({ status: 'shipping' })
+  const { state, pageCalls } = createList({ status: 'received' })
   pageCalls[0].reject(new Error('网络失败')); await flush()
   assert.equal(state.loading.value, false)
   assert.equal(state.loadError.value, '网络失败')
   assert.equal(state.hasLoaded.value, false)
   const retry = state.retryOrders()
   assert.equal(pageCalls.length, 2)
-  assert.deepEqual(pageCalls[1].params, { tab: 'shipping', pageNum: 1, pageSize: 20 })
+  assert.deepEqual(pageCalls[1].params, { tab: 'received', pageNum: 1, pageSize: 20 })
   pageCalls[1].resolve(page([row('retried')])); await retry
   assert.equal(state.loading.value, false)
   assert.equal(state.loadError.value, '')
@@ -113,8 +113,8 @@ test('带筛选参数的首次请求失败会结束加载，重试继续请求�
 })
 
 test('带筛选入口进入后切换分类，返回页面保留当前分类并刷新', async () => {
-  const { state, pageCalls, show } = createList({ status: 'shipping' })
-  pageCalls[0].resolve(page([row('shipping')])); await flush()
+  const { state, pageCalls, show } = createList({ status: 'received' })
+  pageCalls[0].resolve(page([row('received', { orderStatus: 2 })])); await flush()
   const switched = state.switchTab('completed')
   pageCalls[1].resolve(page([row('completed', { orderStatus: 3 })])); await switched
   show()
@@ -227,13 +227,13 @@ test('每次返回订单列表都重新请求当前分类第一页', async () =>
 
 test('切换分类重新请求第一页，旧分类成功和失败均不能覆盖当前状态', async () => {
   const { state, pageCalls } = createList()
-  const shipping = state.switchTab('shipping')
+  const received = state.switchTab('received')
   const completed = state.switchTab('completed')
   assert.deepEqual(pageCalls.slice(1).map(call => call.params), [
-    { tab: 'shipping', pageNum: 1, pageSize: 20 }, { tab: 'completed', pageNum: 1, pageSize: 20 }
+    { tab: 'received', pageNum: 1, pageSize: 20 }, { tab: 'completed', pageNum: 1, pageSize: 20 }
   ])
   pageCalls[1].resolve(page([row('stale')]))
-  await shipping
+  await received
   assert.deepEqual(state.orders.value, [])
   assert.equal(state.loading.value, true)
   pageCalls[2].resolve(page([row('current', { orderStatus: 3 })])); await completed

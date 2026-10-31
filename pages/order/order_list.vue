@@ -284,10 +284,9 @@ let disposed = false
 
 const tabs = ref([
   { key: 'all', label: '全部' },
-  { key: 'completed', label: '已完成' },
   { key: 'pending', label: '待支付' },
-  { key: 'shipping', label: '待发货' },
   { key: 'received', label: '待收货' },
+  { key: 'completed', label: '已完成' },
   { key: 'cancelled', label: '已取消' },
   { key: 'afterSale', label: '退款' }
 ])
