@@ -24,8 +24,7 @@
 					>
 						{{ confirmButtonText }}
 					</button>
-					<button class="btn btn-secondary" >我不是复诊,仅浏览</button>
-					<!-- @click="handleBrowse" -->
+					<button class="btn btn-secondary" @click="handleBrowse">我不是复诊，仅浏览</button>
 				</view>
 				
 				<view class="checkbox-wrapper" @click="toggleCheckbox">
@@ -130,6 +129,7 @@ export default {
 			redirectToWithFallback('/pages/products/medicine_list')
 		},
 		handleBrowse() {
+			logButtonClick({ ...PAGE_LOG, actionCode: 'BROWSE_NOTICE', accessTitle: '仅浏览商品', accessDescription: '用户选择浏览商品，购买时继续执行登录和就诊校验' })
 			redirectToWithFallback('/pages/products/medicine_list')
 		}
 	}

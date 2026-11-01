@@ -143,10 +143,10 @@
             <text class="policy-section-title" selectable="true">
               <text class="check-icon" selectable="true">
                 ✓
-              </text> 支持七天无理由退换
+              </text> 未使用次数可按规则申请退款
             </text>
             <text class="policy-content" selectable="true">
-              支持七天无理由退换，随时可退。
+              未使用次数可按规则申请退款。
             </text>
           </view>
           <view class="policy-section">
@@ -235,7 +235,7 @@
         mode="aspectFit"
       />
       <text class="policy-text" selectable="true">
-        支持七天无理由退换 · 售后服务
+        未使用次数可按规则申请退款 · 售后服务
       </text>
       <text class="select-arrow" selectable="true">
         ›

@@ -1,3 +1,4 @@
+import * as orderDisplay from '../utils/order-display.js'
 import { resolveProductFlow } from '../utils/product-biz.js'
 import { getSessionGeneration, getSessionToken, isCurrentSession, onSessionChanged, sessionChangedError } from '../utils/session.js'
 import { loadCartProducts } from '../utils/cart-products.js'
@@ -56,7 +57,7 @@ export const loadSetup = (path, mocks, exports) => {
     : mocks.getCartEntries ? mocks.getCartEntries() : {},
     getOrderSubmission: (kind, data, cartSnapshot) => ({ requestId: 'fixture-order-request', cartSnapshot }),
     rememberCreatedOrder() {}, releaseOrderSubmission() {}, forgetOrderSubmission() {}, consumeOrderCart: () => true, ...mocks }
-  mocks = { ...prescription, ...refund, canPayOrder, ...questionnaireForm, ...questionnaireState, deriveBirthDateFromId, getPatientProfileNotice, getOrderStatusText, getReceiptConfirmText, hasTherapyEntitlement, resolveProductFlow, getSessionGeneration, isCurrentSession, getProductCartLines, loadCartProducts, formatRichText, onUnload() {}, resolveProductSku, withProductSku, inventoryFields, useProductImages, ...mocks }
+  mocks = { ...prescription, ...refund, ...orderDisplay, canPayOrder, ...questionnaireForm, ...questionnaireState, deriveBirthDateFromId, getPatientProfileNotice, getOrderStatusText, getReceiptConfirmText, hasTherapyEntitlement, resolveProductFlow, getSessionGeneration, isCurrentSession, getProductCartLines, loadCartProducts, formatRichText, onUnload() {}, resolveProductSku, withProductSku, inventoryFields, useProductImages, ...mocks }
   const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
   const script = source.match(/<script\s+setup[^>]*>([\s\S]*?)<\/script>/)[1]
     .replace(/^[ \t]*import\s[\s\S]*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
@@ -69,7 +70,7 @@ export const loadOptions = (path, mocks) => {
   mocks = { ...logMocks, ...checkout, checkoutEntries: (keys, purchase) => purchase ? checkout.checkoutEntries(keys, purchase)
     : mocks.getCartEntries ? mocks.getCartEntries() : {}, ...mocks }
   const missingProductRequest = () => { throw new Error('测试未提供商品请求') }
-  mocks = { ...prescription, ...refund, canPayOrder, getOrderStatusText, getReceiptConfirmText, getImageUrl, ...questionnaireForm, ...questionnaireState, SingleChoiceQuestion: {}, resolveProductFlow, getSessionGeneration, isCurrentSession, buildListCartCategories, isPurchaseAvailable, getProductCartLines, loadCartProducts, createHealthProductListMethods, getCategoryList: missingProductRequest,
+  mocks = { ...prescription, ...refund, ...orderDisplay, canPayOrder, getOrderStatusText, getReceiptConfirmText, getImageUrl, ...questionnaireForm, ...questionnaireState, SingleChoiceQuestion: {}, resolveProductFlow, getSessionGeneration, isCurrentSession, buildListCartCategories, isPurchaseAvailable, getProductCartLines, loadCartProducts, createHealthProductListMethods, getCategoryList: missingProductRequest,
     getCategoryProducts: missingProductRequest, getProductDetail: missingProductRequest,
     mapProductDetail: missingProductRequest, mapProductListItem: missingProductRequest,
     resolveProductSku, withProductSku, useProductImages, ...mocks }

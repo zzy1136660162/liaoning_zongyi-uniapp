@@ -284,6 +284,7 @@
   import { getConsultationDetail, getPrescriptionByConsultation, getPrescriptionDetail } from '@/api/consultation.js'
   import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
   import { getOrderDetail } from '@/api/order.js'
+  import { getDisplayOrderNo, getPaidAmountText, getRefundedAmountText } from '@/utils/order-display.js'
   import { wechatSinglePay } from '@/api/payment.js'
   import { formatFreightEstimate } from '@/utils/freight.js'
   import { checkCanApplyRefund } from '@/api/refund.js'
@@ -421,9 +422,11 @@
         const list = [
           // 处方单号只使用真实处方表主键 prescriptionId。
           // { label: '处方单号', labelKey: 'prescriptionId', value: this.displayPrescriptionNo },
-          { label: '订单号', labelKey: 'orderNo', value: this.order.orderNo },
+          { label: '订单号', labelKey: 'orderNo', value: getDisplayOrderNo(this.order) },
           { label: '开方医生', labelKey: 'doctor', value: this.displayDoctorName },
           { label: '订单金额', labelKey: 'payableAmount', value: this.order.payableAmount ? Number(this.order.payableAmount).toFixed(2) : '' },
+          { label: '实付款', labelKey: 'paidAmount', value: getPaidAmountText(this.order) },
+          { label: '退款金额', labelKey: 'refundedAmount', value: getRefundedAmountText(this.order) || (this.order.refundedAmount == null ? '待确认' : '0.00') },
           { label: '支付时间', labelKey: 'payTime', value: this.formatDateTime(this.order.payTime) || '未支付' },
           { label: '预估运费', labelKey: 'shippingPaymentMethod', value: therapyOnly ? '无' : formatFreightEstimate(this.order.estimatedFreight, this.order.freightQuoteSource) }
         ]
@@ -473,7 +476,7 @@
         return this.paymentPageActive && sequence === this.detailRequestSequence && isCurrentSession(this.pageSession)
       },
       copyOrderNo() {
-        const orderNo = String(this.order.orderNo ?? '').trim()
+        const orderNo = getDisplayOrderNo(this.order)
         if (!orderNo) return
         uni.setClipboardData({
           data: orderNo,
@@ -794,6 +797,9 @@
             })
             this.order.time = this.formatDateTime(orderDetail.createdAt)
             this.order.orderNo = orderDetail.orderNo || this.order.orderNo
+            this.order.hisOrderNo = orderDetail.hisOrderNo || null
+            this.order.paidAmount = orderDetail.paidAmount
+            this.order.refundedAmount = orderDetail.refundedAmount
             // 物流/运费（到付）信息
             this.order.shippingPaymentMethod = orderDetail.shippingPaymentMethod || '到付，以实际为准'
             this.order.estimatedFreight = orderDetail.estimatedFreight ?? null

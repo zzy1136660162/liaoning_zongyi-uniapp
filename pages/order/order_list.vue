@@ -2,6 +2,12 @@
   <view class="order-list-page">
     <!-- 标签页 -->
     <view class="tabs-sticky">
+      <view class="order-search">
+        <uni-icons type="search" size="18" color="#8995a3" />
+        <input v-model="searchInput" class="order-search-input" placeholder="搜索商品名称 / 订单号" confirm-type="search" :maxlength="100" @confirm="submitSearch" />
+        <button v-if="searchInput || keyword" class="order-search-clear" aria-label="清空搜索" @click="clearSearch">×</button>
+        <button class="order-search-submit" @click="submitSearch">搜索</button>
+      </view>
       <scroll-view
         class="tabs"
         scroll-x
@@ -34,7 +40,7 @@
         class="empty"
       >
         <text class="empty-text">
-          暂无订单
+          {{ keyword ? '当前分类未找到相关订单' : '暂无订单' }}
         </text>
       </view>
 
@@ -67,8 +73,13 @@
             class="order-status"
             :class="'s-' + order.status"
           >
-            {{ getStatusText(order.status, order) }}
+            {{ activeTab === 'unused' ? '待使用' : getStatusText(order.status, order) }}
           </text>
+        </view>
+
+        <view class="order-number-detail">
+          <text class="order-no">订单号: {{ getDisplayOrderNo(order) }}</text>
+          <text v-if="getDisplayOrderNo(order)" class="copy-order-no" @click.stop="copyOrderNo(getDisplayOrderNo(order))">复制</text>
         </view>
 
         <view
@@ -189,15 +200,16 @@
             </view>
             <view class="order-amount">
               <text class="amount-label">
-                实付款:
+                {{ activeTab === 'unused' ? '整单实付款:' : '实付款:' }}
               </text>
               <text class="amount-value">
                 <text class="amount-currency">
-                  ¥
-                </text>{{ (Number(order.payableAmount || 0) + Number(order.shippingFee || 0)).toFixed(2) }}
+                  {{ getPaidAmountText(order) === '待确认' ? '' : '¥' }}
+                </text>{{ getPaidAmountText(order) }}
               </text>
             </view>
           </view>
+          <text v-if="getRefundedAmountText(order)" class="order-refunded">{{ getRefundedAmountText(order) }}</text>
           <view class="order-extra-row">
             <view class="order-extra-actions">
               <button
@@ -206,6 +218,7 @@
               >
                 咨询医生
               </button>
+              <button v-if="activeTab === 'unused'" class="extra-btn" @click.stop="goToOrderDetail(order.id)">查看使用码</button>
               <!-- 按逐项可退数量显示入口，部分核销或已有退款不影响剩余项目申请。 -->
               <button
                 v-if="canOrderApplyRefund(order)"
@@ -277,6 +290,7 @@
       </view>
     </view>
 
+    <DoctorConsultation v-if="showDoctorConsultation" @close="showDoctorConsultation = false" />
     <TabBar
       current="order"
     />
@@ -293,15 +307,20 @@ import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
 import { canPayOrder, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
 import { getSessionGeneration, getSessionToken, isCurrentSession, onSessionChanged } from '@/utils/session.js'
-import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
 import { useProductImages } from '@/utils/product-image.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
+import DoctorConsultation from '@/components/DoctorConsultation.vue'
+import { getDisplayOrderNo, getPaidAmountText, getRefundedAmountText } from '@/utils/order-display.js'
+import { isTherapyRefundItem } from '@/utils/refund.js'
 
 const PAGE_LOG = { moduleCode: 'ORDER', accessType: '订单', pageType: 'ORDER_LIST', pageId: '', requestUri: '/pages/order/order_list' }
 
 const { getProductImageUrl, handleProductImageError } = useProductImages()
 const activeTab = ref('all')
+const searchInput = ref('')
+const keyword = ref('')
+const showDoctorConsultation = ref(false)
 const orders = ref([])
 const pageNum = ref(0)
 const total = ref(0)
@@ -320,11 +339,12 @@ let disposed = false
 
 const tabs = ref([
   { key: 'all', label: '全部' },
-  { key: 'pending', label: '待支付' },
+  { key: 'pending', label: '待付款' },
   { key: 'received', label: '待收货' },
-  { key: 'completed', label: '已完成' },
-  { key: 'cancelled', label: '已取消' },
-  { key: 'afterSale', label: '退款' }
+  { key: 'unused', label: '待使用' },
+  { key: 'shipping', label: '待发货' },
+  { key: 'afterSale', label: '退款' },
+  { key: 'closed', label: '已关闭' }
 ])
 
 const normalizeRedeemVouchers = (item = {}) => {
@@ -333,7 +353,9 @@ const normalizeRedeemVouchers = (item = {}) => {
   return vouchers.map((voucher, index) => ({
     id: voucher.id,
     sequenceNo: voucher.sequenceNo || index + 1,
-    redeemStatus: voucher.redeemStatus ?? 0,
+    redeemStatus: voucher.redeemStatus ?? null,
+    redeemTime: voucher.redeemTime,
+    refundApplicationId: voucher.refundApplicationId,
     redeemStatusText: voucher.redeemStatusText || '',
     verifyQrBase64: voucher.verifyQrBase64 || ''
   }))
@@ -357,15 +379,21 @@ const formatOrderItemMeta = (item = {}) => {
   return parts.join(' / ')
 }
 
-// 制剂（实物商品）不支持七天无理由退货，治疗类商品不展示该提示。
+// 按已确认口径保留：传统疗法(3)不展示实物退货提示。
 const isMedicineItem = (item = {}) => Number(item.productCategorySnapshot) !== 3
 
+const isAvailableRedeemVoucher = voucher => voucher.redeemStatus != null && Number(voucher.redeemStatus) === 0 &&
+  !voucher.redeemTime && !voucher.refundApplicationId
+
 const visibleOrderItems = (order = {}) => {
-  return (order.items || []).slice(0, ORDER_LIST_PREVIEW_LIMIT)
+  const items = order.items || []
+  const selected = activeTab.value === 'unused' ? items.filter(item => isTherapyRefundItem(item, order) &&
+    (item.redeemVouchers || []).some(isAvailableRedeemVoucher)) : items
+  return selected.slice(0, ORDER_LIST_PREVIEW_LIMIT)
 }
 
 const remainingOrderItemCount = (order = {}) => {
-  return Math.max((order.items || []).length - ORDER_LIST_PREVIEW_LIMIT, 0)
+  return Math.max((order.items || []).length - visibleOrderItems(order).length, 0)
 }
 
 const flattenRedeemVouchers = (order = {}) => {
@@ -386,7 +414,7 @@ const redeemSummaryText = (order = {}) => {
   const vouchers = flattenRedeemVouchers(order)
   if (vouchers.length > 0) {
     const redeemedCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 1).length
-    const availableCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 0).length
+    const availableCount = vouchers.filter(isAvailableRedeemVoucher).length
     const frozenCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 3).length
     const refundedCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 2).length
     return `到店核销：可用 ${availableCount}，已核销 ${redeemedCount}，退款中 ${frozenCount}，已退废 ${refundedCount}`
@@ -425,6 +453,9 @@ const mapOrderItem = (item = {}) => ({
 const mapOrderListItem = (order = {}) => ({
   id: order.id,
   orderNo: order.orderNo,
+  hisOrderNo: order.hisOrderNo,
+  paidAmount: order.paidAmount,
+  refundedAmount: order.refundedAmount,
   orderType: order.orderType,
   payStatus: order.payStatus,
   paymentFulfillmentStatus: order.paymentFulfillmentStatus,
@@ -500,12 +531,13 @@ const fetchOrderPage = async (nextPage) => {
   const sequence = ++requestSequence
   const session = getSessionGeneration()
   const tab = activeTab.value
+  const search = keyword.value
   const isCurrentRequest = () => !disposed && sequence === requestSequence &&
-    isCurrentSession(session) && activeTab.value === tab
+    isCurrentSession(session) && activeTab.value === tab && keyword.value === search
   loading.value = true
   loadError.value = ''
   try {
-    const page = await getOrderPage({ tab, pageNum: nextPage, pageSize: ORDER_PAGE_SIZE })
+    const page = await getOrderPage({ tab, pageNum: nextPage, pageSize: ORDER_PAGE_SIZE, ...(search ? { keyword: search } : {}) })
     if (!isCurrentRequest()) return
     const rows = (page.rows || []).map(order => mapOrderListItem(order))
     const merged = new Map((nextPage === 1 ? [] : orders.value).map(order => [String(order.id), order]))
@@ -575,6 +607,22 @@ const refreshOrders = () => {
 
 const refundActionText = (order = {}) => {
   return order.refundApplicationId ? '继续退款' : '申请退款'
+}
+
+const submitSearch = () => {
+  keyword.value = searchInput.value.trim()
+  searchInput.value = keyword.value
+  stopRefreshing()
+  uni.pageScrollTo({ scrollTop: 0, duration: 0 })
+  return loadOrders()
+}
+const clearSearch = () => {
+  searchInput.value = ''
+  return submitSearch()
+}
+const consultDoctor = (order = {}) => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_CONSULT_DOCTOR', accessTitle: '咨询医生', accessDescription: '打开医生选择与问诊二维码', extraData: { orderId: order.id } })
+  showDoctorConsultation.value = true
 }
 
 // 切换标签
@@ -743,19 +791,6 @@ const goToMedicineList = () => {
   redirectToWithFallback('/pages/products/medicine_list')
 }
 
-// 咨询医生：复用企业微信客服会话
-const consultDoctor = (order = {}) => {
-  const orderId = order.id
-  const session = getSessionGeneration()
-  const actionLog = { ...PAGE_LOG, actionCode: 'ORDER_CONSULT_DOCTOR', accessTitle: '咨询医生', accessDescription: '用户从订单列表发起医生咨询', extraData: { orderId } }
-  logButtonClick(actionLog)
-  Promise.resolve(openCustomerServiceChat()).then(result => {
-    if (!disposed && isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: result ? 'SUCCESS' : 'FAILED' })
-  }).catch(error => {
-    if (!disposed && isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { orderId, reason: 'CUSTOMER_SERVICE_UNAVAILABLE' } })
-  })
-}
-
 // 再买一次：回到订单首个商品的详情页重新选购
 const rebuyOrder = (order = {}) => {
   const orderId = order.id
@@ -835,11 +870,12 @@ const formatDate = (dateStr) => {
 
 onLoad((options = {}) => {
   // onShow 会早于 mounted 发起首屏请求，筛选条件必须先在 onLoad 中确定。
-  const status = options.status
+  const status = options.status === 'cancelled' ? 'closed' : options.status
   if (tabs.value.some(tab => tab.key === status)) {
     activeTab.value = status
   }
   unsubscribeSessionChanged = onSessionChanged(() => {
+    showDoctorConsultation.value = false
     requestSequence += 1
     orders.value = []
     pageNum.value = 0
@@ -855,12 +891,8 @@ onLoad((options = {}) => {
 
 onShow(() => {
   if (!disposed) logPageView({ ...PAGE_LOG, actionCode: 'ORDER_LIST_VIEW', accessTitle: '我的订单', accessDescription: '进入我的订单列表，查看当前状态筛选下的订单', extraData: { statusFilter: activeTab.value } })
-  // 返回页面复用已有列表，避免重复请求并保留滚动位置
-  if (!hasLoaded.value && !loading.value) {
-    loadOrders()
-  } else {
-    loadPendingCount()
-  }
+  // 支付、退款和核销可能在离开列表后变化，返回时重新读取当前分类。
+  loadOrders()
 })
 
 onPullDownRefresh(refreshOrders)
@@ -903,6 +935,15 @@ $info: #3b82f6;
   background: $card-bg;
 }
 
+.order-number-detail { display: flex; align-items: baseline; gap: 10rpx; margin: 0 0 20rpx; }
+.order-number-detail .order-no { flex: 1; min-width: 0; word-break: break-all; font-size: 22rpx; color: #64748b; }
+.order-number-detail .copy-order-no { flex-shrink: 0; color: #2563eb; font-size: 22rpx; }
+.order-search { display: flex; align-items: center; gap: 14rpx; margin: 0 24rpx; padding: 16rpx 0 8rpx; }
+.order-search-input { flex: 1; min-width: 0; height: 68rpx; padding: 0 20rpx; border-radius: 12rpx; background: #f5f7f9; font-size: 26rpx; }
+.order-search-clear, .order-search-submit { padding: 0 12rpx; margin: 0; height: 76rpx; line-height: 76rpx; background: transparent; color: #377b9b; font-size: 26rpx; }
+.order-search-clear { color: #8995a3; font-size: 36rpx; }
+.order-search-clear::after, .order-search-submit::after { border: 0; }
+.order-refunded { display: block; text-align: right; margin-top: 10rpx; color: #a96b42; font-size: 24rpx; }
 .tabs {
   flex-shrink: 0;
   white-space: nowrap;

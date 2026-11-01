@@ -43,7 +43,7 @@ test('列表和详情复制完整订单号，保留前导零且不触发导航',
   assert.deepEqual(calls.navigation, [])
   assert.deepEqual(calls.toasts, [], '复制成功使用平台默认提示，不叠加成功弹窗')
   for (const [path, handler] of [
-    ['pages/order/order_list.vue', 'copyOrderNo(order.orderNo)'],
+    ['pages/order/order_list.vue', 'copyOrderNo(getDisplayOrderNo(order))'],
     ['pages/order/order-detail.vue', 'copyOrderNo']
   ]) {
     const template = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').split('<script')[0]

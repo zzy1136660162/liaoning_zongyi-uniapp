@@ -7,14 +7,14 @@ export const getReceiptConfirmText = order => ({
 })[Number(order?.receiptConfirmType)] || ''
 
 export const ORDER_STATUS_TEXT = {
-  0: '待支付',
+  0: '待付款',
   1: '待发货',
   2: '待收货',
-  3: '已完成',
-  4: '已取消',
+  3: '已收货',
+  4: '已关闭',
   5: '退货中',
   6: '部分退货',
-  7: '已退货'
+  7: '已关闭'
 }
 
 export const REFUND_STATUS_TEXT = {
@@ -78,6 +78,20 @@ export const getOrderStatusText = (order = {}) => {
   if (fulfillment === 'PENDING') return '已付款，订单处理中'
   if (fulfillment === 'REFUND_REQUIRED') return '付款异常，待退款'
   if (fulfillment === 'REFUNDED') return '异常付款已退款'
+
+  if (status === 0) return ORDER_STATUS_TEXT[0]
+  if (status === 7 || Number(order.refundStatus ?? order.refund_status) === 5) return '已关闭'
+
+  // 使用中保留部分核销/退款的细节，统一患者看到的待使用和已使用文案。
+  const displayText = order.displayStatusText || order.display_status_text
+  if (displayText === '待核销') return '待使用'
+  if (displayText === '已核销') return '已使用'
+  if (status === 3 && !isTherapyOrder(order) && (!displayText || displayText === '已完成')) return '已收货'
+  if (!isAfterSaleOrderStatus(status) && isTherapyOrder(order) && status !== null && status >= 1) {
+    const redeemStatus = toNumber(order.redeemStatus ?? order.redeem_status)
+    if (redeemStatus === 0) return '待使用'
+    if (redeemStatus === 1) return '已使用'
+  }
 
   if (isAfterSaleOrderStatus(status)) {
     return order.displayStatusText || order.display_status_text || ORDER_STATUS_TEXT[status] || '未知状态'

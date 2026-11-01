@@ -40,7 +40,7 @@ const createList = (options = {}) => {
     logPageView() {}, logButtonClick() {}, isTherapyOrder: () => false,
     getOrderStatusText: () => ''
   }, ['activeTab', 'orders', 'pageNum', 'total', 'hasMore', 'hasLoaded', 'loading', 'refreshing', 'loadError',
-    'loadOrders', 'loadMoreOrders', 'refreshOrders', 'retryOrders', 'switchTab', 'handleCancelOrder', 'handleConfirmReceipt'])
+    'loadOrders', 'loadMoreOrders', 'refreshOrders', 'retryOrders', 'switchTab', 'searchInput', 'keyword', 'submitSearch', 'clearSearch', 'visibleOrderItems', 'isMedicineItem', 'redeemSummaryText', 'handleCancelOrder', 'handleConfirmReceipt'])
   const list = { state, pageCalls, detailCalls, unmount, show, hide, pullDown, reachBottom }
   lists.push(list)
   // 小程序先触发页面 onLoad、onShow，再触发组件 mounted。
@@ -49,6 +49,42 @@ const createList = (options = {}) => {
   mount?.()
   return list
 }
+
+test('搜索在服务端分页，保留分类与关键词，迟到响应不覆盖新搜索', async () => {
+  const { state, pageCalls } = createList({ status: 'unused' })
+  state.searchInput.value = '  医院0001  '
+  const first = state.submitSearch()
+  assert.deepEqual(pageCalls[1].params, { tab: 'unused', keyword: '医院0001', pageNum: 1, pageSize: 20 })
+  state.searchInput.value = '针灸'
+  const second = state.submitSearch()
+  pageCalls[2].resolve(page([row('new')])); await second
+  pageCalls[1].resolve(page([row('stale')])); await first
+  pageCalls[0].resolve(page([row('initial')])); await flush()
+  assert.deepEqual(state.orders.value.map(order => order.id), ['new'])
+  const switched = state.switchTab('shipping')
+  assert.equal(pageCalls[3].params.keyword, '针灸')
+  pageCalls[3].resolve(page([])); await switched
+  const cleared = state.clearSearch()
+  assert.deepEqual(pageCalls[4].params, { tab: 'shipping', pageNum: 1, pageSize: 20 })
+  pageCalls[4].resolve(page([])); await cleared
+})
+
+test('待使用混合单只展示可用疗法，传统疗法不显示实物退货提示', () => {
+  const { state } = createList({ status: 'unused' })
+  const order = { orderType: 1, payStatus: 1, status: 1, items: [
+    { id: 1, productCategorySnapshot: 1 },
+    { id: 2, productCategorySnapshot: 3, redeemVouchers: [{ redeemStatus: 0 }] },
+    { id: 3, productCategorySnapshot: 3, redeemVouchers: [{ redeemStatus: 3 }] },
+    { id: 4, productCategorySnapshot: 3, redeemVouchers: [{ redeemStatus: 0, refundApplicationId: 9 }] },
+    { id: 5, productCategorySnapshot: 3, redeemVouchers: [{ redeemStatus: 1 }] },
+    { id: 6, productCategorySnapshot: 3, redeemVouchers: [{ redeemStatus: null }] },
+    { id: 7, productCategorySnapshot: 3, redeemVouchers: [{ redeemStatus: 0, redeemTime: '2026-10-31 09:00' }] }
+  ] }
+  assert.deepEqual(state.visibleOrderItems(order).map(item => item.id), [2])
+  assert.equal(state.isMedicineItem(order.items[0]), true)
+  assert.equal(state.isMedicineItem(order.items[1]), false)
+  assert.match(state.redeemSummaryText(order), /可用 1，/)
+})
 
 beforeEach(() => {
   values.clear(); lists = []; requests = []; modals = []; stoppedSessionListeners = 0; cancelled = 0; confirmed = 0
@@ -83,9 +119,9 @@ test('个人中心待支付入口在 onShow 早于 mounted 时仍结束加载并
   assert.deepEqual(pageCalls[0].params, { tab: 'pending', pageNum: 1, pageSize: 20 })
 })
 
-test('入口分类在首次请求前确定，旧已支付和待发货链接及无效参数回退到全部', async () => {
-  for (const status of ['all', 'pending', 'paid', 'cancelled', 'shipping', 'received', 'completed', 'afterSale', '', undefined, 'invalid']) {
-    const expected = !status || ['invalid', 'paid', 'shipping'].includes(status) ? 'all' : status
+test('入口分类在首次请求前确定，旧完成入口回退到全部，旧取消入口兼容新关闭分类', async () => {
+  for (const status of ['all', 'pending', 'paid', 'cancelled', 'shipping', 'received', 'completed', 'unused', 'closed', 'afterSale', '', undefined, 'invalid']) {
+    const expected = !status || ['invalid', 'paid', 'completed'].includes(status) ? 'all' : status === 'cancelled' ? 'closed' : status
     const { state, pageCalls } = createList(status === undefined ? {} : { status })
     assert.equal(pageCalls.length, 1)
     assert.deepEqual(pageCalls[0].params, { tab: expected, pageNum: 1, pageSize: 20 })
@@ -115,12 +151,12 @@ test('带筛选参数的首次请求失败会结束加载，重试继续请求�
 test('带筛选入口进入后切换分类，返回页面保留当前分类并刷新', async () => {
   const { state, pageCalls, show } = createList({ status: 'received' })
   pageCalls[0].resolve(page([row('received', { orderStatus: 2 })])); await flush()
-  const switched = state.switchTab('completed')
+  const switched = state.switchTab('unused')
   pageCalls[1].resolve(page([row('completed', { orderStatus: 3 })])); await switched
   show()
-  assert.equal(state.activeTab.value, 'completed')
+  assert.equal(state.activeTab.value, 'unused')
   assert.equal(pageCalls.length, 3)
-  assert.deepEqual(pageCalls[2].params, { tab: 'completed', pageNum: 1, pageSize: 20 })
+  assert.deepEqual(pageCalls[2].params, { tab: 'unused', pageNum: 1, pageSize: 20 })
   pageCalls[2].resolve(page([row('refreshed', { orderStatus: 3 })])); await flush()
   assert.equal(state.loading.value, false)
   assert.deepEqual(state.orders.value.map(order => order.id), ['refreshed'])
@@ -157,13 +193,13 @@ test('第一页加载期间不显示空态，触底按页追加并去重，到�
 
 for (const failed of [false, true]) {
   test(`原生下拉刷新${failed ? '失败' : '成功'}后收起动画，重复下拉不叠加请求`, async () => {
-    const { state, pageCalls, pullDown } = createList({ status: 'completed' })
+    const { state, pageCalls, pullDown } = createList({ status: 'unused' })
     pageCalls[0].resolve(page([row('before')])); await flush()
     const refreshing = pullDown()
     pullDown()
     assert.equal(state.refreshing.value, true)
     assert.equal(pageCalls.length, 2)
-    assert.deepEqual(pageCalls[1].params, { tab: 'completed', pageNum: 1, pageSize: 20 })
+    assert.deepEqual(pageCalls[1].params, { tab: 'unused', pageNum: 1, pageSize: 20 })
     if (failed) pageCalls[1].reject(new Error('刷新失败'))
     else pageCalls[1].resolve(page([row('refreshed')]))
     await refreshing
@@ -179,10 +215,10 @@ test('切换分类回到页面顶部，旧刷新不能提前结束新分类的�
   const { state, pageCalls, pullDown } = createList()
   pageCalls[0].resolve(page([row('before')])); await flush()
   const oldRefresh = pullDown()
-  const switched = state.switchTab('completed')
+  const switched = state.switchTab('unused')
   assert.equal(stoppedRefreshes, 1)
   assert.deepEqual(pageScrolls, [{ scrollTop: 0, duration: 0 }])
-  state.switchTab('completed')
+  state.switchTab('unused')
   state.switchTab('invalid')
   assert.equal(pageScrolls.length, 1)
   const currentRefresh = pullDown()
@@ -228,9 +264,9 @@ test('每次返回订单列表都重新请求当前分类第一页', async () =>
 test('切换分类重新请求第一页，旧分类成功和失败均不能覆盖当前状态', async () => {
   const { state, pageCalls } = createList()
   const received = state.switchTab('received')
-  const completed = state.switchTab('completed')
+  const completed = state.switchTab('unused')
   assert.deepEqual(pageCalls.slice(1).map(call => call.params), [
-    { tab: 'received', pageNum: 1, pageSize: 20 }, { tab: 'completed', pageNum: 1, pageSize: 20 }
+    { tab: 'received', pageNum: 1, pageSize: 20 }, { tab: 'unused', pageNum: 1, pageSize: 20 }
   ])
   pageCalls[1].resolve(page([row('stale')]))
   await received
@@ -240,7 +276,7 @@ test('切换分类重新请求第一页，旧分类成功和失败均不能覆�
   pageCalls[0].reject(new Error('old request failed')); await flush()
   assert.deepEqual(state.orders.value.map(order => order.id), ['current'])
   assert.equal(state.loadError.value, '')
-  assert.equal(state.activeTab.value, 'completed')
+  assert.equal(state.activeTab.value, 'unused')
   assert.equal(state.pageNum.value, 1)
 })
 
