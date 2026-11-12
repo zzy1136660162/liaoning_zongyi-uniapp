@@ -299,7 +299,7 @@
 
 <script setup>
 import { ref, onUnmounted } from 'vue'
-import { onLoad, onShow, onHide, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide, onPageScroll, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt, getOrderStats } from '@/api/order.js'
 import { checkCanApplyRefund } from '@/api/refund.js'
 import { getOrderItemRefundText, canOrderApplyRefund, shouldReviewPhysicalRefund, getRefundErrorModal } from '@/utils/refund.js'
@@ -336,6 +336,11 @@ const ORDER_PAGE_SIZE = 20
 let unsubscribeSessionChanged = null
 let requestSequence = 0
 let disposed = false
+// 首次展示才拉取列表；离开再返回时复用已有数据与滚动位置
+let hasShownOnce = false
+// 账号切换后列表已被清空，下次展示需要重新拉取
+let needsReload = true
+let savedPageScrollTop = 0
 
 const tabs = ref([
   { key: 'all', label: '全部' },
@@ -886,13 +891,25 @@ onLoad((options = {}) => {
     stopRefreshing()
     loadError.value = '登录状态已变更'
     pendingCount.value = 0
+    needsReload = true
   })
 })
 
 onShow(() => {
   if (!disposed) logPageView({ ...PAGE_LOG, actionCode: 'ORDER_LIST_VIEW', accessTitle: '我的订单', accessDescription: '进入我的订单列表，查看当前状态筛选下的订单', extraData: { statusFilter: activeTab.value } })
-  // 支付、退款和核销可能在离开列表后变化，返回时重新读取当前分类。
-  loadOrders()
+  if (!hasShownOnce || needsReload) {
+    hasShownOnce = true
+    needsReload = false
+    loadOrders()
+    return
+  }
+  // 从其他页面返回：不重新加载列表，只刷新待支付角标并回到离开时的滚动位置
+  loadPendingCount()
+  if (savedPageScrollTop > 0) uni.pageScrollTo({ scrollTop: savedPageScrollTop, duration: 0 })
+})
+
+onPageScroll((event) => {
+  savedPageScrollTop = (event && event.scrollTop) || 0
 })
 
 onPullDownRefresh(refreshOrders)

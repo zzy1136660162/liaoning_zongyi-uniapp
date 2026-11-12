@@ -148,18 +148,15 @@ test('带筛选参数的首次请求失败会结束加载，重试继续请求�
   assert.deepEqual(state.orders.value.map(order => order.id), ['retried'])
 })
 
-test('带筛选入口进入后切换分类，返回页面保留当前分类并刷新', async () => {
+test('带筛选入口进入后切换分类，返回页面保留当前分类且不重新请求', async () => {
   const { state, pageCalls, show } = createList({ status: 'received' })
   pageCalls[0].resolve(page([row('received', { orderStatus: 2 })])); await flush()
   const switched = state.switchTab('unused')
   pageCalls[1].resolve(page([row('completed', { orderStatus: 3 })])); await switched
   show()
   assert.equal(state.activeTab.value, 'unused')
-  assert.equal(pageCalls.length, 3)
-  assert.deepEqual(pageCalls[2].params, { tab: 'unused', pageNum: 1, pageSize: 20 })
-  pageCalls[2].resolve(page([row('refreshed', { orderStatus: 3 })])); await flush()
-  assert.equal(state.loading.value, false)
-  assert.deepEqual(state.orders.value.map(order => order.id), ['refreshed'])
+  assert.equal(pageCalls.length, 2)
+  assert.deepEqual(state.orders.value.map(order => order.id), ['completed'])
 })
 
 test('第一页加载期间不显示空态，触底按页追加并去重，到末页不再请求', async () => {
@@ -251,14 +248,12 @@ for (const action of ['hide', 'unmount', 'session']) {
   })
 }
 
-test('每次返回订单列表都重新请求当前分类第一页', async () => {
+test('返回订单列表复用已有数据，不重新请求当前分类第一页', async () => {
   const list = createList()
   list.pageCalls[0].resolve(page([row(1)])); await flush()
   list.show()
-  assert.equal(list.pageCalls.length, 2)
-  assert.deepEqual(list.pageCalls[1].params, { tab: 'all', pageNum: 1, pageSize: 20 })
-  list.pageCalls[1].resolve(page([row(2)])); await flush()
-  assert.deepEqual(list.state.orders.value.map(order => order.id), [2])
+  assert.equal(list.pageCalls.length, 1)
+  assert.deepEqual(list.state.orders.value.map(order => order.id), [1])
 })
 
 test('切换分类重新请求第一页，旧分类成功和失败均不能覆盖当前状态', async () => {

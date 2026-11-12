@@ -150,12 +150,16 @@
             v-for="category in categories"
             :key="category.id"
             class="category-group"
+            :class="{ active: currentCategoryId === category.id }"
             @click="switchCategory(category.id)"
           >
-            <view
-              class="category-item"
-              :class="{ active: currentCategoryId === category.id }"
-            >
+            <view class="category-item">
+              <image
+                v-if="category.iconUrl"
+                class="category-icon"
+                :src="getCategoryIconUrl(category.iconUrl)"
+                mode="aspectFit"
+              />
               <text class="category-name">
                 {{ category.name }}
               </text>
@@ -177,6 +181,7 @@
               </view>
             </view>
           </view>
+          <view class="category-nav-footer" />
         </scroll-view>
 
         <view class="product-list-wrapper">
@@ -256,7 +261,9 @@
           <scroll-view
             class="product-list"
             scroll-y
+            :scroll-top="scrollTop"
             lower-threshold="120"
+            @scroll="onListScroll"
             @scrolltolower="handleLoadMore"
           >
             <view class="product-items">
@@ -284,6 +291,18 @@
                 </view>
                 <view class="product-info">
                   <text class="product-name">
+                    {{ product.name }}
+                  </text>
+                  <text
+                    v-if="product.description"
+                    class="product-desc"
+                  >
+                    {{ product.description }}
+                  </text>
+                  <view
+                    v-if="product.productCategory === 3 || product.isSelfDeveloped === 1 || product.isHospitalStarFormula === 1 || product.isNewProduct === 1"
+                    class="product-tags"
+                  >
                     <text
                       v-if="product.productCategory === 3"
                       class="therapy-tag"
@@ -308,14 +327,7 @@
                     >
                       重磅新品
                     </text>
-                    {{ product.name }}
-                  </text>
-                  <text
-                    v-if="product.description"
-                    class="product-desc"
-                  >
-                    {{ product.description }}
-                  </text>
+                  </view>
                   <!-- <view class="product-meta-tags">
                     <text class="meta-tag">
                       {{ getExternalUseLabel(product.isExternal) }}
@@ -325,7 +337,7 @@
                     </text>
                   </view> -->
                   <view class="product-footer">
-                    <view class="product-summary">
+                    <!-- <view class="product-summary">
                       <text
                         v-if="product.specText || product.unit"
                         class="product-unit"
@@ -333,7 +345,7 @@
                         {{ product.specText || product.unit }}
                       </text>
                       <text class="product-sales">已售 {{ product.salesVolume ?? 0 }}</text>
-                    </view>
+                    </view> -->
                     <view class="product-price-row">
                       <!-- 售罄状态 -->
                       <view
@@ -377,7 +389,6 @@
           </scroll-view>
         </view>
       </view>
-
     </view>
 
     <TabBar
@@ -435,6 +446,8 @@ const PAGE_LOG = {
 
 const PRODUCT_CATEGORY_FILTER = null // null=全部购买分类，目录 categoryId 只作展示筛选
 const PRODUCT_PAGE_SIZE = 20
+// 页面实例间复用列表数据，从其他页面（含底部标签切换）回来时不再重新请求
+let productListCache = null
 
 export default {
   setup: useProductImages,
@@ -470,6 +483,9 @@ export default {
       introFallbackTimer: null,
       // 列表是否已加载过，返回页面时不重复请求
       productsLoaded: false,
+      // 列表滚动位置，返回页面时恢复
+      scrollTop: 0,
+      savedScrollTop: 0,
       imageCollapsed: !shouldPlayIntro,
       introSafeTop: 0,
       // 布局是否已折叠（折叠后 margin 收缩，文档高度同步变化）
@@ -519,6 +535,8 @@ export default {
     }
   },
   onLoad() {
+    // 从其他页面返回（页面已重建）时直接套用缓存的列表，避免重新请求
+    this.restoreProductListCache()
     this.updateIntroSafeTop()
     // 折叠位移量 440rpx，换算为 px 与手指位移统一单位
     this.collapseRangePx = uni.upx2px(440)
@@ -543,7 +561,15 @@ export default {
   async onShow() {
     logPageView({ ...PAGE_LOG, extraData: { categoryId: this.currentCategoryId, subCategoryId: this.currentSubCategoryId } })
     // 返回页面复用已有列表，不重复请求，保留页面高度与滚动位置
-    if (!this.productsLoaded) this.loadProducts()
+    if (!this.productsLoaded) {
+      this.loadProducts()
+    } else if (this.savedScrollTop > 0) {
+      const saved = this.savedScrollTop
+      this.scrollTop = 0
+      this.$nextTick(() => {
+        this.scrollTop = saved
+      })
+    }
     try {
       await refreshCart()
       this.updateCartView()
@@ -558,6 +584,7 @@ export default {
     this.stopIntro()
   },
   onUnload() {
+    this.saveProductListCache()
     this.stopIntro()
     this.clearSettleTimer()
     uni.$off('refreshProductsList', this.updateCartView)
@@ -572,6 +599,14 @@ export default {
   },
   methods: {
     getImageUrl,
+    // 分类图标：接口返回相对路径，统一拼上 admin-api 前缀
+    getCategoryIconUrl(iconUrl) {
+      if (!iconUrl) return ''
+      const url = String(iconUrl).trim()
+      if (!url) return ''
+      if (/^https?:\/\//i.test(url) || url.startsWith('//')) return url
+      return `https://shop.lntcm.com/admin-api${url.startsWith('/') ? url : `/${url}`}`
+    },
     getExternalUseLabel,
     getColdShippingLabel,
     isSelfDevelopedProduct,
@@ -919,6 +954,43 @@ export default {
         console.error('handleLoadMore failed:', error)
       }
     },
+    onListScroll(event) {
+      // 记录滚动位置，页面切走再回来时恢复
+      this.savedScrollTop = (event && event.detail ? event.detail.scrollTop : 0) || 0
+    },
+    restoreProductListCache() {
+      const cache = productListCache
+      if (!cache || !isCurrentSession(cache.sessionGeneration)) return
+      this.categoryList = cache.categoryList
+      this.categoryTree = cache.categoryTree
+      this.categories = cache.categories
+      this.productPageState = cache.productPageState
+      this.currentCategoryId = cache.currentCategoryId
+      this.currentSubCategoryId = cache.currentSubCategoryId
+      this.collapsedCategoryIds = cache.collapsedCategoryIds
+      this.sortType = cache.sortType
+      this.sortOrder = cache.sortOrder
+      this.searchKeyword = cache.searchKeyword
+      this.savedScrollTop = cache.savedScrollTop
+      this.productsLoaded = true
+    },
+    saveProductListCache() {
+      if (!this.productsLoaded) return
+      productListCache = {
+        sessionGeneration: getSessionGeneration(),
+        categoryList: this.categoryList,
+        categoryTree: this.categoryTree,
+        categories: this.categories,
+        productPageState: this.productPageState,
+        currentCategoryId: this.currentCategoryId,
+        currentSubCategoryId: this.currentSubCategoryId,
+        collapsedCategoryIds: this.collapsedCategoryIds,
+        sortType: this.sortType,
+        sortOrder: this.sortOrder,
+        searchKeyword: this.searchKeyword,
+        savedScrollTop: this.savedScrollTop
+      }
+    },
     async loadProducts() {
       const requestSeq = ++this.requestSeq
       try {
@@ -928,10 +1000,17 @@ export default {
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categoryTree = buildCategoryTree(this.categoryList)
         this.categories = [
-          { id: 'all', name: '全部分类', products: [], children: [] },
+          {
+            id: 'all',
+            name: '全部分类',
+            iconUrl: 'https://smf.lntcm.com/static/shop/all3.png',
+            products: [],
+            children: []
+          },
           ...this.categoryTree.map(cat => ({
             id: normalizeCategoryId(cat.id),
             name: cat.name,
+            iconUrl: cat.iconUrl || '',
             parentId: normalizeCategoryId(cat.parentId),
             products: [],
             children: (cat.children || []).map(child => ({
@@ -1244,79 +1323,87 @@ scroll-view ::-webkit-scrollbar {
 }
 
 .category-nav {
-  width: 180rpx;
-  padding-bottom: 20rpx;
-  background: #fcfcfc;
+  width: 132rpx;
+  padding: 0 0 20rpx;
+  background: #f7f7f7;
 }
 
 .category-group {
   position: relative;
+  background-color: transparent;
+  transition: background-color 0.2s;
+}
+
+/* 分类之间的小分割横线（居中、短划线） */
+.category-group + .category-group::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 56rpx;
+  height: 1rpx;
+  background-color: #e9e9e9;
+  transform: translateX(-50%);
+}
+
+/* 选中项白底铺满整栏，只有左侧上下为圆角，右侧与商品区连成一体 */
+.category-group.active {
+  background-color: #ffffff;
+  border-radius: 16rpx 0 0 16rpx;
+  overflow: hidden;
+}
+
+.category-group.active::before {
+  display: none;
 }
 
 .category-item {
-  padding: 30rpx 20rpx;
+  padding: 16rpx 6rpx 20rpx;
   text-align: center;
-  border-left: 4rpx solid transparent;
-  transition: all 0.3s;
 }
 
-.category-item.active {
-  background-color: #f0f8ff;
-  border-left-color: #4A90E2;
+.category-icon {
+  display: block;
+  width: 52rpx;
+  height: 52rpx;
+  margin: 0 auto 2rpx;
 }
 
-.category-item.active .category-name {
-  color: #4A90E2;
-  font-weight: 500;
+.category-group.active .category-name {
+  color: #d81e06;
 }
 
 .category-name {
-  font-size: 28rpx;
-  color: #666666;
+  font-size: 22rpx;
+  line-height: 1.3;
+  color: #4a4a4a;
 }
 
 .sub-category-inline {
-  padding: 6rpx 0 14rpx 0;
-  background: linear-gradient(180deg, rgba(245,249,255,0.92), rgba(255,255,255,0.98));
+  padding: 0 0 12rpx 0;
+  background: transparent;
 }
 
 .sub-category-inline-item {
-  position: relative;
-  padding: 16rpx 14rpx 16rpx 34rpx;
-  margin: 0 10rpx 6rpx 18rpx;
-  border-radius: 16rpx;
-}
-
-.sub-category-inline-item::before {
-  content: '';
-  position: absolute;
-  left: 18rpx;
-  top: 50%;
-  width: 8rpx;
-  height: 8rpx;
-  border-radius: 50%;
-  background: #bfd3ea;
-  transform: translateY(-50%);
+  padding: 12rpx 6rpx;
+  margin: 0 8rpx 4rpx 8rpx;
+  border-radius: 8rpx;
+  text-align: center;
 }
 
 .sub-category-inline-item.active {
-  background: rgba(74,144,226,0.1);
-}
-
-.sub-category-inline-item.active::before {
-  background: #4a90e2;
-  box-shadow: 0 0 0 6rpx rgba(74,144,226,0.12);
+  background: #f2f2f2;
 }
 
 .sub-category-inline-name {
-  font-size: 22rpx;
-  color: #7b8da3;
-  line-height: 1.4;
+  font-size: 20rpx;
+  color: #7a7a7a;
+  line-height: 1.3;
 }
 
 .sub-category-inline-item.active .sub-category-inline-name {
-  color: #2d5f9a;
-  font-weight: 700;
+  color: #d81e06;
+  font-weight: 600;
 }
 
 .product-list-wrapper {
@@ -1444,7 +1531,7 @@ scroll-view ::-webkit-scrollbar {
 }
 
 .product-items,
-.category-group:last-child {
+.category-nav-footer {
   padding-bottom: 150rpx;
   padding-bottom: calc(150rpx + env(safe-area-inset-bottom));
 }
@@ -1502,7 +1589,7 @@ scroll-view ::-webkit-scrollbar {
 .product-name {
   display: -webkit-box;
   font-size: 28rpx;
-  font-weight: 500;
+  font-weight: 700;
   color: #333333;
   line-height: 1.4;
   word-break: break-all;
@@ -1549,6 +1636,21 @@ scroll-view ::-webkit-scrollbar {
 
 .self-tag3 {
   background: #00c792;
+}
+
+.product-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.product-tags .self-tag,
+.product-tags .self-tag2,
+.product-tags .self-tag3,
+.product-tags .therapy-tag {
+  display: inline-block;
+  margin-right: 0;
 }
 
 .product-meta-tags {
