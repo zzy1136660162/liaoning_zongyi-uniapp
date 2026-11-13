@@ -420,7 +420,7 @@ import {
   resolveCartCompatibility
 } from '@/utils/cart.js'
 import { getImageUrl } from '@/utils/config.js'
-import { useProductImages } from '@/utils/product-image.js'
+import { useProductImages, preloadProductImages } from '@/utils/product-image.js'
 import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
 import { buildListCartCategories, getProductCartLines } from '@/utils/product-list-cart.js'
 import { isPurchaseAvailable } from '@/utils/purchase-quantity.js'
@@ -497,6 +497,12 @@ export default {
       unsubscribeCartUpdated: null,
       searchTimer: null,
       requestSeq: 0,
+      // 按分类+筛选条件记录请求序号，避免并行预加载时互相作废旧响应
+      pageRequestSeq: {},
+      // 记录进行中的分页请求，切换分类时可直接等待预加载结果
+      pageLoadingWaiters: {},
+      // 分类商品是否已做过首次预加载
+      categoryPrefetchStarted: false,
       pullStartY: null,
       collapseTimer: null,
       pullCurrentY: null,
@@ -526,7 +532,9 @@ export default {
       const category = this.currentCategory
       if (!category) return []
 
-      let products = category.products || []
+      // 按当前分类+筛选条件读取各自的缓存分页数据，切换回已加载分类时无需重新请求
+      const state = this.productPageState[this.getPageStateKey(this.currentCategoryId)]
+      let products = (state && state.records) || category.products || []
       const currentSubCategoryId = normalizeCategoryId(this.currentSubCategoryId)
       if (!this.getSearchKeyword() && currentSubCategoryId && !this.isAllSubCategoryId(currentSubCategoryId)) {
         products = products.filter(product => normalizeCategoryId(product.categoryId) === currentSubCategoryId)
@@ -868,6 +876,7 @@ export default {
     },
     async fetchProductPage(categoryId, { reset = false } = {}) {
       const categoryKey = this.getCategoryKey(categoryId)
+      const stateKey = this.getPageStateKey(categoryId)
       let state = this.getPageState(categoryId)
       if (!reset && (state.loading || !state.hasMore)) {
         return
@@ -878,23 +887,27 @@ export default {
         state = this.getPageState(categoryId)
       }
 
-      const requestSeq = ++this.requestSeq
+      const requestSeq = (this.pageRequestSeq[stateKey] || 0) + 1
+      this.pageRequestSeq[stateKey] = requestSeq
       const nextPage = reset ? 1 : state.pageNum + 1
       const queryCategoryId = this.getQueryCategoryId(categoryId)
       const apiCategoryId = this.getCategoryKey(queryCategoryId) === 'all' ? null : queryCategoryId
       state.loading = true
 
+      const requestPromise = getCategoryProducts(
+        apiCategoryId,
+        nextPage,
+        PRODUCT_PAGE_SIZE,
+        PRODUCT_CATEGORY_FILTER,
+        this.mapSortField(),
+        this.sortType ? this.sortOrder : null,
+        this.getSearchKeyword()
+      )
+      this.pageLoadingWaiters[stateKey] = requestPromise
+
       try {
-        const productPage = await getCategoryProducts(
-          apiCategoryId,
-          nextPage,
-          PRODUCT_PAGE_SIZE,
-          PRODUCT_CATEGORY_FILTER,
-          this.mapSortField(),
-          this.sortType ? this.sortOrder : null,
-          this.getSearchKeyword()
-        )
-        if (requestSeq !== this.requestSeq) {
+        const productPage = await requestPromise
+        if (this.pageRequestSeq[stateKey] !== requestSeq) {
           return
         }
         const productList = productPage.records || []
@@ -917,10 +930,15 @@ export default {
         state.total = total
         const loadedCount = state.records.length
         state.hasMore = total > 0 ? loadedCount < total : mapped.length >= PRODUCT_PAGE_SIZE
+        // 数据到手即预下载本页图片，避免逐张等滚动到可视区才加载
+        preloadProductImages(mapped.map(product => product.image))
       } catch (error) {
         console.error('fetchProductPage failed:', error)
         throw error
       } finally {
+        if (this.pageLoadingWaiters[stateKey] === requestPromise) {
+          this.pageLoadingWaiters[stateKey] = null
+        }
         state.loading = false
       }
     },
@@ -973,6 +991,9 @@ export default {
       this.searchKeyword = cache.searchKeyword
       this.savedScrollTop = cache.savedScrollTop
       this.productsLoaded = true
+      // 恢复缓存后立刻预下载当前列表图片，图片已有本地缓存时可直接展示
+      const state = this.productPageState[this.getPageStateKey(this.currentCategoryId)]
+      preloadProductImages(((state && state.records) || []).map(product => product.image))
     },
     saveProductListCache() {
       if (!this.productsLoaded) return
@@ -1021,6 +1042,9 @@ export default {
           }))
         ]
         this.productPageState = {}
+        // 请求序号保持单调递增，避免旧请求在新一轮加载后误覆盖数据
+        this.pageLoadingWaiters = {}
+        this.categoryPrefetchStarted = false
         if (!this.categories.some(category => this.getCategoryKey(category.id) === this.getCategoryKey(this.currentCategoryId))) {
           this.currentCategoryId = 'all'
         }
@@ -1028,6 +1052,8 @@ export default {
         await this.fetchProductPage(this.currentCategoryId, { reset: true })
         this.updateCartView()
         this.productsLoaded = true
+        // 首屏加载完成后预加载其余分类，后续点击左侧栏目不再发请求
+        this.startCategoryPrefetch()
       } catch (error) {
         console.error('loadProducts failed:', error)
         uni.showToast({ title: '加载失败', icon: 'none' })
@@ -1040,10 +1066,49 @@ export default {
       }
     },
     async loadAllProducts() {
-      await this.fetchProductPage('all', { reset: true })
+      await this.ensureCategoryProducts('all')
     },
     async loadCategoryProducts(categoryId) {
+      await this.ensureCategoryProducts(categoryId)
+    },
+    // 已加载过的分类直接复用缓存数据，只有没数据时才请求
+    async ensureCategoryProducts(categoryId) {
+      const state = this.getPageState(categoryId)
+      if (state.records.length > 0) return
+      if (state.loading) {
+        // 预加载中：等这次请求结束即可，无需重复发起
+        const pending = this.pageLoadingWaiters[this.getPageStateKey(categoryId)]
+        if (pending) {
+          try {
+            await pending
+          } catch {
+            // 预加载失败时由调用方继续走空列表逻辑
+          }
+        }
+        return
+      }
       await this.fetchProductPage(categoryId, { reset: true })
+    },
+    // 首次进入后把其余分类的第一页数据预加载好，切换栏目时直接展示
+    startCategoryPrefetch() {
+      if (this.categoryPrefetchStarted) return
+      this.categoryPrefetchStarted = true
+      if (this.getSearchKeyword()) return
+      const targetIds = this.categories
+        .filter(category => this.getCategoryKey(category.id) !== 'all')
+        .map(category => category.id)
+      const run = async () => {
+        for (const categoryId of targetIds) {
+          const state = this.getPageState(categoryId)
+          if (state.records.length > 0 || state.loading) continue
+          try {
+            await this.fetchProductPage(categoryId, { reset: true })
+          } catch (error) {
+            console.error('prefetch category products failed:', categoryId, error)
+          }
+        }
+      }
+      run()
     },
     updateCartView() {
       this.verifiedProducts = getCartEntries()
@@ -1079,7 +1144,8 @@ export default {
       if (String(this.currentSubCategoryId) !== String(subCategoryId)) logButtonClick({ ...PAGE_LOG, actionCode: 'CHANGE_PRODUCT_SUBCATEGORY', accessTitle: '切换商品子分类', accessDescription: '用户切换制剂商品列表的子分类', extraData: { categoryId: this.currentCategoryId, subCategoryId } })
       this.currentSubCategoryId = normalizeCategoryId(subCategoryId)
       try {
-        await this.fetchProductPage(this.currentCategoryId, { reset: true })
+        // 子分类数据已加载过就直接复用，不再请求
+        await this.ensureCategoryProducts(this.currentCategoryId)
         this.updateCartView()
       } catch (error) {
         console.error('switchSubCategory failed:', error)

@@ -161,8 +161,9 @@
         {
           "path": "prescription_list",
           "style": {
-            "navigationBarTitleText": "制剂处方",
-            "navigationBarBackgroundColor": "#ffffff"
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "详情",
+            "navigationBarBackgroundColor": "#2f7cf6"
           }
         },
         {

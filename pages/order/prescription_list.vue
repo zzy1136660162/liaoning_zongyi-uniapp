@@ -8,6 +8,36 @@
     class="page"
     :class="{ 'with-footer': selectedCartCount > 0 }"
   >
+    <view
+      class="hero"
+      :style="{ paddingTop: statusBarHeight + 'px' }"
+    >
+      <view class="hero-nav">
+        <view
+          class="hero-back"
+          @click="goBack"
+        >
+          <uni-icons
+            type="left"
+            size="22"
+            color="#ffffff"
+          />
+        </view>
+        <text class="hero-title">
+          详情
+        </text>
+        <view class="hero-nav-holder" />
+      </view>
+      <view class="hero-status">
+        <view class="hero-check">
+          ✓
+        </view>
+        <text class="hero-status-text">
+          {{ currentPrescription ? getPrescriptionStatusText(currentPrescription) : '处方结算' }}
+        </text>
+      </view>
+    </view>
+
     <view class="page-content">
       <view
         v-if="loading"
@@ -27,13 +57,16 @@
         class="consultation-card"
       >
         <view class="section-heading">
+          <text class="section-icon">
+            辽宁中医药大学附属医院互联网医院
+          </text>
           <text class="section-title">
-            就诊信息
+            用药建议
           </text>
         </view>
         <view class="consultation-row patient-row">
           <text class="consultation-label">
-            就诊人
+            患者信息：
           </text>
           <view
             v-if="currentPrescription.patientSnapshotAvailable"
@@ -42,8 +75,13 @@
             <text class="patient-name">
               {{ currentPrescription.patientName }}
             </text>
+            <view class="patient-divider" />
             <text class="patient-meta">
-              {{ currentPrescription.patientGender }} {{ currentPrescription.patientAge ?? '—' }}岁
+              {{ currentPrescription.patientGender }}
+            </text>
+            <view class="patient-divider" />
+            <text class="patient-meta">
+              {{ currentPrescription.patientAge ?? '—' }}岁
             </text>
           </view>
           <text
@@ -55,7 +93,23 @@
         </view>
         <view class="consultation-row">
           <text class="consultation-label">
-            就诊时间
+            就诊科室：
+          </text>
+          <text class="consultation-value">
+            全科
+          </text>
+        </view>
+        <view class="consultation-row">
+          <text class="consultation-label">
+            费别：
+          </text>
+          <text class="consultation-value">
+            自费
+          </text>
+        </view>
+        <view class="consultation-row">
+          <text class="consultation-label">
+            开方时间：
           </text>
           <text class="consultation-value">
             {{ latestConsultationTime || '—' }}
@@ -71,115 +125,72 @@
         </view>
       </view>
 
-      <view class="list-heading">
+      <!-- <view class="list-heading">
         <text class="section-title list-title">
           结算商品
         </text>
         <text class="list-count">
           共 {{ cartItemsList.length }} 项
         </text>
-      </view>
+      </view> -->
 
       <view
         v-if="cartItemsList.length > 0"
-        class="select-all-bar"
+        class="prescription-card"
       >
-        <view
-          class="select-all"
-          @click="toggleCartSelectAll"
-        >
+        <view class="prescription-heading">
+          <text class="prescription-heading-title">
+            处方信息
+          </text>
           <view
-            class="checkbox"
-            :class="{ checked: isCartAllSelected }"
-          />
-          <text>全选商品</text>
+            class="prescription-heading-link"
+            @click="goToPrescriptionDetail"
+          >
+            <!-- <text class="prescription-heading-link-text">
+              查看原始处方
+            </text>
+            <uni-icons
+              type="right"
+              size="12"
+              color="#8a94a6"
+            /> -->
+          </view>
         </view>
-        <text class="selection-summary">
-          已选 {{ selectedCartCount }} 项
-        </text>
-      </view>
 
-      <view class="prescription-list">
         <view
           v-for="cartItem in cartItemsList"
           :key="cartItem.id"
           class="prescription-item"
+          @click="onCartItemClick(cartItem)"
         >
-          <view
-            class="prescription-checkbox"
-            @click="toggleCartSelect(cartItem.id)"
-          >
-            <view
-              class="checkbox"
-              :class="{ checked: isCartItemSelected(cartItem.id) }"
-            />
-          </view>
-          <view
-            class="prescription-content"
-            @click="onCartItemClick(cartItem)"
-          >
-            <view class="prescription-header">
+          <view class="prescription-content">
+            <view class="prescription-main">
               <text class="product-name">
                 {{ cartItem.name }}
               </text>
-            </view>
-            <view class="prescription-tags">
-              <view class="tag tag-online">
-                {{ resolveProductTypeLabel(cartItem) }}
-              </view>
-              <view
-                v-if="cartItem.productCategory === 1"
-                class="tag tag-convenient"
+              <text
+                v-if="cartItem.skuSpecText || cartItem.specText || cartItem.skuName"
+                class="product-spec"
               >
-                便捷配制剂
-              </view>
-            </view>
-            <text
-              v-if="cartItem.skuSpecText || cartItem.specText || cartItem.skuName"
-              class="product-spec"
-            >
-              {{ cartItem.skuSpecText || cartItem.specText || cartItem.skuName }}
-            </text>
-
-            <view
-              v-if="cartItem.productCategory === 1"
-              class="clinical-info"
-            >
-              <view class="prescription-info">
-                <text class="info-label">
-                  本次处方诊断
-                </text>
-                <text class="info-value">
-                  {{ currentPrescription?.diagnosis || '—' }}
-                </text>
-              </view>
-              <view class="prescription-info">
-                <text class="info-label">
-                  医师
-                </text>
-                <text class="info-value">
-                  {{ prescriptionDoctorName }}
-                </text>
-              </view>
-            </view>
-
-            <view class="quantity-price-row">
-              <text class="unit-price">
-                单价 ¥{{ cartItem.price.toFixed(2) }}
+                {{ cartItem.skuSpecText || cartItem.specText || cartItem.skuName }}
               </text>
               <text class="product-quantity">
-                数量 ×{{ cartItem.quantity }}
+                ×{{ cartItem.quantity }}
               </text>
             </view>
-            <view class="prescription-footer">
-              <text class="subtotal-label">
-                商品小计
-              </text>
-              <text class="subtotal-value">
-                ¥{{ (cartItem.price * cartItem.quantity).toFixed(2) }}
-              </text>
-            </view>
+            <text
+              v-if="cartItem.usageDesc"
+              class="product-usage"
+            >
+              {{ cartItem.usageDesc }}
+            </text>
           </view>
+          <uni-icons
+            class="prescription-arrow"
+            type="right"
+            size="14"
+            color="#c2c8d2"
+          />
         </view>
       </view>
 
@@ -191,7 +202,7 @@
           <uni-icons
             type="list"
             size="36"
-            color="#2a82e4"
+            color="#2f7cf6"
           />
         </view>
         <text class="empty-title">
@@ -267,18 +278,41 @@ import { getPrescriptionStatusText, resolvePrescriptionDoctorName } from '@/util
 import { logPageView, logButtonClick, logAccess } from '@/utils/accessLog.js'
 
 const PAGE_LOG = { moduleCode: 'PRESCRIPTION', accessType: '处方', pageType: 'PRESCRIPTION_LIST', pageId: '', requestUri: '/pages/order/prescription_list' }
-import { resolveProductTypeLabel } from '@/utils/product-biz.js'
 
 // ==================== 响应式数据 ====================
 /**
  * 选中的购物车产品ID列表 - 用户选择要购买的处方
  */
 const selectedCartIds = ref([])
+// 自定义导航：状态栏高度，用于顶部渐变区域留白
+const statusBarHeight = ref(24)
+
+const goBack = () => {
+  uni.navigateBack({
+    fail: () => {
+      uni.switchTab({ url: '/pages/index/index' })
+    }
+  })
+}
+
+/**
+ * 查看原始处方
+ */
+const goToPrescriptionDetail = () => {
+  const prescriptionId = currentPrescription.value?.id || currentPrescription.value?.prescriptionId
+  if (!prescriptionId) {
+    uni.showToast({ title: '暂无原始处方', icon: 'none' })
+    return
+  }
+  uni.navigateTo({ url: `/pages/prescription/detail?prescriptionId=${prescriptionId}` })
+}
+
+
 
 /**
  * 购物车产品分类数据 - 用于加载购物车商品信息
  */
-  const categories = ref([])
+const categories = ref([])
 
 const consultation = ref(null)
 const currentPrescription = ref(null)
@@ -326,32 +360,14 @@ const syncSelectedCartState = async () => {
     return
   }
 
-  if (directPurchase.value) {
-    selectedCartIds.value = [...cartIds]
-    return
-  }
-
-  const checkoutIds = getCurrentCheckoutProductIds()
-    .map(id => normalizeCartId(id))
-    .filter(Boolean)
-
-  const selectedIds = checkoutIds.length > 0
-    ? checkoutIds
-    : getSelectedProductIds().map(id => normalizeCartId(id)).filter(Boolean)
-
-  const matchedSelectedIds = cartIds.filter(id => selectedIds.includes(id))
-
-  if (matchedSelectedIds.length === 0) {
+  // 不做勾选：处方内商品默认全部选中
+  if (!directPurchase.value) {
     await updateMultipleSelections(buildSelectionMap(cartIds, true))
     assertCurrentSession(pageSession)
     if (!pageActive) return
-    selectedCartIds.value = [...cartIds]
-    setCheckoutProductIds(cartIds)
-    return
   }
-
-  selectedCartIds.value = matchedSelectedIds
-  setCheckoutProductIds(matchedSelectedIds)
+  selectedCartIds.value = [...cartIds]
+  if (!directPurchase.value) setCheckoutProductIds(cartIds)
 }
 
   // ==================== 生命周期钩子 ====================
@@ -360,6 +376,12 @@ const syncSelectedCartState = async () => {
    * 本次问诊和就诊人必须由入口明确传入。
    */
   onLoad((options) => {
+    try {
+      const info = uni.getWindowInfo?.() || uni.getSystemInfoSync?.() || {}
+      statusBarHeight.value = info.statusBarHeight || 24
+    } catch {
+      statusBarHeight.value = 24
+    }
     try { directPurchase.value = parseDirectPurchase(options) }
     catch (error) { checkoutRouteError.value = error.message }
     if (directPurchase.value && !options?.selectedItems) checkoutRouteError.value = '购买信息无效，请返回商品页重新选择'
@@ -662,89 +684,179 @@ const syncSelectedCartState = async () => {
   box-sizing: border-box;
   min-height: 100vh;
   padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
-  background: #f6f7fb;
+  background: #f4f6fa;
 }
 
 .page.with-footer {
   padding-bottom: calc(184rpx + env(safe-area-inset-bottom));
 }
 
+/* 顶部蓝色头部：向下延伸至卡片分割线下方一点，与卡片衔接 */
+.hero {
+  position: relative;
+  z-index: 1;
+  padding: 40rpx 32rpx 196rpx;
+  border-radius: 0 0 20rpx 20rpx;
+  overflow: hidden;
+  background: linear-gradient(160deg, #2f7cf6, #4a9bff);
+  color: #fff;
+}
+
+.hero-nav {
+  display: flex;
+  align-items: center;
+  height: 88rpx;
+}
+
+.hero-back,
+.hero-nav-holder {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 80rpx;
+  height: 88rpx;
+}
+
+.hero-title {
+  flex: 1;
+  font-size: 34rpx;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  color: #fff;
+}
+
+.hero-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12rpx;
+}
+
+.hero-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44rpx;
+  height: 44rpx;
+  margin-right: 14rpx;
+  border: 2rpx solid #fff;
+  border-radius: 50%;
+  font-size: 26rpx;
+  line-height: 1;
+}
+
+.hero-status-text {
+  font-size: 34rpx;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 .page-content {
-  padding: 24rpx;
+  position: relative;
+  z-index: 2;
+  margin-top: -190rpx;
+  padding: 24rpx 24rpx 24rpx;
 }
 
 .load-state {
   margin-bottom: 24rpx;
-  padding: 24rpx;
+  padding: 28rpx;
   border-radius: 20rpx;
   background: #fff;
   font-size: 26rpx;
   line-height: 1.6;
-  color: #666;
+  color: #5a6b80;
   word-break: break-all;
 }
 
 .consultation-card {
-  margin-bottom: 32rpx;
-  padding: 28rpx;
-  border: 1rpx solid #eee;
-  border-radius: 24rpx;
+  margin-bottom: 20rpx;
+  padding: 32rpx;
+  border-radius: 20rpx;
   background: #fff;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4rpx 20rpx rgba(47, 124, 246, 0.06);
 }
 
 .section-heading {
-  margin-bottom: 24rpx;
-  padding-left: 16rpx;
-  border-left: 6rpx solid #2a82e4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 8rpx;
+  padding: 0 0 24rpx;
+  border-bottom: 1rpx solid #eef1f6;
+  text-align: center;
+}
+
+.section-icon {
+  margin-bottom: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #8a94a6;
+  text-align: center;
 }
 
 .section-title {
-  font-size: 30rpx;
-  font-weight: 600;
+  font-size: 36rpx;
+  font-weight: 700;
   line-height: 1.4;
-  color: #333;
+  color: #1f2d3d;
+  text-align: center;
 }
 
 .consultation-row {
   display: flex;
   align-items: baseline;
-  margin-top: 18rpx;
-  font-size: 26rpx;
+  margin-top: 22rpx;
+  font-size: 28rpx;
   line-height: 1.6;
 }
 
 .consultation-label {
   flex-shrink: 0;
-  width: 128rpx;
-  color: #999;
+  width: 150rpx;
+  color: #8a94a6;
 }
 
 .patient-info {
   display: flex;
   flex: 1;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
   min-width: 0;
 }
 
+.patient-name,
+.patient-meta {
+  white-space: nowrap;
+}
+
 .patient-name {
-  margin-right: 20rpx;
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #333;
+  margin-right: 0;
+  font-size: 26rpx;
+  color: #1f2d3d;
   word-break: break-all;
 }
 
+.patient-divider {
+  align-self: center;
+  flex-shrink: 0;
+  width: 1rpx;
+  height: 24rpx;
+  margin: 0 16rpx;
+  background: #d5dbe5;
+}
+
 .patient-meta {
-  font-size: 24rpx;
-  color: #666;
+  font-size: 26rpx;
+  color: #5a6b80;
 }
 
 .consultation-value {
   flex: 1;
   min-width: 0;
-  color: #666;
+  color: #1f2d3d;
   word-break: break-all;
 }
 
@@ -752,11 +864,13 @@ const syncSelectedCartState = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 4rpx 20rpx;
+  margin: 0 8rpx 20rpx;
 }
 
 .list-title {
   font-size: 32rpx;
+  font-weight: 600;
+  color: #1f2d3d;
 }
 
 .list-count,
@@ -764,82 +878,57 @@ const syncSelectedCartState = async () => {
   flex-shrink: 0;
   margin-left: 16rpx;
   font-size: 24rpx;
-  color: #999;
+  color: #8a94a6;
 }
 
-.select-all-bar {
+.prescription-card {
+  margin-bottom: 20rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  box-shadow: 0 4rpx 20rpx rgba(47, 124, 246, 0.06);
+  overflow: hidden;
+}
+
+.prescription-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20rpx;
-  padding: 12rpx 24rpx;
-  border: 1rpx solid #eee;
-  border-radius: 20rpx;
-  background: #fff;
+  padding: 28rpx 28rpx 8rpx;
 }
 
-.select-all {
+.prescription-heading-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #1f2d3d;
+}
+
+.prescription-heading-link {
   display: flex;
   align-items: center;
-  min-height: 64rpx;
+}
+
+.prescription-heading-link-text {
+  margin-right: 6rpx;
   font-size: 26rpx;
-  color: #333;
-}
-
-.select-all .checkbox {
-  margin-right: 16rpx;
-}
-
-.checkbox {
-  position: relative;
-  box-sizing: border-box;
-  flex-shrink: 0;
-  width: 40rpx;
-  height: 40rpx;
-  border: 2rpx solid #ddd;
-  border-radius: 50%;
-  background: #fff;
-}
-
-.checkbox.checked {
-  border-color: #2a82e4;
-  background: #2a82e4;
-}
-
-.checkbox.checked::after {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 26rpx;
-  line-height: 1;
-  color: #fff;
-  content: '✓';
+  line-height: 1.4;
+  color: #8a94a6;
 }
 
 .prescription-item {
   display: flex;
   align-items: flex-start;
-  margin-bottom: 20rpx;
-  padding: 28rpx 24rpx;
-  border: 1rpx solid #eee;
-  border-radius: 24rpx;
-  background: #fff;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+  padding: 20rpx 28rpx 32rpx;
 }
 
-.prescription-item:last-child {
-  margin-bottom: 0;
+.prescription-item + .prescription-item {
+  padding-top: 28rpx;
+  border-top: 1rpx solid #f1f3f7;
 }
 
-.prescription-checkbox {
-  box-sizing: border-box;
-  display: flex;
+.prescription-arrow {
   flex-shrink: 0;
-  align-items: flex-start;
-  width: 64rpx;
-  min-height: 88rpx;
-  padding-top: 2rpx;
+  margin: 10rpx 0 0 12rpx;
 }
 
 .prescription-content {
@@ -847,114 +936,42 @@ const syncSelectedCartState = async () => {
   min-width: 0;
 }
 
-.prescription-header {
-  margin-bottom: 16rpx;
+.prescription-main {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
 }
 
 .product-name {
-  display: block;
-  font-size: 30rpx;
+  font-size: 26rpx;
   font-weight: 600;
   line-height: 1.5;
-  color: #333;
+  color: #1f2d3d;
   word-break: break-all;
-}
-
-.prescription-tags {
-  display: flex;
-  flex-wrap: wrap;
-  margin-bottom: 8rpx;
-}
-
-.tag {
-  margin: 0 12rpx 8rpx 0;
-  padding: 4rpx 12rpx;
-  border-radius: 8rpx;
-  background: #f0f6ff;
-  font-size: 22rpx;
-  line-height: 1.5;
-  color: #2a82e4;
-}
-
-.tag-online,
-.tag-convenient {
-  background: #2a82e4;
-  color: #ffffff;
 }
 
 .product-spec {
-  display: block;
-  margin: 8rpx 0 20rpx;
+  margin-left: 12rpx;
   font-size: 24rpx;
   line-height: 1.6;
-  color: #999;
+  color: #8a94a6;
   word-break: break-all;
-}
-
-.clinical-info {
-  margin: 16rpx 0 24rpx;
-  padding: 16rpx 20rpx;
-  border-radius: 12rpx;
-  background: #f6f7fb;
-}
-
-.prescription-info {
-  display: flex;
-  align-items: baseline;
-  padding: 4rpx 0;
-  font-size: 26rpx;
-  line-height: 1.6;
-}
-
-.info-label {
-  flex-shrink: 0;
-  width: 168rpx;
-  color: #666;
-}
-
-.info-value {
-  flex: 1;
-  min-width: 0;
-  color: #333;
-  word-break: break-all;
-}
-
-.quantity-price-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  margin-top: 20rpx;
-  font-size: 24rpx;
-  line-height: 1.6;
-  color: #666;
 }
 
 .product-quantity {
-  margin-left: 16rpx;
-}
-
-.prescription-footer {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  margin-top: 20rpx;
-  padding-top: 20rpx;
-  border-top: 1rpx solid #eee;
-  line-height: 1.5;
-}
-
-.subtotal-label {
-  font-size: 24rpx;
-  color: #666;
-}
-
-.subtotal-value {
   margin-left: 12rpx;
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #ff4d4f;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #8a94a6;
+  white-space: nowrap;
+}
+
+.product-usage {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #8a94a6;
   word-break: break-all;
 }
 
@@ -963,7 +980,7 @@ const syncSelectedCartState = async () => {
   flex-direction: column;
   align-items: center;
   padding: 96rpx 32rpx;
-  border-radius: 24rpx;
+  border-radius: 20rpx;
   background: #fff;
   text-align: center;
 }
@@ -976,20 +993,20 @@ const syncSelectedCartState = async () => {
   height: 128rpx;
   margin-bottom: 28rpx;
   border-radius: 50%;
-  background: #f0f6ff;
+  background: #eaf2ff;
 }
 
 .empty-title {
   margin-bottom: 16rpx;
   font-size: 30rpx;
   font-weight: 500;
-  color: #333;
+  color: #1f2d3d;
 }
 
 .empty-description {
   font-size: 26rpx;
   line-height: 1.6;
-  color: #999;
+  color: #8a94a6;
 }
 
 .footer {
@@ -1002,9 +1019,10 @@ const syncSelectedCartState = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
+  padding: 20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #eef1f6;
   background: #fff;
-  box-shadow: 0 -4rpx 12rpx rgba(0, 0, 0, 0.1);
+  box-shadow: 0 -4rpx 20rpx rgba(47, 124, 246, 0.06);
 }
 
 .footer-left {
@@ -1023,13 +1041,13 @@ const syncSelectedCartState = async () => {
 .total-label {
   margin-right: 12rpx;
   font-size: 24rpx;
-  color: #666;
+  color: #8a94a6;
 }
 
 .amount-value {
   font-size: 38rpx;
   font-weight: 600;
-  color: #ff4d4f;
+  color: #2f7cf6;
   word-break: break-all;
 }
 
@@ -1037,12 +1055,12 @@ const syncSelectedCartState = async () => {
   margin-top: 8rpx;
   font-size: 24rpx;
   line-height: 1.4;
-  color: #333;
+  color: #5a6b80;
 }
 
 .selected-count {
   font-weight: 600;
-  color: #ff4d4f;
+  color: #2f7cf6;
 }
 
 .order-btn {
@@ -1050,14 +1068,14 @@ const syncSelectedCartState = async () => {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  min-width: 192rpx;
-  height: 88rpx;
+  min-width: 240rpx;
+  height: 92rpx;
   margin: 0;
-  padding: 0 36rpx;
+  padding: 0 44rpx;
   border: none;
-  border-radius: 44rpx;
-  background: #2a82e4;
-  font-size: 30rpx;
+  border-radius: 46rpx;
+  background: linear-gradient(135deg, #2f7cf6, #4a9bff);
+  font-size: 32rpx;
   font-weight: 500;
   line-height: 1.5;
   color: #fff;

@@ -8,6 +8,8 @@ globalThis.uni = { showLoading() {}, hideLoading() {}, showToast() {} }
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve() }
 
 for (const file of ['medicine_list.vue', 'priducts_list.vue', 'priducts_list2.vue']) {
+  // medicine_list 已改为分类数据缓存：返回页面和切换回已加载分类都不再重复请求
+  const cachesCategoryProducts = file === 'medicine_list.vue'
   const createList = (getProducts, getCategories) => {
     const calls = [], categoryCalls = []
     const definition = loadOptions(`pages/products/${file}`, {
@@ -22,7 +24,7 @@ for (const file of ['medicine_list.vue', 'priducts_list.vue', 'priducts_list2.vu
       },
       mapProductListItem: value => value
     })
-    const vm = { ...definition.data(), ...definition.methods, $set: (object, key, value) => { object[key] = value } }
+    const vm = { ...definition.data(), ...definition.methods, $set: (object, key, value) => { object[key] = value }, $nextTick: callback => callback() }
     Object.entries(definition.computed).forEach(([key, getter]) => Object.defineProperty(vm, key, { get: () => getter.call(vm) }))
     return { vm, definition, calls, categoryCalls }
   }
@@ -37,13 +39,26 @@ for (const file of ['medicine_list.vue', 'priducts_list.vue', 'priducts_list2.vu
     await vm.handleLoadMore()
     assert.equal(calls[1][1], 2)
     definition.onShow.call(vm); await flush()
-    assert.equal(categoryCalls.length, 2)
-    assert.equal(calls[2][1], 1)
-    assert.equal(vm.currentCategoryId, '7')
-    assert.deepEqual(vm.getPageState('7').records.map(item => item.id), [3])
+    if (cachesCategoryProducts) {
+      // 返回页面复用已有列表，不重新请求分类和商品
+      assert.equal(categoryCalls.length, 1)
+      assert.equal(calls.length, 2)
+      assert.equal(vm.currentCategoryId, '7')
+      assert.deepEqual(vm.getPageState('7').records.map(item => item.id), [1, 2])
+    } else {
+      assert.equal(categoryCalls.length, 2)
+      assert.equal(calls[2][1], 1)
+      assert.equal(vm.currentCategoryId, '7')
+      assert.deepEqual(vm.getPageState('7').records.map(item => item.id), [3])
+    }
     await vm.switchCategory('all'); await vm.switchCategory('7')
-    assert.equal(calls.length, 5)
-    assert.equal(calls.at(-1)[1], 1)
+    if (cachesCategoryProducts) {
+      // 只有尚未加载过的“全部”请求一次，切回已加载分类直接复用
+      assert.equal(calls.length, 3)
+    } else {
+      assert.equal(calls.length, 5)
+      assert.equal(calls.at(-1)[1], 1)
+    }
   })
 
   test(`${file}: 删除分类退回全部，刷新期间旧请求不覆盖新数据`, async () => {
