@@ -2,6 +2,120 @@
   <view class="page">
     <!-- 顶部导航用原生小程序导航栏即可，这里不重复写 -->
 
+    <!-- 商品卡片 -->
+    <view
+      v-if="allCartItems.length > 0"
+      class="order-card goods-card"
+    >
+      <view class="medicines-section">
+        <view class="medicines-header">
+          <text class="medicines-title">
+            已选择的商品 ({{ allCartItems.length }}种)
+          </text>
+        </view>
+        <view class="medicines-list">
+          <view
+            v-for="item in displayCartItems"
+            :key="item.orderItemId || item.id"
+            class="medicine-item"
+          >
+            <view class="medicine-content">
+              <view class="medicine-left">
+                <image
+                  class="medicine-thumb"
+                  :src="getProductImageUrl(item.image)"
+                  mode="aspectFill"
+                  @error="handleProductImageError(item.image)"
+                />
+                <view
+                  v-if="Number(item.quantity) > 0"
+                  class="medicine-qty"
+                >
+                  ×{{ Number(item.quantity) }}
+                </view>
+              </view>
+              <view class="medicine-right">
+                <view class="medicine-name">
+                  {{ item.name }}
+                </view>
+                <view
+                  v-if="item.specText"
+                  class="medicine-spec"
+                >
+                  {{ item.specText }}
+                </view>
+                <view class="medicine-price">
+                  ¥{{ ((item.price || 0) * (Number(item.quantity) || 1)).toFixed(2) }}
+                </view>
+                <view
+                  v-if="getOrderItemRefundText(item)"
+                  class="medicine-refund-summary"
+                >
+                  {{ getOrderItemRefundText(item) }}
+                </view>
+              </view>
+            </view>
+
+            <view
+              v-if="item.redeemVouchers && item.redeemVouchers.length > 0"
+              class="therapy-vouchers"
+            >
+              <view
+                v-for="(voucher, voucherIndex) in item.redeemVouchers"
+                :key="voucher.id || voucher.verifyToken || voucherIndex"
+                class="therapy-voucher-card"
+              >
+                <view class="therapy-voucher-head">
+                  <text class="therapy-voucher-title">
+                    核销券 {{ voucher.displayNo }}
+                  </text>
+                  <text
+                    class="therapy-voucher-status"
+                    :class="{ redeemed: Number(voucher.redeemStatus) === 1 }"
+                  >
+                    {{ formatRedeemStatus(voucher) }}
+                  </text>
+                </view>
+                <view
+                  v-if="canShowVoucherCode(voucher)"
+                  class="therapy-voucher-code"
+                >
+                  <text class="therapy-voucher-code-label">核销码</text>
+                  <text class="therapy-voucher-code-value">{{ voucher.verifyCode }}</text>
+                </view>
+                <image
+                  v-if="canShowVoucherQr(voucher)"
+                  class="therapy-voucher-qr"
+                  :src="normalizeQrImageSrc(voucher.verifyQrBase64)"
+                  mode="aspectFit"
+                  show-menu-by-longpress
+                />
+                <view
+                  v-else-if="Number(voucher.redeemStatus) === 1"
+                  class="therapy-voucher-redeemed"
+                >
+                  <text>核销时间：{{ formatDateTime(voucher.redeemTime) || '—' }}</text>
+                  <text>核销人：{{ voucher.redeemerName || voucher.redeemedBy || '—' }}</text>
+                </view>
+                <view
+                  v-else-if="Number(voucher.redeemStatus) === 2"
+                  class="therapy-voucher-empty"
+                >
+                  核销券已退款/已失效
+                </view>
+                <view
+                  v-else
+                  class="therapy-voucher-empty"
+                >
+                  {{ Number(voucher.redeemStatus) === 3 ? '退款处理中，暂不可核销' : '暂无核销码' }}
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <!-- 订单卡片 -->
     <view class="order-card">
       <!-- 上半部分：标题 + 金额 + 状态 -->
@@ -129,118 +243,6 @@
           再次复诊
         </button>
       </view> -->
-
-      <!-- 所有选择的药品列表 -->
-      <view
-        v-if="allCartItems.length > 0"
-        class="medicines-section"
-      >
-        <view class="medicines-header">
-          <text class="medicines-title">
-            已选择的商品 ({{ allCartItems.length }}种)
-          </text>
-        </view>
-        <view class="medicines-list">
-          <view
-            v-for="item in displayCartItems"
-            :key="item.orderItemId || item.id"
-            class="medicine-item"
-          >
-            <view class="medicine-content">
-              <view class="medicine-left">
-                <image
-                  class="medicine-thumb"
-                  :src="getProductImageUrl(item.image)"
-                  mode="aspectFill"
-                  @error="handleProductImageError(item.image)"
-                />
-                <view
-                  v-if="Number(item.quantity) > 0"
-                  class="medicine-qty"
-                >
-                  ×{{ Number(item.quantity) }}
-                </view>
-              </view>
-              <view class="medicine-right">
-                <view class="medicine-name">
-                  {{ item.name }}
-                </view>
-                <view
-                  v-if="item.specText"
-                  class="medicine-spec"
-                >
-                  {{ item.specText }}
-                </view>
-                <view class="medicine-price">
-                  ¥{{ ((item.price || 0) * (Number(item.quantity) || 1)).toFixed(2) }}
-                </view>
-                <view
-                  v-if="getOrderItemRefundText(item)"
-                  class="medicine-refund-summary"
-                >
-                  {{ getOrderItemRefundText(item) }}
-                </view>
-              </view>
-            </view>
-
-            <view
-              v-if="item.redeemVouchers && item.redeemVouchers.length > 0"
-              class="therapy-vouchers"
-            >
-              <view
-                v-for="(voucher, voucherIndex) in item.redeemVouchers"
-                :key="voucher.id || voucher.verifyToken || voucherIndex"
-                class="therapy-voucher-card"
-              >
-                <view class="therapy-voucher-head">
-                  <text class="therapy-voucher-title">
-                    核销券 {{ voucher.displayNo }}
-                  </text>
-                  <text
-                    class="therapy-voucher-status"
-                    :class="{ redeemed: Number(voucher.redeemStatus) === 1 }"
-                  >
-                    {{ formatRedeemStatus(voucher) }}
-                  </text>
-                </view>
-                <view
-                  v-if="canShowVoucherCode(voucher)"
-                  class="therapy-voucher-code"
-                >
-                  <text class="therapy-voucher-code-label">核销码</text>
-                  <text class="therapy-voucher-code-value">{{ voucher.verifyCode }}</text>
-                </view>
-                <image
-                  v-if="canShowVoucherQr(voucher)"
-                  class="therapy-voucher-qr"
-                  :src="normalizeQrImageSrc(voucher.verifyQrBase64)"
-                  mode="aspectFit"
-                  show-menu-by-longpress
-                />
-                <view
-                  v-else-if="Number(voucher.redeemStatus) === 1"
-                  class="therapy-voucher-redeemed"
-                >
-                  <text>核销时间：{{ formatDateTime(voucher.redeemTime) || '—' }}</text>
-                  <text>核销人：{{ voucher.redeemerName || voucher.redeemedBy || '—' }}</text>
-                </view>
-                <view
-                  v-else-if="Number(voucher.redeemStatus) === 2"
-                  class="therapy-voucher-empty"
-                >
-                  核销券已退款/已失效
-                </view>
-                <view
-                  v-else
-                  class="therapy-voucher-empty"
-                >
-                  {{ Number(voucher.redeemStatus) === 3 ? '退款处理中，暂不可核销' : '暂无核销码' }}
-                </view>
-              </view>
-            </view>
-          </view>
-        </view>
-      </view>
 
       <!-- 已发货实物仍可在线提交申请，后台核查物流后决定退款。 -->
       <view v-if="showPhysicalRefundReviewNotice" class="refund-contact-tip">
@@ -1136,6 +1138,17 @@
     border-radius: 16rpx;
     box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
     overflow: hidden;
+  }
+
+  /* 商品卡片置于订单详情上方 */
+  .goods-card {
+    margin-bottom: 24rpx;
+  }
+
+  .goods-card .medicines-section {
+    margin: 0;
+    padding: 24rpx 32rpx;
+    border-top: none;
   }
 
   /* 顶部区域 */

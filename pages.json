@@ -21,62 +21,6 @@
         "navigationBarTitleText": "就诊告知"
       }
     },
-    {
-      "path": "pages/products/priducts_list",
-      "style": {
-        "navigationBarTitleText": "健康商城",
-        "navigationBarBackgroundColor": "#ffffff",
-        "enablePullDownRefresh": true,
-        "backgroundTextStyle": "dark"
-      }
-    },
-    {
-      "path": "pages/products/priducts_list2",
-      "style": {
-        "navigationBarTitleText": "健康商城",
-        "navigationBarBackgroundColor": "#ffffff"
-      }
-    },
-    {
-      "path": "pages/products/medicine_index",
-      "style": {
-        "navigationBarTitleText": "首页"
-      }
-    },
-    {
-      "path": "pages/products/medicine_detail",
-      "style": {
-        "navigationBarTitleText": "详情"
-      }
-    },
-    {
-      "path": "pages/products/therapy_detail",
-      "style": {
-        "navigationBarTitleText": "传统疗法详情"
-      }
-    },
-    {
-      "path": "pages/products/medicine_list",
-      "style": {
-        "navigationBarTitleText": "列表",
-        "navigationStyle": "custom",
-        "enablePullDownRefresh": false,
-        "backgroundTextStyle": "dark",
-		"disableScroll": true
-      }
-    },
-    {
-      "path": "pages/products/product_notice",
-      "style": {
-        "navigationBarTitleText": "制剂须知"
-      }
-    },
-    {
-      "path": "pages/products/product_questionnaire",
-      "style": {
-        "navigationBarTitleText": "健康问卷"
-      }
-    },
     { "path": "pages/login/login", "style": { "navigationBarTitleText": "手机号登录" } },
     { "path": "pages/user/wechat_binding", "style": { "navigationBarTitleText": "微信绑定管理" } },
     {
@@ -115,6 +59,67 @@
     }
   ],
   "subPackages": [
+    {
+      "root": "pages/products",
+      "pages": [
+        {
+          "path": "priducts_list",
+          "style": {
+            "navigationBarTitleText": "健康商城",
+            "navigationBarBackgroundColor": "#ffffff",
+            "enablePullDownRefresh": true,
+            "backgroundTextStyle": "dark"
+          }
+        },
+        {
+          "path": "priducts_list2",
+          "style": {
+            "navigationBarTitleText": "健康商城",
+            "navigationBarBackgroundColor": "#ffffff"
+          }
+        },
+        {
+          "path": "medicine_index",
+          "style": {
+            "navigationBarTitleText": "首页"
+          }
+        },
+        {
+          "path": "medicine_detail",
+          "style": {
+            "navigationBarTitleText": "详情"
+          }
+        },
+        {
+          "path": "therapy_detail",
+          "style": {
+            "navigationBarTitleText": "传统疗法详情"
+          }
+        },
+        {
+          "path": "medicine_list",
+          "style": {
+            "navigationBarTitleText": "列表",
+            "navigationStyle": "custom",
+            "enablePullDownRefresh": false,
+            "backgroundTextStyle": "dark",
+            "disableScroll": true
+          }
+        },
+        {
+          "path": "product_notice",
+          "style": {
+            "navigationBarTitleText": "制剂须知"
+          }
+        },
+        {
+          "path": "product_questionnaire",
+          "style": {
+            "navigationBarTitleText": "健康问卷"
+          }
+        }
+      ]
+    },
     {
       "root": "pages/dispense",
       "pages": [

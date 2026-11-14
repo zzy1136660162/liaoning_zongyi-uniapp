@@ -19,7 +19,7 @@ assert.doesNotMatch(cartPage, /loadLocalCartFallback/)
 
 assert.match(healthListPage, /handleSearch\(e\)/)
 assert.match(healthListPage, /this\.getSearchKeyword\(\)\s*&&\s*this\.currentCategoryId !== 'all'/)
-assert.match(healthListMethods, /this\.getSearchKeyword\(\)\s*\)/)
+assert.match(healthListMethods, /this\.getSearchKeyword\(\),\s*\{ showLoading: false \}\s*\)/)
 assert.match(healthListPage, /createHealthProductListMethods/)
 assert.match(healthListMethods, /requestSeq/)
 assert.doesNotMatch(healthListPage, /handleSearch\(\)\s*\{\}/)

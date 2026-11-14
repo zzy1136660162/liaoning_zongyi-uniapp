@@ -126,7 +126,7 @@ const loadFeaturedProducts = async () => {
   loadError.value = false
   loading.value = true
   try {
-    const productPage = await getCategoryProducts(null, 1, 8, FORMULA_PRODUCT_CATEGORY)
+    const productPage = await getCategoryProducts(null, 1, 8, FORMULA_PRODUCT_CATEGORY, null, null, null, { showLoading: false })
     if (requestSeq !== productRequestSeq) return
     const productList = productPage.records || []
     featuredProducts.value = productList.map(item => mapProductListItem(item))

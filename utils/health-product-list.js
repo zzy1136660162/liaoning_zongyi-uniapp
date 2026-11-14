@@ -66,7 +66,8 @@ export const createHealthProductListMethods = ({ getCategoryList, getCategoryPro
         PRODUCT_CATEGORY_HEALTH,
         null,
         null,
-        this.getSearchKeyword()
+        this.getSearchKeyword(),
+        { showLoading: false }
       )
       if (requestSeq !== this.requestSeq) {
         return
@@ -115,8 +116,7 @@ export const createHealthProductListMethods = ({ getCategoryList, getCategoryPro
     // 分类切换、搜索与回页刷新共用序号，旧响应不能覆盖最新筛选结果。
     const requestSeq = ++this.requestSeq
     try {
-      uni.showLoading({ title: '加载中...' })
-      const categoryList = await getCategoryList(PRODUCT_CATEGORY_HEALTH)
+      const categoryList = await getCategoryList(PRODUCT_CATEGORY_HEALTH, { showLoading: false })
       if (requestSeq !== this.requestSeq) return
       this.categoryList = Array.isArray(categoryList) ? categoryList : []
       this.categories = [
@@ -132,8 +132,6 @@ export const createHealthProductListMethods = ({ getCategoryList, getCategoryPro
     } catch (error) {
       console.error('loadProducts failed:', error)
       uni.showToast({ title: '加载商品失败', icon: 'none' })
-    } finally {
-      uni.hideLoading()
     }
   },
   async loadAllProducts() {

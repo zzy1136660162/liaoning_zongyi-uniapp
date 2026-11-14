@@ -54,7 +54,11 @@
         "setting" : {
             "urlCheck" : false
         },
-        "usingComponents" : true
+        "usingComponents" : true,
+        /* 分包优化：子包独用的 JS 不再打进主包 vendor */
+        "optimization" : {
+            "subPackages" : true
+        }
     },
     "vueVersion" : "3"
 }

@@ -1132,8 +1132,7 @@ const loadProduct = async (id) => {
   const preserveQuantity = loadedSession === session && String(product.value.id) === String(id)
   product.value = { ...product.value, available: false }
   try {
-    uni.showLoading({ title: '加载中...' })
-    const response = await getProductDetail(id)
+    const response = await getProductDetail(id, { showLoading: false })
     if (sequence !== productRequestSequence || !isCurrentSession(session)) return
     applyProduct(response, { preserveQuantity })
     loadedSession = session
@@ -1144,8 +1143,6 @@ const loadProduct = async (id) => {
       title: error.message || '加载失败',
       icon: 'none'
     })
-  } finally {
-    if (sequence === productRequestSequence && isCurrentSession(session)) uni.hideLoading()
   }
 }
 
@@ -1409,7 +1406,7 @@ const flyToCart = async (event, item) => {
   const sequence = productRequestSequence
   try {
     // 推荐卡片只有商品汇总数据；重新读真实规格，已有单规格时只增加该行。
-    const detail = mapProductDetail(await getProductDetail(item.id))
+    const detail = mapProductDetail(await getProductDetail(item.id, { showLoading: false }))
     if (!isCurrentSession(session) || sequence !== productRequestSequence) return
     // 等待期间可能新增规格，再次确认本次需要操作的规格。
     lines = getProductCartLines(getCartEntries(), item.id)

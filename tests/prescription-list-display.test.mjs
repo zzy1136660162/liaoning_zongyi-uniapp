@@ -93,9 +93,11 @@ describe('处方清单普通购物车', () => {
     assert.deepEqual(page.draftAccess, [])
     assert.equal(page.storage.has('current_order'), false)
     const template = readFileSync(new URL('../pages/order/prescription_list.vue', import.meta.url), 'utf8').split('<script')[0]
+    assert.match(template, /currentPrescription\?\.diagnosis/)
     assert.match(template, /cartItem\.skuSpecText/)
-    assert.match(template, /×\{\{ cartItem\.quantity \}\}/)
-    assert.doesNotMatch(template, /单价|商品小计|本次处方诊断|cartItem\.diagnosis|cartItem\.doctorName|复诊调方/)
+    assert.match(template, /v-if="cartItem\.productCategory === 1"[\s\S]*?本次处方诊断/)
+    assert.match(template, /v-if="cartItem\.productCategory === 1"[\s\S]*?prescriptionDoctorName/)
+    assert.doesNotMatch(template, /cartItem\.diagnosis|cartItem\.doctorName|复诊调方/)
   })
 
   test('人工医生资料失败明确显示缺失，无doctorId才使用AI身份', async () => {

@@ -142,7 +142,7 @@ export default {
       const requestSeq = ++this.productRequestSeq
       this.productDetail = null
       try {
-        const detail = await getProductDetail(productId)
+        const detail = await getProductDetail(productId, { showLoading: false })
         if (!this.isNoticeCurrent() || requestSeq !== this.productRequestSeq) return
         if (detail) {
           this.productDetail = detail
@@ -161,7 +161,7 @@ export default {
       }
     },
     async ensureCartCompatible(detail) {
-      const target = detail || this.productDetail || await getProductDetail(this.productId)
+      const target = detail || this.productDetail || await getProductDetail(this.productId, { showLoading: false })
       if (!target || !this.isNoticeCurrent()) {
         return false
       }
@@ -233,7 +233,7 @@ export default {
       let validationRejected = false
       uni.showLoading({ title: '校验中...' })
       try {
-        const detail = await getProductDetail(this.productId)
+        const detail = await getProductDetail(this.productId, { showLoading: false })
         if (!this.isNoticeCurrent()) return
         if (!(await this.ensureCartCompatible(detail))) {
           if (this.isNoticeCurrent()) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'CART_INCOMPATIBLE' } })

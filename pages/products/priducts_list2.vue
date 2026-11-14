@@ -281,7 +281,7 @@ export default {
       }
       try {
         // 快捷加购和详情页使用同一真实 SKU 选择规则，问卷也绑定本次规格。
-        const detail = mapProductDetail(await getProductDetail(product.id))
+        const detail = mapProductDetail(await getProductDetail(product.id, { showLoading: false }))
         if (!isCurrentSession(session)) return
         productLoaded = true
         product = withProductSku(detail, resolveProductSku(detail))

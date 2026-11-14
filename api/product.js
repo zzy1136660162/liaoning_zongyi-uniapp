@@ -2,14 +2,14 @@ import { get, post, getToken } from '@/utils/request.js'
 import { API_PATHS, getImageUrl } from '@/utils/config.js'
 import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
 
-export const getCategoryList = (productCategory = null) => {
+export const getCategoryList = (productCategory = null, { showLoading = true } = {}) => {
   const params = {}
   if (productCategory !== null && productCategory !== undefined && productCategory !== '') {
     params.productCategory = productCategory
   }
   return get(API_PATHS.CATEGORY.LIST, params, {
     needAuth: false,
-    showLoading: true
+    showLoading
   })
 }
 
@@ -20,7 +20,8 @@ export const getCategoryProducts = (
   productCategory = null,
   sortField = null,
   sortOrder = null,
-  keyword = null
+  keyword = null,
+  { showLoading } = {}
 ) => {
   const payload = {
     categoryId,
@@ -44,7 +45,8 @@ export const getCategoryProducts = (
   return post(API_PATHS.CATEGORY.PRODUCTS, payload, {
     // 后端公开查询不依赖账号；会话校验不可用时仍应允许浏览、搜索和分页。
     needAuth: false,
-    showLoading: pageNum <= 1
+    // 默认仅首页查询显示 loading，调用方可通过 options 显式关闭。
+    showLoading: showLoading === undefined ? pageNum <= 1 : showLoading
   })
 }
 

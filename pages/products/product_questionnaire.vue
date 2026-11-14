@@ -149,7 +149,7 @@ export default {
       return this.directPurchase?.quantity || this.requestedQuantity
     },
     async ensureCartCompatible(detail) {
-      const target = detail || this.productDetail || await getProductDetail(this.productId)
+      const target = detail || this.productDetail || await getProductDetail(this.productId, { showLoading: false })
       if (!target) {
         return false
       }
@@ -353,7 +353,7 @@ export default {
         }
 
         if (result.isMatch) {
-          const detail = await getProductDetail(this.productId)
+          const detail = await getProductDetail(this.productId, { showLoading: false })
           if (!this.isSubmissionCurrent(sequence)) return
           if (Number(detail.needQuestionnaire) !== 1 || String(detail.questionnaireId) !== String(this.questionnaireId)) {
             logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionCode: 'CONTINUE_AFTER_QUESTIONNAIRE', accessTitle: '问卷后购前校验结果', accessDescription: '问卷提交后重新核对商品当前绑定的问卷和购买流程', actionResult: 'FAILED', extraData: { ...actionLog.extraData, reason: 'QUESTIONNAIRE_CHANGED' } })

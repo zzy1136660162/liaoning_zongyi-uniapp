@@ -901,7 +901,8 @@ export default {
         PRODUCT_CATEGORY_FILTER,
         this.mapSortField(),
         this.sortType ? this.sortOrder : null,
-        this.getSearchKeyword()
+        this.getSearchKeyword(),
+        { showLoading: false }
       )
       this.pageLoadingWaiters[stateKey] = requestPromise
 
@@ -1015,8 +1016,7 @@ export default {
     async loadProducts() {
       const requestSeq = ++this.requestSeq
       try {
-        uni.showLoading({ title: '加载中...' })
-        const categoryList = await getCategoryList(PRODUCT_CATEGORY_FILTER)
+        const categoryList = await getCategoryList(PRODUCT_CATEGORY_FILTER, { showLoading: false })
         if (requestSeq !== this.requestSeq) return
         this.categoryList = Array.isArray(categoryList) ? categoryList : []
         this.categoryTree = buildCategoryTree(this.categoryList)
@@ -1058,7 +1058,6 @@ export default {
         console.error('loadProducts failed:', error)
         uni.showToast({ title: '加载失败', icon: 'none' })
       } finally {
-        uni.hideLoading()
         // 等列表数据渲染到视图后再播放首图上划
         if (this.pendingIntro) {
           this.$nextTick(() => this.playIntroCollapse())
@@ -1233,7 +1232,7 @@ export default {
       }
       try {
         // 快捷加购重读当前商品，默认选择真实可售规格，不使用列表汇总价和汇总库存。
-        const detail = mapProductDetail(await getProductDetail(product.id))
+        const detail = mapProductDetail(await getProductDetail(product.id, { showLoading: false }))
         if (!isCurrentSession(session)) return
         productLoaded = true
         product = withProductSku(detail, resolveProductSku(detail))
