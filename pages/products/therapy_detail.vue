@@ -172,7 +172,7 @@
     </view>
 
     <view
-      v-if="skuList.length"
+      v-if="skuList.length > 1"
       class="sku-options"
     >
       <view
@@ -193,8 +193,17 @@
         已选
       </view>
       <view class="select-value">
-        <text selectable="true">
+        <text
+          v-if="skuList.length > 1"
+          selectable="true"
+        >
           {{ selectedSpec }}
+        </text>
+        <text
+          v-else
+          selectable="true"
+        >
+          ￥{{ priceInteger }}.{{ priceDecimal }} 单次服务
         </text>
       </view>
       <view class="quantity-stepper">
@@ -239,19 +248,6 @@
       </text>
       <text class="select-arrow" selectable="true">
         ›
-      </text>
-    </view>
-    <view class="delivery-row">
-      <image
-        class="delivery-icon"
-        src="https://smf.lntcm.com/static/shop/spps.svg"
-        mode="aspectFit"
-      />
-      <text class="delivery-label" selectable="true">
-        配送
-      </text>
-      <text class="delivery-text" selectable="true">
-        {{ deliverySummary }}
       </text>
     </view>
 
@@ -661,15 +657,22 @@
           </view>
         </view>
       </view>
-
-      <view
-        v-if="usageItems.length > 0"
-        class="usage-box"
-      >
+      <view class="usage-box">
         <view class="usage-title">
           使用说明
         </view>
-        <view class="usage-list">
+        <view class="usage-tip">
+          <text
+            class="usage-text"
+            selectable="true"
+          >
+            凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
+          </text>
+        </view>
+        <view
+          v-if="usageItems.length > 0"
+          class="usage-list"
+        >
           <view
             v-for="item in usageItems"
             :key="item.label"
@@ -700,17 +703,6 @@
         暂无评价
       </view>
     </view>
-
-    <view class="reminder-bar">
-      <text class="reminder-icon" selectable="true">
-        !
-      </text>
-      <text class="reminder-text" selectable="true">
-        凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
-      </text>
-    </view>
-
-
 
     <view class="bottom-space" />
 
@@ -816,7 +808,6 @@ import {
 import { requireAccountSession } from '@/utils/auth-session.js'
 import { checkoutEntries, directPurchaseQuery } from '@/utils/checkout.js'
 import {
-  getDeliverySummary,
   getExternalUseLabel,
   isSelfDevelopedProduct,
   shouldShowSfLogo
@@ -911,6 +902,7 @@ const productImages = computed(() => {
 
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
+// 多规格必须展示本次实际选择，避免价格相近时误把默认规格当作用户选择。
 const selectedSpec = computed(() => saleProduct.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
 const maxPurchaseQuantity = computed(() => resolvePurchaseQuantityLimit(saleProduct.value))
 const canPurchase = computed(() => isPurchaseAvailable(saleProduct.value))
@@ -935,7 +927,6 @@ const originTypeText = computed(() => {
   return ''
 })
 
-const deliverySummary = computed(() => getDeliverySummary(product.value.coldShippingType))
 const showSfLogo = computed(() => shouldShowSfLogo(product.value.coldShippingType))
 
 const specItems = computed(() => {
@@ -945,7 +936,6 @@ const specItems = computed(() => {
   return [
     { label: '产品名称', value: product.value.name },
     { label: '是否外用', value: externalLabel },
-    { label: '规格', value: product.value.specText },
     { label: '包装', value: product.value.packageSpec },
     { label: '剂型', value: product.value.dosageForm },
     { label: '性状', value: product.value.appearanceDesc },
@@ -954,14 +944,14 @@ const specItems = computed(() => {
     { label: '批准文号', value: product.value.approvalNumber },
     { label: '生产单位', value: product.value.manufacturer },
     { label: '执行标准', value: product.value.executionStandard },
-    { label: '温馨提示', value: product.value.warmTips }
+    { label: '温馨提示', value: product.value.warmTips },
+    { label: '功能主治', value: product.value.indications }
   ].filter(item => item.value)
 })
 
 const usageItems = computed(() => {
   return [
     { label: '制剂组成', value: product.value.ingredients },
-    { label: '功能主治', value: product.value.indications },
     { label: '适用人群', value: product.value.suitableCrowd },
     { label: '用法用量', value: usageText.value },
     { label: '不良反应', value: product.value.adverseReactions },
@@ -2388,36 +2378,6 @@ onShow(async () => {
   color: #999;
   text-align: center;
   padding: 40rpx 0;
-}
-
-.reminder-bar {
-  background: #fffbea;
-  padding: 20rpx 24rpx;
-  display: flex;
-  align-items: center;
-  margin: 20rpx 30rpx;
-  border-radius: 16rpx;
-  border: 1rpx solid #ffe9a8;
-}
-
-.reminder-icon {
-  width: 32rpx;
-  height: 32rpx;
-  background: #faad14;
-  color: #fff;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22rpx;
-  margin-right: 12rpx;
-}
-
-.reminder-text {
-  font-size: 24rpx;
-  color: #ad6800;
-  flex: 1;
-  line-height: 1.6;
 }
 
 .bottom-space {
