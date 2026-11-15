@@ -30,6 +30,21 @@ test('已取消终态、付款处理中及异常退款不显示履约成功或�
   assert.equal(getPaymentOutcome({ orderStatus: 1, payStatus: 1, paymentFulfillmentStatus: 'READY' }).state, 'success')
 })
 
+test('医院收款未完成单独显示已付款，不覆盖资金退款终态或误判纯商城订单', () => {
+  const paid = { orderStatus: 1, payStatus: 1, paymentFulfillmentStatus: 'READY' }
+  for (const hisPaymentStatus of ['FAILED', 'UNKNOWN', 'RUNNING', 'PENDING', 'BLOCKED', 'CANCELED', 'WAIT_BINDING', 'FUTURE_PENDING']) {
+    const outcome = getPaymentOutcome({ ...paid, hisPaymentStatus, hisMessage: '医院登记尚未完成' })
+    assert.equal(outcome.state, 'hospital_pending')
+    assert.equal(outcome.paid, true); assert.equal(outcome.manualRefresh, true)
+    assert.match(outcome.tip, /医院登记尚未完成.*请勿重复付款/)
+  }
+  for (const hisPaymentStatus of ['SUCCESS', 'SKIPPED', undefined]) {
+    assert.equal(getPaymentOutcome({ ...paid, hisPaymentStatus }).state, 'success')
+  }
+  assert.equal(getPaymentOutcome({ ...paid, hisPaymentStatus: 'FAILED', paymentFulfillmentStatus: 'REFUNDED' }).state, 'refunded')
+  assert.equal(getPaymentOutcome({ ...paid, hisPaymentStatus: 'UNKNOWN', orderStatus: 4 }).state, 'canceled')
+})
+
 test('支付页面只在服务端确认可履约后消费当前已付订单的购物车快照', () => {
   const removed = []
   const mocks = {

@@ -22,9 +22,15 @@ import { deriveBirthDateFromId, getPatientProfileNotice } from '../utils/patient
 import { createPageReturn } from '../utils/page-return.js'
 import { formatFreightEstimate } from '../utils/freight.js'
 import { waitForSessionRecovery, beginManualAccountLogin, getAccountSessionState, onAccountSessionState } from '../utils/auth-session.js'
+import { redirectToWithFallback } from '../utils/navigate.js'
 
-const logMocks = { formatFreightEstimate, getCurrentInstance: () => ({}), onLoad() {}, onShow() {}, onHide() {}, onResize() {}, onPullDownRefresh() {}, onReachBottom() {}, logPageView() {}, logButtonClick() {}, logAccess() {}, getActionFailureResult,
+const logMocks = { formatFreightEstimate, getCurrentInstance: () => ({}), onLoad() {}, onShow() {}, onHide() {}, onResize() {}, onPageScroll() {}, onPullDownRefresh() {}, onReachBottom() {}, logPageView() {}, logButtonClick() {}, logAccess() {}, getActionFailureResult,
   getSessionToken, onSessionChanged, sessionChangedError,
+  redirectToWithFallback,
+  // 角标统计是页面的辅助读取，默认隔离网络；具体统计契约由调用方按需提供。
+  getOrderStats: async () => ({ pending: 0 }),
+  // 支付结果页隔离只读医院状态查询；具体字段和错误场景由支付结果用例注入。
+  getPaymentStatusByOrder: async () => null,
   waitForSessionRecovery, beginManualAccountLogin, getAccountSessionState, onAccountSessionState,
   // 页面测试隔离身份服务；真实恢复与导航在 auth-session.test 中验证。
   requireAccountSession: async () => true,
@@ -58,6 +64,16 @@ export const loadSetup = (path, mocks, exports) => {
     getOrderSubmission: (kind, data, cartSnapshot) => ({ requestId: 'fixture-order-request', cartSnapshot }),
     rememberCreatedOrder() {}, releaseOrderSubmission() {}, forgetOrderSubmission() {}, consumeOrderCart: () => true, ...mocks }
   mocks = { ...prescription, ...refund, ...orderDisplay, canPayOrder, ...questionnaireForm, ...questionnaireState, deriveBirthDateFromId, getPatientProfileNotice, getOrderStatusText, getReceiptConfirmText, hasTherapyEntitlement, resolveProductFlow, getSessionGeneration, isCurrentSession, getProductCartLines, loadCartProducts, formatRichText, onUnload() {}, resolveProductSku, withProductSku, inventoryFields, useProductImages, preloadProductImages, ...mocks }
+  // 页面用例继续隔离后端结算与微信SDK；真实一次HTTP结算及会话边界由支付模块用例验证。
+  if (path === 'pages/order/confirm.vue') mocks = {
+    ...mocks,
+    prepareOrderCheckout: mocks.prepareOrderCheckout || (async (kind, data) => {
+      const order = await (kind === 'prescription' ? mocks.createOrderFromPrescription : mocks.createOrder)(data)
+      return { order, paymentState: Number(order?.payStatus) === 1 ? 'ALREADY_PAID' : 'READY',
+        payment: { orderId: order?.id, actualPayType: 'single' } }
+    }),
+    invokePreparedWechatPayment: mocks.invokePreparedWechatPayment || (orderId => mocks.wechatSinglePay(orderId))
+  }
   const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
   const script = source.match(/<script\s+setup[^>]*>([\s\S]*?)<\/script>/)[1]
     .replace(/^[ \t]*import\s[\s\S]*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')

@@ -35,16 +35,16 @@
               {{ paymentOutcome.title }}
             </text>
             <text class="result-caption">
-              {{ syncing ? '正在确认订单状态，请稍候' : paymentOutcome.state === 'success' ? '付款已确认，请留意后续订单进度' : paymentInfo.primaryTip }}
+              {{ syncing && !paymentOutcome.terminal ? '正在确认订单状态，请稍候' : paymentOutcome.state === 'success' ? '付款已确认，请留意后续订单进度' : paymentInfo.primaryTip }}
             </text>
           </view>
         </view>
         <view class="amount-section">
           <text class="amount-label">
-            {{ paymentOutcome.state === 'success' ? '实付金额' : '订单金额' }}
+            {{ paymentOutcome.state === 'success' || paymentOutcome.paid ? '实付金额' : '订单金额' }}
           </text>
           <view
-            v-if="!loading && paymentInfo.hasOrder"
+            v-if="paymentInfo.hasOrder"
             class="amount-main"
           >
             <text class="currency">
@@ -79,6 +79,25 @@
               class="copy-icon"
               aria-hidden="true"
             /><text>复制</text>
+          </button>
+        </view>
+        <view
+          v-if="canRefresh && (!paymentOutcome.terminal || paymentOutcome.manualRefresh || queryMessage)"
+          class="status-query"
+        >
+          <text
+            v-if="queryMessage"
+            class="query-message"
+          >
+            {{ queryMessage }}
+          </text>
+          <button
+            class="query-button"
+            :loading="syncing"
+            :disabled="syncing"
+            @click="refreshOrderInfo"
+          >
+            {{ syncing ? '查询中…' : '重新查询' }}
           </button>
         </view>
       </view>
@@ -269,11 +288,11 @@
 
 <script setup>
 import { ref } from 'vue'
-import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import dayjs from 'dayjs'
 import { getOrderDetail } from '@/api/order.js'
 import { formatFreightEstimate } from '@/utils/freight.js'
-import { syncPaymentByOrder } from '@/api/payment.js'
+import { syncPaymentByOrder, getPaymentStatusByOrder } from '@/api/payment.js'
 import { consumeOrderCart } from '@/utils/order-submission.js'
 import { logPageView, logButtonClick, logAccess } from '@/utils/accessLog.js'
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
@@ -285,9 +304,12 @@ const PAGE_LOG = { moduleCode: 'PAYMENT', accessType: '订单支付', pageType: 
 
 const pageSession = getSessionGeneration()
 let pageActive = true
+let pageDisposed = false
+let querySequence = 0
+let pollTimer = null
+let resumePoll = null
 const paymentOutcome = ref(getPaymentOutcome())
 const { getProductImageUrl, handleProductImageError } = useProductImages()
-onUnload(() => { pageActive = false })
 
 const paymentInfo = ref({
   amount: 0,
@@ -313,6 +335,8 @@ const paymentInfo = ref({
 
 const loading = ref(true)
 const syncing = ref(false)
+const canRefresh = ref(false)
+const queryMessage = ref('')
 const cartCleared = ref(false)
 
 let currentOrderId = ''
@@ -320,7 +344,40 @@ let currentOrderId = ''
 const POLL_INTERVAL_MS = 1500
 const POLL_MAX_ATTEMPTS = 12
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const isCurrentQuery = sequence => pageActive && !pageDisposed && sequence === querySequence && isCurrentSession(pageSession)
+
+const cancelPolling = () => {
+  if (pollTimer !== null) clearTimeout(pollTimer)
+  pollTimer = null
+  if (resumePoll) {
+    const resolve = resumePoll
+    resumePoll = null
+    resolve()
+  }
+}
+
+const sleep = ms => new Promise(resolve => {
+  resumePoll = resolve
+  pollTimer = setTimeout(() => {
+    pollTimer = null
+    resumePoll = null
+    resolve()
+  }, ms)
+})
+
+const suspendQuery = () => {
+  pageActive = false
+  querySequence += 1
+  cancelPolling()
+  syncing.value = false
+  loading.value = false
+}
+
+onHide(suspendQuery)
+onUnload(() => {
+  pageDisposed = true
+  suspendQuery()
+})
 
 const formatTime = (timeStr) => {
   if (!timeStr) return ''
@@ -376,34 +433,36 @@ const applyTips = (orderData = {}) => {
 
 const isOrderPaid = orderData => getPaymentOutcome(orderData).state === 'success'
 
-const clearPaidCartItems = async (orderData = {}) => {
-  if (cartCleared.value || !isOrderPaid(orderData)) {
+const clearPaidCartItems = async (orderData = {}, sequence = querySequence) => {
+  if (!isCurrentQuery(sequence) || cartCleared.value || !isOrderPaid(orderData)) {
     return
   }
 
   if (!orderData.id) return
   try {
-    if (await consumeOrderCart(orderData.id)) cartCleared.value = true
+    const consumed = await consumeOrderCart(orderData.id)
+    if (consumed && isCurrentQuery(sequence)) cartCleared.value = true
   } catch (error) {
-    if (pageActive && error.code !== 'SESSION_CHANGED') {
+    if (isCurrentQuery(sequence) && error.code !== 'SESSION_CHANGED') {
       uni.showToast({ title: '支付已成功，购物车清理失败，请稍后重试', icon: 'none' })
     }
   }
 }
 
-const applyOrderData = async (orderData) => {
+const applyOrderData = async (orderData, sequence = querySequence) => {
   assertCurrentSession(pageSession)
-  if (!pageActive) return
+  if (!isCurrentQuery(sequence)) return
   paymentOutcome.value = getPaymentOutcome(orderData)
   paymentInfo.value.hasOrder = true
   paymentInfo.value.items = Array.isArray(orderData.items) ? orderData.items : []
   // 待确认订单的实付字段默认为 0，应展示应付金额；成功后才使用真实实付金额。
-  paymentInfo.value.amount = toAmount(paymentOutcome.value.state === 'success'
+  paymentInfo.value.amount = toAmount(paymentOutcome.value.state === 'success' || paymentOutcome.value.paid
     ? orderData.paidAmount ?? orderData.payableAmount ?? orderData.totalAmount
     : orderData.payableAmount ?? orderData.totalAmount ?? orderData.paidAmount, 0)
   paymentInfo.value.goodsAmount = toAmount(orderData.totalAmount ?? paymentInfo.value.amount, 0)
   paymentInfo.value.itemCount = sumItemCount(orderData.items)
-  paymentInfo.value.orderStatusLabel = resolveOrderStatusLabel(orderData)
+  paymentInfo.value.orderStatusLabel = paymentOutcome.value.state === 'hospital_pending'
+    ? '医院处理待完成' : resolveOrderStatusLabel(orderData)
   paymentInfo.value.orderNo = orderData.orderNo || ''
   paymentInfo.value.createdTime = formatTime(orderData.createdAt)
   paymentInfo.value.shippingFeeText = resolveShippingFeeText(orderData)
@@ -418,31 +477,50 @@ const applyOrderData = async (orderData) => {
   const payTime = orderData.payTime
   paymentInfo.value.paymentTime = formatTime(payTime)
 
-  await clearPaidCartItems(orderData)
-
+  // 金额已由订单记录确认，不等待后台履约或购物车清理结束才展示。
+  loading.value = false
   applyTips(orderData)
+  await clearPaidCartItems(orderData, sequence)
 }
 
-const fetchOrderDetail = async (orderId) => {
+const fetchOrderDetail = async (orderId, sequence) => {
   assertCurrentSession(pageSession)
-  if (!pageActive) throw new Error('页面已关闭')
-  const result = await getOrderDetail(orderId, { showLoading: false })
+  if (!isCurrentQuery(sequence)) return null
+  const result = await getOrderDetail(orderId, { showLoading: false, silent: true })
   assertCurrentSession(pageSession)
-  return result
+  if (!isCurrentQuery(sequence)) return null
+  if (Number(result.payStatus ?? result.pay_status) !== 1) return result
+  // 先展示真实付款金额；读取医院状态期间不把旧READY快照误显示成履约完成。
+  await applyOrderData({ ...result, hisPaymentStatus: 'CHECKING', hisMessage: '正在读取医院处理状态。' }, sequence)
+  if (!isCurrentQuery(sequence)) return null
+  try {
+    const status = await getPaymentStatusByOrder(orderId)
+    assertCurrentSession(pageSession)
+    if (!isCurrentQuery(sequence)) return null
+    if (!status?.hisPaymentStatus) return result // 兼容尚未提供医院状态的旧响应。
+    if (String(status.orderId) !== String(orderId)) throw new Error('支付状态与当前订单不匹配')
+    return { ...result, hisPaymentStatus: status.hisPaymentStatus, hisMessage: status.hisMessage || '' }
+  } catch (error) {
+    if (!isCurrentQuery(sequence) || error?.code === 'SESSION_CHANGED') return null
+    // 查询失败时保留真实付款与待核查状态，手动刷新不重发医院请求。
+    return { ...result, hisPaymentStatus: 'CHECKING',
+      hisMessage: '医院处理状态暂无法读取，请重新查询或联系后台。' }
+  }
 }
 
-const waitForPaymentConfirmed = async (orderId, outTradeNo) => {
-  syncing.value = true
-
+const waitForPaymentConfirmed = async (orderId, outTradeNo, sequence) => {
   for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt += 1) {
+    if (!isCurrentQuery(sequence)) return false
     try {
-      const orderData = await fetchOrderDetail(orderId)
-      await applyOrderData(orderData)
+      const orderData = await fetchOrderDetail(orderId, sequence)
+      if (!orderData) return false
+      await applyOrderData(orderData, sequence)
+      if (!isCurrentQuery(sequence)) return false
       if (getPaymentOutcome(orderData).terminal) {
         return true
       }
     } catch (error) {
-      if (!pageActive || error.code === 'SESSION_CHANGED') return false
+      if (!isCurrentQuery(sequence) || error.code === 'SESSION_CHANGED') return false
       console.warn('event=ui_order_payment_success stage=payment_poll result=unknown reason=query_failed')
     }
 
@@ -451,13 +529,15 @@ const waitForPaymentConfirmed = async (orderId, outTradeNo) => {
     }
   }
 
-  if (outTradeNo) {
+  if (outTradeNo && isCurrentQuery(sequence)) {
     try {
       assertCurrentSession(pageSession)
-      if (!pageActive) return false
       await syncPaymentByOrder(orderId, outTradeNo)
-      const orderData = await fetchOrderDetail(orderId)
-      await applyOrderData(orderData)
+      if (!isCurrentQuery(sequence)) return false
+      const orderData = await fetchOrderDetail(orderId, sequence)
+      if (!orderData) return false
+      await applyOrderData(orderData, sequence)
+      if (!isCurrentQuery(sequence)) return false
       if (getPaymentOutcome(orderData).terminal) {
         return true
       }
@@ -475,42 +555,55 @@ const loadOrderInfo = async (orderId, outTradeNo = '') => {
     loading.value = false
     return
   }
+  if (syncing.value || !pageActive || pageDisposed || !isCurrentSession(pageSession)) return
+  const sequence = ++querySequence
+  syncing.value = true
+  loading.value = !paymentInfo.value.hasOrder
+  queryMessage.value = ''
 
   try {
     console.debug('event=ui_order_payment_success stage=payment_state_request result=started')
-    uni.showLoading({ title: '加载中...' })
 
-    const orderData = await fetchOrderDetail(orderId)
+    const orderData = await fetchOrderDetail(orderId, sequence)
+    if (!orderData) return
     console.debug('event=ui_order_payment_success stage=payment_state_response result=received')
-    await applyOrderData(orderData)
+    await applyOrderData(orderData, sequence)
+    if (!isCurrentQuery(sequence)) return
 
     if (!getPaymentOutcome(orderData).terminal) {
-      uni.hideLoading()
-      await waitForPaymentConfirmed(orderId, outTradeNo)
+      await waitForPaymentConfirmed(orderId, outTradeNo, sequence)
+    }
+    if (isCurrentQuery(sequence) && !paymentOutcome.value.terminal) {
+      queryMessage.value = '后台仍在确认付款与订单进度，请勿重复付款。您可以重新查询，或在订单详情查看后续结果。'
     }
   } catch (error) {
-    if (error.code === 'SESSION_CHANGED' || !pageActive) return
-    paymentOutcome.value = { state: 'unknown', title: '支付结果待确认', tip: '暂时无法获取订单状态，请稍后在订单列表查看。' }
-    paymentInfo.value.primaryTip = paymentOutcome.value.tip
+    if (error.code === 'SESSION_CHANGED' || !isCurrentQuery(sequence)) return
+    if (!paymentInfo.value.hasOrder) {
+      paymentOutcome.value = { state: 'unknown', title: '支付结果待确认', tip: '暂时无法获取订单状态，请检查网络后重新查询。', terminal: false }
+      paymentInfo.value.primaryTip = paymentOutcome.value.tip
+    }
+    queryMessage.value = paymentInfo.value.hasOrder
+      ? '暂时无法读取最新进度，已保留上次查询结果。请检查网络后重新查询，勿重复付款。'
+      : '订单信息读取失败，请检查网络后重新查询，或前往订单列表查看。'
     console.error('event=ui_order_payment_success stage=payment_state_request result=unknown reason=query_failed')
-    uni.showToast({
-      title: '加载订单信息失败',
-      icon: 'none',
-      duration: 2000
-    })
   } finally {
-    uni.hideLoading()
-    syncing.value = false
-    loading.value = false
+    if (isCurrentQuery(sequence)) {
+      syncing.value = false
+      loading.value = false
+    }
   }
-  if (pageActive && isCurrentSession(pageSession)) logAccess({ ...PAGE_LOG, pageId: orderId, actionType: 'BEHAVIOR', actionCode: 'PAYMENT_STATUS_DISPLAYED', actionResult: paymentOutcome.value.terminal ? 'SUCCESS' : 'UNKNOWN', accessTitle: '展示支付结果', accessDescription: paymentOutcome.value.terminal ? '已展示服务端确认的支付与履约状态，具体资金结果以支付状态为准' : '本次等待结束，支付与履约结果仍待服务端确认', extraData: { paymentState: paymentOutcome.value.state } })
+  if (isCurrentQuery(sequence)) logAccess({ ...PAGE_LOG, pageId: orderId, actionType: 'BEHAVIOR', actionCode: 'PAYMENT_STATUS_DISPLAYED', actionResult: paymentOutcome.value.terminal ? 'SUCCESS' : 'UNKNOWN', accessTitle: '展示支付结果', accessDescription: paymentOutcome.value.terminal ? '已展示服务端确认的支付与履约状态，具体资金结果以支付状态为准' : '本次等待结束，支付与履约结果仍待服务端确认', extraData: { paymentState: paymentOutcome.value.state } })
 }
+
+// 重新查询与返回页面只读取状态，不重新发起付款或重放首次支付补偿。
+const refreshOrderInfo = () => loadOrderInfo(currentOrderId)
 
 onLoad(async (options) => {
   console.debug('event=ui_order_payment_success stage=page_load result=started')
   const orderId = options.orderId || options.id
   const outTradeNo = options.combineOutTradeNo || options.outTradeNo || ''
   currentOrderId = orderId || ''
+  canRefresh.value = Boolean(orderId)
   console.debug('event=ui_order_payment_success stage=route_context result=parsed')
 
   if (orderId) {
@@ -525,7 +618,11 @@ onLoad(async (options) => {
 })
 
 onShow(() => {
+  if (pageDisposed) return
+  const returning = !pageActive
+  pageActive = true
   if (pageActive && isCurrentSession(pageSession)) logPageView({ ...PAGE_LOG, pageId: currentOrderId, actionCode: 'PAYMENT_RESULT_VIEW', accessTitle: '支付结果', accessDescription: '进入支付结果页面，查询服务端确认的支付与订单履约状态' })
+  if (returning && currentOrderId) return refreshOrderInfo()
 })
 
 const goOrderList = () => {
@@ -583,6 +680,11 @@ const copyOrderNo = () => {
 .amount-value { font-size: 78rpx; font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; letter-spacing: -1rpx; }
 .amount-placeholder { display: block; margin-top: 8rpx; font-size: 38rpx; line-height: 1.6; }
 .order-receipt { min-height: 96rpx; display: flex; align-items: flex-start; gap: 14rpx; box-sizing: border-box; border-top: 1rpx solid var(--line); padding: 28rpx 0; line-height: 1.6; }
+.status-query { display: flex; flex-direction: column; align-items: flex-start; gap: 20rpx; padding: 24rpx 0 32rpx; border-top: 1rpx solid var(--line); }
+.query-message { color: var(--muted); font-size: 24rpx; line-height: 1.7; }
+.query-button { margin: 0; padding: 0 28rpx; min-height: 76rpx; line-height: 74rpx; border: 1rpx solid #cbd6e3; border-radius: 12rpx; background: #fff; color: var(--brand-dark); font-size: 26rpx; }
+.query-button::after { border: none; }
+.query-button[disabled] { color: #8993a1; background: #f5f7fa; }
 .receipt-label { color: #8993a1; font-size: 23rpx; flex-shrink: 0; }
 .order-no { flex: 1; min-width: 0; color: #647286; font-size: 23rpx; word-break: break-all; font-variant-numeric: tabular-nums; }
 .copy-link { display: flex; align-items: center; gap: 6rpx; flex-shrink: 0; margin: -8rpx 0 -8rpx auto; padding: 8rpx 0 8rpx 8rpx; background: transparent; color: var(--brand-dark); font-size: 23rpx; line-height: 1.6; border-radius: 0; }

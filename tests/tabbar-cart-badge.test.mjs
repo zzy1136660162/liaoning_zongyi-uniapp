@@ -19,6 +19,7 @@ globalThis.uni = {
   },
   $off: (name, handler) => listeners.get(name)?.delete(handler),
   $emit: (name, payload) => [...(listeners.get(name) || [])].forEach(handler => handler(payload)),
+  upx2px: value => value / 2,
   showToast() {}, hideLoading() {},
   navigateTo: options => navigations.push(options)
 }

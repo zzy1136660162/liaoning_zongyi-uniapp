@@ -314,14 +314,14 @@ import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { refreshCart, buildOrderInfo, getCurrentCheckoutProductIds, loadCartItems, setCheckoutProductIds, validateCheckoutStock, updateCartQuestionnaire } from '@/utils/cart.js'
 import { parseDirectPurchase, directPurchaseQuery, checkoutEntries, getCheckoutQuestionnaireAnswer, QUESTIONNAIRE_RECHECK_REQUIRED } from '@/utils/checkout.js'
 import { getOrderSubmission, rememberCreatedOrder, releaseOrderSubmission, forgetOrderSubmission } from '@/utils/order-submission.js'
-import { createOrder, createOrderFromPrescription, getOrderByPrescriptionId } from '@/api/order.js'
+import { getOrderByPrescriptionId } from '@/api/order.js'
 import { getConsultationDetail, getPrescriptionDetail, getPrescriptionItems } from '@/api/consultation.js'
 import { parseConsultationContext, requireConsultationPatient } from '@/utils/consultation-checkout.js'
 import { getSessionGeneration, assertCurrentSession, isCurrentSession } from '@/utils/session.js'
 import { getAddressList } from '@/api/address.js'
 import { getPatientList } from '@/api/patient.js'
 import { getPatientProfileNotice, patientHisSyncNotice } from '@/utils/patient.js'
-import { wechatSinglePay } from '@/api/payment.js'
+import { prepareOrderCheckout, invokePreparedWechatPayment } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { resolveProductSku, withProductSku } from '@/utils/product-sku.js'
@@ -817,6 +817,7 @@ const submitOrder = async () => {
   if (submitting.value || !pageActive) return
   submitting.value = true
   let submissionStage = 'VALIDATION'
+  let checkoutAttempt = null
   try {
     assertCurrentSession(pageSession)
     if (completedOrderId.value) {
@@ -964,12 +965,16 @@ const submitOrder = async () => {
             serverCartItemId: entry.serverCartItemId, serverCartVersion: entry.serverCartVersion }]
         }))
       const attempt = getOrderSubmission(prescriptionId.value ? 'prescription' : 'goods', requestData, cartSnapshot)
+      checkoutAttempt = attempt
       submissionStage = 'ORDER_CREATE'
-      const order = prescriptionId.value
-        ? await createOrderFromPrescription({ ...requestData, requestId: attempt.requestId })
-        : await createOrder({ ...requestData, requestId: attempt.requestId })
+      // 同一后台请求完成HIS前置、商城下单和微信参数准备；失败时不拉起微信。
+      const checkout = await prepareOrderCheckout(prescriptionId.value ? 'prescription' : 'goods', {
+        ...requestData, requestId: attempt.requestId
+      })
       if (!pageActive) return
       assertCurrentSession(pageSession)
+      const order = checkout?.order
+      if (!order) throw new Error('订单提交结果待确认，请使用原请求重试')
 
       console.debug('event=ui_order_confirm stage=order_create_response result=received')
 
@@ -983,7 +988,7 @@ const submitOrder = async () => {
         uni.showToast({ title: '原订单已取消，请重新提交', icon: 'none' })
         return
       }
-      if (Number(order.payStatus) === 1) {
+      if (checkout.paymentState === 'ALREADY_PAID' || Number(order.payStatus) === 1) {
         logAccess({ ...PAGE_LOG, pageId: prescriptionId.value || '', actionType: 'BEHAVIOR', actionCode: 'ORDER_CREATE_RESULT', actionResult: 'SUCCESS', accessTitle: '订单已确认', accessDescription: '服务端已返回已有付款记录的订单，进入结果页继续确认履约状态', extraData: { orderId: orderId || '' } })
         releaseOrderSubmission(orderId)
         completedOrderId.value = orderId
@@ -1007,8 +1012,9 @@ const submitOrder = async () => {
         submissionStage = 'PAYMENT'
         console.debug('event=ui_order_confirm stage=payment_request result=started')
 
-        // 先保存已创建订单再调用统一支付入口；取微信 code 失败仍可从原订单续付，不能重复创建。
-        const payResult = await wechatSinglePay(orderId)
+        if (checkout.paymentState !== 'READY') throw new Error('支付准备尚未完成，请从原订单重试')
+        // 已保存原订单；仅调用刚取得的支付参数，不再次创建预支付。
+        const payResult = await invokePreparedWechatPayment(orderId, checkout.payment)
         if (!pageActive) return
         assertCurrentSession(pageSession)
         console.debug('event=ui_order_confirm stage=payment_client result=completed')
@@ -1022,7 +1028,7 @@ const submitOrder = async () => {
           orderId,
           amount: orderInfo.value.total,
           outTradeNo: payResult.outTradeNo || '',
-          paymentType: 'single',
+          paymentType: checkout.payment?.actualPayType || 'single',
           orderNo: order.orderNo || '',
           itemCount
         }
@@ -1087,6 +1093,27 @@ const submitOrder = async () => {
       uni.hideLoading()
       if (submissionStage === 'ORDER_CREATE' && Number(error.code) === QUESTIONNAIRE_RECHECK_REQUIRED) {
         await recheckQuestionnaire(error)
+        return
+      }
+      // 商城订单已提交而预支付失败时保留该订单，后续沿用同一请求或从详情续付。
+      const createdOrder = error?.data?.order
+      if (createdOrder?.id && checkoutAttempt) {
+        rememberCreatedOrder(createdOrder.id, checkoutAttempt)
+        if (Number(createdOrder.orderStatus) === 4) {
+          forgetOrderSubmission(createdOrder.id)
+          uni.showToast({ title: '原订单已取消，请重新提交', icon: 'none' })
+          return
+        }
+        uni.showModal({
+          title: '订单已创建',
+          content: error.message || '支付准备未完成，可从原订单继续付款',
+          showCancel: false,
+          success: () => {
+            if (pageActive && isCurrentSession(pageSession)) {
+              uni.redirectTo({ url: `/pages/order/order-detail?orderId=${createdOrder.id}` })
+            }
+          }
+        })
         return
       }
       uni.showToast({

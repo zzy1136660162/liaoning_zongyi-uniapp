@@ -44,7 +44,7 @@ const deferred = () => {
 }
 const flush = async () => { for (let index = 0; index < 30; index++) await Promise.resolve() }
 
-async function confirm({ route = {}, readProduct = async () => product(), create, pay,
+async function confirm({ route = {}, readProduct = async () => product(), create, pay, checkoutRequest,
   readAddresses = async () => [{ id: 8, isDefault: true }],
   freight = async () => ({ freight: 12, quoteId: 'a'.repeat(32), quoteExpiresAt: Date.now() + 900000, quoteSource: 'SF_PROD' }) } = {}) {
   const hooks = {}, orders = [], payments = []
@@ -57,6 +57,7 @@ async function confirm({ route = {}, readProduct = async () => product(), create
     getPatientList: async () => [{ id: 7, name: '就诊人甲' }, { id: 9, name: '就诊人乙' }],
     queryFreight: freight, ensureWeChatIdentity: () => assert.fail('确认页不能重复获取支付身份'),
     createOrder: async data => { orders.push(structuredClone(data)); return create ? create(data, orders.length) : { id: 100, payableAmount: 30 } },
+    ...(checkoutRequest ? { prepareOrderCheckout: checkoutRequest } : {}),
     wechatSinglePay: async (...args) => {
       payments.push({ orderId: args[0], args })
       return pay ? pay(...args) : { outTradeNo: 'fixture-trade' }
@@ -71,6 +72,47 @@ async function confirm({ route = {}, readProduct = async () => product(), create
   page.selectPatient(page.patients.value[0])
   return { ...page, orders, payments, show: hooks.show, unload: hooks.unload }
 }
+
+test('HIS前置拒绝统一结算时显示具体原因，不生成客户端支付调用', async () => {
+  await addToCart(2)
+  const page = await confirm({ checkoutRequest: async () => { throw { code: 502, message: '医院暂无法创建订单' } } })
+  await page.submitOrder()
+  assert.equal(page.orders.length, 0)
+  assert.equal(page.payments.length, 0)
+  assert.equal(messages.at(-1).title, '医院暂无法创建订单')
+  assert.equal(page.submitting.value, false)
+})
+
+test('统一结算预支付失败保留服务端已建订单及购物车快照，可进入原订单续付', async () => {
+  await addToCart(2)
+  const page = await confirm({ checkoutRequest: async () => { throw { code: 502, message: '支付准备暂不可用',
+    data: { order: { id: 73 }, paymentState: 'FAILED', payment: null } } } })
+  await page.submitOrder()
+  assert.equal(page.payments.length, 0)
+  assert.equal(storage.get(storageKeys.STORAGE_KEY_ORDER_SUBMISSION).orderId, 73)
+  assert.ok(storage.get(storageKeys.STORAGE_KEY_ORDER_CART_SNAPSHOTS)[73])
+  assert.equal(modals.at(-1).title, '订单已创建')
+  modals.at(-1).success()
+  assert.match(redirects.at(-1).url, /order-detail\?orderId=73$/)
+})
+
+test('统一结算返回已取消订单的错误上下文时释放旧请求，重新确认后使用新请求标识', async () => {
+  await addToCart(2)
+  const ids = []
+  const page = await confirm({ checkoutRequest: async (kind, data) => {
+    ids.push(data.requestId)
+    if (ids.length === 1) throw { code: 500, message: '订单状态不允许支付', data: {
+      order: { id: 73, orderStatus: 4 }, paymentState: 'FAILED', payment: null
+    } }
+    return { order: { id: 74, payableAmount: 20 }, paymentState: 'READY', payment: {} }
+  } })
+  await page.submitOrder()
+  assert.equal(page.payments.length, 0)
+  assert.equal(storage.has(storageKeys.STORAGE_KEY_ORDER_SUBMISSION), false)
+  await page.submitOrder()
+  assert.notEqual(ids[0], ids[1])
+  assert.equal(page.payments[0].orderId, 74)
+})
 
 for (const direct of [false, true]) {
   test(`${direct ? '立即购买' : '购物车'}结算不访问旧订单草稿，缓存故障不影响刷新、下单和付款`, async () => {

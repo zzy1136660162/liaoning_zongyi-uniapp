@@ -51,14 +51,9 @@ assert.match(
   /<view\s+v-if="loading"\s+class="status-state">[\s\S]*?<\/view>\s*<view\s+v-else-if="loadError"\s+class="status-state error-state">[\s\S]*?<\/view>\s*<view\s+v-else-if="featuredProducts\.length === 0"\s+class="status-state">[\s\S]*?<\/view>\s*<view\s+v-else\s+class="product-grid">/
 )
 
-assert.match(
-  medicineListTemplate,
-  /v-if="product\.specText \|\| product\.unit"[\s\S]*?product\.specText \|\| product\.unit/
-)
-assert.match(
-  medicineListTemplate,
-  /已售\s*{{\s*product\.salesVolume \?\? 0\s*}}/
-)
+// 当前列表精简了规格与销量摘要，仍展示商品名称及实际价格。
+assert.match(medicineListTemplate, /{{\s*product\.name\s*}}/)
+assert.match(medicineListTemplate, /Number\(product\.price \|\| 0\)\.toFixed\(2\)/)
 
 for (const detailPage of [medicineDetailPage, therapyDetailPage]) {
   assert.match(

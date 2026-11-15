@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
 import { getWeChatOpenId } from '../api/auth.js'
-import { createPrepay, wechatPay, wechatSinglePay } from '../api/payment.js'
+import { createPrepay, wechatPay, wechatSinglePay, prepareOrderCheckout, invokePreparedWechatPayment, getPaymentStatusByOrder } from '../api/payment.js'
 import { beginSession, endSession, getSessionGeneration, getSessionToken } from '../utils/session.js'
 import { STORAGE_KEY_TOKEN, STORAGE_KEY_WECHAT_OPENID, STORAGE_KEY_WECHAT_UNIONID } from '../utils/storage.js'
+import { TIMEOUT } from '../utils/config.js'
 
 const values = new Map(), requests = [], sdkCalls = [], reads = [], toasts = []
 let codeSequence, failCacheKey, loginHandler
@@ -57,6 +58,7 @@ test('预支付、通用付款与单笔付款统一取得新code，旧缓存和�
     assert.match(requests[requestIndex].url, /\/api\/payment\/single\/create-by-order\/10$/)
     assert.equal(requests[requestIndex].header.Authorization, 'Bearer fixture-token-A')
     assert.deepEqual(requests[requestIndex].data, { wechatCode: `fixture-code-${index + 1}` })
+    assert.equal(requests[requestIndex].timeout, 60000)
     succeed(requests[requestIndex], prepared()); await flush()
     if (index > 0) {
       assert.equal(sdkCalls.length, sdkIndex + 1)
@@ -166,4 +168,80 @@ test('顺丰预校验拒绝保留完整错误，三种付款入口都不能拉�
   }
   assert.equal(sdkCalls.length, 0)
   assert.equal(getSessionToken(), 'fixture-token-A')
+})
+
+test('统一结算只发送一次下单支付请求，保存订单后直接用返回参数拉起SDK', async () => {
+  const goods = { requestId: 'checkout-request-001', patientId: 7, items: [{ productId: 8, quantity: 2 }] }
+  const pending = prepareOrderCheckout('goods', goods)
+  await flush()
+  assert.equal(requests.length, 1)
+  assert.match(requests[0].url, /\/api\/orders\/checkout$/)
+  assert.deepEqual(requests[0].data, { goods, wechatCode: 'fixture-code-1' })
+  assert.equal(requests[0].timeout, 60000)
+  const payment = prepared()
+  succeed(requests[0], { order: { id: 73 }, paymentState: 'READY', payment })
+  const response = await pending
+  assert.equal(sdkCalls.length, 0)
+  const paid = invokePreparedWechatPayment(response.order.id, response.payment)
+  assert.equal(requests.length, 1, '不能再次调用create-by-order生成预支付')
+  assert.equal(sdkCalls.length, 1)
+  sdkCalls[0].success({ errMsg: 'requestPayment:ok' })
+  assert.equal((await paid).outTradeNo, 'fixture-trade')
+  await assert.rejects(invokePreparedWechatPayment(73, response.payment), /支付参数已失效/)
+})
+
+test('处方结算使用同一入口，HIS拒绝或支付准备错误均不调起SDK', async () => {
+  const prescription = { requestId: 'checkout-prescription-001', prescriptionId: 50, addressId: 9 }
+  const rejected = prepareOrderCheckout('prescription', prescription)
+  const assertion = assert.rejects(rejected, error => error.message === '医院暂无法创建订单')
+  await flush()
+  assert.deepEqual(requests[0].data, { prescription, wechatCode: 'fixture-code-1' })
+  requests[0].success({ statusCode: 200, data: { code: 502, message: '医院暂无法创建订单' } })
+  await assertion
+  const retry = prepareOrderCheckout('prescription', prescription)
+  const retryAssertion = assert.rejects(retry, error => error.data.order.id === 73)
+  await flush()
+  assert.equal(requests[1].data.prescription.requestId, prescription.requestId)
+  assert.equal(requests[1].data.wechatCode, 'fixture-code-2')
+  requests[1].success({ statusCode: 200, data: { code: 502, message: '支付准备暂不可用',
+    data: { order: { id: 73 }, paymentState: 'FAILED', payment: null } } })
+  await retryAssertion
+  assert.equal(sdkCalls.length, 0)
+})
+
+test('统一结算已付款只返回既有订单，不能用空参数调用SDK', async () => {
+  const pending = prepareOrderCheckout('goods', { requestId: 'checkout-already-paid' })
+  await flush()
+  succeed(requests[0], { order: { id: 73, payStatus: 1 }, paymentState: 'ALREADY_PAID', payment: null })
+  const response = await pending
+  assert.equal(response.paymentState, 'ALREADY_PAID')
+  await assert.rejects(invokePreparedWechatPayment(73, response.payment), /支付参数已失效/)
+  assert.equal(sdkCalls.length, 0)
+})
+
+test('统一结算参数在切号或直接换Token后不可使用，不能把旧订单调起到新会话', async () => {
+  for (const change of ['session', 'token']) {
+    beginSession('fixture-token-A')
+    const pending = prepareOrderCheckout('goods', { requestId: 'checkout-session-bound' })
+    await flush()
+    succeed(requests.at(-1), { order: { id: 73 }, paymentState: 'READY', payment: prepared() })
+    const response = await pending
+    if (change === 'session') beginSession('fixture-token-B')
+    else values.set(STORAGE_KEY_TOKEN, 'fixture-token-B')
+    await assert.rejects(invokePreparedWechatPayment(73, response.payment), { code: 'SESSION_CHANGED' })
+  }
+  assert.equal(sdkCalls.length, 0)
+})
+
+test('医院付款进度只用认证GET读取，不消费微信code或发起支付', async () => {
+  const pending = getPaymentStatusByOrder(73)
+  await flush()
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].method, 'GET')
+  assert.match(requests[0].url, /\/api\/payment\/single\/query-by-order\/73$/)
+  assert.deepEqual(requests[0].data, {})
+  assert.equal(requests[0].timeout, TIMEOUT)
+  succeed(requests[0], { orderId: 73, lifecycleStatus: 'PAID', hisPaymentStatus: 'FAILED', hisMessage: '医院登记暂未完成' })
+  assert.equal((await pending).hisPaymentStatus, 'FAILED')
+  assert.equal(codeSequence, 0); assert.equal(sdkCalls.length, 0)
 })

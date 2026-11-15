@@ -45,6 +45,7 @@ export const request = (options = {}) => {
       showLoading = true,
       authRedirect = true,
       silent = false,
+      timeout = TIMEOUT,
       returnResponse = false
     } = options
 
@@ -83,7 +84,7 @@ export const request = (options = {}) => {
       method: method.toUpperCase(),
       data: data,
       header: requestHeader,
-      timeout: TIMEOUT,
+      timeout,
       success: async (res) => {
         logRequestDiagnostic({ traceId, url, method: method.toUpperCase(),
           httpStatus: res.statusCode, businessCode: res.data && res.data.code,

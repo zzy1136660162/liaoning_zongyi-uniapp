@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, test } from 'node:test'
+import { buildCategoryTree, normalizeCategoryId } from '../utils/category-tree.js'
 import { loadOptions } from './sfc-harness.mjs'
 
 const appDefinition = loadOptions('App.vue', {
@@ -8,25 +9,50 @@ const appDefinition = loadOptions('App.vue', {
 })
 let app
 beforeEach(t => {
-  globalThis.uni = { $on() {}, $off() {}, removeStorageSync() {} }
+  globalThis.uni = {
+    $on() {}, $off() {}, removeStorageSync() {}, showToast() {}, upx2px: value => value / 2,
+    createSelectorQuery() {
+      const query = {
+        in: () => query, select: () => query, boundingClientRect: () => query,
+        exec: callback => callback([{ top: 0, height: 340 }, { top: 0, height: 300 }])
+      }
+      return query
+    }
+  }
   t.mock.timers.enable({ apis: ['setTimeout'] })
   app = { globalData: { ...appDefinition.globalData } }
   appDefinition.onLaunch.call(app)
 })
 afterEach(t => t.mock.timers.reset())
 
-const createPage = () => {
+const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve() }
+const deferred = () => {
+  let resolve
+  const promise = new Promise(yes => { resolve = yes })
+  return { promise, resolve }
+}
+const createPage = (overrides = {}) => {
   let refreshes = 0, cartRefreshes = 0, unsubscribed = 0
   const definition = loadOptions('pages/products/medicine_list.vue', {
     getApp: () => app, TabBar: {}, getImageUrl: value => value,
     getExternalUseLabel() {}, getColdShippingLabel() {}, isSelfDevelopedProduct() {},
-    refreshCart: async () => [], subscribeCartUpdated: () => () => { unsubscribed++ }
+    buildCategoryTree, normalizeCategoryId, mapProductListItem: value => value,
+    getCategoryList: async () => [], getCategoryProducts: async () => ({ records: [], total: 0 }),
+    refreshCart: async () => [], subscribeCartUpdated: () => () => { unsubscribed++ },
+    console: { error() {}, warn() {} }, ...overrides
   })
   const vm = {
     ...definition.data(), ...definition.methods,
-    loadProducts() { refreshes++ },
+    $set: (object, key, value) => { object[key] = value },
+    $nextTick: callback => callback(),
+    loadProducts() {
+      refreshes++
+      return definition.methods.loadProducts.call(this)
+    },
     updateCartView() { cartRefreshes++ }
   }
+  Object.entries(definition.computed).forEach(([name, getter]) =>
+    Object.defineProperty(vm, name, { get: () => getter.call(vm) }))
   return { definition, vm, counts: () => ({ refreshes, cartRefreshes, unsubscribed }) }
 }
 const touch = (y, className = 'hospital-intro') => ({
@@ -63,35 +89,77 @@ test('胶囊接口缺失、零值或抛错时按状态栏及导航高度回退�
   assert.equal(vm.introSafeTop, 76)
 })
 
-test('收起端点再下移20rpx且正反动画补偿匹配，横幅安全高度保持不变', () => {
-  const source = readFileSync(new URL('../pages/products/medicine_list.vue', import.meta.url), 'utf8')
-  const [, collapsed, expanded] = source.match(/marginTop: imageCollapsed \? '(-\d+)rpx' : '(-\d+)rpx'/)
-  assert.equal(Number(collapsed), -320)
-  const distance = Number(expanded) - Number(collapsed)
-  const collapse = source.match(/@keyframes intro-collapse\s*{\s*from { transform: translateY\((\d+)rpx\)/)
-  const expand = source.match(/@keyframes intro-expand\s*{\s*from { transform: translateY\((-\d+)rpx\)/)
-  assert.equal(Number(collapse[1]), distance)
-  assert.equal(Number(expand[1]), -distance)
-  const minHeight = source.match(/\.top-banner\s*{[^}]*min-height: calc\((\d+)rpx \+ var\(--intro-safe-top, 0px\)\)/)
-  assert.equal(Number(minHeight[1]) + Number(collapsed), 20)
+test('按实测横幅空白和屏幕单位折叠，布局交接前后保持同一视觉端点', t => {
+  const { definition, vm } = createPage()
+  definition.onLoad.call(vm)
+  definition.onReady.call(vm)
+  assert.equal(vm.bannerGapPx, 40)
+  assert.equal(vm.collapseRangePx, 220)
+  assert.deepEqual(vm.mallContentStyle, { marginTop: '-40px', transform: 'translateY(0px)' })
+  vm.runCollapse()
+  assert.equal(vm.layoutCollapsed, false, '动画期间不先收缩布局')
+  assert.deepEqual(vm.mallContentStyle, { marginTop: '-40px', transform: 'translateY(-220px)' })
+  t.mock.timers.tick(1499)
+  assert.equal(vm.layoutCollapsed, false)
+  t.mock.timers.tick(1)
+  assert.deepEqual(vm.mallContentStyle, { marginTop: '-260px', transform: 'translateY(0px)' })
+  assert.equal(vm.noTransition, true)
+  t.mock.timers.tick(32)
+  assert.equal(vm.noTransition, false)
+  vm.runExpand()
+  assert.deepEqual(vm.mallContentStyle, { marginTop: '-260px', transform: 'translateY(220px)' })
+  t.mock.timers.tick(1500)
+  assert.deepEqual(vm.mallContentStyle, { marginTop: '-40px', transform: 'translateY(0px)' })
 })
 
-test('本次启动首次进入立即消费标记，渲染完成后停留800ms才收起', t => {
-  const { definition, vm } = createPage()
+test('首次立即消费标记，真实列表加载完成后停留1800ms再收起', async t => {
+  const categories = deferred(), products = deferred()
+  const { definition, vm } = createPage({
+    getCategoryList: () => categories.promise, getCategoryProducts: () => products.promise
+  })
   assert.equal(vm.shouldPlayIntro, true)
-  assert.equal(vm.imageCollapsed, false)
   definition.onLoad.call(vm)
-  assert.equal(app.globalData.mallIntroPlayed, true)
-  assert.equal(vm.collapseTimer, null)
-  t.mock.timers.tick(2000)
-  assert.equal(vm.imageCollapsed, false)
   definition.onReady.call(vm)
-  t.mock.timers.tick(799)
+  assert.equal(app.globalData.mallIntroPlayed, true)
+  const loading = vm.loadProducts()
+  t.mock.timers.tick(2000)
+  assert.equal(vm.imageCollapsed, false, '尚未取得列表时不提前播放')
+  categories.resolve([])
+  await flush()
+  products.resolve({ records: [], total: 0 })
+  await loading
+  assert.equal(vm.productsLoaded, true)
+  assert.equal(vm.pendingIntro, false)
+  assert.equal(vm.introFallbackTimer, null, '正常加载成功取消兜底')
+  t.mock.timers.tick(1799)
   assert.equal(vm.imageCollapsed, false)
   t.mock.timers.tick(1)
   assert.equal(vm.imageCollapsed, true)
-  assert.equal(vm.introMotion, 'collapse')
+  assert.equal(vm.visualOffset, -220)
   assert.equal(vm.collapseTimer, null)
+})
+
+test('列表长期未完成时4500ms兜底启动停留，迟到数据不会重复播放', async t => {
+  const categories = deferred()
+  const { definition, vm } = createPage({ getCategoryList: () => categories.promise })
+  definition.onLoad.call(vm)
+  definition.onReady.call(vm)
+  const loading = vm.loadProducts()
+  t.mock.timers.tick(4499)
+  assert.equal(vm.pendingIntro, true)
+  assert.equal(vm.imageCollapsed, false)
+  t.mock.timers.tick(1)
+  assert.equal(vm.pendingIntro, false)
+  t.mock.timers.tick(1799)
+  assert.equal(vm.imageCollapsed, false)
+  t.mock.timers.tick(1)
+  assert.equal(vm.imageCollapsed, true)
+  t.mock.timers.tick(1500)
+  categories.resolve([])
+  await loading
+  assert.equal(vm.layoutCollapsed, true)
+  assert.equal(vm.visualOffset, 0)
+  assert.equal(vm.collapseTimer, null, '迟到的列表完成不创建第二次播放')
 })
 
 test('首页重建首帧直接收起，首次动画未完成也不会重复播放', t => {
@@ -103,8 +171,11 @@ test('首页重建首帧直接收起，首次动画未完成也不会重复播�
   second.definition.onLoad.call(second.vm)
   second.definition.onReady.call(second.vm)
   t.mock.timers.tick(5000)
-  assert.equal(second.vm.introMotion, '')
+  assert.equal(second.vm.layoutCollapsed, true)
+  assert.equal(second.vm.visualOffset, 0)
+  assert.equal(second.vm.introFallbackTimer, null)
   assert.equal(second.vm.collapseTimer, null)
+  assert.equal(second.vm.settleTimer, null)
 })
 
 test('前台恢复不重置标记，真正冷启动后再次首次进入才播放', () => {
@@ -119,96 +190,117 @@ test('前台恢复不重置标记，真正冷启动后再次首次进入才播�
   assert.equal(createPage().vm.imageCollapsed, false)
 })
 
-test('等待中离开会清理定时器，返回同一页面只刷新商品和购物车', async t => {
+test('等待中隐藏会清理待播和兜底计时，返回保留布局与已加载列表且不重播', async t => {
   const { definition, vm, counts } = createPage()
   definition.onLoad.call(vm)
   definition.onReady.call(vm)
+  await vm.loadProducts()
   t.mock.timers.tick(300)
   definition.onHide.call(vm)
   assert.equal(vm.collapseTimer, null)
-  assert.equal(vm.imageCollapsed, true)
+  assert.equal(vm.introFallbackTimer, null)
+  assert.equal(vm.layoutCollapsed, false)
+  assert.equal(vm.imageCollapsed, false)
   assert.equal(vm.shouldPlayIntro, false)
   await definition.onShow.call(vm)
-  t.mock.timers.tick(3000)
-  assert.equal(vm.introMotion, '')
-  assert.deepEqual(counts(), { refreshes: 1, cartRefreshes: 1, unsubscribed: 0 })
+  t.mock.timers.tick(6000)
+  assert.equal(vm.layoutCollapsed, false)
+  assert.equal(vm.visualOffset, 0)
+  assert.deepEqual(counts(), { refreshes: 1, cartRefreshes: 2, unsubscribed: 0 })
 })
 
-test('收起过程中离开立即结束动画，onReady前离开也不再启动', t => {
-  const first = createPage()
-  first.definition.onLoad.call(first.vm)
-  first.definition.onReady.call(first.vm)
-  t.mock.timers.tick(800)
-  assert.equal(first.vm.introMotion, 'collapse')
-  first.definition.onHide.call(first.vm)
-  assert.equal(first.vm.introMotion, '')
-  assert.equal(first.vm.imageCollapsed, true)
-
-  appDefinition.onLaunch.call(app)
-  const next = createPage()
-  next.definition.onLoad.call(next.vm)
-  next.definition.onHide.call(next.vm)
-  next.definition.onReady.call(next.vm)
-  assert.equal(next.vm.collapseTimer, null)
-  t.mock.timers.tick(5000)
-  assert.equal(next.vm.introMotion, '')
+test('onReady前隐藏后不再启动首次动画，返回加载完成也不补播', async t => {
+  const { definition, vm } = createPage()
+  definition.onLoad.call(vm)
+  definition.onHide.call(vm)
+  definition.onReady.call(vm)
+  await definition.onShow.call(vm)
+  await flush()
+  t.mock.timers.tick(8000)
+  assert.equal(vm.pendingIntro, false)
+  assert.equal(vm.collapseTimer, null)
+  assert.equal(vm.introFallbackTimer, null)
+  assert.equal(vm.layoutCollapsed, false)
+  assert.equal(vm.visualOffset, 0)
 })
 
-test('卸载同时取消动画计时并释放购物车订阅', t => {
+test('卸载取消正在进行的折叠结算并释放购物车订阅', t => {
   const { definition, vm, counts } = createPage()
   definition.onLoad.call(vm)
   definition.onReady.call(vm)
+  vm.playIntroCollapse()
+  t.mock.timers.tick(1800)
+  assert.notEqual(vm.settleTimer, null)
+  assert.equal(vm.visualOffset, -220)
   definition.onUnload.call(vm)
-  t.mock.timers.tick(5000)
   assert.equal(vm.collapseTimer, null)
-  assert.equal(vm.introMotion, '')
-  assert.equal(vm.imageCollapsed, true)
+  assert.equal(vm.introFallbackTimer, null)
+  assert.equal(vm.settleTimer, null)
+  t.mock.timers.tick(8000)
+  assert.equal(vm.layoutCollapsed, false, '卸载后旧结算不能再收缩布局')
+  assert.equal(vm.visualOffset, 0)
   assert.equal(counts().unsubscribed, 1)
 })
 
-test('手动下拉超过阈值才展开，结束或取消后停留2秒再次收起', t => {
+test('下拉先按手指位移展示，超过折叠距离一半才展开并在3秒后收起', t => {
   app.globalData.mallIntroPlayed = true
-  const { vm } = createPage()
+  const { definition, vm } = createPage()
+  definition.onLoad.call(vm)
   vm.onPullStart(touch(100))
   vm.onPullMove(touch(107))
+  assert.equal(vm.isFollowFinger, false)
   vm.onPullEnd()
-  assert.equal(vm.imageCollapsed, true)
-  assert.equal(vm.collapseTimer, null)
-
+  assert.equal(vm.visualOffset, 0)
   vm.onPullStart(touch(100))
-  vm.onPullMove(touch(120))
-  assert.equal(vm.imageCollapsed, false)
-  assert.equal(vm.introMotion, 'expand')
-  vm.onPullMove(touch(140))
+  vm.onPullMove(touch(200))
+  assert.equal(vm.visualOffset, 100)
+  assert.equal(vm.isFollowFinger, true)
   vm.onPullEnd()
-  assert.equal(vm.pullStartY, null)
-  assert.equal(vm.isPullingIntro, false)
-  vm.onIntroAnimationEnd({ target: { id: 'mall-content' } })
-  t.mock.timers.tick(1999)
+  assert.equal(vm.imageCollapsed, true, '不足一半时回弹到折叠位置')
+  assert.equal(vm.visualOffset, 0)
+  assert.equal(vm.collapseTimer, null)
+  vm.onPullStart(touch(100))
+  vm.onPullMove(touch(230))
+  assert.equal(vm.visualOffset, 130)
+  vm.onPullEnd()
+  assert.equal(vm.isFollowFinger, false)
+  assert.equal(vm.imageCollapsed, false)
+  assert.equal(vm.visualOffset, 220)
+  t.mock.timers.tick(1500)
+  assert.equal(vm.layoutCollapsed, false)
+  t.mock.timers.tick(1499)
   assert.equal(vm.imageCollapsed, false)
   t.mock.timers.tick(1)
   assert.equal(vm.imageCollapsed, true)
-  assert.equal(vm.introMotion, 'collapse')
-
+  t.mock.timers.tick(1500)
+  assert.equal(vm.layoutCollapsed, true)
+  assert.equal(vm.visualOffset, 0)
   const source = readFileSync(new URL('../pages/products/medicine_list.vue', import.meta.url), 'utf8')
   assert.match(source, /@touchcancel="onPullEnd"/)
 })
 
-test('动画期间忽略重复下拉，子节点动画结束不提前中止主体动画', () => {
+test('展开与折叠动画中拒绝重复下拉，结算后恢复手势且入口按钮不触发展开', t => {
   app.globalData.mallIntroPlayed = true
-  const { vm } = createPage()
-  vm.introMotion = 'collapse'
+  const { definition, vm } = createPage()
+  definition.onLoad.call(vm)
+  vm.runExpand()
   vm.onPullStart(touch(100))
-  vm.onPullMove(touch(150))
+  vm.onPullMove(touch(250))
   assert.equal(vm.pullStartY, null)
-  assert.equal(vm.imageCollapsed, true)
-  vm.onIntroAnimationEnd({ target: { id: 'flow-text' } })
-  assert.equal(vm.introMotion, 'collapse')
-  vm.onIntroAnimationEnd({ target: { id: 'mall-content' } })
-  assert.equal(vm.introMotion, '')
-
+  assert.equal(vm.visualOffset, 220)
+  t.mock.timers.tick(1500)
+  vm.onPullStart(touch(100))
+  assert.equal(vm.pullStartY, null, '已展开时不能再次下拉')
+  vm.runCollapse()
+  vm.onPullStart(touch(100))
+  assert.equal(vm.pullStartY, null)
+  assert.equal(vm.visualOffset, -220)
+  t.mock.timers.tick(1500)
+  vm.onPullStart(touch(100))
+  assert.equal(vm.pullStartY, 100)
+  vm.onPullEnd()
   vm.onPullStart(touch(100, 'toggle-text flow-text-animate'))
-  vm.onPullMove(touch(150))
+  vm.onPullMove(touch(250))
   assert.equal(vm.imageCollapsed, true)
   assert.equal(vm.pullStartY, null)
 })

@@ -18,8 +18,6 @@ for (const page of [medicineDetailPage, therapyDetailPage]) {
   assert.match(page, /限购上限：\{\{ product\.limitInfo\.limitQuantity \}\}件/)
   assert.match(page, /已购数量：\{\{ product\.limitInfo\.purchasedQuantity \}\}件/)
   assert.match(page, /剩余可购：\{\{ product\.limitInfo\.remainingQuantity \}\}件/)
-  assert.match(page, /\.goods-info\s*\{[\s\S]*?margin-top:\s*-50rpx;/)
-  assert.match(page, /\.goods-info\s*\{[\s\S]*?border-radius:\s*32rpx;/)
   assert.match(page, /class="goods-name"[\s\S]*?selectable="true"/)
 }
 

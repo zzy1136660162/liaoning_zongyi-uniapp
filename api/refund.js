@@ -11,7 +11,8 @@ import { get, post } from '@/utils/request.js'
 export const applyRefund = (data) => {
   return post('/api/refund/apply', data, {
     needAuth: true,
-    showLoading: true
+    showLoading: true,
+    timeout: 60000
   })
 }
 
@@ -110,7 +111,8 @@ export const getAllRefundList = (params = {}) => {
 export const auditRefund = (refundApplicationId, auditData) => {
   return post(`/api/refund/admin/audit/${refundApplicationId}`, auditData, {
     needAuth: true,
-    showLoading: true
+    showLoading: true,
+    timeout: 60000
   })
 }
 
@@ -121,6 +123,7 @@ export const auditRefund = (refundApplicationId, auditData) => {
 export const executeRefund = (refundApplicationId) => {
   return post(`/api/refund/admin/refund/${refundApplicationId}`, {}, {
     needAuth: true,
-    showLoading: true
+    showLoading: true,
+    timeout: 60000
   })
 }

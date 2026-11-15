@@ -215,7 +215,7 @@ test('制剂商品页实际加载链路不等待会话检查，空响应也不�
     mapProductListItem: value => value, getCartEntries: () => ({}), loadCartItems: () => []
   })
   const page = { ...definition.data(), ...definition.methods,
-    $set: (object, key, value) => { object[key] = value } }
+    $set: (object, key, value) => { object[key] = value }, $nextTick: callback => callback() }
   Object.entries(definition.computed).forEach(([key, getter]) =>
     Object.defineProperty(page, key, { get: () => getter.call(page) }))
   const load = page.loadProducts()

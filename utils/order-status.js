@@ -133,6 +133,14 @@ export const getPaymentOutcome = (order = {}) => {
   if (fulfillment === 'REFUNDED') return { state: 'refunded', title: '付款已退款', tip: '本次异常付款已退款，请查看订单详情。', terminal: true }
   if (fulfillment === 'REFUND_REQUIRED') return { state: 'refund', title: '付款待退款', tip: '付款已收到，但订单无法继续履约，正在处理退款。', terminal: true }
   if (status === 4) return { state: 'canceled', title: '订单已取消', tip: paid ? '订单已取消，付款状态请以订单详情和退款记录为准。' : '订单已取消，如已扣款请等待付款确认。', terminal: true }
+  const hisStatus = String(order.hisPaymentStatus ?? order.his_payment_status ?? '').trim().toUpperCase()
+  if (paid && hisStatus && !['SUCCESS', 'SKIPPED'].includes(hisStatus)) {
+    const message = String(order.hisMessage ?? order.his_message ?? '').trim().slice(0, 500)
+    // 本轮停止自动等待，仅允许只读手动刷新；terminal不代表医院或履约已完成。
+    return { state: 'hospital_pending', title: hisStatus === 'CHECKING' ? '已付款，医院处理状态待确认' : '已付款，医院处理待完成',
+      tip: [message, '付款已确认，请勿重复付款。可重新查询，或联系后台核查医院处理结果。'].filter(Boolean).join(' '),
+      paid: true, manualRefresh: true, terminal: true }
+  }
   if (paid && (!fulfillment || fulfillment === 'READY')) return { state: 'success', title: '支付成功', tip: '订单已提交，我们将尽快为您处理。', terminal: true }
   return { state: 'pending', title: paid ? '已付款，订单处理中' : '待支付确认', tip: '正在确认付款和订单状态，请稍后在订单详情查看结果。', terminal: false }
 }

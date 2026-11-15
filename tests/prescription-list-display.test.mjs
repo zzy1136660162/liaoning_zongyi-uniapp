@@ -71,7 +71,7 @@ const harness = (overrides = {}, options = {}) => {
 }
 
 describe('处方清单普通购物车', () => {
-  test('真实诊断和患者来自处方，医生按处方ID查询，混购保留规格和数量', async () => {
+  test('真实处方和患者用于结算，医生按处方ID查询，精简卡片仍保留患者及商品规格数量', async () => {
     const page = harness()
     await page.show()
     assert.deepEqual(page.prescriptionQueries, [123], '按问诊外键查询处方，不把两个ID混用')
@@ -93,10 +93,12 @@ describe('处方清单普通购物车', () => {
     assert.deepEqual(page.draftAccess, [])
     assert.equal(page.storage.has('current_order'), false)
     const template = readFileSync(new URL('../pages/order/prescription_list.vue', import.meta.url), 'utf8').split('<script')[0]
-    assert.match(template, /currentPrescription\?\.diagnosis/)
+    assert.match(template, /currentPrescription\.patientSnapshotAvailable/)
+    assert.match(template, /currentPrescription\.patientName/)
+    assert.match(template, /currentPrescription\.patientAge \?\? '—'/)
+    assert.match(template, /getPrescriptionStatusText\(currentPrescription\)/)
     assert.match(template, /cartItem\.skuSpecText/)
-    assert.match(template, /v-if="cartItem\.productCategory === 1"[\s\S]*?本次处方诊断/)
-    assert.match(template, /v-if="cartItem\.productCategory === 1"[\s\S]*?prescriptionDoctorName/)
+    assert.match(template, /@click="goToPrescriptionDetail"/)
     assert.doesNotMatch(template, /cartItem\.diagnosis|cartItem\.doctorName|复诊调方/)
   })
 
