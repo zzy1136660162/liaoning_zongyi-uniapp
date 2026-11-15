@@ -1,340 +1,56 @@
-# 辽宁中医 - uni-app 移动端应用
-
-## 项目简介
-
-辽宁中医是一款基于 uni-app 开发的中医互联网医疗移动应用，提供在线复诊、药品配送、处方管理等服务。应用支持微信小程序、App 等多端运行。
-
-## 功能特性
-
-### 📱 核心功能
-
-- **用户认证**
-  - 手机号短信验证码登录/注册
-  - Token 认证机制
-  - 用户信息管理
-
-- **产品服务**
-  - 药方分类浏览
-  - 产品详情查看
-  - 注意事项说明
-  - 健康问卷填写
-
-- **就诊管理**
-  - 就诊人信息管理（新增/编辑/删除）
-  - 在线复诊咨询
-  - 申请配药服务
-
-- **处方系统**
-  - 处方详情查看
-  - 处方药品清单
-  - 处方历史记录
-  - 一键下单
-
-- **订单管理**
-  - 订单创建与提交
-  - 订单列表查看
-  - 订单详情追踪
-  - 订单支付（支持微信支付）
-  - 订单取消与确认收货
-
-- **购物车**
-  - 商品加入购物车
-  - 购物车管理
-
-- **收货地址**
-  - 地址列表管理
-  - 新增/编辑/删除地址
-  - 设置默认地址
-
-- **个人中心**
-  - 用户信息展示
-  - 订单管理入口
-  - 处方记录入口
-
-## 技术栈
-
-### 前端框架
-- **uni-app**: 跨平台应用开发框架
-- **Vue 3**: 渐进式 JavaScript 框架
-- **Pinia**: Vue 状态管理库
-
-### UI 组件
-- **uni-ui**: uni-app 官方组件库
-- **uni-scss**: 样式预处理
-
-### 开发工具
-- **HBuilderX**: 推荐使用 3.1.0 及以上版本
-
-## 项目结构
-
-```
-liaoning_zongyi-uniapp/
-├── api/                    # API 接口模块
-│   ├── address.js         # 收货地址接口
-│   ├── announcement.js    # 公告接口
-│   ├── auth.js            # 认证接口
-│   ├── consultation.js    # 复诊咨询接口
-│   ├── hospital.js        # 医院医生接口
-│   ├── index.js           # 接口统一导出
-│   ├── order.js           # 订单接口
-│   ├── patient.js         # 就诊人接口
-│   ├── payment.js         # 支付接口
-│   └── product.js         # 产品接口
-├── pages/                 # 页面文件
-│   ├── cart/             # 购物车
-│   ├── dispense/         # 配药相关（申请配药、就诊人管理、在线复诊）
-│   ├── index/            # 首页
-│   ├── notice/           # 告知书
-│   ├── order/            # 订单相关（订单列表、订单详情、确认订单、地址管理等）
-│   ├── prescription/     # 处方详情
-│   ├── products/         # 产品相关（产品列表、详情、注意事项、问卷）
-│   ├── register/         # 注册登录
-│   ├── splash/           # 启动页
-│   └── user/             # 个人中心
-├── static/                # 静态资源
-├── utils/                 # 工具函数
-│   ├── cart.js           # 购物车工具
-│   ├── config.js         # 配置文件
-│   ├── patient.js        # 就诊人工具
-│   ├── request.js        # HTTP 请求封装
-│   └── storage.js        # 本地存储工具
-├── uni_modules/           # uni-app 插件模块
-├── App.vue               # 应用配置
-├── main.js               # 应用入口
-├── pages.json            # 页面路由配置
-├── manifest.json         # 应用配置清单
-└── package.json          # 项目依赖
-
-```
-
-## 快速开始
-
-### 环境要求
-
-- Node.js 12+
-- HBuilderX 3.1.0+
-- 微信开发者工具（开发微信小程序时需要）
-
-### 安装依赖
-
-```bash
-npm install
-```
-
-### 配置说明
-
-#### 1. API 配置
-
-修改 `utils/config.js` 文件，配置 API 地址：
-
-```javascript
-export const API_CONFIG = {
-  development: {
-    baseURL: 'http://localhost:10086',  // 开发环境地址
-    timeout: 30000
-  },
-  production: {
-    baseURL: 'https://api.yourdomain.com',  // 生产环境地址
-    timeout: 30000
-  }
-}
-```
-
-#### 2. 微信小程序配置
-
-修改 `manifest.json` 文件中的微信小程序 AppID：
-
-```json
-"mp-weixin": {
-  "appid": "wx0a45a9789c9c8314",  // 替换为你的 AppID
-  "setting": {
-    "urlCheck": false
-  }
-}
-```
-
-### 运行项目
-
-#### 微信小程序
-1. 在 HBuilderX 中打开项目
-2. 点击运行 -> 运行到小程序模拟器 -> 微信开发者工具
-3. 在微信开发者工具中预览
-
-#### App
-1. 在 HBuilderX 中打开项目
-2. 连接手机或启动模拟器
-3. 点击运行 -> 运行到手机或模拟器
-
-#### H5
-1. 在 HBuilderX 中打开项目
-2. 点击运行 -> 运行到浏览器
-
-### 打包发布
-
-#### 微信小程序
-1. 点击发行 -> 小程序-微信
-2. 填写小程序名称和 AppID
-3. 点击发行
-4. 在微信开发者工具中上传
-
-#### App
-1. 点击发行 -> 原生 App-云打包
-2. 选择打包类型（Android/iOS）
-3. 配置证书和签名
-4. 提交打包
-
-## API 模块说明
-
-### 认证模块 (auth.js)
-- 发送短信验证码
-- 登录/注册
-- 退出登录
-- 获取用户信息
-
-### 就诊人模块 (patient.js)
-- 获取就诊人列表
-- 新增就诊人
-- 编辑就诊人
-- 删除就诊人
-
-### 收货地址模块 (address.js)
-- 获取地址列表
-- 新增地址
-- 编辑地址
-- 删除地址
-- 设置默认地址
-
-### 产品模块 (product.js)
-- 获取分类列表
-- 获取分类下商品列表
-- 获取商品详情
-
-### 医院医生模块 (hospital.js)
-- 获取医院列表
-- 获取医院下医生列表
-- 获取医生详情
-
-### 咨询处方模块 (consultation.js)
-- 发起复诊咨询
-- 获取咨询列表
-- 获取咨询详情
-- 获取咨询对应处方
-- 获取处方详情
-
-### 订单模块 (order.js)
-- 处方一键下单
-- 创建普通订单
-- 获取订单列表
-- 获取订单详情
-- 取消订单
-- 确认收货
-
-### 支付模块 (payment.js)
-- 创建支付预订单
-- 支付回调处理
-
-### 公告模块 (announcement.js)
-- 获取公告列表
-- 获取公告详情
-
-## 工具函数说明
-
-### request.js - HTTP 请求封装
-- 统一的请求/响应拦截
-- 自动 Token 认证
-- 错误统一处理
-- 加载提示
-
-### config.js - 配置管理
-- API 地址配置
-- 环境变量管理
-- API 路径常量
-
-### storage.js - 本地存储
-- 数据持久化
-- 缓存管理
-
-### cart.js - 购物车
-- 购物车数据管理
-- 商品数量计算
-
-### patient.js - 就诊人
-- 就诊人数据管理
-- 信息验证
-
-## 页面路由
-
-| 路径 | 页面 | 说明 |
-|------|------|------|
-| `/pages/splash/splash` | 启动页 | 应用启动页 |
-| `/pages/notice/notice` | 告知书 | 使用告知书 |
-| `/pages/index/index` | 首页 | 应用首页 |
-| `/pages/register/register` | 注册/登录 | 用户认证 |
-| `/pages/products/priducts_list` | 选择药方 | 产品列表 |
-| `/pages/products/medicine_detail` | 商品详情 | 商品与真实规格详细信息 |
-| `/pages/products/therapy_detail` | 传统疗法详情 | 疗法与真实规格详细信息 |
-| `/pages/products/product_notice` | 注意事项 | 产品注意事项 |
-| `/pages/products/product_questionnaire` | 健康问卷 | 健康问卷调查 |
-| `/pages/dispense/apply` | 申请配药 | 配药申请 |
-| `/pages/dispense/patient_edit` | 新增就诊人 | 就诊人管理 |
-| `/pages/dispense/consultation` | 在线复诊 | 在线复诊咨询 |
-| `/pages/order/order_list` | 我的订单 | 订单列表 |
-| `/pages/order/order-detail` | 订单详情 | 订单详细信息 |
-| `/pages/order/prescription_list` | 药品处方 | 处方列表 |
-| `/pages/prescription/detail` | 处方详情 | 按真实处方 ID 查看处方与关联订单 |
-| `/pages/order/confirm` | 确认订单 | 订单确认 |
-| `/pages/order/address_list` | 收货地址 | 地址管理 |
-| `/pages/order/address_edit` | 地址设置 | 地址编辑 |
-| `/pages/order/payment_success` | 支付成功 | 支付结果 |
-| `/pages/cart/cart` | 购物车 | 购物车管理 |
-| `/pages/user/profile` | 我的 | 个人中心 |
-
-## 开发规范
-
-### 代码规范
-- 使用 ES6+ 语法
-- 组件命名采用 PascalCase
-- 文件命名采用 kebab-case
-- 变量命名采用 camelCase
-
-### 提交规范
-- `feat`: 新功能
-- `fix`: 修复 bug
-- `docs`: 文档更新
-- `style`: 代码格式调整
-- `refactor`: 代码重构
-- `test`: 测试相关
-- `chore`: 构建/工具链相关
-
-## 常见问题
-
-### 1. 登录后跳转到其他页面时提示未登录
-检查 Token 是否正确保存，确认请求头是否携带 Token。
-
-### 2. 请求超时
-检查 API 地址配置是否正确，网络是否正常。
-
-### 3. 微信小程序无法请求接口
-- 确认服务器域名已在微信公众平台配置
-- 开发时可以在微信开发者工具中勾选"不校验合法域名"
-
-### 4. 打包后图片无法显示
-使用绝对路径或网络图片，避免使用相对路径。
-
-## 更新日志
-
-### v1.0.0 (2024-11-30)
-- ✨ 初始版本发布
-- ✅ 完成用户认证功能
-- ✅ 完成产品浏览功能
-- ✅ 完成订单管理功能
-- ✅ 完成支付功能
-- ✅ 完成处方管理功能
-
-## 许可证
-
-本项目仅供学习交流使用。
-
-## 联系方式
-
-如有问题，请联系项目负责人。
+# 辽宁中医小程序
+
+患者端基于 uni-app 开发，日常运行和打包使用 HBuilderX。业务包括商品浏览、就诊人、问卷与咨询、处方、购物车、订单支付和退款。页面路由以 [pages.json](pages.json) 为准。
+
+本文件说明小程序的开发入口；跨模块约定、数据库迁移和服务器发布规则见 [项目 README](../README.md) 与 [AGENTS.md](../AGENTS.md)。
+
+## 开发与运行
+
+1. 在 HBuilderX 中打开本目录，使用支持当前项目的 Vue 3/uni-app 编译环境。
+2. 在本目录安装锁定依赖：
+
+   ```bash
+   npm ci
+   ```
+
+3. 核对 [utils/config.js](utils/config.js) 中的 `API_CONFIG`、`ENV`、`IMAGE_BASE_URL` 及客服配置。当前 `ENV` 表达式固定选择 `production`，不能假定开发构建会自动切换到本地 API。真机访问本地服务时也不能使用真机自己的 `localhost`。
+4. 核对 [manifest.json](manifest.json) 的微信小程序配置，并在微信平台配置实际使用的请求、上传及下载合法域名。
+5. 通过 HBuilderX“运行 → 运行到小程序模拟器 → 微信开发者工具”启动，核对控制台实际请求地址与目标环境一致。
+
+当前 [package.json](package.json) 提供 `npm run lint`，没有 npm 运行或构建脚本。小程序发行使用 HBuilderX 的微信小程序发行入口，再到微信开发者工具上传；发布前核对目标环境和版本。小程序发布与服务器整体发布分开执行。
+
+## 目录与维护入口
+
+| 目录或文件 | 用途 |
+| --- | --- |
+| [pages/](pages/) | 页面；购物车、商品、就诊人、咨询、处方、订单及个人中心 |
+| [components/](components/) | 公共组件；底部导航见 [TabBar.vue](components/TabBar/TabBar.vue) |
+| [api/](api/) | 按业务划分的 HTTP 协议封装，使用方法见 [README_API.md](README_API.md) |
+| [utils/request.js](utils/request.js) | 请求、认证恢复协调、错误及响应解包 |
+| [utils/account.js](utils/account.js) | 正式账户资料读取和登录会话建立 |
+| [utils/auth-session.js](utils/auth-session.js)、[utils/session.js](utils/session.js) | 登录恢复、切号及过期请求隔离 |
+| [utils/cart.js](utils/cart.js)、[api/cart.js](api/cart.js) | 服务端购物车读写及页面状态更新 |
+| [utils/order-submission.js](utils/order-submission.js) | 下单请求标识、原订单及购物车版本快照 |
+| [api/payment.js](api/payment.js) | 统一结算、原订单续付、微信付款及支付状态查询 |
+| [static/](static/)、[uni_modules/](uni_modules/) | 静态资源及 uni-app 插件 |
+| [App.vue](App.vue)、[main.js](main.js) | 应用生命周期和入口 |
+
+接口清单以各 `api/*.js` 的实际导出为准；[api/index.js](api/index.js) 只聚合其中部分模块，未聚合的接口直接从所属模块导入。
+
+## 数据与业务约定
+
+- 正式账户资料统一调用 `fetchAccountProfile()`，以服务端 `/api/user/profile` 的返回为准。注册表单、本地姓名或微信 OpenID 不能代替当前登录账户，也不能在请求失败时伪造资料或注册成功状态。
+- 购物车通过服务端接口维护。页面使用现有购物车工具保留服务端行 ID 与版本；本地选择、提交恢复记录不构成购物车或账户的权威数据。
+- 下单使用确认页现有校验与 `prepareOrderCheckout()`，统一完成医院前置确认、商城订单和支付参数准备。商品价格、库存、问卷、归属及订单状态由服务端校验；接口失败应保留用户输入并提供重试。
+- 微信身份由一次性授权码经服务端验证。页面不能自报付款 OpenID 或金额。微信 SDK 成功回调表示付款已提交，最终收款与履约状态继续查询服务端。
+- 保护重复提交和切号场景。复用现有会话、提交标识及恢复机制；结果未知时恢复原订单，不新建另一笔订单或清空当前购物车。付款后的购物车清理按下单快照的服务端行及版本处理。
+
+完整规则与当前实现入口见 [用户身份与结算校验约定](../docs/功能文档/用户身份与结算校验约定.md)、[小程序登录恢复与按页请求改造说明](../docs/小程序登录恢复与按页请求改造说明.md)、[短信登录注册与微信绑定改造](../docs/短信登录注册与微信绑定改造.md)。
+
+## 变更与验收
+
+新增页面先确认目标用户、场景与成功标准，再补齐加载、空数据、提交中、失败重试及权限状态。复用现有请求和业务工具，避免直接写本地存储拼出业务结果。
+
+按本次改动检查实际入口、返回上下文、重复提交、网络失败及切换账户场景。涉及支付、退款和 HIS 时遵循根目录当前业务约定，保留真实交易事实和原业务标识。只改文档时检查差异、格式及链接即可；没有执行的编译、真机和支付验收应明确注明。
+
+数据库变更由移动 API 后端的 Flyway 统一执行，不能让小程序发布流程手工重放旧 SQL。迁移入口见 [database-flyway.md](../docs/数据库文档/database-flyway.md)。

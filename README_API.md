@@ -1,410 +1,88 @@
-# 前端API对接说明文档
+# 小程序 API 使用说明
 
-## 目录结构
+本文件面向维护页面和接口封装的开发者，说明当前调用约定。业务字段和接口导出以对应源码为准，不维护另一份容易过期的完整接口清单。运行方式见 [README.md](README.md)，跨端业务约定见 [项目 README](../README.md)。
 
-```
-liaoning_zongyi-uniapp/
-├── api/                    # API接口目录
-│   ├── index.js           # API统一出口
-│   ├── auth.js            # 认证模块API
-│   ├── patient.js         # 就诊人模块API
-│   ├── address.js         # 收货地址模块API
-│   ├── product.js         # 商品模块API
-│   ├── hospital.js        # 医院医生模块API
-│   ├── consultation.js    # 咨询处方模块API
-│   ├── order.js           # 订单模块API
-│   ├── payment.js         # 支付模块API
-│   └── announcement.js    # 公告模块API
-├── utils/
-│   ├── config.js          # API配置
-│   ├── request.js         # HTTP请求封装
-│   ├── storage.js         # 本地存储KEY管理
-│   └── cart.js            # 购物车工具
-```
+## 配置与请求
 
-## 快速开始
+API 地址、图片地址、超时及客服配置集中在 [utils/config.js](utils/config.js)。当前 `ENV` 固定选择 `production`；修改配置后重新编译小程序，并核对实际请求地址，不能靠构建模式推断当前环境。
 
-### 1. 配置API地址
+[utils/request.js](utils/request.js) 统一拼接 `BASE_URL`、携带当前会话 Token、记录请求诊断并协调登录恢复。页面优先调用业务模块，新增接口在所属 `api/*.js` 中复用请求工具。
 
-编辑 `utils/config.js` 文件，修改API基础地址：
+| 请求选项 | 当前行为 |
+| --- | --- |
+| `needAuth` | 默认 `true`，受保护请求使用当前会话；公开接口由封装显式设为 `false` |
+| `showLoading` | 默认 `true`，控制全局加载提示；以各业务封装暴露的参数为准 |
+| `authRedirect` | 默认 `true`，控制认证失败后的登录引导 |
+| `silent` | 抑制封装中的部分提示，不改变请求失败结果 |
+| `returnResponse` | 默认 `false`；需要顶层分页元数据时由接口封装显式开启 |
+| `timeout` | 默认使用统一配置，特殊业务由现有封装单独设置 |
 
-```javascript
-export const API_CONFIG = {
-  development: {
-    baseURL: 'http://localhost:10086',  // 开发环境
-    timeout: 30000
-  },
-  production: {
-    baseURL: 'https://api.yourdomain.com',  // 生产环境
-    timeout: 30000
-  }
-}
+HTTP 状态为 200 且业务 `code` 为 200 时，普通调用直接获得 `response.data`，不再读取一层 `res.data`。开启 `returnResponse` 才保留完整响应。业务错误、网络错误和会话变化都会拒绝 Promise，页面应清理提交状态、保留输入并展示适当的重试入口；并非所有业务错误都有统一弹窗。
+
+## 账户与身份
+
+[api/auth.js](api/auth.js) 提供短信验证码、登录、注册和微信绑定协议。`login()` 是手机号验证码登录，注册使用独立的 `register()`；完整交互复用 [登录页](pages/register/register.vue) 和现有注册页，避免在业务页面复制一套登录流程。
+
+登录成功通过 `establishAccountSession()` 建立会话。页面读取正式资料统一使用 [utils/account.js](utils/account.js) 的 `fetchAccountProfile()`，不直接缓存或兜底拼装账户资料：
+
+```js
+import { fetchAccountProfile } from '@/utils/account.js'
+
+const profile = await fetchAccountProfile()
+// profile 已是正式资料对象，沿用服务端 id、userName、idCardNo 等字段。
 ```
 
-### 2. 在页面中使用
+`getUserProfile({ authRedirect })` 是 HTTP 协议层，由账户工具调用，不接受第二个通用配置参数。退出登录复用 [api/logout.js](api/logout.js) 的 `logout()`；不要在页面只删除一个 Token 存储项而绕过会话清理。
 
-```javascript
-// 方式1: 导入所有API
-import * as API from '@/api/index.js'
+[utils/auth-session.js](utils/auth-session.js) 与 [utils/session.js](utils/session.js) 负责恢复、退出和切号。请求认证失效后，GET 最多在本轮恢复后重读一次；已发出的写请求不自动重放，页面收到 `AUTH_RETRY_REQUIRED` 后让用户再次确认。切号后迟到的旧响应不得覆盖当前页面数据。
 
-// 方式2: 按需导入
-import { login, sendSmsCode } from '@/api/auth.js'
-import { getProductList } from '@/api/product.js'
+支付只提交本次新获取的微信授权码，由后端验证并核对当前账户绑定；本地 OpenID 仅能作辅助信息，不能认证账户或决定付款身份。详细边界见 [用户身份与结算校验约定](../docs/功能文档/用户身份与结算校验约定.md) 和 [登录恢复说明](../docs/小程序登录恢复与按页请求改造说明.md)。
+
+## 商品、分页与购物车
+
+商品目录、列表和详情使用 [api/product.js](api/product.js)。例如读取指定目录的一页商品：
+
+```js
+import { getCategoryProducts } from '@/api/product.js'
+
+const result = await getCategoryProducts(categoryId, 1, 10)
 ```
 
-## API使用示例
+`categoryId` 是目录树编号，`productCategory` 是独立的商品业务大类，不能混用。可选大类、排序、关键字和加载选项按该函数当前签名传入。展示字段、可售性与库存未知值使用现有映射工具，不能用本地默认值伪造有货。
 
-### 认证模块
+订单分页使用 [api/order.js](api/order.js) 的 `getOrderPage()`，其结果已整理为 `rows`、`total`、`pageNum`、`pageSize`、`hasMore`：
 
-#### 发送验证码
-```javascript
-import { sendSmsCode } from '@/api/auth.js'
+```js
+import { getOrderPage } from '@/api/order.js'
 
-// 发送验证码
-sendSmsCode('13800138000').then(res => {
-  console.log('验证码已发送')
-}).catch(err => {
-  console.error('发送失败', err)
-})
+const page = await getOrderPage({ pageNum: 1, pageSize: 10 })
+const orders = page.rows
 ```
 
-#### 登录
-```javascript
-import { login } from '@/api/auth.js'
-import { saveToken } from '@/utils/request.js'
-import { STORAGE_KEY_USER_INFO } from '@/utils/storage.js'
+购物车协议在 [api/cart.js](api/cart.js)，页面优先使用 [utils/cart.js](utils/cart.js) 的 `refreshCart()`、`addCartItem()`、`setCartItemQuantity()` 等业务入口。服务端行 ID 和 `cartVersion` 必须随现有流程传递；操作失败重新读取服务端结果，不回退到本地购物车并宣称保存成功。下单后的清理只删除原快照匹配的行和版本，不能按商品 ID 猜测删除用户后来加入的商品。
 
-// 登录
-login({
-  phone: '13800138000',
-  code: '123456'
-}).then(res => {
-  // 保存Token
-  saveToken(res.data.token)
-  
-  // 保存用户信息
-  uni.setStorageSync(STORAGE_KEY_USER_INFO, res.data)
-  
-  // 跳转到首页
-  uni.switchTab({
-    url: '/pages/index/index'
-  })
-})
-```
+## 结算与付款
 
-#### 获取用户信息
-```javascript
-import { getUserProfile } from '@/api/auth.js'
+确认订单页面使用 [pages/order/confirm.vue](pages/order/confirm.vue) 的完整流程：
 
-getUserProfile().then(res => {
-  console.log('用户信息:', res.data)
-})
-```
+1. 校验就诊人、地址、商品规格、问卷和报价，使用 [utils/order-submission.js](utils/order-submission.js) 取得或恢复本次 `requestId`。
+2. 调用 [api/payment.js](api/payment.js) 的 `prepareOrderCheckout(kind, data)`，`kind` 为 `goods` 或 `prescription`。此入口合并下单和支付参数准备；不要在页面先另建订单再重复调用结算。
+3. 保存返回的原订单，再使用同一次结算取得的支付对象调用 `invokePreparedWechatPayment(orderId, payment)`。该对象仅在取得它的当前会话内有效。
+4. SDK 返回后读取服务端支付和履约状态；结果未知时保留原订单、原提交标识和购物车快照，从原订单恢复。
 
-### 商品模块
+原订单续付复用 `wechatSinglePay(orderId)`；页面不能提供 OpenID、金额或复用已消费的微信授权码。`getPaymentStatusByOrder()` 只读已保存状态；`syncPaymentByOrder()` 是主动资金查询同步，不能把普通状态轮询改成重复提交付款或 HIS 写请求。
 
-#### 获取分类列表
-```javascript
-import { getCategoryList } from '@/api/product.js'
+真实微信收款和医院登记分别保留事实。HIS 前置失败不应拉起付款，付款后的医院异常也不能改成未付款。具体门禁和恢复规则遵循根目录当前 AGENTS 及维护中的功能文档。
 
-getCategoryList().then(res => {
-  this.categories = res.data
-})
-```
+## 其他模块与维护
 
-#### 获取商品列表(分页)
-```javascript
-import { getProductsByCategory } from '@/api/product.js'
+| 模块 | 源码入口 |
+| --- | --- |
+| 就诊人与地址 | [patient.js](api/patient.js)、[address.js](api/address.js) |
+| 医院、医生及咨询处方 | [hospital.js](api/hospital.js)、[consultation.js](api/consultation.js) |
+| 公告与 AI 会话 | [announcement.js](api/announcement.js)、[ai-chat.js](api/ai-chat.js) |
+| 接口聚合导出 | [api/index.js](api/index.js)，未聚合模块直接导入 |
 
-getProductsByCategory(1, 1, 10).then(res => {
-  this.products = res.data.records
-  this.total = res.data.total
-})
-```
+新增或调整接口时同步修改实际调用页。保留服务端返回的空值含义、状态及归属校验，失败时展示错误和重试，不以模拟数据替代正式结果。日志使用现有诊断工具，不输出 Token、一次性授权码或患者资料。
 
-#### 获取商品详情
-```javascript
-import { getProductDetail } from '@/api/product.js'
-
-getProductDetail(1).then(res => {
-  this.productInfo = res.data
-})
-```
-
-### 地址模块
-
-#### 获取地址列表
-```javascript
-import { getAddressList } from '@/api/address.js'
-
-getAddressList().then(res => {
-  this.addressList = res.data
-})
-```
-
-#### 新增地址
-```javascript
-import { addAddress } from '@/api/address.js'
-
-addAddress({
-  receiverName: '张三',
-  receiverPhone: '13800138000',
-  province: '辽宁省',
-  city: '沈阳市',
-  district: '和平区',
-  addressDetail: '某某街道123号',
-  isDefault: 1
-}).then(res => {
-  uni.showToast({
-    title: '添加成功',
-    icon: 'success'
-  })
-})
-```
-
-#### 设置默认地址
-```javascript
-import { setDefaultAddress } from '@/api/address.js'
-
-setDefaultAddress(addressId).then(res => {
-  uni.showToast({
-    title: '设置成功',
-    icon: 'success'
-  })
-})
-```
-
-### 订单模块
-
-#### 创建订单
-```javascript
-import { createOrder } from '@/api/order.js'
-
-createOrder({
-  addressId: 1,
-  remark: '请尽快发货',
-  items: [
-    {
-      productId: 1,
-      quantity: 2
-    }
-  ]
-}).then(res => {
-  const orderId = res.data.id
-  // 跳转到支付页面
-})
-```
-
-#### 获取订单列表
-```javascript
-import { getOrderList } from '@/api/order.js'
-
-// 获取所有订单
-getOrderList().then(res => {
-  this.orderList = res.data
-})
-
-// 按状态筛选
-getOrderList(0).then(res => {  // 0:待支付
-  this.orderList = res.data
-})
-```
-
-### 支付模块
-
-#### 微信支付
-```javascript
-import { wechatPay } from '@/api/payment.js'
-
-wechatPay(orderId).then(() => {
-  // 支付成功
-  uni.redirectTo({
-    url: '/pages/order/payment_success'
-  })
-}).catch(err => {
-  // 支付失败或取消
-  console.error('支付失败', err)
-})
-```
-
-## 响应数据格式
-
-所有接口响应格式统一为：
-
-```javascript
-{
-  "code": 200,              // 状态码，200表示成功
-  "message": "操作成功",     // 消息
-  "data": {},               // 响应数据
-  "success": true,          // 是否成功
-  "timestamp": 1700000000000 // 时间戳
-}
-```
-
-## 错误处理
-
-### 自动处理
-- HTTP错误：自动显示Toast提示
-- 401未登录：自动跳转登录页
-- 业务错误：自动显示错误消息
-
-### 手动处理
-```javascript
-import { getOrderDetail } from '@/api/order.js'
-
-getOrderDetail(1).then(res => {
-  // 成功处理
-  this.orderInfo = res.data
-}).catch(err => {
-  // 失败处理
-  console.error('获取订单详情失败', err)
-})
-```
-
-## Token管理
-
-### 保存Token
-```javascript
-import { saveToken } from '@/utils/request.js'
-
-saveToken('your_token_here')
-```
-
-### 清除Token
-```javascript
-import { clearToken } from '@/utils/request.js'
-
-clearToken()
-```
-
-### Token自动携带
-请求拦截器会自动在请求头添加Token：
-```
-Authorization: Bearer {token}
-```
-
-## 常见问题
-
-### 1. 如何修改API地址？
-修改 `utils/config.js` 中的 `baseURL`
-
-### 2. 如何取消loading提示？
-在API调用时传入 `showLoading: false`：
-```javascript
-getUserProfile({}, { showLoading: false })
-```
-
-### 3. 如何访问不需要登录的接口？
-在API定义时设置 `needAuth: false`（已在API模块中配置）
-
-### 4. 网络请求超时怎么办？
-修改 `utils/config.js` 中的 `timeout` 值（单位：毫秒）
-
-## 开发建议
-
-1. **统一导入**: 建议在页面顶部统一导入需要的API
-2. **错误处理**: 始终添加 `.catch()` 处理错误情况
-3. **Loading状态**: 对于耗时操作，合理使用loading提示
-4. **数据缓存**: 适当使用本地缓存减少网络请求
-5. **Token管理**: 登录成功后立即保存Token
-
-## 完整示例
-
-```vue
-<template>
-  <view class="page">
-    <view v-for="product in products" :key="product.id">
-      {{ product.name }}
-    </view>
-  </view>
-</template>
-
-<script>
-import { getCategoryList, getProductsByCategory } from '@/api/product.js'
-
-export default {
-  data() {
-    return {
-      products: []
-    }
-  },
-  onLoad() {
-    this.loadProducts()
-  },
-  methods: {
-    async loadProducts() {
-      try {
-        // 获取分类列表
-        const categoryRes = await getCategoryList()
-        const firstCategory = categoryRes.data[0]
-        
-        // 获取商品列表
-        const productRes = await getProductsByCategory(firstCategory.id, 1, 10)
-        this.products = productRes.data.records
-      } catch (error) {
-        console.error('加载失败', error)
-      }
-    }
-  }
-}
-</script>
-```
-
-## API接口清单
-
-### 认证模块 (auth.js)
-- `sendSmsCode(phone)` - 发送验证码
-- `login(params)` - 登录/注册
-- `getUserProfile()` - 获取用户信息
-- `logout()` - 退出登录
-
-### 就诊人模块 (patient.js)
-- `getPatientList()` - 获取就诊人列表
-- `addPatient(data)` - 新增就诊人
-- `updatePatient(id, data)` - 编辑就诊人
-- `deletePatient(id)` - 删除就诊人
-
-### 地址模块 (address.js)
-- `getAddressList()` - 获取地址列表
-- `addAddress(data)` - 新增地址
-- `updateAddress(id, data)` - 编辑地址
-- `deleteAddress(id)` - 删除地址
-- `setDefaultAddress(id)` - 设置默认地址
-
-### 商品模块 (product.js)
-- `getCategoryList()` - 获取分类列表
-- `getProductsByCategory(categoryId, pageNum, pageSize)` - 获取商品列表
-- `getProductDetail(id)` - 获取商品详情
-
-### 医院医生模块 (hospital.js)
-- `getHospitalList()` - 获取医院列表
-- `getDoctorsByHospital(hospitalName)` - 获取医生列表
-- `getDoctorDetail(id)` - 获取医生详情
-
-### 咨询处方模块 (consultation.js)
-- `createConsultation(data)` - 发起咨询
-- `getConsultationList(status)` - 获取咨询列表
-- `getConsultationDetail(id)` - 获取咨询详情
-- `getPrescriptionByConsultation(id)` - 获取处方
-- `getPrescriptionDetail(id)` - 获取处方详情
-- `getPrescriptionItems(id)` - 获取处方药品
-
-### 订单模块 (order.js)
-- `createOrderFromPrescription(data)` - 处方下单
-- `createOrder(data)` - 创建订单
-- `getOrderList(orderStatus)` - 获取订单列表
-- `getOrderDetail(id)` - 获取订单详情
-- `cancelOrder(id, reason)` - 取消订单
-
-### 支付模块 (payment.js)
-- `createPrepay(channel, orderId)` - 创建支付
-- `wechatPay(orderId)` - 微信支付
-
-### 公告模块 (announcement.js)
-- `getAnnouncementList()` - 获取公告列表
-- `getAnnouncementDetail(id)` - 获取公告详情
-
----
-
-**更新时间**: 2024年
-**版本**: v1.0.0
+后端字段、字典及结构变更遵循 [Flyway 迁移约定](../docs/数据库文档/database-flyway.md)，不在小程序接入步骤中手工执行旧迁移脚本。修改后的验证范围按实际受影响入口确定，未执行的自动化、真机或支付验证如实记录。
