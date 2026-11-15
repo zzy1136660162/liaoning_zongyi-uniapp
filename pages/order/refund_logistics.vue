@@ -1,7 +1,7 @@
 <template>
   <view class="offline-refund-page">
-    <view class="notice-title">请线下联系客服</view>
-    <view class="notice-text">制剂、健康产品发货后不支持在线申请退款或填写退货物流，请线下联系客服，由后台处理退款。</view>
+    <view class="notice-title">退货物流请联系客服</view>
+    <view class="notice-text">符合退款条件的商品可在订单中申请退款；退货物流请线下联系客服，由后台核查和处理。本页可查看退款进度。</view>
     <button class="detail-btn" @tap="viewRefundDetail">查看退款进度</button>
   </view>
 </template>
@@ -22,7 +22,7 @@ export default {
   },
   onShow() {
     if (!isCurrentSession(this.sessionGeneration)) return
-    logPageView({ ...PAGE_LOG, pageId: this.refundApplicationId || '', actionCode: 'REFUND_LOGISTICS_VIEW', accessTitle: '退款联系客服提示', accessDescription: '旧退货物流入口提示线下联系客服办理退款' })
+    logPageView({ ...PAGE_LOG, pageId: this.refundApplicationId || '', actionCode: 'REFUND_LOGISTICS_VIEW', accessTitle: '退货物流联系客服提示', accessDescription: '旧退货物流入口提示线下联系客服处理退货物流，符合条件的退款可在订单申请' })
   },
   methods: {
     viewRefundDetail() {

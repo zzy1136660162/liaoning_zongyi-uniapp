@@ -109,6 +109,8 @@ export const mapProductListItem = (product = {}) => {
     specText: specText || '',
     notice: usageDesc || commonUsage || '',
     salesVolume: Number(product.salesVolume || 0),
+    displaySalesVolume: Number(product.displaySalesVolume || 0),
+    supportReturn: Number(product.supportReturn || 0),
     categoryId: product.categoryId,
     categoryCode: product.categoryCode || '',
     goodsMerchantType: goodsMerchantType == null ? null : Number(goodsMerchantType),

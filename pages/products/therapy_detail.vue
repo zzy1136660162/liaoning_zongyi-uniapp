@@ -53,7 +53,7 @@
               🔥
             </text>
             <text class="sales-count" selectable="true">
-              已售 {{ product.salesVolume || 0 }}
+              已售 {{ product.displaySalesVolume || 0 }}
             </text>
           </view>
         </view>
@@ -129,7 +129,7 @@
       >
         <view class="policy-header">
           <text class="policy-title" selectable="true">
-            退换货说明
+            退款说明
           </text>
           <view
             class="policy-close"
@@ -143,10 +143,10 @@
             <text class="policy-section-title" selectable="true">
               <text class="check-icon" selectable="true">
                 ✓
-              </text> 未使用次数可按规则申请退款
+              </text> {{ Number(product.supportReturn) === 1 ? '允许退款' : '不支持退款' }}
             </text>
             <text class="policy-content" selectable="true">
-              未使用次数可按规则申请退款。
+              {{ Number(product.supportReturn) === 1 ? '未使用次数可按订单规则申请退款，已核销次数不可退。' : '本服务不支持退款，如有售后问题请联系客服。' }}
             </text>
           </view>
           <view class="policy-section">
@@ -235,7 +235,7 @@
         mode="aspectFit"
       />
       <text class="policy-text" selectable="true">
-        未使用次数可按规则申请退款 · 售后服务
+        {{ Number(product.supportReturn) === 1 ? '允许退款' : '不支持退款' }} · 售后服务
       </text>
       <text class="select-arrow" selectable="true">
         ›
@@ -842,6 +842,8 @@ const createEmptyProduct = () => ({
   intro: '',
   unit: '',
   salesVolume: 0,
+  displaySalesVolume: 0,
+  supportReturn: 0,
   goodsMerchantType: 1,
   isPrescription: 0,
   needQuestionnaire: 0,

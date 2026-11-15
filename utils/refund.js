@@ -60,8 +60,15 @@ export const canOrderApplyRefund = (order = {}) => {
 export const shouldReviewPhysicalRefund = (order = {}) => { // 仅展示人工核查说明，是否可申请仍由购买快照与剩余可退数量决定。
   const status = Number(order.orderStatus ?? order.status)
   return Number(order.payStatus) === 1 && [2, 3].includes(status) &&
-    (order.items || []).some(item => !isTherapyRefundItem(item, order) &&
+    (order.items || []).some(item => !isTherapyRefundItem(item, order) && Number(item.refundableQuantity || 0) > 0 &&
       Number(item.quantity || 0) > Number(item.refundCompletedQuantity || 0))
+}
+
+export const getOrderItemReturnPolicyText = (item = {}) => {
+  const policy = item.supportReturnSnapshot
+  const action = isTherapyRefundItem(item) ? '退款' : '退货'
+  const text = policy == null ? '历史订单沿原售后规则处理' : Number(policy) === 1 ? `允许${action}` : `不支持${action}`
+  return Number(item.refundOpened) === 1 ? `${text}，本单本项已开放退款` : text
 }
 
 export const getOrderItemRefundText = (item = {}) => {

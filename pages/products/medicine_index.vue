@@ -86,7 +86,7 @@
             <text class="product-desc">{{ item.description || '院内推荐商品' }}</text>
             <view class="product-bottom">
               <text class="product-price">￥{{ Number(item.price || 0).toFixed(2) }}起</text>
-              <text class="product-sales">已售 {{ item.salesVolume || 0 }}</text>
+              <text class="product-sales">已售 {{ item.displaySalesVolume || 0 }}</text>
             </view>
           </view>
         </view>

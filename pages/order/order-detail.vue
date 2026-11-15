@@ -47,6 +47,7 @@
                 <view class="medicine-price">
                   ¥{{ ((item.price || 0) * (Number(item.quantity) || 1)).toFixed(2) }}
                 </view>
+                <view class="medicine-refund-summary">{{ getOrderItemReturnPolicyText(item) }}</view>
                 <view
                   v-if="getOrderItemRefundText(item)"
                   class="medicine-refund-summary"
@@ -290,7 +291,7 @@
   import { wechatSinglePay } from '@/api/payment.js'
   import { formatFreightEstimate } from '@/utils/freight.js'
   import { checkCanApplyRefund } from '@/api/refund.js'
-  import { getOrderItemRefundText, canOrderApplyRefund, shouldReviewPhysicalRefund, getRefundErrorModal } from '@/utils/refund.js'
+  import { getOrderItemRefundText, getOrderItemReturnPolicyText, canOrderApplyRefund, shouldReviewPhysicalRefund, getRefundErrorModal } from '@/utils/refund.js'
   import { getImageUrl } from '@/utils/config.js'
   import { useProductImages } from '@/utils/product-image.js'
   import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
@@ -474,6 +475,7 @@
     },
     methods: {
       getOrderItemRefundText,
+      getOrderItemReturnPolicyText,
       isDetailRequestCurrent(sequence) {
         return this.paymentPageActive && sequence === this.detailRequestSequence && isCurrentSession(this.pageSession)
       },
@@ -849,6 +851,8 @@
                 refundFrozenQuantity: Number(item.refundFrozenQuantity || 0),
                 refundableQuantity: Number(item.refundableQuantity || 0),
                 refundable: Boolean(item.refundable),
+                supportReturnSnapshot: item.supportReturnSnapshot == null ? null : Number(item.supportReturnSnapshot),
+                refundOpened: Number(item.refundOpened || 0),
                 refundBlockedReason: item.refundBlockedReason || '',
                 image: getImageUrl(item.productImage || ''),
                 redeemVouchers: this.buildRedeemVouchers(item)

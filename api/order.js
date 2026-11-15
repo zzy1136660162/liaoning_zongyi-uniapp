@@ -46,15 +46,7 @@ export const createOrder = (data) => {
   }).then(afterOrderCreated)
 }
 
-/**
- * 获取订单第一页（数组兼容入口；完整翻页使用 getOrderPage）
- * @param {Number} orderStatus 订单状态筛选（可选）
- */
-export const getOrderList = (orderStatus = null) => {
-  return getOrderPage(orderStatus !== null ? { orderStatus } : {}).then(page => page.rows)
-}
-
-/** 获取一页订单及总数；旧列表接口继续返回数组。 */
+/** 获取一页订单、总数与分页状态；列表和订单统计分别使用各自接口。 */
 export const getOrderPage = (params = {}) => {
   return get(API_PATHS.ORDER.LIST, params, {
     needAuth: true,
@@ -98,14 +90,6 @@ export const cancelOrder = (id, reason = '') => {
     needAuth: true,
     showLoading: true
   }).then(result => { forgetOrderSubmission(id); return result })
-}
-
-/**
- * 获取我的订单第一页；统计使用 getOrderStats，翻页使用 getOrderPage
- * @param {Number} orderStatus 订单状态筛选（可选）
- */
-export const getMyOrders = (orderStatus = null) => {
-  return getOrderList(orderStatus)
 }
 
 /**

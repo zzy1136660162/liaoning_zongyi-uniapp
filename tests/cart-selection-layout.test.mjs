@@ -474,6 +474,7 @@ test('不同不可购买原因显示对应提示，兼容旧服务端缺规格�
   const state = createPage()
   for (const [item, expected] of [
     [{ inventoryReason: 'PRODUCT_DISABLED', skuId: null }, /已下架/],
+    [{ inventoryReason: 'CATEGORY_DISABLED', skuId: 1 }, /所属类目已停用，暂不可购买/],
     [{ inventoryReason: 'PRODUCT_MISSING', skuId: 1 }, /商品已失效/],
     [{ inventoryReason: 'SKU_DISABLED', skuId: null }, /未选择规格/],
     [{ inventoryReason: 'SKU_DISABLED', skuId: 1 }, /规格已失效/],
