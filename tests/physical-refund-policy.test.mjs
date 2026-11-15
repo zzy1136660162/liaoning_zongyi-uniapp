@@ -16,9 +16,11 @@ for (const category of [1, 2]) {
       assert.equal(canOrderApplyRefund(order(category, status)), true)
       assert.equal(shouldReviewPhysicalRefund(order(category, status)), true)
     }
-    for (const orderStatus of [0, 4, 7]) assert.equal(canOrderApplyRefund({ ...order(category), orderStatus }), false)
-    for (const paymentFulfillmentStatus of ['PENDING', 'REFUND_REQUIRED', 'REFUNDED']) {
-      assert.equal(canOrderApplyRefund({ ...order(category), paymentFulfillmentStatus }), false)
+    for (const orderStatus of [4, 7]) assert.equal(canOrderApplyRefund({ ...order(category), orderStatus }), false)
+    assert.equal(canOrderApplyRefund({ ...order(category), paymentFulfillmentStatus: 'REFUNDED' }), false)
+    for (const paymentFulfillmentStatus of ['PENDING', 'REFUND_REQUIRED']) {
+      assert.equal(canOrderApplyRefund({ ...order(category), orderStatus: 0, paymentFulfillmentStatus,
+        items: [{ ...item(category), refundOpened: 1 }] }), true)
     }
     assert.equal(canOrderApplyRefund({ ...order(category), payStatus: 0 }), false)
     assert.equal(canOrderApplyRefund({ ...order(category), items: [{ ...item(category), refundableQuantity: 0 }] }), false)

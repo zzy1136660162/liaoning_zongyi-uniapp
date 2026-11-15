@@ -232,14 +232,47 @@ test('申请提交期间不能改数量或切组，也不会发出第二笔请�
   assert.equal(state.submitted, true)
 })
 
-test('历史退款不封住剩余次数申请，异常付款和已全退订单没有入口', () => {
+test('付款处理中沿用原售后政策与本项开放结果，未付款、无可退数量和终态仍拒绝', () => {
   const source = order([item(3, { redeemedQuantity: 2, refundableQuantity: 3 })])
   assert.equal(canOrderApplyRefund({ ...source, refundApplicationId: 8, refundStatus: 4, orderStatus: 6 }), true)
   assert.equal(canOrderApplyRefund({ ...source, items: [item(3, { refundableQuantity: 0 })] }), false)
-  for (const paymentFulfillmentStatus of ['PENDING', 'REFUND_REQUIRED', 'REFUNDED']) {
-    assert.equal(canOrderApplyRefund({ ...source, paymentFulfillmentStatus }), false)
+  const opened = { ...source, items: [item(3, { supportReturnSnapshot: 0, refundOpened: 1, refundableQuantity: 3 })] }
+  for (const paymentFulfillmentStatus of ['PENDING', 'REFUND_REQUIRED']) {
+    assert.equal(canOrderApplyRefund({ ...opened, orderStatus: 0, paymentFulfillmentStatus }), true)
+    for (const supportReturnSnapshot of [null, 1]) {
+      assert.equal(canOrderApplyRefund({ ...source, orderStatus: 0, paymentFulfillmentStatus,
+        items: [item(3, { supportReturnSnapshot, refundOpened: 0, refundableQuantity: 3 })] }), true)
+    }
+    assert.equal(canOrderApplyRefund({ ...source, orderStatus: 0, paymentFulfillmentStatus,
+      items: [item(3, { supportReturnSnapshot: 0, refundOpened: 0, refundableQuantity: 3 })] }), false)
+    assert.equal(canOrderApplyRefund({ ...opened, orderStatus: 0, paymentFulfillmentStatus, payStatus: 0 }), false)
+    assert.equal(canOrderApplyRefund({ ...opened, orderStatus: 0, paymentFulfillmentStatus,
+      items: [item(3, { refundOpened: 1, refundableQuantity: 0 })] }), false)
   }
-  for (const orderStatus of [0, 4, 7]) assert.equal(canOrderApplyRefund({ ...source, orderStatus }), false)
+  assert.equal(canOrderApplyRefund({ ...opened, paymentFulfillmentStatus: 'REFUNDED' }), false)
+  for (const orderStatus of [4, 7]) assert.equal(canOrderApplyRefund({ ...source, orderStatus }), false)
+})
+
+test('已付款未履约疗法开放后列表详情可申请，申请页按数量提交且不要求未生成的券', async () => {
+  const source = { ...order([item(3, { supportReturnSnapshot: 0, refundOpened: 1, refundableQuantity: 2, redeemVouchers: [] }),
+    item(3, { id: 33, supportReturnSnapshot: 0, refundOpened: 0, refundableQuantity: 0, refundable: false })]),
+  orderStatus: 0, paymentFulfillmentStatus: 'PENDING' }
+  const list = loadSetup('pages/order/order_list.vue', {
+    ref: value => ({ value }), onLoad() {}, onShow() {}, onUnmounted() {}, onSessionChanged: () => () => {}
+  }, ['mapOrderListItem'])
+  const mapped = list.mapOrderListItem(source)
+  assert.equal(canOrderApplyRefund(mapped), true)
+  const detail = loadOptions('pages/order/order-detail.vue', {})
+  assert.equal(detail.computed.canApplyRefund.call({ order: source, allCartItems: source.items }), true)
+  const { state, calls } = createApply({ getOrderDetail: async () => source })
+  await state.loadOrderDetail()
+  assert.deepEqual(state.allProducts.map(product => product.selectedQuantity), [2, 0])
+  assert.deepEqual(state.allProducts[0].redeemVouchers, [])
+  state.selectReason(state.reasonOptions[0])
+  await state.submitRefund()
+  assert.equal(calls.length, 1)
+  assert.deepEqual(calls[0].items, [{ orderItemId: 3, quantity: 2, refundReason: state.form.refundReason }])
+  assert.equal(state.submitted, true)
 })
 
 test('列表映射保留次数字段，详情与列表共用续退规则且申请记录入口正常展示', () => {
