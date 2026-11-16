@@ -34,8 +34,7 @@ export const uploadFile = (filePath, options = {}) => {
     const required = options.needAuth !== false
     const token = required ? getSessionToken() : ''
     const header = {
-      ...(options.header || {}),
-      'X-Product-Contract': 'category-v1'
+      ...(options.header || {})
     }
     if (token) {
       header.Authorization = `Bearer ${token}`

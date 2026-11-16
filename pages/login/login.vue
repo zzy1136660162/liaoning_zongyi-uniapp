@@ -24,7 +24,7 @@
 import { login, sendSmsCode } from '@/api/auth.js'
 import { establishAccountSession } from '@/utils/account.js'
 import { STORAGE_KEY_AGREEMENT_ACCEPTED } from '@/utils/storage.js'
-import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
+import { getSessionGeneration, getSessionToken, assertCurrentSession } from '@/utils/session.js'
 import { beginManualAccountLogin, getAccountSessionState, onAccountSessionState, waitForSessionRecovery, restoreAccountSession, accountReturnPath } from '@/utils/auth-session.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
 import { logPageView, logAccess } from '@/utils/accessLog.js'
@@ -33,7 +33,7 @@ const PAGE_LOG = { moduleCode: 'AUTH', accessType: '用户登录', pageType: 'LO
 export default {
   data() {
     return { phone: '', code: '', agreed: false, countdown: 0, timer: null, sending: false,
-      loggingIn: false, pageActive: true, recoveryUnavailable: false, stopAccountState: null,
+      loggingIn: false, returning: false, pageActive: true, recoveryUnavailable: false, stopAccountState: null,
       redirectUrl: '/pages/products/medicine_list' }
   },
   onLoad(options = {}) {
@@ -55,9 +55,17 @@ export default {
     this.code = ''
   },
   methods: {
-    updateRecovery(state) {
+    async updateRecovery(state) {
       this.recoveryUnavailable = state.status === 'unavailable'
-      if (this.pageActive && !this.loggingIn && state.status === 'authenticated') redirectToWithFallback(this.redirectUrl)
+      // 开发者工具可能只清掉 token；自动回跳须同时确认凭证，并合并生命周期中的重复跳转。
+      if (!this.pageActive || this.loggingIn || this.returning || state.status !== 'authenticated' || !getSessionToken()) return
+      this.returning = true
+      try {
+        await redirectToWithFallback(this.redirectUrl)
+      } catch (_) {
+        this.returning = false
+        if (this.pageActive) uni.showToast({ title: '页面跳转失败，请稍后重试', icon: 'none' })
+      }
     },
     async retryRecovery() {
       if (this.loggingIn || waitForSessionRecovery()) return

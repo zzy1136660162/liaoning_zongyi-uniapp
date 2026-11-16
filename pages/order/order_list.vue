@@ -112,7 +112,7 @@
                   v-if="isNoReasonReturnDisabled(item)"
                   class="product-no-reason-tip"
                 >
-                  不支持7天无理由退货
+                  {{ getOrderItemReturnPolicyText(item) }}
                 </text>
                 <text
                   v-if="getOrderItemRefundText(item)"
@@ -302,7 +302,7 @@ import { ref, onUnmounted } from 'vue'
 import { onLoad, onShow, onHide, onPageScroll, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { getOrderPage, getOrderDetail, cancelOrder, confirmReceipt, getOrderStats } from '@/api/order.js'
 import { checkCanApplyRefund } from '@/api/refund.js'
-import { getOrderItemRefundText, canOrderApplyRefund, shouldReviewPhysicalRefund, getRefundErrorModal } from '@/utils/refund.js'
+import { getOrderItemRefundText, getOrderItemReturnPolicyText, canOrderApplyRefund, shouldReviewPhysicalRefund, getRefundErrorModal } from '@/utils/refund.js'
 import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 import { isTherapyOrder, hasTherapyEntitlement } from '@/utils/therapy.js'
 import { canPayOrder, getOrderStatusText, getRedeemStatusText } from '@/utils/order-status.js'
@@ -455,6 +455,8 @@ const mapOrderItem = (item = {}) => ({
   refundFrozenQuantity: Number(item.refundFrozenQuantity || 0),
   refundableQuantity: Number(item.refundableQuantity || 0),
   refundable: Boolean(item.refundable),
+  supportReturnSnapshot: item.supportReturnSnapshot == null ? null : Number(item.supportReturnSnapshot),
+  refundOpened: Number(item.refundOpened || 0),
   refundBlockedReason: item.refundBlockedReason || '',
   price: item.price || '0.00',
   subtotalAmount: item.subtotalAmount,

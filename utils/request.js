@@ -64,8 +64,7 @@ export const request = (options = {}) => {
     const requestHeader = {
       'Content-Type': 'application/json',
       ...header,
-      'X-Request-Id': traceId,
-      'X-Product-Contract': 'category-v1'
+      'X-Request-Id': traceId
     }
 
     // 如果需要认证，添加Token

@@ -221,15 +221,3 @@ test('个人资料旧异步结果不能写入新账号，旧退出弹窗也不�
   assert.equal(page.profileError.value, '')
   assert.equal(getSessionToken(), 'fixture-B'); assert.equal(redirects, 0)
 })
-
-
-test('请求和上传固定声明新购买分类合同，调用方不能降回旧字段适配', async () => {
-  const pending = request({ url: '/api/contract-fixture', header: { 'X-Product-Contract': 'legacy' } })
-  const call = calls.shift()
-  assert.equal(call.header['X-Product-Contract'], 'category-v1')
-  response(call, 200, 200); await pending
-  const upload = uploadFile('/fixture', { header: { 'X-Product-Contract': 'legacy' } })
-  const uploadCall = calls.shift()
-  assert.equal(uploadCall.header['X-Product-Contract'], 'category-v1')
-  response(uploadCall, 200, 200, { url: '/fixture.png' }); await upload
-})

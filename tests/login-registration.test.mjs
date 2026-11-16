@@ -9,6 +9,8 @@ const setup = (overrides = {}) => {
   const navigation = [], modals = [], sent = [], sessions = [], toasts = []
   const mocks = {
     getSessionGeneration: () => generation,
+    getSessionToken: () => 'fixture',
+    STORAGE_KEY_AGREEMENT_ACCEPTED: 'agreed',
     assertCurrentSession: value => { if (value !== generation) throw Object.assign(new Error('stale'), { code: 'SESSION_CHANGED' }) },
     beginManualAccountLogin: () => () => {},
     establishAccountSession: result => { sessions.push(result); return ++generation },
@@ -83,6 +85,49 @@ test('登录页隐藏后，注册建立会话不能触发隐藏页抢先导航',
   env.definition.onHide.call(env.page)
   env.page.updateRecovery({ status: 'authenticated' })
   assert.deepEqual(env.navigation, [])
+})
+
+test('开发者工具清掉 token 后，登录页不会依据旧登录状态自动回跳', async () => {
+  const env = setup({ getSessionToken: () => '',
+    getAccountSessionState: () => ({ status: 'authenticated' }), onAccountSessionState: () => () => {} })
+  env.definition.onLoad.call(env.page)
+  env.definition.onShow.call(env.page)
+  await env.page.updateRecovery({ status: 'authenticated' })
+  assert.deepEqual(env.navigation, [])
+  assert.equal(env.page.returning, false)
+  assert.equal(env.page.phone, '13800000000')
+})
+
+test('token 和登录状态均有效时，登录页生命周期与状态通知只触发一次回跳', async () => {
+  let finishNavigation
+  const navigation = []
+  const env = setup({ getAccountSessionState: () => ({ status: 'authenticated' }),
+    onAccountSessionState: () => () => {}, redirectToWithFallback: url => {
+      navigation.push(url)
+      return new Promise(resolve => { finishNavigation = resolve })
+    } })
+  env.definition.onLoad.call(env.page)
+  env.definition.onShow.call(env.page)
+  await env.page.updateRecovery({ status: 'authenticated' })
+  assert.deepEqual(navigation, ['/pages/order/confirm?id=9'])
+  finishNavigation()
+  await Promise.resolve()
+  await env.page.updateRecovery({ status: 'authenticated' })
+  assert.equal(navigation.length, 1)
+})
+
+test('自动回跳失败保留登录输入并允许下次重新跳转', async () => {
+  let attempts = 0
+  const env = setup({ redirectToWithFallback: async () => {
+    if (++attempts === 1) throw new Error('fixture navigation failure')
+  } })
+  await env.page.updateRecovery({ status: 'authenticated' })
+  assert.equal(env.page.returning, false)
+  assert.equal(env.toasts[0].title, '页面跳转失败，请稍后重试')
+  assert.equal(env.page.phone, '13800000000')
+  assert.equal(env.page.code, '123456')
+  await env.page.updateRecovery({ status: 'authenticated' })
+  assert.equal(attempts, 2)
 })
 
 test('微信换绑必须明确确认且使用本次微信code，过期短信证明回到验证入口', async () => {

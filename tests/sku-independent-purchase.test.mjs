@@ -1,5 +1,6 @@
 import test, { beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { resolveProductSku, withProductSku } from '../utils/product-sku.js'
 import { isPurchaseAvailable } from '../utils/purchase-quantity.js'
 import { normalizePurchaseQuantity, resolvePurchaseQuantityLimit } from '../utils/purchase-quantity.js'
@@ -23,8 +24,30 @@ function therapy() {
     getImageUrl: value => value, mapProductDetail: value => value, getToken: () => 'fixture', logPageView() {},
     ...cart, isPurchaseAvailable, normalizePurchaseQuantity, resolvePurchaseQuantityLimit,
      STORAGE_KEY_CURRENT_CONSULTATION_ID: 'consultation'
-  }, ['product', 'applyProduct', 'quantity', 'selectedSkuId', 'saleProduct', 'selectSku', 'addCart', 'buyNow', 'canPurchase', 'priceInteger'])
+  }, ['product', 'applyProduct', 'quantity', 'skuList', 'selectedSkuId', 'selectedSpec', 'saleProduct', 'selectSku', 'addCart', 'buyNow', 'canPurchase', 'priceInteger'])
 }
+
+test('疗法实际模板为多规格保留选择和真实名称，单规格显示单次服务价格', () => {
+  const source = readFileSync(new URL('../pages/products/therapy_detail.vue', import.meta.url), 'utf8')
+  const template = source.slice(0, source.indexOf('<script')).replace(/<!--[\s\S]*?-->/g, '')
+  assert.match(template, /<view\s+v-if="skuList\.length > 1"\s+class="sku-options"/)
+  assert.match(template, /v-for="sku in skuList"[\s\S]*?@click="selectSku\(sku\)"/)
+  assert.match(template, /<text\s+v-if="skuList\.length > 1"\s+selectable="true"\s*>\s*\{\{ selectedSpec \}\}\s*<\/text>\s*<text\s+v-else\s+selectable="true"\s*>\s*￥\{\{ priceInteger \}\}\.\{\{ priceDecimal \}\} 单次服务/)
+
+  const page = therapy()
+  page.applyProduct(base())
+  assert.equal(page.skuList.value.length > 1, true)
+  assert.equal(page.selectedSpec.value, '基础款')
+  page.selectSku(page.product.value.skus[1])
+  assert.equal(page.selectedSpec.value, '加强款')
+  assert.equal(page.priceInteger.value, '20')
+
+  const single = therapy(), product = base()
+  product.skus = [product.skus[0]]
+  single.applyProduct(product)
+  assert.equal(single.skuList.value.length > 1, false)
+  assert.equal(single.priceInteger.value, '10')
+})
 
 test('explicit selected SKU is retained; missing or disabled SKU never becomes another SKU', async () => {
   const product = base()

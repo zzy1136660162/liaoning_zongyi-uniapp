@@ -40,7 +40,7 @@ const createList = (options = {}) => {
     logPageView() {}, logButtonClick() {}, isTherapyOrder: () => false,
     getOrderStatusText: () => ''
   }, ['activeTab', 'orders', 'pageNum', 'total', 'hasMore', 'hasLoaded', 'loading', 'refreshing', 'loadError',
-    'loadOrders', 'loadMoreOrders', 'refreshOrders', 'retryOrders', 'switchTab', 'searchInput', 'keyword', 'submitSearch', 'clearSearch', 'visibleOrderItems', 'isMedicineItem', 'redeemSummaryText', 'handleCancelOrder', 'handleConfirmReceipt'])
+    'loadOrders', 'loadMoreOrders', 'refreshOrders', 'retryOrders', 'switchTab', 'searchInput', 'keyword', 'submitSearch', 'clearSearch', 'visibleOrderItems', 'getOrderItemReturnPolicyText', 'redeemSummaryText', 'handleCancelOrder', 'handleConfirmReceipt'])
   const list = { state, pageCalls, detailCalls, unmount, show, hide, pullDown, reachBottom }
   lists.push(list)
   // 小程序先触发页面 onLoad、onShow，再触发组件 mounted。
@@ -81,8 +81,8 @@ test('待使用混合单只展示可用疗法，传统疗法不显示实物退�
     { id: 7, productCategorySnapshot: 3, redeemVouchers: [{ redeemStatus: 0, redeemTime: '2026-10-31 09:00' }] }
   ] }
   assert.deepEqual(state.visibleOrderItems(order).map(item => item.id), [2])
-  assert.equal(state.isMedicineItem(order.items[0]), true)
-  assert.equal(state.isMedicineItem(order.items[1]), false)
+  assert.equal(state.getOrderItemReturnPolicyText({ ...order.items[0], supportReturnSnapshot: 0 }), '不支持退货')
+  assert.equal(state.getOrderItemReturnPolicyText({ ...order.items[1], supportReturnSnapshot: 1 }), '允许退款')
   assert.match(state.redeemSummaryText(order), /可用 1，/)
 })
 

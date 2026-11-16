@@ -46,7 +46,7 @@
       </view>
 
       <view class="refund-policy-tip">
-        制剂、健康产品可提交退款申请；已有运单或已发货时，由后台核查物流后处理。请在退款记录查看进度。
+        仅可选择已满足退款条件的商品；不支持退款的商品，须由后台开放本单本项后才能申请。已发货实物由后台核查物流后处理。
       </view>
       <!-- 商品列表 -->
       <view class="products-section">
@@ -78,6 +78,7 @@
                 <text class="product-price">
                   ¥{{ item.price }}
                 </text>
+                <text class="product-refund-tip">{{ getOrderItemReturnPolicyText(item) }}</text>
                 <text class="product-refund-tip">
                   购买 {{ item.quantity }} {{ item.refundGroup === 'THERAPY' ? '次' : '件' }}
                   <template v-if="item.refundGroup === 'THERAPY'">
@@ -234,7 +235,7 @@ import { getImageUrl } from '@/utils/config.js'
 import { logPageView, logButtonClick, logAccess, getActionFailureResult } from '@/utils/accessLog.js'
 
 const PAGE_LOG = { moduleCode: 'REFUND', accessType: '退款售后', pageType: 'REFUND_APPLY', requestUri: '/pages/order/refund_apply' }
-import { hasMixedTherapyAndNormalRefundItems, isTherapyRefundItem, resolveRefundType, createRefundRequestId, getRefundErrorModal } from '@/utils/refund.js'
+import { getOrderItemReturnPolicyText, hasMixedTherapyAndNormalRefundItems, isTherapyRefundItem, resolveRefundType, createRefundRequestId, getRefundErrorModal } from '@/utils/refund.js'
 
 export default {
   name: 'RefundApply',
@@ -331,6 +332,7 @@ export default {
   },
 
   methods: {
+    getOrderItemReturnPolicyText,
     // 安全返回上一页，如果是首页则跳转到订单列表
     safeNavigateBack() {
       const pages = getCurrentPages()
@@ -414,6 +416,8 @@ export default {
         refundableQuantity: Number(item.refundableQuantity || 0),
         selectedQuantity: 0,
         refundable: Boolean(item.refundable),
+        supportReturnSnapshot: item.supportReturnSnapshot == null ? null : Number(item.supportReturnSnapshot),
+        refundOpened: Number(item.refundOpened || 0),
         refundBlockedReason: item.refundBlockedReason || '',
         image: getImageUrl(item.productImage || item.coverImage || item.image || ''),
         skuId: item.skuId || null,

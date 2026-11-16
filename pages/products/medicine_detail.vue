@@ -56,7 +56,7 @@
               🔥
             </text>
             <text class="sales-count">
-              已售 {{ product.salesVolume || 0 }}
+              已售 {{ product.displaySalesVolume || 0 }}
             </text>
           </view>
         </view>
@@ -163,7 +163,7 @@
       >
         <view class="policy-header">
           <text class="policy-title">
-            退换货说明
+            退货说明
           </text>
           <view
             class="policy-close"
@@ -177,10 +177,10 @@
             <text class="policy-section-title">
               <text class="check-icon">
                 ✓
-              </text> 不支持七天无理由退换
+              </text> {{ Number(product.supportReturn) === 1 ? '允许退货' : '不支持退货' }}
             </text>
             <text class="policy-content">
-              制剂属于特殊商品，除质量问题外，一经售出通常不支持退换。
+              {{ Number(product.supportReturn) === 1 ? '可按订单实际可退数量申请，审核通过后处理。' : '本商品不支持退货，如有售后问题请联系客服。' }}
             </text>
           </view>
           <view class="policy-section">
@@ -190,7 +190,7 @@
               </text> 售后保障
             </text>
             <text class="policy-content">
-              如需了解制剂问题，可联系平台医生或医院相关科室咨询。
+              如需了解商品售后问题，可联系平台医生或医院相关科室咨询。
             </text>
           </view>
         </view>
@@ -300,7 +300,7 @@
       @click="showPolicyDrawer"
     >
       <text class="policy-text">
-        不支持七天无理由退换 · 售后服务
+        {{ Number(product.supportReturn) === 1 ? '允许退货' : '不支持退货' }} · 售后服务
       </text>
       <text class="select-arrow">
         ›
@@ -908,6 +908,8 @@ const createEmptyProduct = () => ({
   intro: '',
   unit: '',
   salesVolume: 0,
+  displaySalesVolume: 0,
+  supportReturn: 0,
   goodsMerchantType: 1,
   isPrescription: 0,
   needQuestionnaire: 0,

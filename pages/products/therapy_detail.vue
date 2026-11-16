@@ -53,7 +53,7 @@
               🔥
             </text>
             <text class="sales-count" selectable="true">
-              已售 {{ product.salesVolume || 0 }}
+              已售 {{ product.displaySalesVolume || 0 }}
             </text>
           </view>
         </view>
@@ -129,7 +129,7 @@
       >
         <view class="policy-header">
           <text class="policy-title" selectable="true">
-            退换货说明
+            退款说明
           </text>
           <view
             class="policy-close"
@@ -143,10 +143,10 @@
             <text class="policy-section-title" selectable="true">
               <text class="check-icon" selectable="true">
                 ✓
-              </text> 未使用次数可按规则申请退款
+              </text> {{ Number(product.supportReturn) === 1 ? '允许退款' : '不支持退款' }}
             </text>
             <text class="policy-content" selectable="true">
-              未使用次数可按规则申请退款。
+              {{ Number(product.supportReturn) === 1 ? '未使用次数可按订单规则申请退款，已核销次数不可退。' : '本服务不支持退款，如有售后问题请联系客服。' }}
             </text>
           </view>
           <view class="policy-section">
@@ -171,8 +171,8 @@
       </view>
     </view>
 
-    <!-- <view
-      v-if="skuList.length"
+    <view
+      v-if="skuList.length > 1"
       class="sku-options"
     >
       <view
@@ -187,13 +187,22 @@
           （无货）
         </text>
       </view>
-    </view> -->
+    </view>
     <view class="select-section">
       <view class="select-label">
         已选
       </view>
       <view class="select-value">
-        <text selectable="true">
+        <text
+          v-if="skuList.length > 1"
+          selectable="true"
+        >
+          {{ selectedSpec }}
+        </text>
+        <text
+          v-else
+          selectable="true"
+        >
           ￥{{ priceInteger }}.{{ priceDecimal }} 单次服务
         </text>
       </view>
@@ -235,25 +244,12 @@
         mode="aspectFit"
       />
       <text class="policy-text" selectable="true">
-        未使用可按规则申请退款 · 售后服务
+        {{ Number(product.supportReturn) === 1 ? '允许退款' : '不支持退款' }} · 售后服务
       </text>
       <text class="select-arrow" selectable="true">
         ›
       </text>
     </view>
-    <!-- <view class="delivery-row">
-      <image
-        class="delivery-icon"
-        src="https://smf.lntcm.com/static/shop/spps.svg"
-        mode="aspectFit"
-      />
-      <text class="delivery-label" selectable="true">
-        配送
-      </text>
-      <text class="delivery-text" selectable="true">
-        {{ deliverySummary }}
-      </text>
-    </view> -->
 
     <view class="promise-box">
       <view class="promise-item">
@@ -661,16 +657,22 @@
           </view>
         </view>
       </view>
-      <view
-        class="usage-box"
-      >
+      <view class="usage-box">
         <view class="usage-title">
           使用说明
         </view>
         <view class="usage-tip">
-          <text class="usage-text" selectable="true">凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。</text>
+          <text
+            class="usage-text"
+            selectable="true"
+          >
+            凭订单中的核销码到医院后，找医院工作人员扫码核销即可体验服务。
+          </text>
         </view>
-        <!-- <view class="usage-list">
+        <view
+          v-if="usageItems.length > 0"
+          class="usage-list"
+        >
           <view
             v-for="item in usageItems"
             :key="item.label"
@@ -689,36 +691,8 @@
               {{ item.value }}
             </text>
           </view>
-        </view> -->
+        </view>
       </view>
-      <!-- <view
-        v-if="usageItems.length > 0"
-        class="usage-box"
-      >
-        <view class="usage-title">
-          使用说明
-        </view>
-        <view class="usage-list">
-          <view
-            v-for="item in usageItems"
-            :key="item.label"
-            class="usage-item"
-          >
-            <text
-              class="usage-label"
-              selectable="true"
-            >
-              {{ item.label }}
-            </text>
-            <text
-              class="usage-text"
-              selectable="true"
-            >
-              {{ item.value }}
-            </text>
-          </view>
-        </view>
-      </view> -->
     </view>
 
     <view
@@ -729,10 +703,6 @@
         暂无评价
       </view>
     </view>
-
-    
-
-
 
     <view class="bottom-space" />
 
@@ -838,7 +808,6 @@ import {
 import { requireAccountSession } from '@/utils/auth-session.js'
 import { checkoutEntries, directPurchaseQuery } from '@/utils/checkout.js'
 import {
-  getDeliverySummary,
   getExternalUseLabel,
   isSelfDevelopedProduct,
   shouldShowSfLogo
@@ -864,6 +833,8 @@ const createEmptyProduct = () => ({
   intro: '',
   unit: '',
   salesVolume: 0,
+  displaySalesVolume: 0,
+  supportReturn: 0,
   goodsMerchantType: 1,
   isPrescription: 0,
   needQuestionnaire: 0,
@@ -931,6 +902,8 @@ const productImages = computed(() => {
 
 const showDetailImages = computed(() => !product.value.intro && productImages.value.length > 0)
 const usageText = computed(() => product.value.commonUsage || product.value.usageDesc || '')
+// 多规格必须展示本次实际选择，避免价格相近时误把默认规格当作用户选择。
+const selectedSpec = computed(() => saleProduct.value.specText || product.value.packageSpec || product.value.unit || '默认规格')
 const maxPurchaseQuantity = computed(() => resolvePurchaseQuantityLimit(saleProduct.value))
 const canPurchase = computed(() => isPurchaseAvailable(saleProduct.value))
 const canDecreaseQuantity = computed(() => canPurchase.value && quantity.value > 1)
@@ -954,7 +927,6 @@ const originTypeText = computed(() => {
   return ''
 })
 
-const deliverySummary = computed(() => getDeliverySummary(product.value.coldShippingType))
 const showSfLogo = computed(() => shouldShowSfLogo(product.value.coldShippingType))
 
 const specItems = computed(() => {
@@ -964,7 +936,6 @@ const specItems = computed(() => {
   return [
     { label: '产品名称', value: product.value.name },
     { label: '是否外用', value: externalLabel },
-    // { label: '规格', value: product.value.specText },
     { label: '包装', value: product.value.packageSpec },
     { label: '剂型', value: product.value.dosageForm },
     { label: '性状', value: product.value.appearanceDesc },

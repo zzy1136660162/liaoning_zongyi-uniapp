@@ -68,6 +68,10 @@ for (const detailPage of [medicineDetailPage, therapyDetailPage]) {
 
 assert.match(medicineDetailTemplate, /v-for="item in usageItems"/)
 assert.match(therapyDetailTemplate, /v-for="item in usageItems"/)
+// 检查去除注释后的实际模板，核销提示和动态资料必须共处唯一的使用说明卡片。
+assert.equal((therapyDetailTemplate.match(/class="usage-title">\s*使用说明/g) || []).length, 1)
+assert.equal((therapyDetailTemplate.match(/v-for="item in usageItems"/g) || []).length, 1)
+assert.match(therapyDetailTemplate, /class="usage-title">\s*使用说明[\s\S]*?class="usage-tip">[\s\S]*?凭订单中的核销码[\s\S]*?<view\s+v-if="usageItems\.length > 0"\s+class="usage-list"\s*>[\s\S]*?v-for="item in usageItems"/)
 
 for (const detailTemplate of [medicineDetailTemplate, therapyDetailTemplate]) {
   assert.match(

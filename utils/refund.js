@@ -51,17 +51,25 @@ export const isTherapyRefundItem = (item = {}, order = {}) => {
 export const canOrderApplyRefund = (order = {}) => {
   const status = Number(order.orderStatus ?? order.status)
   const fulfillment = order.paymentFulfillmentStatus
-  return Boolean(order.id) && Number(order.payStatus) === 1 && ![0, 4, 7].includes(status) &&
-    (!fulfillment || fulfillment === 'READY') &&
+  // 已收款但尚未履约的订单沿用原售后政策和本项开放结果，可先提交审核，不要求已有核销券。
+  return Boolean(order.id) && Number(order.payStatus) === 1 && ![4, 7].includes(status) &&
+    (!fulfillment || ['READY', 'PENDING', 'REFUND_REQUIRED'].includes(fulfillment)) &&
     (order.items || []).some(item => Number(item.refundableQuantity || 0) > 0 &&
-      (isTherapyRefundItem(item, order) || [1, 2, 3].includes(status))) // 已发货、已完成实物可提交申请，是否人工核查由服务端当前物流决定。
+      (item.supportReturnSnapshot == null || Number(item.supportReturnSnapshot) === 1 || Number(item.refundOpened) === 1))
 }
 
 export const shouldReviewPhysicalRefund = (order = {}) => { // 仅展示人工核查说明，是否可申请仍由购买快照与剩余可退数量决定。
   const status = Number(order.orderStatus ?? order.status)
   return Number(order.payStatus) === 1 && [2, 3].includes(status) &&
-    (order.items || []).some(item => !isTherapyRefundItem(item, order) &&
+    (order.items || []).some(item => !isTherapyRefundItem(item, order) && Number(item.refundableQuantity || 0) > 0 &&
       Number(item.quantity || 0) > Number(item.refundCompletedQuantity || 0))
+}
+
+export const getOrderItemReturnPolicyText = (item = {}) => {
+  const policy = item.supportReturnSnapshot
+  const action = isTherapyRefundItem(item) ? '退款' : '退货'
+  const text = policy == null ? '历史订单沿原售后规则处理' : Number(policy) === 1 ? `允许${action}` : `不支持${action}`
+  return Number(item.refundOpened) === 1 ? `${text}，本单本项已开放退款` : text
 }
 
 export const getOrderItemRefundText = (item = {}) => {

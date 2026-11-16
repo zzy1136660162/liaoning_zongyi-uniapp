@@ -344,7 +344,7 @@
                       >
                         {{ product.specText || product.unit }}
                       </text>
-                      <text class="product-sales">已售 {{ product.salesVolume ?? 0 }}</text>
+                      <text class="product-sales">已售 {{ product.displaySalesVolume ?? 0 }}</text>
                     </view> -->
                     <view class="product-price-row">
                       <!-- 售罄状态 -->

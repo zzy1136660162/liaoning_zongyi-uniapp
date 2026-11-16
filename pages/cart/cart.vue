@@ -303,6 +303,7 @@ export default {
       const reason = item.inventoryReason
       if (reason === 'PRODUCT_MISSING') return '商品已失效，可勾选后清空'
       if (reason === 'PRODUCT_DISABLED') return '商品已下架'
+      if (reason === 'CATEGORY_DISABLED') return '所属类目已停用，暂不可购买'
       // 兼容旧接口把缺规格也返回 SKU_DISABLED 的情况。
       if (reason === 'SKU_REQUIRED' || !item.skuId) return '未选择规格，请重新选择后加入购物车'
       if (reason === 'SKU_DISABLED') return '所选规格已失效，请重新选择'
