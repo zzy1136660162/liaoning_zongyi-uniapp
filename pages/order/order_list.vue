@@ -109,7 +109,7 @@
                   {{ formatOrderItemMeta(item) }}
                 </text>
                 <text
-                  v-if="isMedicineItem(item)"
+                  v-if="isNoReasonReturnDisabled(item)"
                   class="product-no-reason-tip"
                 >
                   不支持7天无理由退货
@@ -386,6 +386,15 @@ const formatOrderItemMeta = (item = {}) => {
 
 // 按已确认口径保留：传统疗法(3)不展示实物退货提示。
 const isMedicineItem = (item = {}) => Number(item.productCategorySnapshot) !== 3
+
+// 以商品快照的 supportReturn 为准：0 不支持退货，1 允许退货；旧数据缺字段时回退按分类判断。
+const isNoReasonReturnDisabled = (item = {}) => {
+  const supportReturn = item.supportReturn
+  if (supportReturn === 0 || supportReturn === 1 || supportReturn === '0' || supportReturn === '1') {
+    return Number(supportReturn) === 0
+  }
+  return isMedicineItem(item)
+}
 
 const isAvailableRedeemVoucher = voucher => voucher.redeemStatus != null && Number(voucher.redeemStatus) === 0 &&
   !voucher.redeemTime && !voucher.refundApplicationId
