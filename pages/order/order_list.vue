@@ -431,7 +431,7 @@ const redeemSummaryText = (order = {}) => {
     const availableCount = vouchers.filter(isAvailableRedeemVoucher).length
     const frozenCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 3).length
     const refundedCount = vouchers.filter(voucher => Number(voucher.redeemStatus) === 2).length
-    return `到店核销：可用 ${availableCount}，已核销 ${redeemedCount}，退款中 ${frozenCount}，已退废 ${refundedCount}`
+    return `到店核销：可用 ${availableCount}，已核销 ${redeemedCount}，退款中 ${frozenCount}，已退费 ${refundedCount}`
   }
   return `到店核销：${getRedeemStatusText(order)}`
 }

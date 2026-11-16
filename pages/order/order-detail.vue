@@ -2,6 +2,30 @@
   <view class="page">
     <!-- 顶部导航用原生小程序导航栏即可，这里不重复写 -->
 
+    <!-- 订单状态卡片 -->
+    <view class="order-card status-card">
+      <view class="order-header">
+        <view class="order-header-left">
+          <view class="title-row">
+            <text class="title-text">
+              订单状态
+            </text>
+          </view>
+        </view>
+
+        <view class="order-header-right">
+          <view class="status-row">
+            <text
+              v-if="order.statusText"
+              class="status-text"
+            >
+              {{ order.statusText }}
+            </text>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <!-- 商品卡片 -->
     <view
       v-if="allCartItems.length > 0"
@@ -119,39 +143,9 @@
 
     <!-- 订单卡片 -->
     <view class="order-card">
-      <!-- 上半部分：标题 + 金额 + 状态 -->
-      <view class="order-header">
-        <view class="order-header-left">
-          <view class="title-row">
-            <text class="title-text">
-              订单状态
-            </text>
-          </view>
-          <!-- <text class="amount-text">
-            ¥{{ totalAmount.toFixed(2) }}
-          </text> -->
-        </view>
-
-        <view class="order-header-right">
-          <view class="status-row">
-            <text
-              v-if="order.statusText"
-              class="status-text"
-            >
-              {{ order.statusText }}
-            </text>
-          </view>
-          <!-- <text
-            v-if="order.time"
-            class="time-text"
-          >
-            {{ formatDateTime(order.time) }}
-          </text> -->
-        </view>
+      <view class="order-card-header">
+        <text class="order-card-title">订单详情</text>
       </view>
-
-      <view class="divider" />
-
       <!-- 医生信息使用当前订单关联的真实处方/商品资料 -->
       <view class="doctor-row">
         <image
@@ -277,6 +271,30 @@
         </button>
       </view>
     </view>
+
+    <!-- 传统疗法使用须知 -->
+    <view
+      v-if="hasTherapyItem"
+      class="order-card usage-guide-card"
+    >
+      <view class="order-card-header">
+        <text class="order-card-title">使用须知</text>
+      </view>
+      <view class="usage-guide-list">
+        <view class="usage-guide-row">
+          <text class="usage-guide-label">使用时间</text>
+          <text class="usage-guide-value">医院门诊开放时间，无需预约到院体验</text>
+        </view>
+        <view class="usage-guide-row">
+          <text class="usage-guide-label">适用规则</text>
+          <text class="usage-guide-value">凭订单中的核销码到医院，由医院工作人员扫码核销后体验服务</text>
+        </view>
+        <view class="usage-guide-row">
+          <text class="usage-guide-label">有效日期</text>
+          <text class="usage-guide-value">核销券在订单退款前有效，退款后自动失效</text>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -399,6 +417,10 @@
       },
       canPay() {
         return this.orderLoaded && canPayOrder(this.order)
+      },
+      hasTherapyItem() {
+        // 订单中包含传统疗法项目（快照购买分类 3）时展示使用须知。
+        return (this.allCartItems || []).some(item => Number(item.productCategorySnapshot) === 3)
       },
       canViewPrescription() {
         // 以本次订单接口返回的处方关联为准，不按商品分类或是否混购推断。
@@ -1132,14 +1154,15 @@
   .page {
     min-height: 100vh;
     background-color: #f5f5f5;
-    padding: 24rpx 24rpx 40rpx;
+    /* 卡片左右铺满屏幕，不预留水平边距 */
+    padding: 0rpx 0 40rpx;
     box-sizing: border-box;
   }
 
   /* 白色订单卡片 */
   .order-card {
+    margin-top: 24rpx;
     background-color: #ffffff;
-    border-radius: 16rpx;
     box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
     overflow: hidden;
   }
@@ -1147,6 +1170,11 @@
   /* 商品卡片置于订单详情上方 */
   .goods-card {
     margin-bottom: 24rpx;
+  }
+
+  /* 订单状态独立卡片，置于页面最顶部 */
+  .status-card {
+    //margin-bottom: 24rpx;
   }
 
   .goods-card .medicines-section {
@@ -1225,13 +1253,6 @@
   .time-text {
     font-size: 24rpx;
     color: #999999;
-  }
-
-  /* 分割线 */
-  .divider {
-    height: 1px;
-    background-color: #f1f1f1;
-    margin: 0 32rpx;
   }
 
   .doctor-row {
@@ -1427,8 +1448,9 @@
   }
 
   .medicines-header {
-    margin-bottom: 20rpx;
-    padding-bottom: 16rpx;
+    /* 负边距抵消父级内边距，让分割线延伸到卡片两端 */
+    margin: 0 -32rpx 20rpx;
+    padding: 0 32rpx 16rpx;
     border-bottom: 1rpx solid #f0f0f0;
   }
 
@@ -1436,6 +1458,49 @@
     font-size: 30rpx;
     font-weight: 600;
     color: #333333;
+  }
+
+  /* 订单卡片标题 */
+  .order-card-header {
+    padding: 24rpx 32rpx 16rpx;
+    border-bottom: 1rpx solid #f0f0f0;
+  }
+
+  .order-card-title {
+    font-size: 30rpx;
+    font-weight: 600;
+    color: #333333;
+  }
+
+  /* 传统疗法使用须知 */
+  .usage-guide-card {
+    margin-bottom: 24rpx;
+  }
+
+  .usage-guide-list {
+    padding: 8rpx 0 16rpx;
+  }
+
+  .usage-guide-row {
+    display: flex;
+    align-items: flex-start;
+    padding: 8rpx 32rpx;
+  }
+
+  .usage-guide-label {
+    width: 160rpx;
+    flex-shrink: 0;
+    font-size: 26rpx;
+    color: #999999;
+    line-height: 1.65;
+  }
+
+  .usage-guide-value {
+    flex: 1;
+    font-size: 26rpx;
+    color: #333333;
+    line-height: 1.65;
+    word-break: break-all;
   }
 
   .medicines-list {
