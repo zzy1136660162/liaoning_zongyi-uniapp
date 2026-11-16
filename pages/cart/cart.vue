@@ -195,6 +195,8 @@
 <script>
 import { STORAGE_KEY_CURRENT_CONSULTATION_ID } from '@/utils/storage.js'
 import { fetchAccountProfile } from '@/utils/account.js'
+import { getOrderDetail } from '@/api/order.js'
+import { recoverPaidOrderCarts } from '@/utils/order-submission.js'
 import {
   getCartEntries,
   refreshCart,
@@ -343,8 +345,19 @@ export default {
       }
     },
     async loadCartFromServer() {
+      const session = getSessionGeneration()
       await refreshCart()
+      if (!isCurrentSession(session)) return
       this.loadCartData()
+      // 先显示购物车，再补查离开付款页时尚未完成的订单，不让医院进度拖住列表。
+      const cleanupComplete = await recoverPaidOrderCarts(orderId => getOrderDetail(orderId, {
+        showLoading: false, silent: true, authRedirect: false
+      }))
+      if (!isCurrentSession(session)) return
+      this.loadCartData()
+      if (!cleanupComplete) {
+        uni.showToast({ title: '部分订单暂未核对，稍后返回购物车将重试', icon: 'none' })
+      }
     },
     loadCartData() {
       const entries = getCartEntries()

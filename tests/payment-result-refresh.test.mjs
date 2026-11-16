@@ -74,11 +74,14 @@ test('首次订单读取成功即展示金额，轮询和连续点击不会重�
 
 test('有限轮询结束说明仍需等待，重新查询只读取状态而不重放支付补偿', async t => {
   let reads = 0, ready = false
-  const fixture = createPage({ getOrderDetail: async () => { reads++; return order(ready ? 'READY' : 'PENDING') } })
+  const fixture = createPage({ getOrderDetail: async () => {
+    reads++
+    return ready ? order('READY') : { ...order(), payStatus: 0, paymentFulfillmentStatus: null }
+  } })
   const initial = fixture.load({ orderId: '81', outTradeNo: 'SYNTHETIC-PAY-81' })
   await finishPolling(t)
   await initial
-  assert.equal(reads, 14)
+  assert.equal(reads, 13)
   assert.deepEqual(fixture.syncs, [['81', 'SYNTHETIC-PAY-81']])
   assert.equal(fixture.page.syncing.value, false)
   assert.equal(fixture.page.canRefresh.value, true)
@@ -89,13 +92,35 @@ test('有限轮询结束说明仍需等待，重新查询只读取状态而不�
   const refresh = fixture.page.refreshOrderInfo()
   await finishPolling(t)
   await refresh
-  assert.equal(reads, 27)
+  assert.equal(reads, 26)
   assert.equal(fixture.syncs.length, 1, '手动刷新不重放首次补偿')
   ready = true
   await fixture.page.refreshOrderInfo()
   assert.equal(fixture.page.paymentOutcome.value.state, 'success')
   assert.equal(fixture.page.queryMessage.value, '')
   assert.deepEqual(fixture.consumed, [81])
+})
+
+test('首次未确认收款立即主动查单，查单和购物车清理在途均不阻塞真实付款结果展示', async () => {
+  const pendingSync = deferred(), pendingCleanup = deferred()
+  let reads = 0, syncs = 0, cleanups = 0
+  const fixture = createPage({
+    getOrderDetail: async () => ++reads === 1 ? { ...order(), payStatus: 0, paymentFulfillmentStatus: null } : order('READY'),
+    syncPaymentByOrder: async () => { syncs++; return pendingSync.promise },
+    consumeOrderCart: async () => { cleanups++; return pendingCleanup.promise }
+  })
+  await fixture.load({ orderId: '81', outTradeNo: 'SYNTHETIC-PAY-81' })
+  assert.equal(syncs, 1)
+  assert.equal(reads, 2)
+  assert.equal(fixture.page.paymentInfo.value.amount, 36.6)
+  assert.equal(fixture.page.paymentOutcome.value.state, 'success')
+  assert.equal(fixture.page.syncing.value, false)
+  assert.ok(cleanups >= 1)
+  pendingSync.resolve(true)
+  pendingCleanup.resolve(true)
+  await flush()
+  await fixture.page.refreshOrderInfo()
+  assert.equal(syncs, 1, '手动刷新不重复主动查单')
 })
 
 test('隐藏后返回重新读取，旧响应及旧查询清理不能覆盖最新结果', async () => {
@@ -137,7 +162,7 @@ test('离页取消轮询等待，迟到回执不更新页面、不继续查询�
   assert.equal(fixture.page.paymentInfo.value.amount, 36.6)
   assert.equal(fixture.page.paymentOutcome.value.state, 'pending')
   assert.deepEqual(fixture.syncs, [])
-  assert.deepEqual(fixture.consumed, [])
+  assert.deepEqual(fixture.consumed, [81])
   assert.deepEqual(fixture.navigations, [])
 })
 
@@ -201,7 +226,7 @@ test('退款与异常终态沿用服务端判断，不伪装成功或继续轮�
     assert.notEqual(fixture.page.paymentOutcome.value.state, 'success')
     assert.equal(fixture.page.paymentOutcome.value.terminal, true)
     assert.deepEqual(fixture.syncs, [])
-    assert.deepEqual(fixture.consumed, [])
+    assert.deepEqual(fixture.consumed, [81])
   }
 })
 
@@ -212,7 +237,7 @@ test('实际模板的金额不等待整轮查询，重试按钮禁用重复操�
   assert.match(source, /canRefresh && \(!paymentOutcome\.terminal \|\| paymentOutcome\.manualRefresh \|\| queryMessage\)/)
 })
 
-test('真实已付但医院拒绝或结果未知时显示待完成及原因，不自动轮询、补发或清理购物车', async t => {
+test('真实已付但医院拒绝或结果未知时仍清理购物车，医院进度只读展示', async t => {
   for (const status of ['FAILED', 'UNKNOWN', 'RUNNING', 'PENDING']) {
     let reads = 0, hospitalReads = 0
     const fixture = createPage({
@@ -230,7 +255,7 @@ test('真实已付但医院拒绝或结果未知时显示待完成及原因，�
     assert.equal(fixture.page.canRefresh.value, true)
     t.mock.timers.tick(30000); await flush()
     assert.equal(reads, 1); assert.equal(hospitalReads, 1)
-    assert.deepEqual(fixture.syncs, []); assert.deepEqual(fixture.consumed, [])
+    assert.deepEqual(fixture.syncs, []); assert.deepEqual(fixture.consumed, [81])
     fixture.unload()
   }
 })
@@ -248,7 +273,7 @@ test('读取医院状态期间先展示实付金额和待确认，手动只读�
   assert.equal(fixture.page.paymentInfo.value.hasOrder, true)
   assert.equal(fixture.page.paymentInfo.value.amount, 36.6)
   assert.equal(fixture.page.paymentOutcome.value.title, '已付款，医院处理状态待确认')
-  assert.deepEqual(fixture.consumed, [])
+  assert.deepEqual(fixture.consumed, [81])
   pendingStatus.resolve({ orderId: 81, hisPaymentStatus: 'FAILED', hisMessage: '医院暂无法登记收款' })
   await loading
   assert.equal(fixture.page.paymentOutcome.value.state, 'hospital_pending')
@@ -272,7 +297,7 @@ test('医院状态查询失败或返回其他订单时保留已付款待确认�
     assert.equal(fixture.page.paymentInfo.value.amount, 36.6)
     assert.match(fixture.page.paymentInfo.value.primaryTip, /暂无法读取.*请勿重复付款/)
     assert.equal(fixture.page.paymentInfo.value.primaryTip.includes('PRIVATE-'), false)
-    assert.deepEqual(fixture.consumed, [])
+    assert.deepEqual(fixture.consumed, [81])
   }
 })
 

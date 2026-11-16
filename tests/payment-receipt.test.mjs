@@ -58,7 +58,7 @@ test('回执主按钮打开当前已支付订单详情，副按钮打开订单�
   assert.deepEqual(navigation.map(value => value.url), ['/pages/order/order-detail?orderId=81', '/pages/order/order_list'])
 })
 
-test('待确认使用订单应付金额，异常退款不会展示成功或消费订单购物车快照；成功实付零值仍保留', async () => {
+test('未付款不清理购物车，已收款按订单清理且不把履约等待或异常退款展示为成功', async () => {
   for (const [payStatus, paymentFulfillmentStatus] of [[0, null], [1, 'PENDING'], [1, 'REFUND_REQUIRED'], [1, 'REFUNDED']]) {
     const { page, consumedOrderIds } = createPage()
     await page.applyOrderData({ ...order(), payStatus, paymentFulfillmentStatus, paidAmount: 0 })
@@ -66,14 +66,14 @@ test('待确认使用订单应付金额，异常退款不会展示成功或消�
     assert.equal(page.paymentInfo.value.amount, 36.6)
     assert.equal(page.paymentInfo.value.primaryTip, page.paymentOutcome.value.tip)
     assert.equal(page.paymentInfo.value.secondaryTip, '')
-    assert.deepEqual(consumedOrderIds, [])
+    assert.deepEqual(consumedOrderIds, payStatus === 1 ? [81] : [])
   }
   const { page } = createPage()
   await page.applyOrderData({ ...order(), paidAmount: 0 })
   assert.equal(page.paymentInfo.value.amount, 0)
 })
 
-test('服务端轮询确认成功后只消费当前订单，重复应用成功响应不重复消费', async () => {
+test('服务端确认已收款即消费当前订单，重复应用履约结果不重复消费', async () => {
   const consumptionAtRead = []
   let reads = 0
   const fixture = createPage({ getOrderDetail: async id => {
@@ -84,7 +84,7 @@ test('服务端轮询确认成功后只消费当前订单，重复应用成功�
   } })
   await fixture.load({ orderId: '81' })
   assert.equal(reads, 2)
-  assert.deepEqual(consumptionAtRead, [[], []], '订单尚未确认可履约时不能消费快照')
+  assert.deepEqual(consumptionAtRead, [[], [81]], '已确认收款不等待医院履约才清理')
   assert.equal(fixture.page.paymentOutcome.value.state, 'success')
   assert.deepEqual(fixture.consumedOrderIds, [81])
   await fixture.page.applyOrderData(order())
@@ -92,11 +92,14 @@ test('服务端轮询确认成功后只消费当前订单，重复应用成功�
   assert.deepEqual(fixture.consumedOrderIds, [81])
 })
 
-test('已取消订单即使已收到付款也不消费购物车快照', async () => {
+test('取消后实际收款仍清理已购商品，未收款取消保持购物车', async () => {
   const { page, consumedOrderIds } = createPage()
   await page.applyOrderData({ ...order(), orderStatus: 4 })
   assert.equal(page.paymentOutcome.value.state, 'canceled')
-  assert.deepEqual(consumedOrderIds, [])
+  assert.deepEqual(consumedOrderIds, [81])
+  const unpaid = createPage()
+  await unpaid.page.applyOrderData({ ...order(), orderStatus: 4, payStatus: 0 })
+  assert.deepEqual(unpaid.consumedOrderIds, [])
 })
 
 test('没有订单ID时不编造订单号和成功结果，查看入口回订单列表', async () => {

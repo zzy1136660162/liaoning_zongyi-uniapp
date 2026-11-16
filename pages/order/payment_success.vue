@@ -431,7 +431,8 @@ const applyTips = (orderData = {}) => {
   paymentInfo.value.secondaryTip = paymentInfo.value.shippingFeeText
 }
 
-const isOrderPaid = orderData => getPaymentOutcome(orderData).state === 'success'
+// 购物车跟随真实收款清理，医院处理和履约结果继续单独展示。
+const isOrderPaid = orderData => Number(orderData.payStatus ?? orderData.pay_status) === 1
 
 const clearPaidCartItems = async (orderData = {}, sequence = querySequence) => {
   if (!isCurrentQuery(sequence) || cartCleared.value || !isOrderPaid(orderData)) {
@@ -444,7 +445,7 @@ const clearPaidCartItems = async (orderData = {}, sequence = querySequence) => {
     if (consumed && isCurrentQuery(sequence)) cartCleared.value = true
   } catch (error) {
     if (isCurrentQuery(sequence) && error.code !== 'SESSION_CHANGED') {
-      uni.showToast({ title: '支付已成功，购物车清理失败，请稍后重试', icon: 'none' })
+      uni.showToast({ title: '付款已确认，已购商品将于返回购物车时重试清理', icon: 'none' })
     }
   }
 }
@@ -480,7 +481,7 @@ const applyOrderData = async (orderData, sequence = querySequence) => {
   // 金额已由订单记录确认，不等待后台履约或购物车清理结束才展示。
   loading.value = false
   applyTips(orderData)
-  await clearPaidCartItems(orderData, sequence)
+  void clearPaidCartItems(orderData, sequence)
 }
 
 const fetchOrderDetail = async (orderId, sequence) => {
@@ -508,7 +509,7 @@ const fetchOrderDetail = async (orderId, sequence) => {
   }
 }
 
-const waitForPaymentConfirmed = async (orderId, outTradeNo, sequence) => {
+const waitForPaymentConfirmed = async (orderId, sequence) => {
   for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt += 1) {
     if (!isCurrentQuery(sequence)) return false
     try {
@@ -526,23 +527,6 @@ const waitForPaymentConfirmed = async (orderId, outTradeNo, sequence) => {
 
     if (attempt < POLL_MAX_ATTEMPTS - 1) {
       await sleep(POLL_INTERVAL_MS)
-    }
-  }
-
-  if (outTradeNo && isCurrentQuery(sequence)) {
-    try {
-      assertCurrentSession(pageSession)
-      await syncPaymentByOrder(orderId, outTradeNo)
-      if (!isCurrentQuery(sequence)) return false
-      const orderData = await fetchOrderDetail(orderId, sequence)
-      if (!orderData) return false
-      await applyOrderData(orderData, sequence)
-      if (!isCurrentQuery(sequence)) return false
-      if (getPaymentOutcome(orderData).terminal) {
-        return true
-      }
-    } catch (error) {
-      console.warn('event=ui_order_payment_success stage=payment_sync result=unknown reason=sync_failed')
     }
   }
 
@@ -570,8 +554,14 @@ const loadOrderInfo = async (orderId, outTradeNo = '') => {
     await applyOrderData(orderData, sequence)
     if (!isCurrentQuery(sequence)) return
 
+    // 仅首次付款返回且服务端尚未确认收款时主动查单一次，与只读查询并行，不先空等整轮。
+    if (outTradeNo && Number(orderData.payStatus ?? orderData.pay_status) !== 1 && !getPaymentOutcome(orderData).terminal) {
+      void syncPaymentByOrder(orderId, outTradeNo).catch(() => {
+        console.warn('event=ui_order_payment_success stage=payment_sync result=unknown reason=sync_failed')
+      })
+    }
     if (!getPaymentOutcome(orderData).terminal) {
-      await waitForPaymentConfirmed(orderId, outTradeNo, sequence)
+      await waitForPaymentConfirmed(orderId, sequence)
     }
     if (isCurrentQuery(sequence) && !paymentOutcome.value.terminal) {
       queryMessage.value = '后台仍在确认付款与订单进度，请勿重复付款。您可以重新查询，或在订单详情查看后续结果。'

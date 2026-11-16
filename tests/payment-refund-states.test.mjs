@@ -45,7 +45,7 @@ test('医院收款未完成单独显示已付款，不覆盖资金退款终态�
   assert.equal(getPaymentOutcome({ ...paid, hisPaymentStatus: 'UNKNOWN', orderStatus: 4 }).state, 'canceled')
 })
 
-test('支付页面只在服务端确认可履约后消费当前已付订单的购物车快照', () => {
+test('支付页面按服务端真实收款消费快照，不等待医院履约，也不把等待展示为成功', async () => {
   const removed = []
   const mocks = {
     ref: value => ({ value }), onLoad() {}, onUnload() {}, getSessionGeneration: () => 0, assertCurrentSession() {},
@@ -56,11 +56,12 @@ test('支付页面只在服务端确认可履约后消费当前已付订单的�
   const page = loadSetup('pages/order/payment_success.vue', mocks, ['applyOrderData', 'paymentOutcome'])
   assert.equal(page.paymentOutcome.value.state, 'pending')
   const order = { id: 42, orderStatus: 1, payStatus: 1, items: [{ productId: 11, skuId: 21, quantity: 2 }] }
-  page.applyOrderData({ ...order, paymentFulfillmentStatus: 'PENDING' })
-  assert.deepEqual(removed, [])
-  page.applyOrderData({ ...order, paymentFulfillmentStatus: 'REFUND_REQUIRED' })
-  assert.deepEqual(removed, [])
-  page.applyOrderData({ ...order, paymentFulfillmentStatus: 'READY' })
+  await page.applyOrderData({ ...order, paymentFulfillmentStatus: 'PENDING' })
+  assert.deepEqual(removed, [42])
+  assert.notEqual(page.paymentOutcome.value.state, 'success')
+  await page.applyOrderData({ ...order, paymentFulfillmentStatus: 'REFUND_REQUIRED' })
+  assert.deepEqual(removed, [42])
+  await page.applyOrderData({ ...order, paymentFulfillmentStatus: 'READY' })
   assert.deepEqual(removed, [42])
   assert.equal(page.paymentOutcome.value.state, 'success')
 })

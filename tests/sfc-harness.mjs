@@ -38,7 +38,9 @@ const logMocks = { formatFreightEstimate, getCurrentInstance: () => ({}), onLoad
   accountReturnPath: value => value || '/pages/products/medicine_list',
   // 页面单测默认使用合成账户；账户传输、鉴权与无缓存契约由 account-profile.test 单独验证。
   fetchAccountProfile: async () => ({ id: 7, userName: '测试账户', phone: '13800000000', idType: '身份证', idCardNo: '110101199001011237', avatarUrl: '' }),
-  refreshCart: async () => [], changeCartItemQuantity: async () => true }
+  refreshCart: async () => [], changeCartItemQuantity: async () => true,
+  // 默认隔离返回购物车的订单补查，清理契约由购物车核心用例注入真实实现。
+  recoverPaidOrderCarts: async () => true }
 
 const imageScript = readFileSync(new URL('../utils/product-image.js', import.meta.url), 'utf8')
   .replace(/^import .*$/gm, '')
