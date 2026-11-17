@@ -216,7 +216,7 @@
                 class="extra-btn"
                 @click.stop="consultDoctor(order)"
               >
-                咨询医生
+                在线咨询
               </button>
               <button v-if="activeTab === 'unused'" class="extra-btn" @click.stop="goToOrderDetail(order.id)">查看使用码</button>
               <!-- 按逐项可退数量显示入口，部分核销或已有退款不影响剩余项目申请。 -->
@@ -637,7 +637,7 @@ const clearSearch = () => {
   return submitSearch()
 }
 const consultDoctor = (order = {}) => {
-  logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_CONSULT_DOCTOR', accessTitle: '咨询医生', accessDescription: '打开医生选择与问诊二维码', extraData: { orderId: order.id } })
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_CONSULT_DOCTOR', accessTitle: '在线咨询', accessDescription: '随机展示可咨询人员及问诊二维码', extraData: { orderId: order.id } })
   showDoctorConsultation.value = true
 }
 
