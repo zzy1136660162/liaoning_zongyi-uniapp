@@ -33,9 +33,24 @@ function createList(overrides = {}) {
     uni: { showLoading() {}, hideLoading() {}, showToast() {},
       showModal: options => modals.push(options), navigateTo: options => navigation.push(options) },
     ...overrides
-  }, ['activeTab', 'handlePayOrder', 'handleCancelOrder', 'handleConfirmReceipt'])
+  }, ['activeTab', 'handlePayOrder', 'handleCancelOrder', 'handleConfirmReceipt',
+    'consultDoctor', 'showDoctorConsultation', 'consultationProductId'])
   return { state, load, show, events, modals, navigation }
 }
+
+test('订单咨询始终取完整订单首项，切换订单不保留上次商品且不跳到后续商品', () => {
+  const { state, events } = createList()
+  state.activeTab.value = 'unused'
+  state.consultDoctor({ id: 81, doctorId: 99, items: [{ productId: 86, productCategorySnapshot: 1 }, { productId: 87, productCategorySnapshot: 3 }] })
+  assert.equal(state.showDoctorConsultation.value, true)
+  assert.equal(state.consultationProductId.value, 86)
+  state.showDoctorConsultation.value = false
+  state.consultDoctor({ id: 82, items: [{ productId: null }, { productId: 87 }] })
+  assert.equal(state.consultationProductId.value, null)
+  state.consultDoctor({ id: 83, items: [] })
+  assert.equal(state.consultationProductId.value, null)
+  assert.deepEqual(events.map(event => event.extraData.orderId), [81, 82, 83])
+})
 
 test('订单页快速返回分别记页面访问，去支付只记一个按钮且列表ID保持空', async () => {
   const { state, load, show, events, navigation } = createList()

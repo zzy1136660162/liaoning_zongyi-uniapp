@@ -149,6 +149,7 @@ import { getImageUrl } from '@/utils/config.js'
 import { saveDoctorQr } from '@/utils/doctor-qr.js'
 
 const emit = defineEmits(['close'])
+const props = defineProps({ productId: { type: [Number, String], default: null } })
 const selected = ref(null)
 const loading = ref(false)
 const loadError = ref('')
@@ -165,7 +166,7 @@ const loadDoctors = async () => {
   loadError.value = ''
   selected.value = null
   try {
-    const result = await getConsultationDoctors()
+    const result = await getConsultationDoctors(props.productId)
     if (disposed) return
     const doctors = Array.isArray(result) ? result : []
     if (doctors.length) {

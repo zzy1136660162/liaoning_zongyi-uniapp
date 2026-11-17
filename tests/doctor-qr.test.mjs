@@ -30,14 +30,37 @@ const createConsultation = (overrides = {}) => {
   const calls = []; let mounted, unmounted
   const state = loadSetup('components/DoctorConsultation.vue', {
     ref: value => ({ value }), nextTick: async () => {}, defineEmits: () => () => {},
+    defineProps: () => ({ productId: null }),
     onMounted: callback => { mounted = callback }, onUnmounted: callback => { unmounted = callback },
-    getConsultationDoctors: () => new Promise((resolve, reject) => calls.push({ resolve, reject })),
+    getConsultationDoctors: productId => new Promise((resolve, reject) => calls.push({ productId, resolve, reject })),
     getImageUrl: value => value, saveDoctorQr,
     ...overrides
   }, ['selected', 'loading', 'loadError', 'loadDoctors', 'imageLoading', 'imageFailed', 'imageVisible',
     'onImageLoad', 'onImageError', 'retryImage', 'save', 'saving', 'preview', 'close'])
   return { state, calls, mounted, unmounted }
 }
+
+test('弹窗携带首项商品请求咨询人员，优先展示服务端返回的关联医生', async () => {
+  const { state, calls, mounted } = createConsultation({ defineProps: () => ({ productId: 86 }) })
+  const request = mounted()
+  assert.equal(calls[0].productId, 86)
+  const preferred = { id: 12, name: '关联医生', consultationQrUrl: '/profile/preferred.png' }
+  calls[0].resolve([preferred])
+  await request
+  assert.equal(state.selected.value, preferred)
+})
+
+test('首项关联人员不可咨询时，沿用服务端候选名单随机展示', async () => {
+  const { state, calls, mounted } = createConsultation({
+    defineProps: () => ({ productId: 86 }),
+    Math: { random: () => 0.999, floor: Math.floor }
+  })
+  const request = mounted()
+  assert.equal(calls[0].productId, 86)
+  calls[0].resolve([{ id: 3 }, { id: 9 }])
+  await request
+  assert.equal(state.selected.value.id, 9)
+})
 
 test('咨询加载失败可重试，自动展示一位，关闭后迟到响应不恢复弹层', async () => {
   const { state, calls, mounted, unmounted } = createConsultation()

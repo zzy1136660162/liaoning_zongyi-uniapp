@@ -290,7 +290,7 @@
       </view>
     </view>
 
-    <DoctorConsultation v-if="showDoctorConsultation" @close="showDoctorConsultation = false" />
+    <DoctorConsultation v-if="showDoctorConsultation" :product-id="consultationProductId" @close="showDoctorConsultation = false" />
     <TabBar
       current="order"
     />
@@ -321,6 +321,7 @@ const activeTab = ref('all')
 const searchInput = ref('')
 const keyword = ref('')
 const showDoctorConsultation = ref(false)
+const consultationProductId = ref(null)
 const orders = ref([])
 const pageNum = ref(0)
 const total = ref(0)
@@ -637,7 +638,9 @@ const clearSearch = () => {
   return submitSearch()
 }
 const consultDoctor = (order = {}) => {
-  logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_CONSULT_DOCTOR', accessTitle: '在线咨询', accessDescription: '随机展示可咨询人员及问诊二维码', extraData: { orderId: order.id } })
+  // 使用完整订单的首项，避免待使用筛选或预览截断改变咨询医生。
+  consultationProductId.value = order.items?.[0]?.productId ?? null
+  logButtonClick({ ...PAGE_LOG, actionCode: 'ORDER_CONSULT_DOCTOR', accessTitle: '在线咨询', accessDescription: '优先展示首个商品关联医生，不可咨询时随机展示', extraData: { orderId: order.id } })
   showDoctorConsultation.value = true
 }
 
@@ -892,6 +895,7 @@ onLoad((options = {}) => {
   }
   unsubscribeSessionChanged = onSessionChanged(() => {
     showDoctorConsultation.value = false
+    consultationProductId.value = null
     requestSequence += 1
     orders.value = []
     pageNum.value = 0
