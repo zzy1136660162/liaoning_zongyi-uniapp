@@ -291,7 +291,7 @@
         </view>
         <view class="usage-guide-row">
           <text class="usage-guide-label">有效日期</text>
-          <text class="usage-guide-value">核销券在订单退款前有效，退款后自动失效</text>
+          <text class="usage-guide-value">核销券在购买后一年内有效</text>
         </view>
       </view>
     </view>
@@ -1174,7 +1174,8 @@
 
   /* 订单状态独立卡片，置于页面最顶部 */
   .status-card {
-    //margin-bottom: 24rpx;
+    margin-top: 0rpx;
+    margin-bottom: 24rpx;
   }
 
   .goods-card .medicines-section {

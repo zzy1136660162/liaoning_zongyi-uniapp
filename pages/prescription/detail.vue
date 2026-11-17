@@ -256,7 +256,7 @@
         </text>
       </view>
 
-      <view
+      <!-- <view
         v-if="prescriptionLoaded"
         class="card signature-card"
       >
@@ -293,7 +293,7 @@
             </text>
           </view>
         </view>
-      </view>
+      </view> -->
     </view>
 
     <view
