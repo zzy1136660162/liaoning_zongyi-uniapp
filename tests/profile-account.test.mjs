@@ -13,7 +13,7 @@ const empty = { realName: '', phone: '', avatar: '' }
 test('多人账号从实时名单选择就诊人，刷新恢复选择，删除或切换账号后旧记录失效', async () => {
   const values = new Map()
   let generation = 1
-  let rows = [{ id: 8, name: '甲' }, { id: 9, name: '乙' }]
+  let rows = [{ id: 8, name: '甲', hisOutpNo: '0000412376' }, { id: 9, name: '乙', hisOutpNo: null }]
   const device = {
     getStorageSync: key => values.get(key),
     setStorageSync: (key, value) => values.set(key, value)
@@ -31,8 +31,10 @@ test('多人账号从实时名单选择就诊人，刷新恢复选择，删除�
     assert.equal(page.currentPatient.value, null)
     page.selectCurrentPatient({ detail: { value: '1' } })
     assert.equal(values.get(STORAGE_KEY_CURRENT_PATIENT_ID), '8')
+    assert.equal(page.currentPatient.value.hisOutpNo, '0000412376')
     page.selectCurrentPatient({ detail: { value: '1' } })
     assert.equal(values.get(STORAGE_KEY_CURRENT_PATIENT_ID), '9')
+    assert.equal(page.currentPatient.value.hisOutpNo, null)
     rows.reverse()
     await page.loadPatients()
     assert.equal(page.currentPatient.value.name, '乙')
