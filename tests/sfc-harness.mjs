@@ -24,7 +24,7 @@ import { formatFreightEstimate } from '../utils/freight.js'
 import { waitForSessionRecovery, beginManualAccountLogin, getAccountSessionState, onAccountSessionState } from '../utils/auth-session.js'
 import { redirectToWithFallback } from '../utils/navigate.js'
 
-const logMocks = { preferredPatient, getPatientList: async () => [], getImageUrl, formatFreightEstimate, getCurrentInstance: () => ({}), onLoad() {}, onShow() {}, onHide() {}, onResize() {}, onPageScroll() {}, onPullDownRefresh() {}, onReachBottom() {}, logPageView() {}, logButtonClick() {}, logAccess() {}, getActionFailureResult,
+const logMocks = { computed: getter => ({ get value() { return getter() } }), preferredPatient, getPatientList: async () => [], getImageUrl, formatFreightEstimate, getCurrentInstance: () => ({}), onLoad() {}, onShow() {}, onHide() {}, onResize() {}, onPageScroll() {}, onPullDownRefresh() {}, onReachBottom() {}, logPageView() {}, logButtonClick() {}, logAccess() {}, getActionFailureResult,
   getSessionToken, onSessionChanged, sessionChangedError,
   redirectToWithFallback,
   // 角标统计是页面的辅助读取，默认隔离网络；具体统计契约由调用方按需提供。

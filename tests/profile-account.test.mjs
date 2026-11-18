@@ -30,6 +30,8 @@ test('多人账号从实时名单选择就诊人，刷新恢复选择，删除�
     await page.loadPatients()
     assert.equal(page.currentPatient.value, null)
     page.selectCurrentPatient({ detail: { value: '1' } })
+    assert.equal(values.get(STORAGE_KEY_CURRENT_PATIENT_ID), '8')
+    page.selectCurrentPatient({ detail: { value: '1' } })
     assert.equal(values.get(STORAGE_KEY_CURRENT_PATIENT_ID), '9')
     rows.reverse()
     await page.loadPatients()

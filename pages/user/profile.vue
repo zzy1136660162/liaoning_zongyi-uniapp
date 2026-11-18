@@ -60,7 +60,10 @@
           </template>
         </view>
       </view>
-      <view class="patient-card">
+      <view
+        v-if="isLoggedIn"
+        class="patient-strip"
+      >
         <view class="card-emblem">
           <image
             src="/static/profile/patient.svg"
@@ -76,12 +79,6 @@
             class="patient-name"
           >
             正在加载…
-          </text>
-          <text
-            v-else-if="!isLoggedIn"
-            class="patient-name"
-          >
-            登录后查看
           </text>
           <text
             v-else-if="patientError"
@@ -108,41 +105,36 @@
             {{ currentPatient.idType || '证件' }}  {{ currentPatient.idNumberMasked }}
           </text>
         </view>
-        <template v-if="!patientLoading">
+        <view
+          v-if="!patientLoading"
+          class="patient-actions"
+        >
           <button
-            v-if="!isLoggedIn"
-            class="plain card-action"
-            @click="goToLogin"
-          >
-            登录 ›
-          </button>
-          <button
-            v-else-if="patientError"
+            v-if="patientError"
             class="plain card-action"
             @click="loadPatients"
           >
-            重试 ›
+            重试
           </button>
           <picker
-            v-else-if="patientRows.length > 1"
+            v-if="!patientError && patientRows.length > 1"
             mode="selector"
-            :range="patientRows"
+            :range="pickerRows"
             range-key="pickerLabel"
             :value="Math.max(0, patientRows.indexOf(currentPatient))"
             @change="selectCurrentPatient"
           >
-            <view class="card-action">
-              {{ currentPatient ? '切换' : '选择' }} ›
-            </view>
+            <button class="plain card-action">
+              {{ currentPatient ? '切换' : '选择' }}
+            </button>
           </picker>
           <button
-            v-else
             class="plain card-action"
             @click="goToPatientList"
           >
-            {{ currentPatient ? '管理' : '去添加' }} ›
+            {{ patientError || patientRows.length ? '管理' : '去添加' }}
           </button>
-        </template>
+        </view>
       </view>
     </view>
 
@@ -231,7 +223,7 @@
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 
 import { onShow, onUnload } from '@dcloudio/uni-app'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { logout } from '@/api/auth.js'
 import { fetchAccountProfile } from '@/utils/account.js'
 import { waitForSessionRecovery, requireAccountSession } from '@/utils/auth-session.js'
@@ -260,6 +252,10 @@ let pageActive = true
 
 const patientRows = ref([])
 const currentPatient = ref(null)
+// 未选择时保留占位项，确认首位就诊人也会触发选择变更。
+const pickerRows = computed(() => currentPatient.value
+  ? patientRows.value
+  : [{ pickerLabel: '请选择就诊人' }, ...patientRows.value])
 const patientError = ref(false)
 const patientLoading = ref(false)
 let patientRequestSequence = 0
@@ -295,8 +291,8 @@ const loadPatients = async () => {
 }
 
 const selectCurrentPatient = event => {
-  const patient = patientRows.value[Number(event.detail.value)]
-  if (!patient || !getSessionToken() || !isCurrentSession(patientListSession)) return
+  const patient = pickerRows.value[Number(event.detail.value)]
+  if (!patient?.id || !getSessionToken() || !isCurrentSession(patientListSession)) return
   try {
     uni.setStorageSync(STORAGE_KEY_CURRENT_PATIENT_ID, String(patient.id))
     currentPatient.value = patient
@@ -529,7 +525,6 @@ const handleContact = () => {
 const services = [
   { name: '我的收藏', icon: 'favorite', open: () => openAccountPage('/pages/favorites/index') },
   { name: '问题反馈', icon: 'feedback', open: () => openAccountPage('/pages/feedback/index') },
-  { name: '就诊人管理', icon: 'people', open: goToPatientList },
   { name: '收货地址', icon: 'address', open: goToAddressList },
   { name: '联系客服', icon: 'headset', open: handleContact }
 ]
@@ -574,7 +569,7 @@ onUnload(() => {
 .masthead {
   position: relative;
   overflow: hidden;
-  padding: 0 28rpx 0;
+  padding: 0 28rpx 22rpx;
   background: linear-gradient(105deg, #f2e5cf 0%, #e8cfab 51%, #cfa777 100%);
 }
 .herb {
@@ -590,7 +585,7 @@ onUnload(() => {
   display: flex;
   align-items: center;
   gap: 24rpx;
-  min-height: 200rpx;
+  min-height: 184rpx;
   padding: 14rpx 8rpx;
   box-sizing: border-box;
 }
@@ -615,23 +610,25 @@ onUnload(() => {
 .account-name, .identity-action { font-size: 41rpx; line-height: 1.45; font-weight: 600; color: #332d24; }
 .account-name, .patient-name, .account-phone, .patient-id { overflow-wrap: anywhere; word-break: break-all; }
 .account-phone { margin-top: 2rpx; font-size: 24rpx; color: #625039; letter-spacing: 1rpx; }
-.patient-card {
+.patient-strip {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 19rpx;
-  padding: 25rpx 26rpx;
-  min-height: 70rpx;
-  border-radius: 20rpx 20rpx 0 0;
-  background: linear-gradient(105deg, #35433f, #202d2b);
-  color: #fff;
+  gap: 16rpx;
+  padding: 12rpx 16rpx 12rpx 18rpx;
+  border: 1rpx solid #f8edda;
+  border-radius: 16rpx;
+  background: #fbf6ec;
+  color: #263630;
 }
-.card-emblem { display: flex; align-items: center; justify-content: center; width: 60rpx; height: 60rpx; border: 1rpx solid #787761; border-radius: 15rpx; }
-.card-icon { width: 43rpx; height: 43rpx; }
-.card-label { font-size: 22rpx; color: #e8d4ad; letter-spacing: 2rpx; }
-.patient-name { margin-top: 4rpx; font-size: 32rpx; font-weight: 600; }
-.patient-id { font-size: 22rpx; color: #d4dcd7; margin-top: 4rpx; }
-.card-action { display: flex; align-items: center; justify-content: center; min-height: 80rpx; min-width: 78rpx; font-size: 25rpx; color: #f5dfb7; }
+.card-emblem { display: flex; align-items: center; justify-content: center; flex: none; width: 52rpx; height: 52rpx; border-radius: 12rpx; background: #ebe9dc; }
+.card-icon { width: 39rpx; height: 39rpx; }
+.card-label { font-size: 22rpx; color: #655841; }
+.patient-name { font-size: 29rpx; font-weight: 600; }
+.patient-id { font-size: 22rpx; color: #676455; }
+.patient-actions { display: flex; align-items: center; gap: 4rpx; flex: none; }
+.card-action { display: flex; align-items: center; justify-content: center; min-height: 88rpx; min-width: 88rpx; padding: 0 8rpx; font-size: 25rpx; color: #38574b; }
+.patient-actions picker .card-action { font-weight: 600; }
 .sheet { background: white; padding: 0 34rpx; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; min-height: 93rpx; }
 .section-name { font-size: 32rpx; font-weight: 600; letter-spacing: 1rpx; }

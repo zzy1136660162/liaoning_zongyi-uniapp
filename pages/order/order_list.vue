@@ -3,9 +3,11 @@
     <!-- 标签页 -->
     <view class="tabs-sticky">
       <view class="order-search">
-        <uni-icons type="search" size="18" color="#8995a3" />
-        <input v-model="searchInput" class="order-search-input" placeholder="搜索商品名称 / 订单号" confirm-type="search" :maxlength="100" @confirm="submitSearch" />
-        <button v-if="searchInput || keyword" class="order-search-clear" aria-label="清空搜索" @click="clearSearch">×</button>
+        <view class="search-field">
+          <uni-icons type="search" size="18" color="#716a60" />
+          <input v-model="searchInput" class="order-search-input" placeholder="搜索商品名称或订单号" confirm-type="search" :maxlength="100" @confirm="submitSearch" />
+          <button v-if="searchInput || keyword" class="order-search-clear" aria-label="清空搜索" @click="clearSearch">×</button>
+        </view>
         <button class="order-search-submit" @click="submitSearch">搜索</button>
       </view>
       <scroll-view
@@ -15,12 +17,13 @@
         :show-scrollbar="false"
       >
         <view class="tabs-content">
-          <view
+          <button
             v-for="tab in tabs"
             :id="'order-tab-' + tab.key"
             :key="tab.key"
             class="tab-item"
             :class="{ active: activeTab === tab.key }"
+            :aria-label="tab.label + (activeTab === tab.key ? '，当前选中' : '')"
             @click="switchTab(tab.key)"
           >
             {{ tab.label }}
@@ -28,7 +31,7 @@
               v-if="tab.key === 'pending' && pendingCount > 0"
               class="tab-dot"
             />
-          </view>
+          </button>
         </view>
       </scroll-view>
     </view>
@@ -39,9 +42,13 @@
         v-if="hasLoaded && !loading && !loadError && orders.length === 0"
         class="empty"
       >
+        <view class="empty-icon">
+          <image src="/static/profile/parcel.svg" mode="aspectFit" />
+        </view>
         <text class="empty-text">
           {{ keyword ? '当前分类未找到相关订单' : '暂无订单' }}
         </text>
+        <button v-if="keyword" class="list-retry" @click="clearSearch">清除搜索条件</button>
       </view>
 
       <view
@@ -53,22 +60,17 @@
         @click="goToOrderDetail(order.id)"
       >
         <view class="order-header">
-          <view class="order-shop">
+          <button class="order-shop" @click.stop="goToMedicineList">
             <image
               class="order-shop-logo"
               src="https://smf.lntcm.com/static/shop/icon.png"
               mode="aspectFit"
             />
             <text class="order-shop-name">
-              辽宁中医院互联网医院
+              {{ HOSPITAL_NAME }}
             </text>
-            <view
-              class="order-shop-arrow"
-              @click.stop="goToMedicineList"
-            >
-              ›
-            </view>
-          </view>
+            <view class="order-shop-arrow" />
+          </button>
           <text
             class="order-status"
             :class="'s-' + order.status"
@@ -77,9 +79,9 @@
           </text>
         </view>
 
-        <view class="order-number-detail">
-          <text class="order-no">订单号: {{ getDisplayOrderNo(order) }}</text>
-          <text v-if="getDisplayOrderNo(order)" class="copy-order-no" @click.stop="copyOrderNo(getDisplayOrderNo(order))">复制</text>
+        <view v-if="getDisplayOrderNo(order)" class="order-number-detail">
+          <text class="order-no">订单号 {{ getDisplayOrderNo(order) }}</text>
+          <button class="copy-order-no" aria-label="复制订单号" @click.stop="copyOrderNo(getDisplayOrderNo(order))">复制</button>
         </view>
 
         <view
@@ -192,7 +194,7 @@
           <view class="order-summary">
             <view class="order-date">
               <text class="date-label">
-                下单时间:
+                下单时间
               </text>
               <text class="date-value">
                 {{ formatDate(order.createTime) }}
@@ -200,12 +202,12 @@
             </view>
             <view class="order-amount">
               <text class="amount-label">
-                {{ activeTab === 'unused' ? '整单实付款:' : '实付款:' }}
+                {{ order.amountSummary.payable ? '应付款' : (activeTab === 'unused' ? '整单实付款' : '实付款') }}
               </text>
               <text class="amount-value">
                 <text class="amount-currency">
-                  {{ getPaidAmountText(order) === '待确认' ? '' : '¥' }}
-                </text>{{ getPaidAmountText(order) }}
+                  {{ order.amountSummary.text === '待确认' ? '' : '¥' }}
+                </text>{{ order.amountSummary.text }}
               </text>
             </view>
           </view>
@@ -309,6 +311,7 @@ import { canPayOrder, getOrderStatusText, getRedeemStatusText } from '@/utils/or
 import { getSessionGeneration, getSessionToken, isCurrentSession, onSessionChanged } from '@/utils/session.js'
 import { redirectToWithFallback } from '@/utils/navigate.js'
 import { useProductImages } from '@/utils/product-image.js'
+import { HOSPITAL_NAME } from '@/utils/config.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import DoctorConsultation from '@/components/DoctorConsultation.vue'
 import { getDisplayOrderNo, getPaidAmountText, getRefundedAmountText } from '@/utils/order-display.js'
@@ -467,8 +470,19 @@ const mapOrderItem = (item = {}) => ({
   redeemVouchers: normalizeRedeemVouchers(item)
 })
 
+const orderAmountSummary = (order) => {
+  // 仅明确可续付且没有已收款记录时强调应付金额；异常收款与支付确认中沿用实付款口径。
+  const amount = order.payableAmount
+  if (canPayOrder(order) && !(Number(order.paidAmount) > 0) &&
+      amount != null && /^\d+(\.\d{1,2})?$/.test(String(amount)) && Number.isFinite(Number(amount))) {
+    return { payable: true, text: Number(amount).toFixed(2) }
+  }
+  return { payable: false, text: getPaidAmountText(order) }
+}
+
 const mapOrderListItem = (order = {}) => ({
   id: order.id,
+  amountSummary: orderAmountSummary(order),
   orderNo: order.orderNo,
   hisOrderNo: order.hisOrderNo,
   paidAmount: order.paidAmount,
@@ -661,21 +675,6 @@ const getStatusText = (status, order = null) => {
     orderStatus: status,
     hasRedeemVouchers: order ? hasRedeemEntitlement(order) : false
   })
-}
-
-// 获取状态颜色
-const getStatusColor = (status) => {
-  const colorMap = {
-    0: '#ff9900',
-    1: '#3388ff',
-    2: '#3388ff',
-    3: '#00cc66',
-    4: '#999999',
-    5: '#ff6b35',
-    6: '#007aff',
-    7: '#ff9500'
-  }
-  return colorMap[status] || '#333333'
 }
 
 // ✅ 取消订单
@@ -941,481 +940,130 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
-$order-bg: #f6f7fb;
-$card-bg: #ffffff;
-$text: #0f172a;
-$muted: #64748b;
-$border: #e7eef8;
-$primary: #2563eb;
+$ink: #263832;
+$muted: #676d66;
+$gold: #806038;
+$line: #eae8e0;
+$paper: #f6f5f1;
 
-$danger: #ef4444;
-$warning: #f59e0b;
-$success: #10b981;
-$info: #3b82f6;
+.order-list-page { min-height: 100vh; background: $paper; color: $ink; }
+button { margin: 0; padding: 0; border-radius: 0; background: transparent; color: inherit; line-height: 1.5; }
+button::after { border: none; }
+button:active { opacity: .75; }
 
-.order-list-page {
-  min-height: 100vh;
-  background: $order-bg;
-  color: $text;
-}
-
-/* 普通容器承担吸顶和完整遮挡，避免列表透过横向滚动组件的上沿。 */
-.tabs-sticky {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: $card-bg;
-}
-
-.order-number-detail { display: flex; align-items: baseline; gap: 10rpx; margin: 0 0 20rpx; }
-.order-number-detail .order-no { flex: 1; min-width: 0; word-break: break-all; font-size: 22rpx; color: #64748b; }
-.order-number-detail .copy-order-no { flex-shrink: 0; color: #2563eb; font-size: 22rpx; }
-.order-search { display: flex; align-items: center; gap: 14rpx; margin: 0 24rpx; padding: 16rpx 0 8rpx; }
-.order-search-input { flex: 1; min-width: 0; height: 68rpx; padding: 0 20rpx; border-radius: 12rpx; background: #f5f7f9; font-size: 26rpx; }
-.order-search-clear, .order-search-submit { padding: 0 12rpx; margin: 0; height: 76rpx; line-height: 76rpx; background: transparent; color: #377b9b; font-size: 26rpx; }
-.order-search-clear { color: #8995a3; font-size: 36rpx; }
-.order-search-clear::after, .order-search-submit::after { border: 0; }
-.order-refunded { display: block; text-align: right; margin-top: 10rpx; color: #a96b42; font-size: 24rpx; }
-.tabs {
-  flex-shrink: 0;
-  white-space: nowrap;
-  border-bottom: 1rpx solid $border;
-}
-
-.tabs-content {
-  display: inline-flex;
-  min-width: 100%;
-  padding: 18rpx 24rpx;
+/* 用不透明的吸顶区域承载搜索和横向筛选，滚动列表时保留当前筛选。 */
+.tabs-sticky { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1rpx solid $line; }
+.order-search {
+  display: flex;
+  align-items: center;
   gap: 16rpx;
+  padding: 18rpx 26rpx 10rpx;
+  background: linear-gradient(180deg, #faf7f0, white);
+}
+.search-field {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 14rpx;
+  height: 72rpx;
   box-sizing: border-box;
-  vertical-align: top;
+  padding: 0 20rpx;
+  border: 1rpx solid #dfded4;
+  border-radius: 16rpx;
+  background: white;
 }
-
-.tab-item {
-  position: relative;
-  flex: 1 0 auto;
-  text-align: center;
-  padding: 14rpx 24rpx;
-  font-size: 28rpx;
-  line-height: 1.5;
-  color: $muted;
-  background: #f6f7fb;
-  border-radius: 12rpx;
+.order-search-input { flex: 1; min-width: 0; height: 100%; font-size: 27rpx; color: $ink; }
+.order-search-clear { flex: none; min-width: 56rpx; font-size: 38rpx; line-height: 68rpx; color: $muted; }
+.order-search-submit { flex: none; padding: 0 27rpx; line-height: 72rpx; border-radius: 16rpx; font-size: 27rpx; background: $ink; color: white; }
+.tabs { white-space: nowrap; }
+.tabs-content { display: inline-flex; min-width: 100%; box-sizing: border-box; padding: 0 18rpx; vertical-align: top; }
+.tab-item { position: relative; flex: 1 0 auto; padding: 24rpx 20rpx; color: $muted; font-size: 27rpx; }
+.tab-item.active { color: $ink; font-weight: 600; }
+.tab-item.active::before {
+  content: ''; position: absolute; bottom: 0; left: 50%;
+  width: 32rpx; height: 5rpx; border-radius: 5rpx; background: #a17c49; transform: translateX(-50%);
 }
+.tab-dot { position: absolute; top: 20rpx; right: 10rpx; width: 10rpx; height: 10rpx; border-radius: 50%; background: #ac5241; }
 
-/* 有待支付订单时在标签右上角显示红点提醒 */
-.tab-dot {
-  position: absolute;
-  top: 8rpx;
-  right: 10rpx;
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
-  background: #ff3b30;
-}
-
-.tab-item.active {
-  color: $primary;
-  background: #eff6ff;
-  font-weight: 700;
-}
-
-/* 列表容器：底部留安全区 */
-.order-list {
-  padding: 20rpx 24rpx calc(140rpx + env(safe-area-inset-bottom));
-  box-sizing: border-box;
-}
-
-.list-status {
-  padding: 24rpx 0;
-  text-align: center;
-  color: $muted;
-  font-size: 26rpx;
-}
-
-.list-retry {
-  font-size: 26rpx;
-  color: $primary;
-  background: transparent;
-}
-
-.list-retry::after {
-  border: none;
-}
-
-.empty {
-  text-align: center;
-  padding: 220rpx 0;
-}
-
-.empty-text {
-  font-size: 28rpx;
-  color: rgba(100, 116, 139, 0.9);
-}
-
+.order-list { padding: 22rpx 24rpx calc(142rpx + env(safe-area-inset-bottom)); box-sizing: border-box; }
 .order-item {
-  background: $card-bg;
-  border-radius: 20rpx;
-  margin-bottom: 20rpx;
-  padding: 24rpx;
   overflow: hidden;
+  margin-bottom: 22rpx;
+  padding: 0 26rpx 22rpx;
+  border: 1rpx solid $line;
+  border-radius: 22rpx;
+  background: white;
+  box-shadow: 0 3rpx 12rpx rgba(51, 55, 42, .025);
 }
-
-.order-item--hover {
-  background: #f8fafc;
-}
-
-.order-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding-bottom: 24rpx;
-}
-
-.order-shop {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  margin-right: 16rpx;
-}
-
-.order-shop-logo {
-  width: 36rpx;
-  height: 36rpx;
-  margin-right: 12rpx;
-  flex-shrink: 0;
-  border-radius: 6rpx;
-}
-
-.order-shop-name {
-  font-size: 30rpx;
-  font-family: 'PingFang SC';
-  font-weight: 500;
-  color: #1f2937;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.order-shop-arrow {
-  flex-shrink: 0;
-  margin-left: 6rpx;
-  padding: 0 6rpx;
-  font-size: 32rpx;
-  line-height: 1;
-  color: #9ca3af;
-}
-
+.order-item--hover { background: #fcfbf8; }
+.order-header { display: flex; align-items: center; justify-content: space-between; gap: 14rpx; min-height: 86rpx; }
+.order-shop { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; gap: 10rpx; padding: 12rpx 0; text-align: left; }
+.order-shop-logo { flex: none; width: 37rpx; height: 37rpx; border-radius: 8rpx; }
+.order-shop-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 28rpx; color: $ink; font-weight: 600; }
+.order-shop-arrow { flex: none; width: 8rpx; height: 8rpx; margin-right: 4rpx; border-top: 2rpx solid #95998e; border-right: 2rpx solid #95998e; transform: rotate(45deg); }
 .order-status {
-  flex-shrink: 0;
-  max-width: 42%;
-  font-size: 26rpx;
-  font-weight: 600;
-  line-height: 1.5;
-  text-align: right;
-  word-break: break-all;
-}
-
-/* 0待支付 1待发货 2待收货 3已完成 4已取消 */
-.order-status.s-0 { color: $warning; }
-.order-status.s-1 { color: $info; }
-.order-status.s-2 { color: $info; }
-.order-status.s-3 { color: $success; }
-.order-status.s-4 { color: #94a3b8; }
-
-/* 退货状态 */
-.order-status.s-5 { color: #ff6b35; }
-.order-status.s-6 { color: #007aff; }
-.order-status.s-7 { color: #ff9500; }
-
-.order-date {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4rpx 8rpx;
-  min-width: 0;
-  font-size: 22rpx;
-  color: $muted;
-  line-height: 1.5;
-}
-
-.date-value {
-  word-break: break-all;
-}
-
-.order-products {
-  margin-bottom: 20rpx;
-}
-
-.product-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16rpx;
-  padding-bottom: 24rpx;
-}
-
-.product-item:last-child {
-  padding-bottom: 0;
-}
-
-.product-name {
-  font-size: 28rpx;
-  color: $text;
-  line-height: 1.5;
-  font-weight: 600;
-  word-break: break-all;
-}
-
-.product-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 16rpx;
-}
-
-.product-image {
-  width: 160rpx;
-  height: 160rpx;
-  border-radius: 12rpx;
-  flex-shrink: 0;
-  background: #f6f7fb;
-}
-
-.product-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-}
-
-.order-product-meta {
-  font-size: 24rpx;
-  color: $muted;
-  line-height: 1.5;
-  word-break: break-all;
-}
-
-.product-side {
-  flex-shrink: 0;
-  min-width: 96rpx;
-  max-width: 190rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10rpx;
-  text-align: right;
-  word-break: break-all;
-}
-
-.product-no-reason-tip {
-  font-size: 22rpx;
-  color: #9e6e40;
-  line-height: 1.5;
-}
-
-.product-refund-summary {
-  font-size: 22rpx;
-  color: #b45309;
-  line-height: 1.5;
-}
-
-.refund-contact-tip {
-  margin-bottom: 14rpx;
-  padding: 14rpx 18rpx;
-  border-radius: 12rpx;
-  background: #f8fafc;
-  font-size: 24rpx;
-  color: #64748b;
-  line-height: 1.5;
-}
-
-.product-quantity {
-  font-size: 24rpx;
-  color: $muted;
-  line-height: 1.5;
-}
-
-.product-subtotal {
-  font-size: 28rpx;
-  color: $text;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.order-more {
-  margin-top: 8rpx;
-  padding: 16rpx 0 0;
-  font-size: 24rpx;
-  color: $primary;
-  text-align: right;
-}
-
-.order-products-empty {
-  margin: 12rpx 0 16rpx;
-  padding: 18rpx;
-  border-radius: 12rpx;
-  background: #f8fafc;
-  color: $muted;
-  font-size: 24rpx;
-}
-
-.order-redeem-summary {
-  margin-bottom: 16rpx;
-  padding: 14rpx 18rpx;
-  border-radius: 12rpx;
-  background: #eff6ff;
-  color: $primary;
-  font-size: 24rpx;
-  line-height: 1.6;
-}
-
-.order-footer {
-  padding-top: 8rpx;
-}
-
-.order-summary {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12rpx 16rpx;
-}
-
-.order-amount {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: baseline;
-  margin-left: auto;
-  gap: 8rpx;
-  max-width: 100%;
-}
-
-.amount-label {
-  font-size: 24rpx;
-  color: $text;
-  white-space: nowrap;
-}
-
-.amount-value {
-  font-size: 36rpx;
-  color: $danger;
-  font-weight: 700;
-  line-height: 1.3;
-  word-break: break-all;
-}
-
-.amount-currency {
-  margin-right: 2rpx;
-  font-size: 24rpx;
-}
-
-.order-extra-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin-top: 16rpx;
-  padding-top: 16rpx;
-  border-top: 1rpx solid #f1f2f4;
-}
-
-.order-extra-actions {
-  display: flex;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8rpx;
-  overflow: hidden;
-}
-
-.extra-btn {
-  flex-shrink: 0;
-  margin: 0;
-  padding: 0 12rpx;
-  height: 58rpx;
-  line-height: 56rpx;
-  font-size: 24rpx;
-  border-radius: 10rpx;
-  background: #f6f7fb;
-  color: #1f2937;
-  border: 1rpx solid #eceef1;
-  box-sizing: border-box;
-  white-space: nowrap;
-  transition: transform 100ms ease, opacity 100ms ease;
-}
-
-.extra-btn::after {
-  border: none;
-}
-
-.extra-btn:active {
-  transform: scale(0.98);
-  opacity: 0.92;
-}
-
-.order-logistics {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  padding: 14rpx 18rpx;
-  margin-bottom: 16rpx;
-  background: #f8fafc;
-  border-radius: 12rpx;
-}
-
-.order-logistics-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8rpx 16rpx;
-  font-size: 24rpx;
-  line-height: 1.6;
-}
-
-.order-logistics-logo {
-  flex-shrink: 0;
-  align-self: center;
-  width: 32rpx;
-  height: 32rpx;
-}
-
-.order-logistics-label { color: #64748b; }
-.order-logistics-no { color: #334155; word-break: break-all; }
-.copy-logistics-btn {
-  flex-shrink: 0;
-  margin: 0;
-  padding: 0 18rpx;
-  line-height: 52rpx;
-  font-size: 24rpx;
-  color: $primary;
-  background: #eff6ff;
+  flex: none;
+  max-width: 40%;
+  padding: 5rpx 13rpx;
   border-radius: 8rpx;
-}
-.copy-logistics-btn::after { border: none; }
-
-.cancel-btn {
-  background: #f6f7fb;
+  background: #f1f2ef;
   color: $muted;
-}
-
-.pay-btn {
-  order: 1;
-  background: $danger;
-  color: #fff;
+  font-size: 24rpx;
+  line-height: 1.5;
+  text-align: center;
   font-weight: 600;
+  word-break: break-all;
 }
+.order-status.s-0, .order-status.s-5, .order-status.s-6 { color: #865523; background: #faf0de; }
+.order-status.s-1, .order-status.s-2 { color: #31574a; background: #e9f1ea; }
+.order-status.s-3 { color: #46614d; background: #f0f4ec; }
+.order-number-detail { display: flex; align-items: center; gap: 16rpx; padding-bottom: 11rpx; font-size: 23rpx; color: $muted; }
+.order-no { min-width: 0; word-break: break-all; font-variant-numeric: tabular-nums; }
+.copy-order-no { flex: none; min-width: 64rpx; padding: 9rpx 2rpx; color: $gold; font-size: 23rpx; }
+.order-products { padding: 21rpx 0 19rpx; border-top: 1rpx solid $line; }
+.product-item, .product-main { display: flex; min-width: 0; align-items: flex-start; gap: 18rpx; }
+.product-item + .product-item { margin-top: 24rpx; }
+.product-main { flex: 1; }
+.product-image { flex: none; width: 122rpx; height: 122rpx; border-radius: 13rpx; background: $paper; }
+.product-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5rpx; }
+.product-name { color: $ink; font-size: 30rpx; font-weight: 600; line-height: 1.45; word-break: break-all; }
+.order-product-meta, .product-quantity { color: $muted; font-size: 24rpx; line-height: 1.5; }
+.order-product-meta { word-break: break-all; }
+.product-side { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 6rpx; max-width: 27%; text-align: right; word-break: break-all; }
+.product-subtotal { font-size: 27rpx; font-weight: 500; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.product-no-reason-tip, .product-refund-summary { font-size: 22rpx; line-height: 1.55; color: $gold; }
+.order-more { margin-top: 12rpx; padding: 10rpx 0; text-align: right; font-size: 25rpx; color: $gold; }
 
-.confirm-btn {
-  order: 1;
-  background: $primary;
-  color: #fff;
-  font-weight: 600;
+.order-products-empty, .order-redeem-summary, .refund-contact-tip, .order-logistics {
+  margin-bottom: 16rpx; padding: 15rpx 18rpx; border-radius: 12rpx; background: #f6f6f1;
+  color: $muted; font-size: 24rpx; line-height: 1.6;
 }
+.order-redeem-summary { background: #eef3eb; color: #385744; }
+.refund-contact-tip { background: #faf4e9; color: #795e3c; }
+.order-logistics { display: flex; gap: 14rpx; align-items: center; }
+.order-logistics-info { display: flex; align-items: center; flex: 1; min-width: 0; flex-wrap: wrap; gap: 4rpx 12rpx; }
+.order-logistics-logo { width: 32rpx; height: 32rpx; flex: none; }
+.order-logistics-no { word-break: break-all; color: $ink; }
+.copy-logistics-btn { flex: none; padding: 8rpx; color: $gold; font-size: 24rpx; }
 
+.order-footer { padding-top: 16rpx; border-top: 1rpx solid $line; }
+.order-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8rpx 16rpx; flex-wrap: wrap; }
+.order-date { display: flex; flex-wrap: wrap; gap: 4rpx 9rpx; color: $muted; font-size: 22rpx; line-height: 1.5; }
+.date-value { word-break: break-all; }
+.order-amount { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; gap: 10rpx; max-width: 100%; }
+.amount-label { font-size: 24rpx; color: $muted; }
+.amount-value { color: $ink; font-size: 38rpx; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.3; word-break: break-all; }
+.amount-currency { font-size: 25rpx; padding-right: 3rpx; }
+.order-refunded { display: block; margin-top: 8rpx; color: $gold; text-align: right; font-size: 24rpx; }
+.order-extra-row { margin-top: 18rpx; }
+.order-extra-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 12rpx; }
+.extra-btn { flex: none; box-sizing: border-box; padding: 0 19rpx; line-height: 64rpx; border: 1rpx solid #d9dcd3; border-radius: 12rpx; color: #414c45; font-size: 24rpx; }
+.pay-btn, .confirm-btn { order: 1; border-color: $ink; background: $ink; color: #fff; font-weight: 600; }
+.list-status { padding: 22rpx 0; text-align: center; font-size: 25rpx; color: $muted; }
+.list-retry { display: inline-block; padding: 14rpx 28rpx; color: $gold; font-size: 26rpx; }
+.empty { display: flex; align-items: center; flex-direction: column; gap: 16rpx; text-align: center; padding: 116rpx 24rpx; }
+.empty-icon { display: flex; align-items: center; justify-content: center; width: 106rpx; height: 106rpx; border-radius: 50%; background: #eee7d9; }
+.empty-icon image { width: 58rpx; height: 58rpx; }
+.empty-text { color: $muted; font-size: 28rpx; }
 </style>
