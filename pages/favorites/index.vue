@@ -26,7 +26,7 @@
         <uni-icons
           type="star"
           size="36"
-          color="#9b753e"
+          color="inherit"
         />
       </view>
       <text class="empty-title">
@@ -74,7 +74,7 @@
           <uni-icons
             type="right"
             size="15"
-            color="#a59b8e"
+            color="inherit"
           />
         </button>
       </view>
@@ -173,23 +173,26 @@ onUnload(() => {
 })
 </script>
 
-<style scoped>
-.page { min-height: 100vh; box-sizing: border-box; background: #f6f5f2; color: #292e32; padding: 32rpx 26rpx calc(40rpx + env(safe-area-inset-bottom)); }
-.summary { margin: 0 8rpx 22rpx; color: #726b62; font-size: 25rpx; }
-.list, .notice { background: #fff; border-radius: 24rpx; }
-.item { display: flex; align-items: center; gap: 24rpx; margin: 0 24rpx; padding: 27rpx 0; background: transparent; border-radius: 0; text-align: left; line-height: 1.45; }
-.item + .item { border-top: 1rpx solid #edeae5; }
+<style scoped lang="scss">
+.page { min-height: 100vh; box-sizing: border-box; background: $mini-page; color: $mini-text; padding: 32rpx 26rpx calc(40rpx + env(safe-area-inset-bottom)); }
+.summary { margin: 0 8rpx 22rpx; color: $mini-text-muted; font-size: 25rpx; }
+.list, .notice { background: $mini-surface; border-radius: 24rpx; }
+.item { display: flex; align-items: center; gap: 24rpx; margin: 0 24rpx; padding: 27rpx 0; background: transparent; border-radius: 0; text-align: left; line-height: 1.45; color: $mini-decoration; }
+.item + .item { border-top: 1rpx solid $mini-border; }
 button::after { border: 0; }
-.cover { width: 130rpx; height: 130rpx; flex: none; border-radius: 14rpx; background: #f4f2ee; }
+.cover { width: 130rpx; height: 130rpx; flex: none; border-radius: 14rpx; background: $mini-page; }
 .details { display: flex; flex-direction: column; align-items: flex-start; gap: 5rpx; flex: 1; min-width: 0; }
-.kind { font-size: 22rpx; color: #85642f; }
-.name { color: #282f33; font-weight: 600; font-size: 30rpx; overflow-wrap: anywhere; }
-.subtitle { font-size: 24rpx; color: #706d66; }
+.kind { font-size: 22rpx; color: $mini-primary; }
+.name { color: $mini-text; font-weight: 600; font-size: 30rpx; overflow-wrap: anywhere; }
+.subtitle { font-size: 24rpx; color: $mini-text-muted; }
 .name, .subtitle { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.pager { display: flex; align-items: center; justify-content: center; gap: 32rpx; margin-top: 30rpx; font-size: 24rpx; color: #736e67; }
-.pager button, .action { margin: 0; padding: 0 28rpx; border-radius: 12rpx; background: white; font-size: 26rpx; line-height: 80rpx; }
-.notice { padding: 92rpx 36rpx; display: flex; flex-direction: column; gap: 18rpx; align-items: center; text-align: center; color: #716c64; font-size: 26rpx; line-height: 1.6; }
-.empty-icon { width: 100rpx; height: 100rpx; border-radius: 50%; background: #f7f1e7; display: flex; align-items: center; justify-content: center; }
-.empty-title { font-size: 33rpx; font-weight: 600; color: #2e3335; }
-.action { margin-top: 16rpx; background: #303a40; color: #fff; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 32rpx; margin-top: 30rpx; font-size: 24rpx; color: $mini-text-muted; }
+.pager button, .action { margin: 0; padding: 0 28rpx; border-radius: 12rpx; font-size: 26rpx; line-height: 80rpx; }
+.pager button { background: $mini-surface; color: $mini-primary; }
+.pager button[disabled] { background: $mini-button-disabled-bg; color: $mini-button-disabled-text; }
+.notice { padding: 92rpx 36rpx; display: flex; flex-direction: column; gap: 18rpx; align-items: center; text-align: center; color: $mini-text-muted; font-size: 26rpx; line-height: 1.6; }
+.empty-icon { width: 100rpx; height: 100rpx; border-radius: 50%; background: $mini-primary-soft; color: $mini-primary; display: flex; align-items: center; justify-content: center; }
+.empty-title { font-size: 33rpx; font-weight: 600; color: $mini-text; }
+.action { margin-top: 16rpx; background: $mini-button-primary-bg; color: $mini-button-primary-text; }
+.action:active { background: $mini-button-primary-pressed-bg; }
 </style>

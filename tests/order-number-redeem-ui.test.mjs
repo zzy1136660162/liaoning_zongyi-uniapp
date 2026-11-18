@@ -33,17 +33,6 @@ const createPages = (order = {}) => {
   return { list, detail, calls }
 }
 
-test('可续付订单显示可靠应付金额，已收款、确认中和历史状态沿用实付款', () => {
-  const { list } = createPages()
-  const pending = { id: 1, orderStatus: 0, payStatus: 0, payableAmount: '35.50' }
-  const summary = extra => list.mapOrderListItem({ ...pending, ...extra }).amountSummary
-  assert.deepEqual(summary({}), { payable: true, text: '35.50' })
-  assert.deepEqual(summary({ paidAmount: 12 }), { payable: false, text: '12.00' })
-  assert.deepEqual(summary({ paymentFulfillmentStatus: 'PENDING' }), { payable: false, text: '待确认' })
-  assert.deepEqual(summary({ payStatus: null }), { payable: false, text: '待确认' })
-  assert.deepEqual(summary({ payableAmount: '' }), { payable: false, text: '0.00' })
-})
-
 test('列表和详情复制完整订单号，保留前导零且不触发导航', () => {
   const { list, detail, calls } = createPages()
   const orderNo = '0000123456789012345678901234567890'

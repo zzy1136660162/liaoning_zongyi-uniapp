@@ -546,13 +546,13 @@ onUnload(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .profile-page {
   min-height: 100vh;
   box-sizing: border-box;
   padding-bottom: calc(132rpx + env(safe-area-inset-bottom));
-  color: #252e2d;
-  background: #f6f5f1;
+  color: $mini-text;
+  background: $mini-page;
 }
 .plain {
   margin: 0;
@@ -570,7 +570,7 @@ onUnload(() => {
   position: relative;
   overflow: hidden;
   padding: 0 28rpx 22rpx;
-  background: linear-gradient(105deg, #f2e5cf 0%, #e8cfab 51%, #cfa777 100%);
+  background: $mini-header-bg;
 }
 .herb {
   position: absolute;
@@ -597,55 +597,55 @@ onUnload(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3rpx solid #fff7e6;
+  border: 3rpx solid $mini-surface;
   border-radius: 50%;
-  background: #fbf5e8;
-  box-shadow: 0 3rpx 14rpx rgba(95, 68, 33, .1);
+  background: $mini-primary-soft;
+  box-shadow: 0 3rpx 14rpx rgba($mini-text, .1);
   overflow: hidden;
 }
 .avatar-photo { width: 100%; height: 100%; }
 .avatar-symbol { width: 63rpx; height: 63rpx; }
 .account, .patient-info { display: flex; flex: 1; min-width: 0; flex-direction: column; }
-.institution { font-size: 22rpx; letter-spacing: 2rpx; color: #655032; }
-.account-name, .identity-action { font-size: 41rpx; line-height: 1.45; font-weight: 600; color: #332d24; }
+.institution { font-size: 22rpx; letter-spacing: 2rpx; color: $mini-text-muted; }
+.account-name, .identity-action { font-size: 41rpx; line-height: 1.45; font-weight: 600; }
+.identity-action { color: $mini-primary-pressed; }
 .account-name, .patient-name, .account-phone, .patient-id { overflow-wrap: anywhere; word-break: break-all; }
-.account-phone { margin-top: 2rpx; font-size: 24rpx; color: #625039; letter-spacing: 1rpx; }
+.account-phone { margin-top: 2rpx; font-size: 24rpx; color: $mini-text-muted; letter-spacing: 1rpx; }
 .patient-strip {
   position: relative;
   display: flex;
   align-items: center;
   gap: 16rpx;
   padding: 12rpx 16rpx 12rpx 18rpx;
-  border: 1rpx solid #f8edda;
+  border: 1rpx solid $mini-primary-border;
   border-radius: 16rpx;
-  background: #fbf6ec;
-  color: #263630;
+  background: $mini-surface;
 }
-.card-emblem { display: flex; align-items: center; justify-content: center; flex: none; width: 52rpx; height: 52rpx; border-radius: 12rpx; background: #ebe9dc; }
+.card-emblem { display: flex; align-items: center; justify-content: center; flex: none; width: 52rpx; height: 52rpx; border-radius: 12rpx; background: $mini-primary-soft; }
 .card-icon { width: 39rpx; height: 39rpx; }
-.card-label { font-size: 22rpx; color: #655841; }
+.card-label { font-size: 22rpx; color: $mini-text-muted; }
 .patient-name { font-size: 29rpx; font-weight: 600; }
-.patient-id { font-size: 22rpx; color: #676455; }
+.patient-id { font-size: 22rpx; color: $mini-text-muted; }
 .patient-actions { display: flex; align-items: center; gap: 4rpx; flex: none; }
-.card-action { display: flex; align-items: center; justify-content: center; min-height: 88rpx; min-width: 88rpx; padding: 0 8rpx; font-size: 25rpx; color: #38574b; }
+.card-action { display: flex; align-items: center; justify-content: center; min-height: 88rpx; min-width: 88rpx; padding: 0 8rpx; font-size: 25rpx; color: $mini-primary; }
 .patient-actions picker .card-action { font-weight: 600; }
-.sheet { background: white; padding: 0 34rpx; }
+.sheet { background: $mini-surface; padding: 0 34rpx; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; min-height: 93rpx; }
 .section-name { font-size: 32rpx; font-weight: 600; letter-spacing: 1rpx; }
-.all-orders { display: flex; align-items: center; gap: 12rpx; min-height: 82rpx; font-size: 24rpx; color: #646965; }
-.chevron { display: inline-block; width: 10rpx; height: 10rpx; border-top: 2rpx solid #a5a9a5; border-right: 2rpx solid #a5a9a5; transform: rotate(45deg); margin-right: 4rpx; }
+.all-orders { display: flex; align-items: center; gap: 12rpx; min-height: 82rpx; font-size: 24rpx; color: $mini-primary; }
+.chevron { display: inline-block; width: 10rpx; height: 10rpx; border-top: 2rpx solid $mini-decoration; border-right: 2rpx solid $mini-decoration; transform: rotate(45deg); margin-right: 4rpx; }
 .order-grid { display: flex; padding: 5rpx 0 27rpx; }
 .order-entry { flex: 1; display: flex; align-items: center; flex-direction: column; gap: 12rpx; padding: 8rpx 0; font-size: 26rpx; }
 .order-image { position: relative; width: 52rpx; height: 52rpx; }
 .order-icon { display: block; width: 100%; height: 100%; }
-.badge { position: absolute; left: 78%; top: -8rpx; padding: 0 7rpx; min-width: 25rpx; box-sizing: border-box; border: 2rpx solid white; border-radius: 20rpx; background: #a24639; color: white; font-size: 18rpx; line-height: 26rpx; text-align: center; }
+.badge { position: absolute; left: 78%; top: -8rpx; padding: 0 7rpx; min-width: 25rpx; box-sizing: border-box; border: 2rpx solid $mini-surface; border-radius: 20rpx; background: $mini-danger-text; color: $mini-surface; font-size: 18rpx; line-height: 26rpx; text-align: center; }
 .services { margin-top: 16rpx; }
 .services .section-heading { min-height: 86rpx; }
 .service-row, .row-body { display: flex; align-items: center; }
 .service-row { width: 100%; gap: 25rpx; }
 .row-icon { width: 43rpx; height: 43rpx; flex: none; }
-.row-body { flex: 1; justify-content: space-between; min-height: 92rpx; font-size: 29rpx; border-bottom: 1rpx solid #eeefea; }
+.row-body { flex: 1; justify-content: space-between; min-height: 92rpx; font-size: 29rpx; border-bottom: 1rpx solid $mini-border; }
 .service-row:last-child .row-body { border-bottom: none; }
-.logout { margin: 18rpx 0 0; width: 100%; text-align: center; line-height: 87rpx; font-size: 26rpx; color: #656a65; background: white; }
+.logout { margin: 18rpx 0 0; width: 100%; text-align: center; line-height: 87rpx; font-size: 26rpx; color: $mini-text-muted; background: $mini-surface; }
 .order-entry:active, .service-row:active, .all-orders:active, .card-action:active { opacity: .65; }
 </style>

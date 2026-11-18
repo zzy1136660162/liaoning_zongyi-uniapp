@@ -1,0 +1,40 @@
+// 基础色板
+$mini-sky-50: #eff8ff;
+$mini-sky-100: #e0f1ff;
+$mini-sky-200: #c8e4fb;
+$mini-sky-300: #addbfb;
+$mini-sky-600: #1976c7;
+$mini-sky-700: #125e9f;
+$mini-slate-50: #f3f7fc;
+$mini-slate-100: #e4ecf4;
+$mini-slate-200: #d3e0ec;
+$mini-slate-500: #7c91a5;
+$mini-slate-600: #53697e;
+$mini-slate-900: #20334a;
+$mini-white: #fff;
+
+// 语义色
+$mini-primary: $mini-sky-600;
+$mini-primary-pressed: $mini-sky-700;
+$mini-primary-soft: $mini-sky-100;
+$mini-primary-border: $mini-sky-200;
+$mini-surface: $mini-white;
+$mini-page: $mini-slate-50;
+$mini-text: $mini-slate-900;
+$mini-text-muted: $mini-slate-600;
+$mini-border: $mini-slate-100;
+$mini-outline: $mini-slate-200;
+$mini-decoration: $mini-slate-500;
+$mini-danger-text: #a94043;
+$mini-warning-text: #805720;
+$mini-warning-bg: #faf2e3;
+$mini-success-text: #306447;
+$mini-success-bg: #edf7f1;
+
+// 组件配色
+$mini-header-bg: linear-gradient(105deg, $mini-sky-50 0%, $mini-sky-100 51%, $mini-sky-300 100%);
+$mini-button-primary-bg: $mini-primary;
+$mini-button-primary-text: $mini-surface;
+$mini-button-primary-pressed-bg: $mini-primary-pressed;
+$mini-button-disabled-bg: $mini-border;
+$mini-button-disabled-text: $mini-text-muted;
