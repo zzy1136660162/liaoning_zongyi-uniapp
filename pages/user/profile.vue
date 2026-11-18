@@ -816,7 +816,7 @@ onUnload(() => {
   align-items: center;
   gap: 24rpx;
   min-width: 0;
-  padding: 40rpx 30rpx 30rpx;
+  padding: 40rpx 30rpx 60rpx;
 }
 
 .avatar-box {
