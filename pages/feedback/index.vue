@@ -8,7 +8,7 @@
         <uni-icons
           type="checkmarkempty"
           size="30"
-          color="#806029"
+          color="inherit"
         />
       </view>
       <text class="heading">
@@ -128,19 +128,19 @@ export default {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .feedback-page {
   min-height: 100vh;
   padding: 32rpx 24rpx;
   box-sizing: border-box;
-  background: #f6f5f1;
-  color: #292b29;
+  background: $mini-page;
+  color: $mini-text;
 }
 .panel {
   padding: 40rpx 32rpx;
-  border: 1rpx solid #e8e5dd;
+  border: 1rpx solid $mini-border;
   border-radius: 24rpx;
-  background: #fff;
+  background: $mini-surface;
 }
 .heading {
   display: block;
@@ -150,12 +150,12 @@ export default {
 .editor {
   margin-top: 26rpx;
   padding: 24rpx;
-  border: 1rpx solid #dcd9d0;
+  border: 1rpx solid $mini-outline;
   border-radius: 12rpx;
-  background: #fcfbf8;
+  background: $mini-page;
 }
 .editor:focus-within {
-  border-color: #9b7d4f;
+  border-color: $mini-primary;
 }
 .description {
   width: 100%;
@@ -164,7 +164,7 @@ export default {
   line-height: 1.65;
 }
 .placeholder, .counter {
-  color: #77766d;
+  color: $mini-text-muted;
 }
 .counter {
   display: block;
@@ -175,14 +175,14 @@ export default {
 .error {
   display: block;
   margin-top: 16rpx;
-  color: #a24437;
+  color: $mini-danger-text;
   font-size: 26rpx;
 }
 .action {
   margin-top: 36rpx;
   border-radius: 12rpx;
-  color: #fff;
-  background: #313332;
+  color: $mini-button-primary-text;
+  background: $mini-button-primary-bg;
   font-size: 30rpx;
   line-height: 88rpx;
   font-weight: 600;
@@ -190,9 +190,12 @@ export default {
 .action::after {
   border: 0;
 }
+.action:active {
+  background: $mini-button-primary-pressed-bg;
+}
 .action[disabled] {
-  background: #777872;
-  color: #fff;
+  background: $mini-button-disabled-bg;
+  color: $mini-button-disabled-text;
 }
 .receipt {
   text-align: center;
@@ -205,6 +208,7 @@ export default {
   height: 96rpx;
   margin: 0 auto 24rpx;
   border-radius: 50%;
-  background: #f3e9ce;
+  background: $mini-success-bg;
+  color: $mini-success-text;
 }
 </style>

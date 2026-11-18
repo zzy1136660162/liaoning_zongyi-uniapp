@@ -1,22 +1,22 @@
 <template>
   <view class="tab-bar">
     <view class="tab-item" :class="{ active: currentTab === 'home' }" @click="switchTab('home')">
-      <uni-icons type="home" :size="26" :color="currentTab === 'home' ? '#1890ff' : '#8c8c8c'"></uni-icons>
+      <uni-icons type="home" :size="26" color="inherit"></uni-icons>
       <text class="tab-text">首页</text>
     </view>
     <view class="tab-item" :class="{ active: currentTab === 'cart' }" @click="switchTab('cart')">
       <view class="tab-icon-wrapper">
-        <uni-icons type="cart" :size="26" :color="currentTab === 'cart' ? '#1890ff' : '#8c8c8c'"></uni-icons>
+        <uni-icons type="cart" :size="26" color="inherit"></uni-icons>
         <view class="tab-badge" v-if="cartCount > 0">{{ cartCount > 99 ? '99+' : cartCount }}</view>
       </view>
       <text class="tab-text">购物车</text>
     </view>
     <view class="tab-item" :class="{ active: currentTab === 'order' }" @click="switchTab('order')">
-      <uni-icons type="list" :size="26" :color="currentTab === 'order' ? '#1890ff' : '#8c8c8c'"></uni-icons>
+      <uni-icons type="list" :size="26" color="inherit"></uni-icons>
       <text class="tab-text">订单</text>
     </view>
     <view class="tab-item" :class="{ active: currentTab === 'mine' }" @click="switchTab('mine')">
-      <uni-icons type="person" :size="26" :color="currentTab === 'mine' ? '#1890ff' : '#8c8c8c'"></uni-icons>
+      <uni-icons type="person" :size="26" color="inherit"></uni-icons>
       <text class="tab-text">我的</text>
     </view>
   </view>
@@ -99,8 +99,8 @@ export default {
   left: 0;
   right: 0;
   height: 100rpx;
-  background: #ffffff;
-  border-top: 1rpx solid #e8e8e8;
+  background: $mini-surface;
+  border-top: 1rpx solid $mini-border;
   display: flex;
   align-items: center;
   justify-content: space-around;
@@ -117,6 +117,7 @@ export default {
   justify-content: center;
   padding: 12rpx 0;
   position: relative;
+  color: $mini-text-muted;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -125,8 +126,11 @@ export default {
   transform: scale(0.96);
 }
 
+.tab-item.active {
+  color: $mini-primary;
+}
+
 .tab-item.active .tab-text {
-  color: #1890ff;
   font-weight: 500;
 }
 
@@ -144,8 +148,8 @@ export default {
   position: absolute;
   top: -6rpx;
   right: -10rpx;
-  background: #ff4d4f;
-  color: #ffffff;
+  background: $mini-danger-text;
+  color: $mini-surface;
   font-size: 20rpx;
   min-width: 32rpx;
   height: 32rpx;
@@ -155,13 +159,13 @@ export default {
   justify-content: center;
   padding: 0 6rpx;
   font-weight: 500;
-  border: 2rpx solid #ffffff;
-  box-shadow: 0 2rpx 8rpx rgba(255, 77, 79, 0.25);
+  border: 2rpx solid $mini-surface;
+  box-shadow: 0 2rpx 8rpx rgba($mini-danger-text, .25);
 }
 
 .tab-text {
   font-size: 22rpx;
-  color: #8c8c8c;
+  color: inherit;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   line-height: 1.2;
   font-weight: 400;

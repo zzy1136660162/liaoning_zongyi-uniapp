@@ -1,0 +1,1234 @@
+<template>
+  <view class="profile-page">
+    <view class="user-header">
+      <view
+        class="user-info"
+        @click="goToLogin"
+      >
+        <view class="avatar-box">
+          <uni-icons
+            type="person-filled"
+            size="34"
+            color="#a8b3c3"
+          />
+        </view>
+        <view class="user-meta">
+          <view
+            v-if="profileLoading"
+            class="profile-status"
+          >
+            个人资料加载中...
+          </view>
+          <view
+            v-else-if="profileError"
+            class="profile-status"
+          >
+            <text>{{ profileError }}</text>
+            <button
+              class="profile-retry"
+              size="mini"
+              @click.stop="loadUserProfile"
+            >
+              重新加载
+            </button>
+          </view>
+          <template v-else>
+            <view class="name">
+              {{ isLoggedIn ? (userInfo.realName || '微信用户') : '未登录用户' }}
+            </view>
+            <view
+              v-if="isLoggedIn"
+              class="card-pill"
+            >
+              <text class="card-pill-label">就诊卡号</text>
+              <text class="card-pill-value">{{ userInfo.idNumber || '暂无' }}</text>
+            </view>
+            <view
+              v-else
+              class="profile-login-hint"
+            >
+              <text>点击登录，查看个人资料</text>
+              <uni-icons
+                type="right"
+                size="14"
+                color="#ffffff"
+              />
+            </view>
+          </template>
+        </view>
+      </view>
+      <view class="patient-strip">
+        <view class="patient-emblem">
+          <uni-icons
+            type="person-filled"
+            size="20"
+            color="#d9b36c"
+          />
+        </view>
+        <view class="patient-info">
+          <text class="patient-label">当前就诊人</text>
+          <text
+            v-if="patientLoading"
+            class="patient-name"
+          >
+            正在加载…
+          </text>
+          <text
+            v-else-if="patientError"
+            class="patient-name"
+          >
+            加载失败
+          </text>
+          <text
+            v-else-if="currentPatient"
+            class="patient-name"
+          >
+            {{ currentPatient.name }}
+          </text>
+          <text
+            v-else
+            class="patient-name"
+          >
+            {{ patientRows.length ? '请选择' : '暂无' }}
+          </text>
+        </view>
+        <view
+          v-if="!patientLoading"
+          class="patient-actions"
+        >
+          <button
+            v-if="patientError"
+            class="plain patient-action"
+            @click="loadPatients"
+          >
+            重试
+            <uni-icons
+              type="right"
+              size="12"
+              color="#ffffff"
+            />
+          </button>
+          <picker
+            v-if="!patientError && patientRows.length > 1"
+            mode="selector"
+            :range="pickerRows"
+            range-key="pickerLabel"
+            :value="Math.max(0, patientRows.indexOf(currentPatient))"
+            @change="selectCurrentPatient"
+          >
+            <button class="plain patient-action">
+              {{ currentPatient ? '切换' : '选择' }}
+              <uni-icons
+                type="right"
+                size="12"
+                color="#ffffff"
+              />
+            </button>
+          </picker>
+          <button
+            class="plain patient-action"
+            @click="goToPatientList"
+          >
+            {{ patientError || patientRows.length ? '管理' : '去添加' }}
+            <uni-icons
+              type="right"
+              size="12"
+              color="#ffffff"
+            />
+          </button>
+        </view>
+      </view>
+    </view>
+    <view class="order-section">
+      <view class="section-header">
+        <view class="section-title">
+          我的订单
+        </view>
+        <view
+          class="view-all"
+          @click="goToOrderList"
+        >
+          <text class="view-all-text">
+            查看全部订单
+          </text>
+          <uni-icons
+            type="right"
+            size="10"
+            color="#999999"
+          />
+        </view>
+      </view>
+      <view class="order-grid">
+        <view
+          class="order-card"
+          @click="goToOrderListByStatus(0)"
+        >
+          <view class="order-card-icon">
+            <uni-icons
+              type="wallet"
+              size="28"
+              color="#3a3a3a"
+            />
+          </view>
+          <text class="order-card-text">
+            待付款
+          </text>
+          <view
+            v-if="orderStats.pending > 0"
+            class="order-card-badge"
+          >
+            {{ orderStats.pending }}
+          </view>
+        </view>
+        <view
+          class="order-card"
+          @click="goToOrderListByStatus(1)"
+        >
+          <view class="order-card-icon">
+            <uni-icons
+              type="paperplane"
+              size="28"
+              color="#3a3a3a"
+            />
+          </view>
+          <text class="order-card-text">
+            待发货
+          </text>
+        </view>
+        <view
+          class="order-card"
+          @click="goToOrderListByStatus(2)"
+        >
+          <view class="order-card-icon">
+            <uni-icons
+              type="checkbox"
+              size="28"
+              color="#3a3a3a"
+            />
+          </view>
+          <text class="order-card-text">
+            待收货
+          </text>
+        </view>
+        <view
+          class="order-card"
+          @click="goToOrderListByStatus(3)"
+        >
+          <view class="order-card-icon">
+            <uni-icons
+              type="scan"
+              size="28"
+              color="#3a3a3a"
+            />
+          </view>
+          <text class="order-card-text">
+            待使用
+          </text>
+        </view>
+        <view
+          class="order-card"
+          @click="goToOrderListByStatus('refund')"
+        >
+          <view class="order-card-icon">
+            <uni-icons
+              type="loop"
+              size="28"
+              color="#3a3a3a"
+            />
+          </view>
+          <text class="order-card-text">
+            退款/售后
+          </text>
+          <view
+            v-if="orderStats.refund > 0"
+            class="order-card-badge"
+          >
+            {{ orderStats.refund }}
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="menu-section">
+      <view
+        class="menu-item"
+        @click="goToAddressList"
+      >
+        <view class="menu-icon">
+          <uni-icons
+            type="location"
+            size="22"
+            color="#3a3a3a"
+          />
+        </view>
+        <text class="menu-text">
+          收货地址
+        </text>
+        <uni-icons
+          type="right"
+          size="14"
+          color="#c0c4cc"
+        />
+      </view>
+      <view
+        class="menu-item"
+        @click="goToPatientList"
+      >
+        <view class="menu-icon">
+          <uni-icons
+            type="person"
+            size="22"
+            color="#3a3a3a"
+          />
+        </view>
+        <text class="menu-text">
+          就诊人管理
+        </text>
+        <uni-icons
+          type="right"
+          size="14"
+          color="#c0c4cc"
+        />
+      </view>
+      <view
+        class="menu-item"
+        @click="handleContact"
+      >
+        <view class="menu-icon">
+          <uni-icons
+            type="headphones"
+            size="22"
+            color="#3a3a3a"
+          />
+        </view>
+        <text class="menu-text">
+          联系客服
+        </text>
+        <uni-icons
+          type="right"
+          size="14"
+          color="#c0c4cc"
+        />
+      </view>
+      <view
+        class="menu-item"
+        @click="goToFeedback"
+      >
+        <view class="menu-icon">
+          <uni-icons
+            type="compose"
+            size="22"
+            color="#3a3a3a"
+          />
+        </view>
+        <text class="menu-text">
+          问题反馈
+        </text>
+        <uni-icons
+          type="right"
+          size="14"
+          color="#c0c4cc"
+        />
+      </view>
+      <view
+        v-if="isLoggedIn"
+        class="menu-item"
+        @click="goToWechatBinding"
+      >
+        <view class="menu-icon">
+          <uni-icons
+            type="link"
+            size="22"
+            color="#3a3a3a"
+          />
+        </view>
+        <text class="menu-text">
+          微信绑定管理
+        </text>
+        <uni-icons
+          type="right"
+          size="14"
+          color="#c0c4cc"
+        />
+      </view>
+      <view
+        class="menu-item"
+        @click="handleAuthAction"
+      >
+        <view class="menu-icon">
+          <uni-icons
+            :type="isLoggedIn ? 'close' : 'person'"
+            size="22"
+            :color="isLoggedIn ? '#e64340' : '#3a3a3a'"
+          />
+        </view>
+        <text class="menu-text">
+          {{ isLoggedIn ? '退出登录' : '去登录' }}
+        </text>
+        <uni-icons
+          v-if="!isLoggedIn"
+          type="right"
+          size="14"
+          color="#c0c4cc"
+        />
+      </view>
+    </view>
+
+    <view class="recommend-section">
+      <view class="recommend-divider">
+        <view class="divider-line" />
+        <text class="divider-text">推荐商品</text>
+        <view class="divider-line" />
+      </view>
+      <view
+        v-if="recommendProducts.length > 0"
+        class="recommend-grid"
+      >
+        <view
+          v-for="product in recommendProducts"
+          :key="product.id"
+          class="recommend-card"
+          @click="goToProductDetail(product)"
+        >
+          <image
+            class="recommend-img"
+            :src="getProductImageUrl(product.image)"
+            mode="aspectFill"
+            @error="handleProductImageError(product.image)"
+          />
+          <view class="recommend-info">
+            <text class="recommend-name">{{ product.name }}</text>
+            <view class="recommend-price-row">
+              <text class="recommend-price-symbol">¥</text>
+              <text class="recommend-price">{{ formatPrice(product.price) }}</text>
+              <text
+                v-if="product.displaySalesVolume > 0"
+                class="recommend-sales"
+              >
+                已售{{ product.displaySalesVolume }}
+              </text>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view
+        v-else-if="!recommendLoading"
+        class="recommend-empty"
+      >
+        暂无推荐商品
+      </view>
+    </view>
+
+    <TabBar
+      :current="currentTab"
+      @change="handleTabChange"
+    />
+  </view>
+</template>
+
+<script setup>
+import { logPageView, logButtonClick } from '@/utils/accessLog.js'
+
+const PAGE_LOG = { moduleCode: 'USER', accessType: '个人中心', pageType: 'USER_PROFILE', requestUri: '/pages/user/profile', pageId: '' }
+import { onShow, onUnload } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
+import { logout } from '@/api/auth.js'
+import { fetchAccountProfile } from '@/utils/account.js'
+import { waitForSessionRecovery } from '@/utils/auth-session.js'
+import { endSession, getSessionToken, getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+import { getOrderStats } from '@/api/order.js'
+import { getPatientList } from '@/api/patient.js'
+import { preferredPatient } from '@/utils/patient.js'
+import { STORAGE_KEY_CURRENT_PATIENT_ID } from '@/utils/storage.js'
+import { getCategoryProducts, mapProductListItem } from '@/api/product.js'
+import { isTraditionalTherapyProduct } from '@/utils/therapy.js'
+import { useProductImages } from '@/utils/product-image.js'
+import TabBar from '@/components/TabBar/TabBar.vue'
+import { openCustomerServiceChat } from '@/utils/customer-service.js'
+// 仅用于个人中心展示，不作为共享账号资料或注册表单。
+const emptyUserInfo = () => ({
+  realName: '',
+  idType: '',
+  phone: '',
+  idNumber: ''
+})
+const userInfo = ref(emptyUserInfo())
+const isLoggedIn = ref(Boolean(getSessionToken()))
+const profileLoading = ref(false)
+const profileError = ref('')
+let profileRequestSequence = 0
+let statsRequestSequence = 0
+let pageActive = true
+
+const currentTab = ref('mine')
+
+const orderStats = ref({
+  pending: 0,
+  paid: 0,
+  cancelled: 0,
+  refund: 0
+})
+
+const patientRows = ref([])
+const currentPatient = ref(null)
+// 未选择时保留占位项，确认首位就诊人也会触发选择变更。
+const pickerRows = computed(() => currentPatient.value
+  ? patientRows.value
+  : [{ pickerLabel: '请选择就诊人' }, ...patientRows.value])
+const patientError = ref(false)
+const patientLoading = ref(false)
+let patientRequestSequence = 0
+let patientListSession = null
+
+// 返回个人中心时重新核对本账号的就诊人列表，已删除的记录不能继续显示。
+const loadPatients = async () => {
+  const request = ++patientRequestSequence
+  const session = getSessionGeneration()
+  const current = () => pageActive && request === patientRequestSequence && isCurrentSession(session)
+  patientRows.value = []
+  currentPatient.value = null
+  patientError.value = false
+  patientLoading.value = true
+  try {
+    const recovery = waitForSessionRecovery()
+    if (recovery) await recovery
+    if (!current() || !getSessionToken()) return
+    const rows = await getPatientList({ silent: true })
+    if (!current()) return
+    if (!Array.isArray(rows)) throw new Error('就诊人列表返回异常')
+    patientRows.value = rows.map(row => ({
+      ...row,
+      pickerLabel: [row.name, row.idNumberMasked].filter(Boolean).join(' · ')
+    }))
+    patientListSession = session
+    currentPatient.value = preferredPatient(patientRows.value)
+  } catch (_) {
+    if (current()) patientError.value = true
+  } finally {
+    if (pageActive && request === patientRequestSequence) patientLoading.value = false
+  }
+}
+
+const selectCurrentPatient = event => {
+  const patient = pickerRows.value[Number(event.detail.value)]
+  if (!patient?.id || !getSessionToken() || !isCurrentSession(patientListSession)) return
+  try {
+    uni.setStorageSync(STORAGE_KEY_CURRENT_PATIENT_ID, String(patient.id))
+    currentPatient.value = patient
+  } catch (_) {
+    uni.showToast({ title: '未能保存就诊人，请重试', icon: 'none' })
+  }
+}
+
+const { getProductImageUrl, handleProductImageError } = useProductImages()
+const recommendProducts = ref([])
+const recommendLoading = ref(false)
+let recommendRequestSequence = 0
+
+// 与商城首页 medicine_index 一致：推荐位取制剂分类商品，分类为空时后端不返回数据。
+const RECOMMEND_PRODUCT_CATEGORY = 1
+const RECOMMEND_PRODUCT_SIZE = 10
+
+const formatPrice = (price) => Number(price || 0).toFixed(2)
+
+const loadRecommendProducts = async () => {
+  if (!pageActive) return
+  const sequence = ++recommendRequestSequence
+  recommendLoading.value = true
+  try {
+    // 公开接口无需登录；取前 10 个商品做推荐位。
+    const page = await getCategoryProducts(null, 1, RECOMMEND_PRODUCT_SIZE, RECOMMEND_PRODUCT_CATEGORY, null, null, null, { showLoading: false })
+    if (!pageActive || sequence !== recommendRequestSequence) return
+    recommendProducts.value = ((page && page.records) || [])
+      .map(mapProductListItem)
+      .slice(0, RECOMMEND_PRODUCT_SIZE)
+  } catch (error) {
+    if (pageActive && sequence === recommendRequestSequence) {
+      console.error('event=ui_user_profile stage=load_recommend_products result=failed reason=request_failed')
+      recommendProducts.value = []
+    }
+  } finally {
+    if (pageActive && sequence === recommendRequestSequence) recommendLoading.value = false
+  }
+}
+
+const goToProductDetail = (product) => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PRODUCT_DETAIL', accessTitle: '查看推荐商品详情', accessDescription: '从个人中心推荐商品进入商品详情', extraData: { productId: product.id } })
+  const page = isTraditionalTherapyProduct(product) ? 'therapy_detail' : 'medicine_detail'
+  uni.navigateTo({
+    url: `/pages/products/${page}?id=${product.id}`
+  })
+}
+
+const loadUserProfile = async () => {
+  if (!pageActive) return
+  const sequence = ++profileRequestSequence
+  const session = getSessionGeneration()
+  const isCurrentRequest = () => pageActive && sequence === profileRequestSequence && isCurrentSession(session)
+  // 重新进入或重试时清空上次展示，接口失败不能冒充资料仍然有效。
+  userInfo.value = emptyUserInfo()
+  profileError.value = ''
+  const recovery = waitForSessionRecovery({ retryUnavailable: true })
+  if (recovery) {
+    profileLoading.value = true
+    try { await recovery } catch (error) {
+      if (isCurrentRequest()) profileError.value = error.message || '登录校验暂不可用，请重试'
+      if (pageActive && sequence === profileRequestSequence) profileLoading.value = false
+      return
+    }
+    if (!isCurrentRequest()) {
+      if (pageActive && sequence === profileRequestSequence) {
+        profileLoading.value = false
+        isLoggedIn.value = Boolean(getSessionToken())
+      }
+      return
+    }
+  }
+  isLoggedIn.value = Boolean(getSessionToken())
+  profileLoading.value = false
+  if (!isLoggedIn.value) return
+  profileLoading.value = true
+  try {
+    const userData = await fetchAccountProfile()
+    if (!isCurrentRequest()) return
+    userInfo.value = {
+      realName: userData.userName || '',
+      idType: userData.idType || '',
+      phone: userData.phone || '',
+      idNumber: userData.idCardNo || ''
+    }
+  } catch (error) {
+    if (!isCurrentRequest()) return
+    console.error('event=ui_user_profile stage=profile_request result=failed reason=request_failed')
+    profileError.value = '个人资料加载失败，请重试'
+  } finally {
+    if (pageActive && sequence === profileRequestSequence) profileLoading.value = false
+  }
+}
+
+const goToLogin = () => {
+  const recovery = waitForSessionRecovery()
+  if (recovery) {
+    recovery.then(() => { if (pageActive) goToLogin() }).catch(error => {
+      if (pageActive && error.code !== 'SESSION_CHANGED') uni.showToast({ title: error.message, icon: 'none' })
+    })
+    return
+  }
+  if (getSessionToken()) return
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_LOGIN', accessTitle: '去登录', accessDescription: '从个人中心进入登录页，完成后返回个人中心' })
+  uni.navigateTo({ url: `/pages/login/login?redirect=${encodeURIComponent('/pages/user/profile')}` })
+}
+
+const goToWechatBinding = () => {
+  if (!getSessionToken()) return goToLogin()
+  uni.navigateTo({ url: '/pages/user/wechat_binding' })
+}
+
+const handleAuthAction = () => {
+  if (!getSessionToken()) {
+    goToLogin()
+    return
+  }
+  handleLogout()
+}
+
+const handleLogout = async () => {
+  const session = getSessionGeneration()
+  uni.showModal({
+    title: '提示',
+    content: '确定要退出登录吗？',
+    success: async (res) => {
+      if (!res.confirm || !isCurrentSession(session)) {
+        return
+      }
+
+      logButtonClick({ ...PAGE_LOG, actionCode: 'LOGOUT', accessTitle: '确认退出登录', accessDescription: '用户确认退出，即将清除本机登录状态并请求注销凭证' })
+      const revocation = logout(getSessionToken())
+      endSession()
+      const endedGeneration = getSessionGeneration()
+      isLoggedIn.value = false
+      userInfo.value = emptyUserInfo()
+      uni.reLaunch({ url: '/pages/login/login' })
+      const result = await revocation
+      if (!result.confirmed && isCurrentSession(endedGeneration)) {
+        uni.showToast({ title: '本机已退出，服务端注销暂未确认', icon: 'none', duration: 3000 })
+      }
+    }
+  })
+}
+
+const loadOrderStats = async () => {
+  if (!pageActive) return
+  const sequence = ++statsRequestSequence
+  const session = getSessionGeneration()
+  const recovery = waitForSessionRecovery()
+  if (recovery) {
+    try { await recovery } catch (_) { return }
+    if (!pageActive || sequence !== statsRequestSequence || !isCurrentSession(session)) return
+  }
+  if (!getSessionToken()) {
+    orderStats.value = { pending: 0, paid: 0, cancelled: 0, refund: 0 }
+    return
+  }
+  const isCurrentRequest = () => pageActive && sequence === statsRequestSequence && isCurrentSession(session)
+  try {
+    const stats = (await getOrderStats({ silent: true })) || {}
+    if (!isCurrentRequest()) return
+
+    orderStats.value = {
+      pending: Number(stats.pending) || 0,
+      paid: Number(stats.paid) || 0,
+      cancelled: Number(stats.cancelled) || 0,
+      refund: Number(stats.refund) || 0
+    }
+  } catch (error) {
+    if (!isCurrentRequest()) return
+    console.error('event=ui_user_profile stage=load_order_stats result=failed reason=operation_incomplete')
+  }
+}
+
+const goToOrderList = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_ORDER_LIST', accessTitle: '查看全部订单', accessDescription: '从个人中心进入全部订单列表' })
+  uni.navigateTo({
+    url: '/pages/order/order_list'
+  })
+}
+
+const goToOrderListByStatus = (status) => {
+  const statusMap = {
+    0: '待付款',
+    1: '待发货',
+    2: '待收货',
+    3: '待使用',
+    refund: '退款'
+  }
+
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_ORDER_LIST', accessTitle: `查看${statusMap[status] || '订单'}`, accessDescription: '从个人中心进入指定状态的订单或退款列表', extraData: { status } })
+
+  if (status === 'refund') {
+    uni.navigateTo({
+      url: '/pages/order/refund_list'
+    })
+    return
+  }
+
+  const statusParamMap = {
+    0: 'pending',
+    1: 'shipping',
+    2: 'received',
+    3: 'unused',
+    4: 'cancelled'
+  }
+
+  uni.navigateTo({
+    url: `/pages/order/order_list?status=${statusParamMap[status] || 'all'}`
+  })
+}
+
+const goToAddressList = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_ADDRESS_LIST', accessTitle: '管理收货地址', accessDescription: '从个人中心进入收货地址管理' })
+  uni.navigateTo({
+    url: '/pages/order/address_list'
+  })
+}
+
+const goToPatientList = () => {
+  if (!getSessionToken()) return goToLogin()
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PATIENT_LIST', accessTitle: '管理就诊人', accessDescription: '从个人中心进入就诊人管理' })
+  uni.navigateTo({
+    url: '/pages/user/patient_list'
+  })
+}
+
+const openHumanCustomerService = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_HUMAN_SERVICE', accessTitle: '选择人工客服', accessDescription: '用户选择人工客服渠道，准备打开客服会话' })
+  openCustomerServiceChat()
+}
+
+const openAiCustomerService = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_AI_SERVICE', accessTitle: '选择智能客服', accessDescription: '用户选择智能客服渠道，进入智能客服页面' })
+  uni.navigateTo({
+    url: '/pages/ai/chat'
+  })
+}
+
+const goToFeedback = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_FEEDBACK', accessTitle: '问题反馈', accessDescription: '从个人中心进入问题反馈' })
+  uni.navigateTo({
+    url: '/pages/feedback/index'
+  })
+}
+
+const handleContact = () => {
+
+  uni.showActionSheet({
+    itemList: ['人工客服', 'AI客服'],
+    success: (res) => {
+      if (res.tapIndex === 0) {
+        openHumanCustomerService()
+        return
+      }
+
+      if (res.tapIndex === 1) {
+        openAiCustomerService()
+      }
+    }
+  })
+}
+
+const handleTabChange = (tab) => {
+  currentTab.value = tab
+}
+
+onShow(() => {
+  if (!pageActive) return
+  logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问个人中心', accessDescription: '查看个人资料及订单、地址、就诊人与客服入口' })
+  loadUserProfile()
+  loadPatients()
+  loadOrderStats()
+  loadRecommendProducts()
+})
+
+onUnload(() => {
+  pageActive = false
+  profileRequestSequence++
+  statsRequestSequence++
+  recommendRequestSequence++
+})
+</script>
+
+<style scoped lang="scss">
+.profile-page {
+  min-height: 100vh;
+  background: #f6f7fb;
+  padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
+}
+
+.plain {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.plain::after { border: none; }
+
+.user-header {
+  background: linear-gradient(160deg, #a97e4f 0%, #c9a878 100%);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  min-width: 0;
+  padding: 40rpx 30rpx 30rpx;
+}
+
+.avatar-box {
+  flex-shrink: 0;
+  width: 110rpx;
+  height: 110rpx;
+  border-radius: 50%;
+  background: #eef1f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16rpx;
+}
+
+.profile-status {
+  color: #ffffff;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
+.profile-retry {
+  margin: 16rpx 0 0;
+  color: #5a401a;
+}
+
+.name {
+  font-size: 38rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #ffffff;
+  word-break: break-all;
+}
+
+.card-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 12rpx;
+  max-width: 100%;
+  padding: 6rpx 22rpx;
+  border-radius: 999rpx;
+  background: rgba(90, 64, 26, 0.32);
+  border: 1rpx solid rgba(255, 255, 255, 0.55);
+}
+
+.card-pill-label {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.card-pill-value {
+  min-width: 0;
+  font-size: 22rpx;
+  line-height: 1.6;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-login-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  align-self: stretch;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.patient-strip {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  width: 90%;
+  height: 88rpx;
+  margin: 0 auto;
+  padding: 0 30rpx;
+  border-radius: 24rpx 24rpx 0 0;
+  background: #2a3958;
+}
+
+.patient-emblem {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.patient-info {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  gap: 12rpx;
+}
+
+.patient-label {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  color: #b8c2d8;
+}
+
+.patient-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.patient-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.patient-action {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  min-height: 88rpx;
+  padding: 0 8rpx;
+  font-size: 26rpx;
+  color: #ffffff;
+}
+
+.stats-bar {
+  display: flex;
+  align-items: flex-start;
+  background: #ffffff;
+  padding: 30rpx 10rpx 26rpx;
+}
+
+.stats-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.stats-value {
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #222222;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-label {
+  font-size: 24rpx;
+  line-height: 1.4;
+  color: #666666;
+}
+
+.stats-wallet-icon {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  border: 2rpx solid #222222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 1;
+  color: #222222;
+}
+
+.order-section {
+  margin: 20rpx;
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 30rpx;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30rpx;
+}
+
+.view-all {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 28rpx;
+  color: #999999;
+}
+
+.view-all-text {
+  color: #999999;
+}
+
+.order-grid {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+}
+
+.order-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  padding: 20rpx 0;
+  position: relative;
+  transition: all 0.3s;
+}
+
+.order-card:active {
+  transform: scale(0.95);
+  opacity: 0.7;
+}
+
+.order-card-icon {
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12rpx;
+}
+
+.order-card-img {
+  width: 28rpx;
+  height: 28rpx;
+}
+
+.order-card-text {
+  font-size: 24rpx;
+  color: #333333;
+  margin-top: 4rpx;
+}
+
+.order-card-badge {
+  position: absolute;
+  top: 4rpx;
+  right: 16rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  background: #ff6b6b;
+  border-radius: 16rpx;
+  color: #ffffff;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8rpx;
+}
+
+.menu-section {
+  margin: 20rpx;
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 0 30rpx;
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 32rpx 0;
+  border-bottom: 1rpx solid #f0f1f3;
+  transition: all 0.3s;
+}
+
+.menu-item:last-child {
+  border-bottom: none;
+}
+
+.menu-icon {
+  width: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 30rpx;
+  color: #333333;
+}
+
+.recommend-section {
+  margin: 20rpx;
+}
+
+.recommend-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24rpx;
+  margin-bottom: 24rpx;
+}
+
+.divider-line {
+  width: 120rpx;
+  height: 1rpx;
+  background: #d0d3d8;
+}
+
+.divider-text {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.recommend-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.recommend-card {
+  width: 345rpx;
+  background: #ffffff;
+  border-radius: 16rpx;
+  overflow: hidden;
+  margin-bottom: 20rpx;
+}
+
+.recommend-card:active {
+  opacity: 0.85;
+}
+
+.recommend-img {
+  width: 100%;
+  height: 345rpx;
+  display: block;
+  background: #f2f3f5;
+}
+
+.recommend-info {
+  padding: 16rpx 20rpx 20rpx;
+}
+
+.recommend-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 26rpx;
+  line-height: 1.4;
+  color: #333333;
+  min-height: 73rpx;
+}
+
+.recommend-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4rpx;
+  margin-top: 12rpx;
+}
+
+.recommend-price-symbol {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #e64340;
+}
+
+.recommend-price {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #e64340;
+  font-variant-numeric: tabular-nums;
+}
+
+.recommend-sales {
+  margin-left: auto;
+  font-size: 20rpx;
+  color: #999999;
+}
+
+.recommend-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: #999999;
+}
+</style>
