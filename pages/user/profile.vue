@@ -366,7 +366,7 @@
     <view class="recommend-section">
       <view class="recommend-divider">
         <view class="divider-line" />
-        <text class="divider-text">推荐制剂/传统疗法</text>
+        <text class="divider-text">制剂传统疗法浏览</text>
         <view class="divider-line" />
       </view>
       <view
