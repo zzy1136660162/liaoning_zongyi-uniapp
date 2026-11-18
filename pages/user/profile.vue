@@ -125,17 +125,6 @@
               />
             </button>
           </picker>
-          <button
-            class="plain patient-action"
-            @click="goToPatientList"
-          >
-            {{ patientError || patientRows.length ? '管理' : '去添加' }}
-            <uni-icons
-              type="right"
-              size="12"
-              color="#ffffff"
-            />
-          </button>
         </view>
       </view>
     </view>
@@ -1136,7 +1125,7 @@ onUnload(() => {
 }
 
 .recommend-section {
-  margin: 20rpx;
+  margin: 100rpx 20rpx 0 20rpx;
 }
 
 .recommend-divider {
