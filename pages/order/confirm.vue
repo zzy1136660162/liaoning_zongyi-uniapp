@@ -320,7 +320,7 @@ import { parseConsultationContext, requireConsultationPatient } from '@/utils/co
 import { getSessionGeneration, assertCurrentSession, isCurrentSession } from '@/utils/session.js'
 import { getAddressList } from '@/api/address.js'
 import { getPatientList } from '@/api/patient.js'
-import { getPatientProfileNotice, patientHisSyncNotice } from '@/utils/patient.js'
+import { getPatientProfileNotice, patientHisSyncNotice, preferredPatient } from '@/utils/patient.js'
 import { prepareOrderCheckout, invokePreparedWechatPayment } from '@/api/payment.js'
 import { getProductDetail } from '@/api/product.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
@@ -471,7 +471,7 @@ const loadCheckoutPatients = async () => {
       ? checkoutContext.value?.patientId
       : selectedPatient.value?.id
     selectedPatient.value = patientSelectionCleared ? null : patients.value.find(patient => String(patient.id) === String(patientId))
-      || (!requiresConsultationPatient.value && patientId == null && patients.value.length === 1 ? patients.value[0] : null)
+      || (!requiresConsultationPatient.value && patientId == null ? preferredPatient(patients.value) : null)
     if (!selectedPatient.value) patientSelectionCleared = true
   } catch (error) {
     if (!pageActive || requestId !== patientRefreshId || !isCurrentSession(pageSession)) return

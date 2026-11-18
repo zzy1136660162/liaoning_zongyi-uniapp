@@ -18,13 +18,13 @@ import * as prescription from '../utils/prescription.js'
 import * as refund from '../utils/refund.js'
 import { hasTherapyEntitlement } from '../utils/therapy.js'
 import { getActionFailureResult } from '../utils/accessLog.js'
-import { deriveBirthDateFromId, getPatientProfileNotice } from '../utils/patient.js'
+import { deriveBirthDateFromId, getPatientProfileNotice, preferredPatient } from '../utils/patient.js'
 import { createPageReturn } from '../utils/page-return.js'
 import { formatFreightEstimate } from '../utils/freight.js'
 import { waitForSessionRecovery, beginManualAccountLogin, getAccountSessionState, onAccountSessionState } from '../utils/auth-session.js'
 import { redirectToWithFallback } from '../utils/navigate.js'
 
-const logMocks = { formatFreightEstimate, getCurrentInstance: () => ({}), onLoad() {}, onShow() {}, onHide() {}, onResize() {}, onPageScroll() {}, onPullDownRefresh() {}, onReachBottom() {}, logPageView() {}, logButtonClick() {}, logAccess() {}, getActionFailureResult,
+const logMocks = { preferredPatient, getPatientList: async () => [], getImageUrl, formatFreightEstimate, getCurrentInstance: () => ({}), onLoad() {}, onShow() {}, onHide() {}, onResize() {}, onPageScroll() {}, onPullDownRefresh() {}, onReachBottom() {}, logPageView() {}, logButtonClick() {}, logAccess() {}, getActionFailureResult,
   getSessionToken, onSessionChanged, sessionChangedError,
   redirectToWithFallback,
   // 角标统计是页面的辅助读取，默认隔离网络；具体统计契约由调用方按需提供。
@@ -60,6 +60,13 @@ const pageReturnMocks = mocks => ({
 
 export const loadSetup = (path, mocks, exports) => {
   mocks = { ...pageReturnMocks(mocks), ...mocks }
+  if (path === 'pages/products/therapy_detail.vue' || path === 'pages/products/medicine_detail.vue') {
+    const script = readFileSync(new URL('../utils/product-favorite.js', import.meta.url), 'utf8')
+      .replace(/^import .*$/gm, '').replace(/^export /gm, '')
+    mocks.useProductFavorite = Function('ref', 'setProductCollected', 'getSessionGeneration', 'isCurrentSession', 'uni',
+      `${script}\nreturn useProductFavorite`)(mocks.ref, mocks.setProductCollected,
+      mocks.getSessionGeneration || getSessionGeneration, mocks.isCurrentSession || isCurrentSession, mocks.uni)
+  }
   if (mocks.getSessionGeneration && !mocks.isCurrentSession) mocks = { ...mocks, isCurrentSession: value => value === mocks.getSessionGeneration() }
   mocks = { ...logMocks, ...checkout, checkoutEntries: (keys, purchase) => purchase ? checkout.checkoutEntries(keys, purchase)
     : mocks.getCartEntries ? mocks.getCartEntries() : {},

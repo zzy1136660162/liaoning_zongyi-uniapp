@@ -310,7 +310,7 @@ import {
 } from '@/utils/cart.js'
 import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
 import { getPatientList } from '@/api/patient.js'
-import { getPatientProfileNotice } from '@/utils/patient.js'
+import { getPatientProfileNotice, preferredPatient } from '@/utils/patient.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
 import { useProductImages } from '@/utils/product-image.js'
@@ -358,7 +358,7 @@ const loadPatientsFromAPI = async (preferredId = null) => {
       : selectedPatient.value?.id
     patients.value = Array.isArray(patientList) ? patientList : []
     selectedPatient.value = patients.value.find(p => String(p.id) === String(currentSelectedId))
-      || (!patientSelectionInitialized && currentSelectedId == null && patients.value.length === 1 ? patients.value[0] : null)
+      || (!patientSelectionInitialized && currentSelectedId == null ? preferredPatient(patients.value) : null)
     patientSelectionInitialized = true
     if (preferredPatientId === preferredId) preferredPatientId = null
   } catch (error) {

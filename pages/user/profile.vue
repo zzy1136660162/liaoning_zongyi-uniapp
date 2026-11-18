@@ -1,276 +1,254 @@
 <template>
   <view class="profile-page">
-    <view class="user-header">
-      <view
-        class="user-info"
-        @click="goToLogin"
-      >
-        <view
-          v-if="profileLoading"
-          class="profile-status"
-        >
-          个人资料加载中...
-        </view>
-        <view
-          v-else-if="profileError"
-          class="profile-status"
-        >
-          <text>{{ profileError }}</text>
-          <button
-            class="profile-retry"
-            size="mini"
-            @click.stop="loadUserProfile"
-          >
-            重新加载
-          </button>
-        </view>
-        <template v-else>
-          <view class="name">
-            {{ isLoggedIn ? (userInfo.realName || '微信用户') : '未登录用户' }}
-          </view>
-          <view
-            v-if="isLoggedIn"
-            class="card-info"
-          >
-            <text class="card-label">
-              就诊卡号
-            </text>
-            <text class="card-number">
-              {{ userInfo.idNumber || '暂无' }}
-            </text>
-          </view>
-          <view
+    <view class="masthead">
+      <image
+        class="herb"
+        src="/static/profile/herb.svg"
+        mode="aspectFit"
+        aria-hidden="true"
+      />
+      <view class="identity">
+        <view class="avatar">
+          <image
+            v-if="userInfo.avatar"
+            class="avatar-photo"
+            :src="userInfo.avatar"
+            mode="aspectFill"
+            @error="userInfo.avatar = ''"
+          />
+          <image
             v-else
-            class="profile-login-hint"
+            class="avatar-symbol"
+            src="/static/profile/avatar.svg"
+            mode="aspectFit"
+          />
+        </view>
+        <view class="account">
+          <text class="institution">
+            {{ hospitalName }}
+          </text>
+          <text
+            v-if="profileLoading"
+            class="account-name"
           >
-            <text>点击登录，查看个人资料</text>
-            <uni-icons
-              type="right"
-              size="14"
-              color="#ffffff"
-            />
-          </view>
+            正在加载资料…
+          </text>
+          <button
+            v-else-if="profileError"
+            class="plain identity-action"
+            @click="loadUserProfile"
+          >
+            资料加载失败，重试 ›
+          </button>
+          <button
+            v-else-if="!isLoggedIn"
+            class="plain identity-action"
+            @click="goToLogin"
+          >
+            登录账号 ›
+          </button>
+          <template v-else>
+            <text class="account-name">
+              {{ userInfo.realName || '已登录用户' }}
+            </text>
+            <text
+              v-if="userInfo.phone"
+              class="account-phone"
+            >
+              {{ userInfo.phone }}
+            </text>
+          </template>
+        </view>
+      </view>
+      <view class="patient-card">
+        <view class="card-emblem">
+          <image
+            src="/static/profile/patient.svg"
+            class="card-icon"
+          />
+        </view>
+        <view class="patient-info">
+          <text class="card-label">
+            当前就诊人
+          </text>
+          <text
+            v-if="patientLoading"
+            class="patient-name"
+          >
+            正在加载…
+          </text>
+          <text
+            v-else-if="!isLoggedIn"
+            class="patient-name"
+          >
+            登录后查看
+          </text>
+          <text
+            v-else-if="patientError"
+            class="patient-name"
+          >
+            就诊人加载失败
+          </text>
+          <text
+            v-else-if="currentPatient"
+            class="patient-name"
+          >
+            {{ currentPatient.name }}
+          </text>
+          <text
+            v-else
+            class="patient-name"
+          >
+            {{ patientRows.length ? '请选择就诊人' : '尚未添加就诊人' }}
+          </text>
+          <text
+            v-if="currentPatient && currentPatient.idNumberMasked"
+            class="patient-id"
+          >
+            {{ currentPatient.idType || '证件' }}  {{ currentPatient.idNumberMasked }}
+          </text>
+        </view>
+        <template v-if="!patientLoading">
+          <button
+            v-if="!isLoggedIn"
+            class="plain card-action"
+            @click="goToLogin"
+          >
+            登录 ›
+          </button>
+          <button
+            v-else-if="patientError"
+            class="plain card-action"
+            @click="loadPatients"
+          >
+            重试 ›
+          </button>
+          <picker
+            v-else-if="patientRows.length > 1"
+            mode="selector"
+            :range="patientRows"
+            range-key="pickerLabel"
+            :value="Math.max(0, patientRows.indexOf(currentPatient))"
+            @change="selectCurrentPatient"
+          >
+            <view class="card-action">
+              {{ currentPatient ? '切换' : '选择' }} ›
+            </view>
+          </picker>
+          <button
+            v-else
+            class="plain card-action"
+            @click="goToPatientList"
+          >
+            {{ currentPatient ? '管理' : '去添加' }} ›
+          </button>
         </template>
       </view>
     </view>
 
-    <view class="order-section">
-      <view class="section-header">
-        <view class="section-title">
+    <view class="sheet orders">
+      <view class="section-heading">
+        <text class="section-name">
           我的订单
-        </view>
-        <view
-          class="view-all"
+        </text>
+        <button
+          class="plain all-orders"
           @click="goToOrderList"
         >
-          <text class="view-all-text">
-            全部订单
-          </text>
-          <uni-icons
-            type="right"
-            size="10"
-            color="#999999"
-          />
-        </view>
+          全部订单 <text class="chevron" />
+        </button>
       </view>
       <view class="order-grid">
-        <view
-          class="order-card"
-          @click="goToOrderListByStatus(0)"
+        <button
+          v-for="item in orders"
+          :key="item.icon"
+          class="plain order-entry"
+          @click="goToOrderListByStatus(item.status)"
         >
-          <view class="order-card-icon">
-            <uni-icons
-              type="wallet"
-              size="28"
-              color="#4A90E2"
+          <view class="order-image">
+            <image
+              class="order-icon"
+              :src="'/static/profile/' + item.icon + '.svg'"
             />
+            <text
+              v-if="item.count && orderStats[item.count] > 0"
+              class="badge"
+            >
+              {{ orderStats[item.count] > 99 ? '99+' : orderStats[item.count] }}
+            </text>
           </view>
-          <text class="order-card-text">
-            待支付
-          </text>
-          <view
-            v-if="orderStats.pending > 0"
-            class="order-card-badge"
-          >
-            {{ orderStats.pending }}
-          </view>
-        </view>
-        <view
-          class="order-card"
-          @click="goToOrderListByStatus(2)"
-        >
-          <view class="order-card-icon">
-            <uni-icons
-              type="gift"
-              size="28"
-              color="#4A90E2"
-            />
-          </view>
-          <text class="order-card-text">
-            待收货
-          </text>
-        </view>
-        <view
-          class="order-card"
-          @click="goToOrderListByStatus(4)"
-        >
-          <view class="order-card-icon">
-            <uni-icons
-              type="close"
-              size="28"
-              color="#4A90E2"
-            />
-          </view>
-          <text class="order-card-text">
-            已取消
-          </text>
-          <!-- <view
-            v-if="orderStats.cancelled > 0"
-            class="order-card-badge"
-          >
-            {{ orderStats.cancelled }}
-          </view> -->
-        </view>
-        <view
-          class="order-card"
-          @click="goToOrderListByStatus('refund')"
-        >
-          <view class="order-card-icon">
-            <uni-icons
-              type="loop"
-              size="28"
-              color="#4A90E2"
-            />
-          </view>
-          <text class="order-card-text">
-            退款/售后
-          </text>
-          <view
-            v-if="orderStats.refund > 0"
-            class="order-card-badge"
-          >
-            {{ orderStats.refund }}
-          </view>
-        </view>
+          <text>{{ item.name }}</text>
+        </button>
       </view>
     </view>
 
-    <view class="service-section">
-      <view class="section-title">
-        我的服务
+    <view class="sheet services">
+      <view class="section-heading">
+        <text class="section-name">
+          我的服务
+        </text>
       </view>
-      <view class="service-grid">
-        <view
-          class="service-item"
-          @click="goToAddressList"
-        >
-          <view class="service-icon">
-            <uni-icons
-              type="location"
-              size="32"
-              color="#4A90E2"
-            />
-          </view>
-          <text class="service-text">
-            收货地址
-          </text>
-        </view>
-        <view
-          class="service-item"
-          @click="goToPatientList"
-        >
-          <view class="service-icon">
-            <uni-icons
-              type="person"
-              size="32"
-              color="#4A90E2"
-            />
-          </view>
-          <text class="service-text">
-            就诊人管理
-          </text>
-        </view>
-        <view
-          class="service-item"
-          @click="handleContact"
-        >
-          <view class="service-icon">
-            <uni-icons
-              type="chat"
-              size="32"
-              color="#4A90E2"
-            />
-          </view>
-          <text class="service-text">
-            联系客服
-          </text>
-          <text class="service-tip">
-            人工客服 / AI 客服
-          </text>
-        </view>
-      </view>
-    </view>
-
-    <view v-if="isLoggedIn" class="settings-section">
-      <view class="settings-item" @click="goToWechatBinding">
-        <text class="settings-text">微信绑定管理</text>
-        <uni-icons type="right" size="16" color="#999999" />
-      </view>
-    </view>
-
-    <view class="settings-section">
-      <view class="section-title">
-        设置
-      </view>
-      <view
-        class="settings-item"
-        @click="handleAuthAction"
+      <button
+        v-for="item in services"
+        :key="item.icon"
+        class="plain service-row"
+        @click="openService(item.icon)"
       >
-        <view class="settings-left">
-          <uni-icons
-            :type="isLoggedIn ? 'close' : 'person'"
-            size="32"
-            :color="isLoggedIn ? '#e64340' : '#4A90E2'"
-          />
-          <text class="settings-text">
-            {{ isLoggedIn ? '退出登录' : '去登录' }}
-          </text>
-        </view>
-        <uni-icons
-          v-if="!isLoggedIn"
-          type="right"
-          size="16"
-          color="#999999"
+        <image
+          class="row-icon"
+          :src="'/static/profile/' + item.icon + '.svg'"
         />
-      </view>
+        <view class="row-body">
+          <text>{{ item.name }}</text><text class="chevron" />
+        </view>
+      </button>
+      <button
+        v-if="isLoggedIn"
+        class="plain service-row"
+        @click="goToWechatBinding"
+      >
+        <image
+          class="row-icon"
+          src="/static/profile/binding.svg"
+        />
+        <view class="row-body">
+          <text>微信绑定管理</text><text class="chevron" />
+        </view>
+      </button>
     </view>
-
-    <TabBar
-      :current="currentTab"
-      @change="handleTabChange"
-    />
+    <button
+      v-if="isLoggedIn"
+      class="plain logout"
+      @click="handleAuthAction"
+    >
+      退出登录
+    </button>
+    <TabBar current="mine" />
   </view>
 </template>
 
 <script setup>
 import { logPageView, logButtonClick } from '@/utils/accessLog.js'
 
-const PAGE_LOG = { moduleCode: 'USER', accessType: '个人中心', pageType: 'USER_PROFILE', requestUri: '/pages/user/profile', pageId: '' }
 import { onShow, onUnload } from '@dcloudio/uni-app'
 import { ref } from 'vue'
 import { logout } from '@/api/auth.js'
 import { fetchAccountProfile } from '@/utils/account.js'
-import { waitForSessionRecovery } from '@/utils/auth-session.js'
+import { waitForSessionRecovery, requireAccountSession } from '@/utils/auth-session.js'
 import { endSession, getSessionToken, getSessionGeneration, isCurrentSession } from '@/utils/session.js'
+import { getPatientList } from '@/api/patient.js'
+import { preferredPatient } from '@/utils/patient.js'
+import { STORAGE_KEY_CURRENT_PATIENT_ID } from '@/utils/storage.js'
+import { getImageUrl, HOSPITAL_NAME as hospitalName } from '@/utils/config.js'
 import { getOrderStats } from '@/api/order.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
+const PAGE_LOG = { moduleCode: 'USER', accessType: '个人中心', pageType: 'USER_PROFILE', requestUri: '/pages/user/profile', pageId: '' }
 // 仅用于个人中心展示，不作为共享账号资料或注册表单。
 const emptyUserInfo = () => ({
   realName: '',
-  idType: '',
   phone: '',
-  idNumber: ''
+  avatar: ''
 })
 const userInfo = ref(emptyUserInfo())
 const isLoggedIn = ref(Boolean(getSessionToken()))
@@ -280,7 +258,63 @@ let profileRequestSequence = 0
 let statsRequestSequence = 0
 let pageActive = true
 
-const currentTab = ref('mine')
+const patientRows = ref([])
+const currentPatient = ref(null)
+const patientError = ref(false)
+const patientLoading = ref(false)
+let patientRequestSequence = 0
+let patientListSession = null
+
+// 返回个人中心时重新核对本账号的就诊人列表，已删除的记录不能继续显示。
+const loadPatients = async () => {
+  const request = ++patientRequestSequence
+  const session = getSessionGeneration()
+  const current = () => pageActive && request === patientRequestSequence && isCurrentSession(session)
+  patientRows.value = []
+  currentPatient.value = null
+  patientError.value = false
+  patientLoading.value = true
+  try {
+    const recovery = waitForSessionRecovery()
+    if (recovery) await recovery
+    if (!current() || !getSessionToken()) return
+    const rows = await getPatientList({ silent: true })
+    if (!current()) return
+    if (!Array.isArray(rows)) throw new Error('就诊人列表返回异常')
+    patientRows.value = rows.map(row => ({
+      ...row,
+      pickerLabel: [row.name, row.idNumberMasked].filter(Boolean).join(' · ')
+    }))
+    patientListSession = session
+    currentPatient.value = preferredPatient(patientRows.value)
+  } catch (_) {
+    if (current()) patientError.value = true
+  } finally {
+    if (pageActive && request === patientRequestSequence) patientLoading.value = false
+  }
+}
+
+const selectCurrentPatient = event => {
+  const patient = patientRows.value[Number(event.detail.value)]
+  if (!patient || !getSessionToken() || !isCurrentSession(patientListSession)) return
+  try {
+    uni.setStorageSync(STORAGE_KEY_CURRENT_PATIENT_ID, String(patient.id))
+    currentPatient.value = patient
+  } catch (_) {
+    uni.showToast({ title: '未能保存就诊人，请重试', icon: 'none' })
+  }
+}
+
+const openAccountPage = async url => {
+  if (await requireAccountSession(url)) uni.navigateTo({ url })
+}
+
+const orders = [
+  { name: '待支付', icon: 'wallet', status: 0, count: 'pending' },
+  { name: '待收货', icon: 'parcel', status: 2 },
+  { name: '已取消', icon: 'cancel', status: 4 },
+  { name: '退款/售后', icon: 'refund', status: 'refund', count: 'refund' }
+]
 
 const orderStats = ref({
   pending: 0,
@@ -322,9 +356,8 @@ const loadUserProfile = async () => {
     if (!isCurrentRequest()) return
     userInfo.value = {
       realName: userData.userName || '',
-      idType: userData.idType || '',
-      phone: userData.phone || '',
-      idNumber: userData.idCardNo || ''
+      phone: (userData.phone || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2'),
+      avatar: getImageUrl(userData.avatarUrl || '')
     }
   } catch (error) {
     if (!isCurrentRequest()) return
@@ -461,9 +494,7 @@ const goToAddressList = () => {
 
 const goToPatientList = () => {
   logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_PATIENT_LIST', accessTitle: '管理就诊人', accessDescription: '从个人中心进入就诊人管理' })
-  uni.navigateTo({
-    url: '/pages/user/patient_list'
-  })
+  openAccountPage('/pages/user/patient_list')
 }
 
 const openHumanCustomerService = () => {
@@ -495,14 +526,21 @@ const handleContact = () => {
   })
 }
 
-const handleTabChange = (tab) => {
-  currentTab.value = tab
-}
+const services = [
+  { name: '我的收藏', icon: 'favorite', open: () => openAccountPage('/pages/favorites/index') },
+  { name: '问题反馈', icon: 'feedback', open: () => openAccountPage('/pages/feedback/index') },
+  { name: '就诊人管理', icon: 'people', open: goToPatientList },
+  { name: '收货地址', icon: 'address', open: goToAddressList },
+  { name: '联系客服', icon: 'headset', open: handleContact }
+]
+
+const openService = icon => services.find(item => item.icon === icon)?.open()
 
 onShow(() => {
   if (!pageActive) return
   logPageView({ ...PAGE_LOG, actionCode: 'VIEW_PAGE', accessTitle: '访问个人中心', accessDescription: '查看个人资料及订单、地址、就诊人与客服入口' })
   loadUserProfile()
+  loadPatients()
   loadOrderStats()
 })
 
@@ -513,262 +551,104 @@ onUnload(() => {
 })
 </script>
 
-<style scoped lang="scss">
+<style scoped>
 .profile-page {
   min-height: 100vh;
-  background: #f6f7fb;
-  padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  padding-bottom: calc(132rpx + env(safe-area-inset-bottom));
+  color: #252e2d;
+  background: #f6f5f1;
 }
-
-.user-header {
-  padding: 24rpx 20rpx 0;
+.plain {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  line-height: 1.45;
+  text-align: left;
 }
-
-.user-info {
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
-  min-width: 0;
-  padding: 32rpx 32rpx 30rpx;
-  border-radius: 20rpx;
-  background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
-}
-
-.profile-status {
-  color: #ffffff;
-  font-size: 26rpx;
-  line-height: 1.6;
-}
-
-.profile-retry {
-  margin: 16rpx 0 0;
-  color: #357abd;
-}
-
-.name {
-  font-size: 38rpx;
-  font-weight: 600;
-  line-height: 1.4;
-  color: #ffffff;
-  word-break: break-all;
-}
-
-.card-info {
-  display: flex;
-  align-items: flex-start;
-  gap: 16rpx;
-  min-width: 0;
-}
-
-.profile-login-hint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 26rpx;
-  line-height: 1.6;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.card-label {
-  flex-shrink: 0;
-  font-size: 24rpx;
-  line-height: 1.6;
-  color: rgba(255, 255, 255, 0.74);
-}
-
-.card-number {
-  flex: 1;
-  min-width: 0;
-  font-size: 26rpx;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.95);
-  font-variant-numeric: tabular-nums;
-  word-break: break-all;
-}
-
-.order-section {
-  margin: 20rpx;
-  background: #ffffff;
-  border-radius: 16rpx;
-  padding: 30rpx;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30rpx;
-}
-
-.view-all {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  font-size: 28rpx;
-  color: #999999;
-}
-
-.view-all-text {
-  color: #999999;
-}
-
-.order-grid {
-  display: flex;
-  justify-content: space-around;
-  align-items: flex-start;
-}
-
-.order-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-  padding: 20rpx 0;
+.plain::after { border: none; }
+.masthead {
   position: relative;
-  transition: all 0.3s;
+  overflow: hidden;
+  padding: 0 28rpx 0;
+  background: linear-gradient(105deg, #f2e5cf 0%, #e8cfab 51%, #cfa777 100%);
 }
-
-.order-card:active {
-  transform: scale(0.95);
-  opacity: 0.7;
-}
-
-.order-card-icon {
-  width: 80rpx;
-  height: 80rpx;
-  background: linear-gradient(135deg, rgba(74, 144, 226, 0.1) 0%, rgba(74, 144, 226, 0.05) 100%);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12rpx;
-}
-
-.order-card-img {
-  width: 28rpx;
-  height: 28rpx;
-}
-
-.order-card-text {
-  font-size: 24rpx;
-  color: #333333;
-  margin-top: 8rpx;
-}
-
-.order-card-badge {
+.herb {
   position: absolute;
-  top: 10rpx;
-  right: 10rpx;
-  min-width: 32rpx;
-  height: 32rpx;
-  background: #ff6b6b;
-  border-radius: 16rpx;
-  color: #ffffff;
-  font-size: 22rpx;
+  top: 0;
+  right: -10rpx;
+  width: 310rpx;
+  height: 205rpx;
+  pointer-events: none;
+}
+.identity {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  min-height: 200rpx;
+  padding: 14rpx 8rpx;
+  box-sizing: border-box;
+}
+.avatar {
+  width: 100rpx;
+  height: 100rpx;
+  box-sizing: border-box;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 8rpx;
-}
-
-.service-section {
-  margin: 20rpx;
-  background: #ffffff;
-  border-radius: 16rpx;
-  padding: 30rpx;
-}
-
-.section-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #333333;
-}
-
-.service-section .section-title {
-  margin-bottom: 30rpx;
-}
-
-.service-grid {
-  display: flex;
-  justify-content: space-around;
-  align-items: flex-start;
-}
-
-.service-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-  padding: 20rpx 0;
-  transition: all 0.3s;
-}
-
-.service-item:active {
-  transform: scale(0.95);
-  opacity: 0.7;
-}
-
-.service-icon {
-  width: 80rpx;
-  height: 80rpx;
-  background: linear-gradient(135deg, rgba(74, 144, 226, 0.1) 0%, rgba(74, 144, 226, 0.05) 100%);
+  border: 3rpx solid #fff7e6;
   border-radius: 50%;
+  background: #fbf5e8;
+  box-shadow: 0 3rpx 14rpx rgba(95, 68, 33, .1);
+  overflow: hidden;
+}
+.avatar-photo { width: 100%; height: 100%; }
+.avatar-symbol { width: 63rpx; height: 63rpx; }
+.account, .patient-info { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.institution { font-size: 22rpx; letter-spacing: 2rpx; color: #655032; }
+.account-name, .identity-action { font-size: 41rpx; line-height: 1.45; font-weight: 600; color: #332d24; }
+.account-name, .patient-name, .account-phone, .patient-id { overflow-wrap: anywhere; word-break: break-all; }
+.account-phone { margin-top: 2rpx; font-size: 24rpx; color: #625039; letter-spacing: 1rpx; }
+.patient-card {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 16rpx;
-  border: 2rpx solid rgba(74, 144, 226, 0.2);
+  gap: 19rpx;
+  padding: 25rpx 26rpx;
+  min-height: 70rpx;
+  border-radius: 20rpx 20rpx 0 0;
+  background: linear-gradient(105deg, #35433f, #202d2b);
+  color: #fff;
 }
-
-.service-text {
-  font-size: 26rpx;
-  color: #333333;
-  text-align: center;
-}
-
-.service-tip {
-  margin-top: 10rpx;
-  font-size: 20rpx;
-  line-height: 1.4;
-  color: #8b96a6;
-  text-align: center;
-}
-
-.settings-section {
-  margin: 20rpx;
-  background: #ffffff;
-  border-radius: 16rpx;
-  padding: 30rpx;
-}
-
-.settings-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 24rpx 0;
-  transition: all 0.3s;
-}
-
-.settings-item:active {
-  background-color: #f8f8f8;
-  border-radius: 12rpx;
-  margin: 0 -12rpx;
-  padding: 24rpx 12rpx;
-}
-
-.settings-left {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-}
-
-.settings-text {
-  font-size: 30rpx;
-  color: #333333;
-}
-
-.settings-arrow {
-  font-size: 32rpx;
-  color: #999999;
-}
+.card-emblem { display: flex; align-items: center; justify-content: center; width: 60rpx; height: 60rpx; border: 1rpx solid #787761; border-radius: 15rpx; }
+.card-icon { width: 43rpx; height: 43rpx; }
+.card-label { font-size: 22rpx; color: #e8d4ad; letter-spacing: 2rpx; }
+.patient-name { margin-top: 4rpx; font-size: 32rpx; font-weight: 600; }
+.patient-id { font-size: 22rpx; color: #d4dcd7; margin-top: 4rpx; }
+.card-action { display: flex; align-items: center; justify-content: center; min-height: 80rpx; min-width: 78rpx; font-size: 25rpx; color: #f5dfb7; }
+.sheet { background: white; padding: 0 34rpx; }
+.section-heading { display: flex; justify-content: space-between; align-items: center; min-height: 93rpx; }
+.section-name { font-size: 32rpx; font-weight: 600; letter-spacing: 1rpx; }
+.all-orders { display: flex; align-items: center; gap: 12rpx; min-height: 82rpx; font-size: 24rpx; color: #646965; }
+.chevron { display: inline-block; width: 10rpx; height: 10rpx; border-top: 2rpx solid #a5a9a5; border-right: 2rpx solid #a5a9a5; transform: rotate(45deg); margin-right: 4rpx; }
+.order-grid { display: flex; padding: 5rpx 0 27rpx; }
+.order-entry { flex: 1; display: flex; align-items: center; flex-direction: column; gap: 12rpx; padding: 8rpx 0; font-size: 26rpx; }
+.order-image { position: relative; width: 52rpx; height: 52rpx; }
+.order-icon { display: block; width: 100%; height: 100%; }
+.badge { position: absolute; left: 78%; top: -8rpx; padding: 0 7rpx; min-width: 25rpx; box-sizing: border-box; border: 2rpx solid white; border-radius: 20rpx; background: #a24639; color: white; font-size: 18rpx; line-height: 26rpx; text-align: center; }
+.services { margin-top: 16rpx; }
+.services .section-heading { min-height: 86rpx; }
+.service-row, .row-body { display: flex; align-items: center; }
+.service-row { width: 100%; gap: 25rpx; }
+.row-icon { width: 43rpx; height: 43rpx; flex: none; }
+.row-body { flex: 1; justify-content: space-between; min-height: 92rpx; font-size: 29rpx; border-bottom: 1rpx solid #eeefea; }
+.service-row:last-child .row-body { border-bottom: none; }
+.logout { margin: 18rpx 0 0; width: 100%; text-align: center; line-height: 87rpx; font-size: 26rpx; color: #656a65; background: white; }
+.order-entry:active, .service-row:active, .all-orders:active, .card-action:active { opacity: .65; }
 </style>

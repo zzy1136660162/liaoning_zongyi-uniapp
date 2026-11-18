@@ -1,4 +1,4 @@
-import { get, post, getToken } from '@/utils/request.js'
+import { get, post, put, del, getToken } from '@/utils/request.js'
 import { API_PATHS, getImageUrl } from '@/utils/config.js'
 import { inventoryFields, inventoryStock } from '@/utils/inventory.js'
 
@@ -64,6 +64,12 @@ export const getProductDetail = (id, { showLoading = true, silent = false } = {}
     _t: Date.now()
   }, options)
 }
+
+export const getFavoriteProducts = (pageNum, pageSize) =>
+  get('/api/favorites', { pageNum, pageSize }, { showLoading: false, silent: true })
+
+export const setProductCollected = (productId, collected) =>
+  (collected ? put : del)(`/api/favorites/${productId}`, {}, { showLoading: false, silent: true })
 
 const parseGalleryImages = (galleryImages, coverImage) => {
   if (typeof galleryImages === 'string' && galleryImages.trim()) {
@@ -195,6 +201,7 @@ export const mapProductDetail = (product = {}) => {
 
   return {
     ...listView,
+    collected: product.collected === true,
     image: getImageUrl(coverImage || listView.image),
     images: parseGalleryImages(
       product.galleryImages,

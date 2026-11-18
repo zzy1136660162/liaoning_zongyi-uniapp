@@ -1,3 +1,5 @@
+export const HOSPITAL_NAME = '辽宁中医药大学附属医院'
+
 /**
  * API配置文件
  * 统一管理API基础配置

@@ -52,6 +52,9 @@ export const STORAGE_KEY_CART_ITEMS = 'cart_items'
  */
 export const STORAGE_KEY_CURRENT_CONSULTATION_ID = 'current_consultation_id'
 
+/** 个人中心选中的就诊人 ID，切换账号清理，每次展示须与接口列表核对。 */
+export const STORAGE_KEY_CURRENT_PATIENT_ID = 'current_patient_id'
+
 /**
  * 当前结算商品ID列表
  * 存储格式: string[]

@@ -1,13 +1,52 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { loadSetup } from './sfc-harness.mjs'
+import { STORAGE_KEY_CURRENT_PATIENT_ID } from '../utils/storage.js'
 
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
 const profile = (id = 7, userName = '测试用户') => ({
   id, userName, phone: '13800138000', idType: '护照', idCardNo: `P1234567${id}`
 })
-const displayed = data => ({ realName: data.userName, phone: data.phone, idType: data.idType, idNumber: data.idCardNo })
-const empty = { realName: '', phone: '', idType: '', idNumber: '' }
+const displayed = data => ({ realName: data.userName, phone: '138****8000', avatar: '' })
+const empty = { realName: '', phone: '', avatar: '' }
+
+test('多人账号从实时名单选择就诊人，刷新恢复选择，删除或切换账号后旧记录失效', async () => {
+  const values = new Map()
+  let generation = 1
+  let rows = [{ id: 8, name: '甲' }, { id: 9, name: '乙' }]
+  const device = {
+    getStorageSync: key => values.get(key),
+    setStorageSync: (key, value) => values.set(key, value)
+  }
+  const previous = globalThis.uni
+  globalThis.uni = device
+  try {
+    const page = loadSetup('pages/user/profile.vue', {
+      uni: device, ref: value => ({ value }), STORAGE_KEY_CURRENT_PATIENT_ID,
+      getSessionToken: () => 'fixture', getSessionGeneration: () => generation,
+      isCurrentSession: value => value === generation,
+      getPatientList: async () => rows
+    }, ['loadPatients', 'currentPatient', 'selectCurrentPatient'])
+    await page.loadPatients()
+    assert.equal(page.currentPatient.value, null)
+    page.selectCurrentPatient({ detail: { value: '1' } })
+    assert.equal(values.get(STORAGE_KEY_CURRENT_PATIENT_ID), '9')
+    rows.reverse()
+    await page.loadPatients()
+    assert.equal(page.currentPatient.value.name, '乙')
+    generation++
+    page.selectCurrentPatient({ detail: { value: '1' } })
+    assert.equal(values.get(STORAGE_KEY_CURRENT_PATIENT_ID), '9')
+    rows = [{ id: 8, name: '甲' }, { id: 10, name: '丙' }]
+    await page.loadPatients()
+    assert.equal(page.currentPatient.value, null)
+    rows.pop()
+    await page.loadPatients()
+    assert.equal(page.currentPatient.value.id, 8)
+  } finally {
+    globalThis.uni = previous
+  }
+})
 
 function createProfile(initialToken = 'fixture-token') {
   const requests = [], hooks = {}, storageCalls = [], routes = [], modals = []

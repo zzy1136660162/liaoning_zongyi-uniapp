@@ -1,3 +1,13 @@
+import { STORAGE_KEY_CURRENT_PATIENT_ID } from './storage.js'
+
+/** 从本账号当次返回的列表确定初始就诊人，多人时只使用用户明确选过的记录。 */
+export const preferredPatient = patients => {
+  if (patients.length === 1) return patients[0]
+  if (!patients.length) return null
+  const id = uni.getStorageSync(STORAGE_KEY_CURRENT_PATIENT_ID)
+  return patients.find(patient => String(patient.id) === String(id)) || null
+}
+
 export const ID_TYPE_OPTIONS = [
   '身份证', '护照', '港澳通行证', '台胞证', '军官证', '士兵证', '户口簿', '出生医学证明', '外国人居留证'
 ]

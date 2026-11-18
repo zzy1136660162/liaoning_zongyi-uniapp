@@ -8,10 +8,10 @@ import { API_PATHS } from '@/utils/config.js'
 /**
  * 获取就诊人列表
  */
-export const getPatientList = () => {
+export const getPatientList = ({ silent = false } = {}) => {
   return get(API_PATHS.PATIENT.LIST, {}, {
     needAuth: true,
-    showLoading: true
+    showLoading: !silent
   })
 }
 

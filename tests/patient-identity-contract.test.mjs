@@ -41,7 +41,7 @@ const fillPatient = (page, patientType = 'adult') => Object.assign(page.formData
   guardianName: '测试陪诊人', guardianIdType: '护照', guardianIdNumber: 'P87654321', guardianPhone: '13900139000'
 })
 
-test('个人页只使用接口资料且不写个人缓存，缺失类型不复用旧值，保留就诊卡号显示', async () => {
+test('个人页只使用接口资料且不写个人缓存，仅展示账号姓名和脱敏手机号', async () => {
   for (const idType of [...ID_TYPE_OPTIONS, undefined]) {
     const env = fixture()
     const profile = { id: 7, userName: '测试用户', idType, idCardNo: 'P12345678', phone: '13800138000' }
@@ -50,16 +50,16 @@ test('个人页只使用接口资料且不写个人缓存，缺失类型不复�
     env.values.set('register', oldCache)
     const page = loadSetup('pages/user/profile.vue', env.mocks, ['loadUserProfile', 'userInfo'])
     await page.loadUserProfile()
-    const expected = { realName: profile.userName, idType: idType || '', idNumber: profile.idCardNo, phone: profile.phone }
+    const expected = { realName: profile.userName, avatar: '', phone: '138****8000' }
     assert.deepEqual(page.userInfo.value, expected)
-    assert.equal(page.userInfo.value.idNumber, profile.idCardNo)
     assert.deepEqual(env.values.get('register'), oldCache)
     assert.equal(env.values.has('user'), false)
     assert.equal(env.values.has('logged-in'), false)
   }
   const source = readFileSync(new URL('../pages/user/profile.vue', import.meta.url), 'utf8')
   const templateText = source.split('<script')[0].replace(/<[^>]*>/g, '')
-  assert.match(templateText, /就诊卡号[:：]?\s*\{\{ userInfo.idNumber/)
+  assert.match(templateText, /userInfo\.phone/)
+  assert.doesNotMatch(templateText, /就诊卡号|userInfo\.idNumber/)
 })
 
 test('注册保留原九类选项，患者本人及陪诊人都能选择并按原类型保存', async () => {

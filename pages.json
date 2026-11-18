@@ -39,7 +39,7 @@
     {
       "path": "pages/user/profile",
       "style": {
-        "navigationBarTitleText": "我的",
+        "navigationBarTitleText": "个人中心",
         "navigationBarBackgroundColor": "#ffffff"
       }
     },
@@ -59,6 +59,18 @@
     }
   ],
   "subPackages": [
+    {
+      "root": "pages/favorites",
+      "pages": [
+        { "path": "index", "style": { "navigationBarTitleText": "我的收藏" } }
+      ]
+    },
+    {
+      "root": "pages/feedback",
+      "pages": [
+        { "path": "index", "style": { "navigationBarTitleText": "问题反馈" } }
+      ]
+    },
     {
       "root": "pages/products",
       "pages": [

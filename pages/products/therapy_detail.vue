@@ -713,12 +713,12 @@
           @click="toggleCollect"
         >
           <uni-icons
-            :type="isCollected ? 'star-filled' : 'star'"
+            :type="product.collected ? 'star-filled' : 'star'"
             size="20"
-            :color="isCollected ? '#ff6b35' : '#666'"
+            :color="product.collected ? '#99662e' : '#666'"
           />
           <text class="action-text" selectable="true">
-            {{ isCollected ? '已收藏' : '收藏' }}
+            {{ savingFavorite ? '保存中' : (product.collected ? '已收藏' : '收藏') }}
           </text>
         </view>
         <view
@@ -786,6 +786,7 @@ import { getImageUrl } from '@/utils/config.js'
 import { getProductCartLines } from '@/utils/product-list-cart.js'
 import { formatRichText } from '@/utils/product-rich-text.js'
 import { useProductImages } from '@/utils/product-image.js'
+import { useProductFavorite } from '@/utils/product-favorite.js'
 import { openCustomerServiceChat } from '@/utils/customer-service.js'
 import {
   addCartItem,
@@ -885,7 +886,6 @@ const showPolicy = ref(false)
 const detailTab = ref('desc')
 const currentIndex = ref(1)
 const cartCount = ref(0)
-const isCollected = ref(false)
 const flyingDot = ref({ show: false, x: 0, y: 0 })
 const recommendTab = ref('combo')
 const cartQuantities = ref({})
@@ -1064,6 +1064,9 @@ const loadProduct = async (id) => {
   const preserveQuantity = loadedSession === session && String(product.value.id) === String(id)
   product.value = { ...product.value, available: false }
   try {
+    if (savingFavorite.value) await waitForFavorite()
+    if (sequence !== productRequestSequence || !isCurrentSession(session)) return
+    product.value.collected = null
     const response = await getProductDetail(id, { showLoading: false })
     if (sequence !== productRequestSequence || !isCurrentSession(session)) return
     applyProduct(response, { preserveQuantity })
@@ -1084,6 +1087,7 @@ const buildDetailRedirect = () => {
 }
 
 const ensureLogin = () => requireAccountSession(buildDetailRedirect())
+const { savingFavorite, toggleCollect, waitForFavorite } = useProductFavorite(product, ensureLogin)
 
 const ensureCartCompatible = (targetProduct) => {
   const result = resolveCartCompatibility(targetProduct)
@@ -1278,9 +1282,6 @@ const showCustomerService = () => {
   }).catch(error => {
     if (isCurrentSession(session)) logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { reason: 'CUSTOMER_SERVICE_UNAVAILABLE' } })
   })
-}
-const toggleCollect = () => {
-  isCollected.value = !isCollected.value
 }
 const goCart = () => {
   logButtonClick({ ...PAGE_LOG, pageId: routeProductId.value, actionCode: 'OPEN_CART', accessTitle: '查看购物车', accessDescription: '用户从商品详情进入购物车' })
