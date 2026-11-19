@@ -125,17 +125,6 @@
               />
             </button>
           </picker>
-          <button
-            class="plain patient-action"
-            @click="goToPatientList"
-          >
-            {{ patientError || patientRows.length ? '管理' : '去添加' }}
-            <uni-icons
-              type="right"
-              size="12"
-              color="#ffffff"
-            />
-          </button>
         </view>
       </view>
     </view>
@@ -250,6 +239,26 @@
     </view>
 
     <view class="menu-section">
+      <view
+        class="menu-item"
+        @click="goToFavorites"
+      >
+        <view class="menu-icon">
+          <uni-icons
+            type="star"
+            size="22"
+            color="#3a3a3a"
+          />
+        </view>
+        <text class="menu-text">
+          我的收藏
+        </text>
+        <uni-icons
+          type="right"
+          size="14"
+          color="#c0c4cc"
+        />
+      </view>
       <view
         class="menu-item"
         @click="goToAddressList"
@@ -377,7 +386,7 @@
     <view class="recommend-section">
       <view class="recommend-divider">
         <view class="divider-line" />
-        <text class="divider-text">推荐商品</text>
+        <text class="divider-text">制剂传统疗法浏览</text>
         <view class="divider-line" />
       </view>
       <view
@@ -725,6 +734,13 @@ const goToOrderListByStatus = (status) => {
   })
 }
 
+const goToFavorites = () => {
+  logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_FAVORITES', accessTitle: '我的收藏', accessDescription: '从个人中心进入我的收藏' })
+  uni.navigateTo({
+    url: '/pages/favorites/index'
+  })
+}
+
 const goToAddressList = () => {
   logButtonClick({ ...PAGE_LOG, actionCode: 'OPEN_ADDRESS_LIST', accessTitle: '管理收货地址', accessDescription: '从个人中心进入收货地址管理' })
   uni.navigateTo({
@@ -827,7 +843,7 @@ onUnload(() => {
   align-items: center;
   gap: 24rpx;
   min-width: 0;
-  padding: 40rpx 30rpx 30rpx;
+  padding: 40rpx 30rpx 60rpx;
 }
 
 .avatar-box {
@@ -1136,7 +1152,7 @@ onUnload(() => {
 }
 
 .recommend-section {
-  margin: 20rpx;
+  margin: 100rpx 20rpx 0 20rpx;
 }
 
 .recommend-divider {
