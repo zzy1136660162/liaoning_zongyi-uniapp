@@ -3,6 +3,17 @@
     class="page"
     :class="{ 'page-lock': showManual || showPolicy }"
   >
+    <view
+      class="back-btn"
+      :style="backBtnTopPx ? { top: backBtnTopPx } : {}"
+      @click="goBack"
+    >
+      <uni-icons
+        type="left"
+        size="22"
+        color="#ffffff"
+      />
+    </view>
     <view class="banner-wrapper">
       <swiper
         class="banner"
@@ -1252,8 +1263,22 @@ const switchDetailTab = (tab) => {
 const switchRecommendTab = (tab) => {
   recommendTab.value = tab
 }
+const backBtnTopPx = ref('')
+try {
+  // 对齐小程序右上角胶囊按钮高度，再往上 10rpx。
+  const rect = uni.getMenuButtonBoundingClientRect()
+  if (rect && rect.top) {
+    backBtnTopPx.value = `${rect.top - uni.upx2px(10)}px`
+  }
+} catch (_) {}
 const goBack = () => {
-  uni.navigateBack()
+  const pages = getCurrentPages()
+  if (pages.length > 1) {
+    uni.navigateBack()
+    return
+  }
+  // 直接进入详情页（无历史栈）时兜底回商品列表。
+  uni.reLaunch({ url: '/pages/products/medicine_list' })
 }
 const handleMore = () => {
   uni.showActionSheet({
@@ -1457,6 +1482,20 @@ onShow(async () => {
   font-size: 34rpx;
   font-weight: bold;
   color: #333;
+}
+
+.back-btn {
+  position: fixed;
+  z-index: 20;
+  top: calc(env(safe-area-inset-top) + 36rpx);
+  left: 24rpx;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .banner-wrapper {

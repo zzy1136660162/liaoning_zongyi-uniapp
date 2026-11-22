@@ -99,13 +99,15 @@
         {
           "path": "medicine_detail",
           "style": {
-            "navigationBarTitleText": "详情"
+            "navigationBarTitleText": "详情",
+			"navigationStyle": "custom"
           }
         },
         {
           "path": "therapy_detail",
           "style": {
-            "navigationBarTitleText": "传统疗法详情"
+            "navigationBarTitleText": "传统疗法详情",
+			"navigationStyle": "custom"
           }
         },
         {
