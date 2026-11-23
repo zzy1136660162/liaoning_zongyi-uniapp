@@ -1350,24 +1350,6 @@ const goBack = () => {
   // 直接进入详情页（无历史栈）时兜底回商品列表。
   uni.reLaunch({ url: '/pages/products/medicine_list' })
 }
-const handleMore = () => {
-  uni.showActionSheet({
-    itemList: ['返回商品列表', '查看购物车'],
-    success: ({ tapIndex }) => {
-      if (tapIndex === 0) {
-        uni.navigateTo({ url: '/pages/products/medicine_list' })
-      } else if (tapIndex === 1) {
-        goCart()
-      }
-    }
-  })
-}
-const goConsult = () => {
-  uni.showToast({
-    title: '在线咨询功能建设中',
-    icon: 'none'
-  })
-}
 const showCustomerService = () => {
   const session = getSessionGeneration()
   const actionLog = { ...PAGE_LOG, pageId: routeProductId.value, actionCode: 'OPEN_CUSTOMER_SERVICE', accessTitle: '打开商品客服', accessDescription: '用户从商品详情打开人工客服会话' }
