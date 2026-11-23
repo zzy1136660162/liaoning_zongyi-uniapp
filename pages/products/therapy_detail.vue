@@ -1264,13 +1264,13 @@ const switchRecommendTab = (tab) => {
   recommendTab.value = tab
 }
 const backBtnTopPx = ref('')
-try {
-  // 对齐小程序右上角胶囊按钮高度，再往上 10rpx。
+// 对齐小程序右上角胶囊按钮高度，再往上 10rpx；不支持该 API 的平台回退到 CSS 定位。
+if (typeof uni.getMenuButtonBoundingClientRect === 'function') {
   const rect = uni.getMenuButtonBoundingClientRect()
   if (rect && rect.top) {
     backBtnTopPx.value = `${rect.top - uni.upx2px(10)}px`
   }
-} catch (_) {}
+}
 const goBack = () => {
   const pages = getCurrentPages()
   if (pages.length > 1) {
