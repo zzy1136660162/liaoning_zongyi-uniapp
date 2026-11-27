@@ -35,12 +35,12 @@ const harness = (overrides = {}, options = {}) => {
     splitCartItemKey: value => ({ productId: value }),
     logPageView() {}, getImageUrl: value => value,
     uni: { getStorageSync: () => 888, navigateTo: route => navigations.push(route.url),
-      redirectTo: route => navigations.push(route.url), showToast() {} },
+      redirectTo: route => navigations.push(route.url), navigateBack: () => navigations.push('back'), showToast() {} },
     ...context, ...flow, ...mode, ...overrides
   }
   const page = loadSetup('pages/dispense/consultation.vue', mocks,
     ['createConsultationRecord', 'viewPrescription', 'showPrescriptionBtn', 'checkoutContext', 'consultationError',
-      'prescriptionStatusText', 'messages', 'doctorName', 'doctorId'])
+      'prescriptionStatusText', 'messages', 'legacyManualRoute', 'returnToApply'])
   load({ patientId: '42', selectedItems: '7:1', ...options })
   return { ...page, navigations, mount: () => mount(), unload: () => unload() }
 }
@@ -59,8 +59,6 @@ test('请求失败不播放成功且不复用已存旧问诊ID', async t => {
 test('真实成功后原五条文案依次播放，末条停留一秒才开放已审核处方', async t => {
   const page = harness()
   await page.createConsultationRecord()
-  assert.equal(page.doctorName.value, mode.AI_DOCTOR.name)
-  assert.equal(page.doctorId.value, null)
   assert.equal(page.prescriptionStatusText.value, '处方审核通过')
   assert.deepEqual(page.messages.value.map(message => message.text), [
     '您好，我是辽宁中医在线医生，已收到您的复诊开药诉求，正在为您诊断开方，预计1分钟，请不要离开。',
@@ -182,16 +180,16 @@ test('播放中切换账号后停止消息和处方入口', async t => {
   assert.deepEqual(page.navigations, [])
 })
 
-test('页面挂载自动创建人工问诊，动画保留上页传入的真实医生', async t => {
+test('在线复诊忽略路由医生信息，创建请求使用统一的在线医生身份', async t => {
   let request
   const page = harness({ createConsultation: async input => {
     request = input
     return { id: 123, patientId: input.patientId }
-  } }, { consultationMode: 'manual', doctorId: '100', doctorName: encodeURIComponent(mode.MANUAL_DOCTORS[0].name) })
+  } }, { consultationMode: 'ai', doctorId: '100', doctorName: '%E0%A4%A', doctorAvatar: '%' })
   await page.mount()
-  assert.equal(request.doctorId, 100)
-  assert.equal(page.doctorId.value, 100)
-  assert.equal(page.doctorName.value, mode.MANUAL_DOCTORS[0].name)
+  assert.equal(page.consultationError.value, '')
+  assert.equal(request.doctorId, null)
+  assert.equal(request.historyDesc, '实时医生接诊')
   assert.equal(page.showPrescriptionBtn.value, false)
   finishMessages(t)
   assert.equal(page.showPrescriptionBtn.value, true)
@@ -246,10 +244,9 @@ test('挂载分流与创建共用本次商品读取，同商品不同规格保�
   assert.deepEqual(request.prescriptionItems.map(item => String(item.productId)), ['7', '7'])
 })
 
-test('已创建问诊的重试只查原处方，不因商品随后不可用而失败或更换医生', async t => {
+test('已创建在线问诊的重试只查原处方，商品随后不可用也能继续', async t => {
   let reads = 0, creates = 0
   const prescriptionQueries = []
-  const doctor = mode.MANUAL_DOCTORS[1]
   const page = harness({
     getProductDetail: async id => {
       if (++reads > 1) throw new Error('fixture-product-unavailable')
@@ -257,8 +254,8 @@ test('已创建问诊的重试只查原处方，不因商品随后不可用而�
     },
     createConsultation: async input => {
       creates++
-      assert.equal(input.doctorId, doctor.id)
-      assert.equal(input.historyDesc, `人工接诊医生：${doctor.name}`)
+      assert.equal(input.doctorId, null)
+      assert.equal(input.historyDesc, '实时医生接诊')
       return { id: 123, patientId: input.patientId }
     },
     getPrescriptionByConsultation: async id => {
@@ -266,7 +263,7 @@ test('已创建问诊的重试只查原处方，不因商品随后不可用而�
       if (prescriptionQueries.length === 1) throw new Error('fixture-prescription-failed')
       return { id: 789, consultationId: id, patientId: 42 }
     }
-  }, { consultationMode: 'manual', doctorId: String(doctor.id) })
+  })
   await page.mount()
   await page.createConsultationRecord()
   assert.equal(reads, 1)
@@ -363,17 +360,20 @@ test('无需问诊的直购仅取一次商品并保留数量与问卷凭据跳�
   assert.equal(route.searchParams.get('buyAnswerId'), '22')
 })
 
-test('无效人工医生通过原错误区域阻止创建，AI忽略矛盾医生参数', async () => {
-  const invalid = harness({
-    getProductDetail() { assert.fail('无效路由不能查询商品') },
-    createConsultation() { assert.fail('无效路由不能创建问诊') }
-  }, { consultationMode: 'manual', doctorId: '999' })
-  await invalid.mount()
-  assert.equal(invalid.consultationError.value, '问诊未完成，请重试')
-  assert.equal(invalid.showPrescriptionBtn.value, false)
-  const ai = harness({}, { consultationMode: 'ai', doctorId: '100', doctorName: '%E0%A4%A', doctorAvatar: '%' })
-  await ai.mount()
-  assert.equal(ai.consultationError.value, '')
-  assert.equal(ai.doctorId.value, null)
-  assert.equal(ai.doctorName.value, mode.AI_DOCTOR.name)
+test('旧人工接诊链接返回申请页选医生，不创建问诊或处方', async () => {
+  for (const doctorId of [undefined, '100', '999']) {
+    const page = harness({
+      setCheckoutProductIds() { assert.fail('旧链接不能修改结算选择') },
+      getProductDetail() { assert.fail('旧链接不能查询商品') },
+      createConsultation() { assert.fail('旧链接不能创建问诊') },
+      getPrescriptionByConsultation() { assert.fail('旧链接不能读取处方') }
+    }, { consultationMode: 'manual', doctorId })
+    await page.mount()
+    assert.equal(page.legacyManualRoute.value, true)
+    assert.equal(page.consultationError.value, '请返回配制剂申请，选择指定医生后扫码咨询。')
+    assert.deepEqual(page.messages.value, [])
+    assert.equal(page.showPrescriptionBtn.value, false)
+    page.returnToApply()
+    assert.deepEqual(page.navigations, ['back'])
+  }
 })

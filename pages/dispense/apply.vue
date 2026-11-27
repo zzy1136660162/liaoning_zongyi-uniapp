@@ -287,6 +287,12 @@
         </button>
       </view>
     </view>
+    <DoctorConsultation
+      v-if="prescribingProductId"
+      :product-id="prescribingProductId"
+      select-doctor
+      @close="prescribingProductId = null"
+    />
   </view>
 </template>
 
@@ -314,12 +320,12 @@ import { getPatientProfileNotice, preferredPatient } from '@/utils/patient.js'
 import { loadCartProducts } from '@/utils/cart-products.js'
 import { getProductDetail } from '@/api/product.js'
 import { useProductImages } from '@/utils/product-image.js'
-import { resolveProductFlow } from '@/utils/product-biz.js'
+import { isHospitalMedical, resolveProductFlow } from '@/utils/product-biz.js'
 import {
   CONSULTATION_MODE_AI,
-  CONSULTATION_MODE_MANUAL,
-  getConsultationDoctorByMode
+  CONSULTATION_MODE_MANUAL
 } from '@/utils/consultation-mode.js'
+import DoctorConsultation from '@/components/DoctorConsultation.vue'
 
 const { getProductImageUrl, handleProductImageError } = useProductImages()
 const cartItems = ref([])
@@ -334,6 +340,7 @@ const selectedRequiresConsultation = ref(true)
 const agreementChecked = ref(false)
 const showAgreement = ref(false)
 const consultationMode = ref(CONSULTATION_MODE_AI)
+const prescribingProductId = ref(null)
 let pageActive = true
 let routeReady = false
 let patientRefreshId = 0
@@ -484,12 +491,22 @@ const onManagePatients = () => {
   uni.navigateTo({ url: '/pages/user/patient_list' })
 }
 
-const selectConsultationMode = (mode) => {
-  if (consultationMode.value === mode) {
+const openPrescribingDoctors = () => {
+  const productId = cartItems.value.find(isHospitalMedical)?.productId
+  if (!productId) {
+    uni.showToast({ title: '制剂商品尚未加载，请稍后重试', icon: 'none' })
     return
   }
-  consultationMode.value = mode
-  logButtonClick({ ...PAGE_LOG, actionCode: 'SELECT_CONSULTATION_MODE', accessTitle: '切换接诊方式', accessDescription: '用户选择本次复诊的接诊方式', extraData: { consultationMode: mode, productCount: cartItems.value.length } })
+  prescribingProductId.value = productId
+}
+
+const selectConsultationMode = (mode) => {
+  if (!pageActive || !isCurrentSession(pageSession)) return
+  if (consultationMode.value !== mode) {
+    consultationMode.value = mode
+    logButtonClick({ ...PAGE_LOG, actionCode: 'SELECT_CONSULTATION_MODE', accessTitle: '切换接诊方式', accessDescription: '用户选择本次复诊的接诊方式', extraData: { consultationMode: mode, productCount: cartItems.value.length } })
+  }
+  if (mode === CONSULTATION_MODE_MANUAL) openPrescribingDoctors()
 }
 
 const agreementContent = `"在线常见病、慢性病复诊"是一项在线诊疗服务（以下简称"本服务"）。本服务由入驻平台的互联网医院及其医务人员向您提供。作为平台方，我们将对平台内的互联网医院及医务人员采取必要的平台管理措施，督促其严格按照医疗卫生法律法规和诊疗规范及互联网在线诊疗规范。您在使用本服务之前，请务必仔细阅读下列文本。在此郑重提示：一旦您使用了本服务，即表示您已经完整、准确的了解了本声明所提示的所有内容，并同意接受本声明全部条款的约束。
@@ -552,17 +569,12 @@ const showAgreementDialog = () => {
   showAgreement.value = true
 }
 
-const navigateToConsultation = (selectedItemIds, mode) => {
+const navigateToConsultation = (selectedItemIds) => {
   const query = [
     `selectedItems=${selectedItemIds.join(',')}`,
-    `consultationMode=${mode}`,
+    `consultationMode=${CONSULTATION_MODE_AI}`,
     `patientId=${encodeURIComponent(selectedPatient.value.id)}`
   ]
-
-  const doctor = getConsultationDoctorByMode(mode)
-  if (doctor.id !== null) query.push(`doctorId=${doctor.id}`)
-  query.push(`doctorName=${encodeURIComponent(doctor.name)}`)
-  query.push(`doctorAvatar=${encodeURIComponent(doctor.avatar)}`)
 
   uni.navigateTo({
     url: `/pages/dispense/consultation?${query.join('&')}${directPurchaseQuery(directPurchase.value)}`
@@ -588,7 +600,9 @@ const promptPatientCompletion = () => {
 
 const onSubmit = () => {
   if (!pageActive || !isCurrentSession(pageSession)) return
-  const actionLog = { ...PAGE_LOG, actionCode: 'CONTINUE_PURCHASE', accessTitle: '继续配制剂流程', accessDescription: '根据商品复诊要求进入在线复诊或订单确认', extraData: { patientId: selectedPatient.value?.id || '', productCount: cartItems.value.length, consultationMode: consultationMode.value, destination: selectedRequiresConsultation.value ? 'consultation' : 'order_confirm' } }
+  const manualConsultation = selectedRequiresConsultation.value && consultationMode.value === CONSULTATION_MODE_MANUAL
+  const destination = selectedRequiresConsultation.value ? (manualConsultation ? 'doctor_selection' : 'consultation') : 'order_confirm'
+  const actionLog = { ...PAGE_LOG, actionCode: 'CONTINUE_PURCHASE', accessTitle: '继续配制剂流程', accessDescription: '继续本次接诊或订单确认', extraData: { patientId: selectedPatient.value?.id || '', productCount: cartItems.value.length, consultationMode: consultationMode.value, destination } }
   logButtonClick(actionLog)
   if (checkoutRouteError.value) {
     logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', accessTitle: '购买上下文校验未通过', accessDescription: '本次购买信息无效，未继续购买流程', extraData: { ...actionLog.extraData, reason: 'INVALID_CHECKOUT_CONTEXT' } })
@@ -602,6 +616,10 @@ const onSubmit = () => {
   }
   if (promptPatientCompletion()) {
     logAccess({ ...actionLog, actionType: 'BEHAVIOR', actionResult: 'FAILED', accessTitle: '就诊人资料待完善', accessDescription: '缺少下单必需的就诊人资料，提示前往管理页完善', extraData: { ...actionLog.extraData, reason: 'PATIENT_PROFILE_INCOMPLETE' } })
+    return
+  }
+  if (manualConsultation) {
+    openPrescribingDoctors()
     return
   }
 
@@ -618,7 +636,7 @@ const onSubmit = () => {
     return
   }
 
-  navigateToConsultation(selectedItemIds, consultationMode.value)
+  navigateToConsultation(selectedItemIds)
 }
 
 onMounted(() => {

@@ -146,6 +146,8 @@
           暂无商品明细
         </view>
 
+        <HisTherapyUsage :usage="order.hisTherapyUsage" />
+
         <view
           v-if="redeemSummaryText(order)"
           class="order-redeem-summary"
@@ -311,6 +313,7 @@ import { redirectToWithFallback } from '@/utils/navigate.js'
 import { useProductImages } from '@/utils/product-image.js'
 import TabBar from '@/components/TabBar/TabBar.vue'
 import DoctorConsultation from '@/components/DoctorConsultation.vue'
+import HisTherapyUsage from '@/components/HisTherapyUsage.vue'
 import { getDisplayOrderNo, getPaidAmountText, getRefundedAmountText } from '@/utils/order-display.js'
 import { isTherapyRefundItem } from '@/utils/refund.js'
 
@@ -471,6 +474,7 @@ const mapOrderListItem = (order = {}) => ({
   id: order.id,
   orderNo: order.orderNo,
   hisOrderNo: order.hisOrderNo,
+  hisTherapyUsage: order.hisTherapyUsage ?? null,
   paidAmount: order.paidAmount,
   refundedAmount: order.refundedAmount,
   orderType: order.orderType,
@@ -525,6 +529,7 @@ const hydrateMissingOrderItems = async (pageOrders, isCurrentRequest) => {
 
     return {
       ...order,
+      hisTherapyUsage: detail.hisTherapyUsage ?? order.hisTherapyUsage,
       orderType: order.orderType ?? detail.orderType,
       payStatus: order.payStatus ?? detail.payStatus,
       paymentFulfillmentStatus: detail.paymentFulfillmentStatus ?? order.paymentFulfillmentStatus,

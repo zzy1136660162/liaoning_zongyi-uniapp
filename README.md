@@ -7,17 +7,17 @@
 ## 开发与运行
 
 1. 在 HBuilderX 中打开本目录，使用支持当前项目的 Vue 3/uni-app 编译环境。
-2. 在本目录安装锁定依赖：
+2. 在本目录使用 pnpm 10.34.9 安装锁定依赖。
 
    ```bash
-   npm ci
+   pnpm install --frozen-lockfile
    ```
 
 3. 核对 [utils/config.js](utils/config.js) 中的 `API_CONFIG`、`ENV`、`IMAGE_BASE_URL` 及客服配置。当前 `ENV` 表达式固定选择 `production`，不能假定开发构建会自动切换到本地 API。真机访问本地服务时也不能使用真机自己的 `localhost`。
 4. 核对 [manifest.json](manifest.json) 的微信小程序配置，并在微信平台配置实际使用的请求、上传及下载合法域名。
 5. 通过 HBuilderX“运行 → 运行到小程序模拟器 → 微信开发者工具”启动，核对控制台实际请求地址与目标环境一致。
 
-当前 [package.json](package.json) 提供 `npm run lint`，没有 npm 运行或构建脚本。小程序发行使用 HBuilderX 的微信小程序发行入口，再到微信开发者工具上传；发布前核对目标环境和版本。小程序发布与服务器整体发布分开执行。
+使用 [package.json](package.json) 中的 `pnpm run lint` 检查代码。小程序运行和打包均从 HBuilderX 进行。发行时使用 HBuilderX 的微信小程序发行入口，再到微信开发者工具上传，发布前核对目标环境和版本。小程序发布与服务器整体发布分开执行。
 
 ## 目录与维护入口
 

@@ -33,10 +33,13 @@ const createConsultation = (overrides = {}) => {
     defineProps: () => ({ productId: null }),
     onMounted: callback => { mounted = callback }, onUnmounted: callback => { unmounted = callback },
     getConsultationDoctors: productId => new Promise((resolve, reject) => calls.push({ productId, resolve, reject })),
+    getPrescribingDoctors: productId => new Promise((resolve, reject) => calls.push({ productId, resolve, reject })),
     getImageUrl: value => value, saveDoctorQr,
     ...overrides
-  }, ['selected', 'loading', 'loadError', 'loadDoctors', 'imageLoading', 'imageFailed', 'imageVisible',
-    'onImageLoad', 'onImageError', 'retryImage', 'save', 'saving', 'preview', 'close'])
+  }, ['selected', 'visibleDoctors', 'chooseDoctor', 'backToList', 'loading', 'loadError', 'loadDoctors', 'imageLoading', 'imageFailed', 'imageVisible',
+    'onImageComplete', 'imageRequestId', 'retryImage', 'save', 'saving', 'preview', 'close'])
+  state.onImageLoad = (qrRequest = state.imageRequestId.value) => state.onImageComplete({ currentTarget: { dataset: { qrRequest } } }, false)
+  state.onImageError = (qrRequest = state.imageRequestId.value) => state.onImageComplete({ currentTarget: { dataset: { qrRequest } } }, true)
   return { state, calls, mounted, unmounted }
 }
 
@@ -60,6 +63,44 @@ test('首项关联人员不可咨询时，沿用服务端候选名单随机展�
   calls[0].resolve([{ id: 3 }, { id: 9 }])
   await request
   assert.equal(state.selected.value.id, 9)
+})
+
+test('指定医生保留服务端名单顺序，选中哪位就展示哪位二维码，可返回列表重选', async () => {
+  const previews = []
+  const { state, calls, mounted } = createConsultation({
+    defineProps: () => ({ productId: 86, selectDoctor: true }),
+    getConsultationDoctors: () => assert.fail('指定医生须使用接诊医生接口'),
+    Math: { random: () => assert.fail('医生列表按服务端顺序展示') },
+    uni: { previewImage: value => previews.push(value) }
+  })
+  const preferred = { id: 12, name: '首位医生', consultationQrUrl: '/profile/first.png' }
+  const other = { id: 21, name: '另一位医生', consultationQrUrl: '/profile/other.png' }
+  const request = mounted()
+  assert.equal(calls[0].productId, 86)
+  calls[0].resolve([preferred, other])
+  await request
+  assert.deepEqual(state.visibleDoctors.value, [preferred, other])
+  assert.equal(state.selected.value, null)
+  assert.equal(state.imageVisible.value, false)
+
+  await state.chooseDoctor(other)
+  assert.equal(state.selected.value, other)
+  state.onImageLoad()
+  const previousImage = state.imageRequestId.value
+  state.preview()
+  assert.deepEqual(previews[0].urls, ['/profile/other.png'])
+
+  state.backToList()
+  assert.deepEqual(state.visibleDoctors.value, [preferred, other])
+  assert.equal(state.imageVisible.value, false)
+  await state.chooseDoctor(preferred)
+  state.onImageLoad(previousImage)
+  assert.equal(state.imageLoading.value, true, '上一位医生的迟到事件不能提前开启预览')
+  state.onImageLoad()
+  state.onImageError(previousImage)
+  assert.equal(state.imageFailed.value, false, '上一位医生的迟到失败不能覆盖新二维码')
+  state.preview()
+  assert.deepEqual(previews[1].urls, ['/profile/first.png'])
 })
 
 test('咨询加载失败可重试，自动展示一位，关闭后迟到响应不恢复弹层', async () => {

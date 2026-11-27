@@ -57,9 +57,11 @@ const createDetail = (kind = 'order', overrides = {}) => {
 test('订单详情按接口刷新确认收货分类，历史未记录不能沿用旧来源', async () => {
   const detail = createDetail()
   let pending = detail.load()
-  detail.calls.at(-1).resolve({ ...order(1), receiptConfirmType: 2 })
+  const hisTherapyUsage = { status: 'READY', groups: [] }
+  detail.calls.at(-1).resolve({ ...order(1), receiptConfirmType: 2, hisTherapyUsage })
   await pending
   assert.equal(detail.state.receiptConfirmText, '系统超期自动确认')
+  assert.equal(detail.state.order.hisTherapyUsage, hisTherapyUsage)
   pending = detail.load()
   detail.calls.at(-1).resolve({ ...order(1), receiptConfirmType: 1 })
   await pending
@@ -68,6 +70,7 @@ test('订单详情按接口刷新确认收货分类，历史未记录不能沿�
   detail.calls.at(-1).resolve(order(1))
   await pending
   assert.equal(detail.state.receiptConfirmText, '')
+  assert.equal(detail.state.order.hisTherapyUsage, null)
 })
 
 for (const kind of ['order', 'refund']) {

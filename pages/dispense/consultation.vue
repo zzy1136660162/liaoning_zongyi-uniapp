@@ -24,12 +24,14 @@
           <view class="message-avatar">
             <image
               class="avatar-img"
-              :src="getImageUrl(doctorAvatar)"
+              :src="getImageUrl(AI_DOCTOR.avatar)"
               mode="aspectFill"
             />
           </view>
           <view class="message-content">
-            <view class="doctor-name">{{ doctorName }}</view>
+            <view class="doctor-name">
+              {{ AI_DOCTOR.name }}
+            </view>
             <view class="message-bubble">
               <text class="message-text">{{ message.text }}</text>
             </view>
@@ -40,7 +42,19 @@
 
     <view v-if="consultationError" class="footer">
       <text>{{ consultationError }}</text>
-      <button :disabled="isSubmitting" @click="retryConsultation">重新获取本次处方</button>
+      <button
+        v-if="legacyManualRoute"
+        @click="returnToApply"
+      >
+        返回配制剂申请
+      </button>
+      <button
+        v-else
+        :disabled="isSubmitting"
+        @click="retryConsultation"
+      >
+        重新获取本次处方
+      </button>
     </view>
     <!-- 查看处方按钮 -->
     <view class="footer" v-if="showPrescriptionBtn">
@@ -63,7 +77,7 @@ import { getCurrentCheckoutProductIds, setCheckoutProductIds } from '@/utils/car
 import { parseDirectPurchase, directPurchaseQuery, checkoutEntries } from '@/utils/checkout.js'
 import { getImageUrl } from '@/utils/config.js'
 import { PRODUCT_FLOW_CONSULTATION, resolveProductFlow, resolveProductFlowType } from '@/utils/product-biz.js'
-import { AI_DOCTOR, CONSULTATION_MODE_AI, CONSULTATION_MODE_MANUAL, resolveConsultationDoctor } from '@/utils/consultation-mode.js'
+import { AI_DOCTOR, CONSULTATION_MODE_AI, CONSULTATION_MODE_MANUAL } from '@/utils/consultation-mode.js'
 
 import { getSessionGeneration, assertCurrentSession } from '@/utils/session.js'
 import { requireConsultationPatient, requireCreatedPrescription } from '@/utils/consultation-checkout.js'
@@ -76,10 +90,7 @@ const consultationError = ref('')
 const checkoutContext = ref(null)
 const directPurchase = ref(null)
 const checkoutRouteError = ref('')
-const consultationMode = ref(CONSULTATION_MODE_AI)
-const doctorName = ref(AI_DOCTOR.name)
-const doctorAvatar = ref(AI_DOCTOR.avatar)
-const doctorId = ref(null)
+const legacyManualRoute = ref(false)
 const patientId = ref(null)
 const isSubmitting = ref(false)
 
@@ -174,9 +185,9 @@ const buildConsultationData = (products) => {
   return {
     patientId: patientId.value,
     consultType: 1,
-    symptomDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? '人工接诊复诊开药' : '实时接诊复诊开药',
-    historyDesc: consultationMode.value === CONSULTATION_MODE_MANUAL ? `人工接诊医生：${doctorName.value}` : '实时医生接诊',
-    doctorId: doctorId.value,
+    symptomDesc: '实时接诊复诊开药',
+    historyDesc: '实时医生接诊',
+    doctorId: AI_DOCTOR.id,
     diagnosis: firstProduct.prescriptionDiagnosis || '复诊开药',
     usageNote: firstProduct.usageDesc || '',
     // 购买数量和规格继续由结算行保留，不作为处方剂量。
@@ -228,12 +239,12 @@ const createConsultationRecord = async () => {
     console.info('event=ui_dispense_consultation stage=prescription_context result=validated')
     prescriptionStatusText.value = '处方审核通过'
     checkoutContext.value = context
-    logAccess({ ...PAGE_LOG, actionCode: 'PREPARE_CONSULTATION', accessTitle: '本次复诊处方已就绪', accessDescription: '服务端返回的本次复诊及处方已通过关联校验', pageId: context.consultationId, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', extraData: { consultationId: context.consultationId, consultationMode: consultationMode.value } })
+    logAccess({ ...PAGE_LOG, actionCode: 'PREPARE_CONSULTATION', accessTitle: '本次复诊处方已就绪', accessDescription: '服务端返回的本次复诊及处方已通过关联校验', pageId: context.consultationId, actionType: 'BEHAVIOR', actionResult: 'SUCCESS', extraData: { consultationId: context.consultationId, consultationMode: CONSULTATION_MODE_AI } })
     showMessages()
     return result
   } catch (error) {
     if (!pageActive || error?.code === 'SESSION_CHANGED') return null
-    logAccess({ ...PAGE_LOG, actionCode: 'PREPARE_CONSULTATION', accessTitle: '本次复诊处方准备未完成', accessDescription: '复诊或处方尚未取得可继续购买的明确结果', actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { reason: 'consultation_incomplete', consultationMode: consultationMode.value } })
+    logAccess({ ...PAGE_LOG, actionCode: 'PREPARE_CONSULTATION', accessTitle: '本次复诊处方准备未完成', accessDescription: '复诊或处方尚未取得可继续购买的明确结果', actionType: 'BEHAVIOR', actionResult: getActionFailureResult(error), extraData: { reason: 'consultation_incomplete', consultationMode: CONSULTATION_MODE_AI } })
     console.warn('event=ui_dispense_consultation stage=create result=failed reason=consultation_incomplete')
     consultationError.value = error?.message || '问诊未完成，请重试'
     messages.value = [{ text: '本次复诊尚未完成。', show: true }]
@@ -249,6 +260,8 @@ const retryConsultation = () => {
   return createConsultationRecord()
 }
 
+const returnToApply = () => uni.navigateBack()
+
 const redirectToConfirm = () => {
   const ids = selectedProductIds.value.length > 0 ? selectedProductIds.value : getCurrentCheckoutProductIds()
   uni.redirectTo({
@@ -256,16 +269,7 @@ const redirectToConfirm = () => {
   })
 }
 
-onMounted(async () => {
-  if (!patientId.value) {
-    return
-  }
-  // 页面加载后创建咨询记录
-  await createConsultationRecord()
-
-  // 记录页面访问日志
-
-})
+onMounted(createConsultationRecord)
 
 onUnload(() => {
   pageActive = false
@@ -273,6 +277,13 @@ onUnload(() => {
 })
 
 onLoad((options) => {
+  // 旧人工接诊链接引导回申请页选择医生，避免触发在线复诊及自动开方。
+  if (options?.consultationMode === CONSULTATION_MODE_MANUAL) {
+    legacyManualRoute.value = true
+    consultationError.value = '请返回配制剂申请，选择指定医生后扫码咨询。'
+    messages.value = []
+    return
+  }
   try { directPurchase.value = parseDirectPurchase(options) }
   catch (error) { checkoutRouteError.value = error.message }
   if (directPurchase.value && !options?.selectedItems) checkoutRouteError.value = '购买信息无效，请返回商品页重新选择'
@@ -292,15 +303,6 @@ onLoad((options) => {
     if (!directPurchase.value) setCheckoutProductIds(selectedProductIds.value)
   } else {
     selectedProductIds.value = getCurrentCheckoutProductIds()
-  }
-  try {
-    const doctor = resolveConsultationDoctor(options)
-    consultationMode.value = doctor.mode
-    doctorId.value = doctor.id
-    doctorName.value = doctor.name
-    doctorAvatar.value = doctor.avatar
-  } catch (error) {
-    checkoutRouteError.value = error.message
   }
 })
 onShow(() => {

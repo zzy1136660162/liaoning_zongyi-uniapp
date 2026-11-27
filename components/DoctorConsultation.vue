@@ -9,7 +9,7 @@
     >
       <view class="consult-heading">
         <text class="consult-title">
-          在线咨询
+          {{ selectDoctor ? (selected ? '医生二维码' : '选择医生') : '在线咨询' }}
         </text>
         <button
           class="consult-close"
@@ -24,7 +24,7 @@
         v-if="loading"
         class="consult-state"
       >
-        正在加载咨询人员…
+        {{ selectDoctor ? '正在加载医生…' : '正在加载咨询人员…' }}
       </view>
       <view
         v-else-if="loadError"
@@ -39,64 +39,89 @@
         </button>
       </view>
       <view
-        v-else-if="!selected"
+        v-else-if="!selected && !doctors.length"
         class="consult-state"
       >
-        暂无可咨询人员，请稍后再试。
+        {{ selectDoctor ? '暂无可接诊医生，请稍后再试。' : '暂无可咨询人员，请稍后再试。' }}
       </view>
       <template v-else>
         <scroll-view
           scroll-y
+          :scroll-into-view="selectDoctor && selected && imageVisible ? 'consult-qr-top' : ''"
           class="consult-body"
+          :class="{ 'consult-list-single': !selected && doctors.length === 1 }"
         >
-          <view class="consult-doctor">
+          <button
+            v-if="selectDoctor && selected"
+            id="consult-qr-top"
+            class="consult-back"
+            :disabled="saving"
+            @click="backToList"
+          >
+            返回医生列表
+          </button>
+          <view
+            v-for="doctor in visibleDoctors"
+            :key="doctor.id"
+            class="consult-doctor"
+            :class="{ 'consult-pickable': !selected }"
+            :hover-class="selected ? 'none' : 'consult-pickable-pressed'"
+            @click="chooseDoctor(doctor)"
+          >
             <image
-              v-if="selected.avatarUrl"
+              v-if="doctor.avatarUrl"
               class="consult-avatar"
-              :src="getImageUrl(selected.avatarUrl)"
+              :src="getImageUrl(doctor.avatarUrl)"
               mode="aspectFill"
             />
             <view
               v-else
               class="consult-avatar consult-avatar-empty"
             >
-              {{ selected.name.slice(0, 1) }}
+              {{ doctor.name.slice(0, 1) }}
             </view>
             <view class="consult-doctor-info">
               <view>
                 <text class="consult-name">
-                  {{ selected.name }}
+                  {{ doctor.name }}
                 </text><text
-                  v-if="selected.title"
+                  v-if="doctor.title"
                   class="consult-job"
                 >
-                  {{ selected.title }}
+                  {{ doctor.title }}
                 </text>
               </view>
               <text
-                v-if="selected.department"
+                v-if="doctor.department"
                 class="consult-department"
               >
-                {{ selected.department }}
+                {{ doctor.department }}
               </text>
               <text
-                v-if="selected.hospitalName"
+                v-if="doctor.hospitalName"
                 class="consult-department"
               >
-                {{ selected.hospitalName }}
+                {{ doctor.hospitalName }}
               </text>
             </view>
+            <text
+              v-if="!selected"
+              class="consult-doctor-arrow"
+            >
+              ›
+            </text>
           </view>
-          <view class="consult-code">
+          <view v-if="selected" class="consult-code">
             <view class="consult-qr-frame">
               <image
                 v-if="imageVisible"
                 class="consult-qr"
                 :src="getImageUrl(selected.consultationQrUrl)"
+                :data-qr-request="imageRequestId"
                 mode="widthFix"
                 @longpress.stop="save"
-                @error="onImageError"
-                @load="onImageLoad"
+                @error="onImageComplete($event, true)"
+                @load="onImageComplete($event, false)"
               />
               <view
                 v-if="imageLoading || imageFailed"
@@ -124,7 +149,7 @@
             </button>
           </view>
         </scroll-view>
-        <view class="consult-footer">
+        <view v-if="selected" class="consult-footer">
           <text class="consult-tip">
             保存后，打开微信扫一扫，从相册选择二维码进入咨询页面。
           </text>
@@ -143,19 +168,25 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
-import { getConsultationDoctors } from '@/api/doctor.js'
+import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { getConsultationDoctors, getPrescribingDoctors } from '@/api/doctor.js'
 import { getImageUrl } from '@/utils/config.js'
 import { saveDoctorQr } from '@/utils/doctor-qr.js'
 
 const emit = defineEmits(['close'])
-const props = defineProps({ productId: { type: [Number, String], default: null } })
+const props = defineProps({
+  productId: { type: [Number, String], default: null },
+  selectDoctor: { type: Boolean, default: false }
+})
+const doctors = ref([])
 const selected = ref(null)
+const visibleDoctors = computed(() => selected.value ? [selected.value] : doctors.value)
 const loading = ref(false)
 const loadError = ref('')
 const imageFailed = ref(false)
 const imageLoading = ref(true)
 const imageVisible = ref(false)
+const imageRequestId = ref(0)
 const saving = ref(false)
 let disposed = false
 
@@ -164,36 +195,47 @@ const loadDoctors = async () => {
   if (loading.value || disposed) return
   loading.value = true
   loadError.value = ''
+  doctors.value = []
   selected.value = null
   try {
-    const result = await getConsultationDoctors(props.productId)
+    const result = props.selectDoctor
+      ? await getPrescribingDoctors(props.productId)
+      : await getConsultationDoctors(props.productId)
     if (disposed) return
-    const doctors = Array.isArray(result) ? result : []
-    if (doctors.length) {
-      selected.value = doctors[Math.floor(Math.random() * doctors.length)]
+    doctors.value = Array.isArray(result) ? result : []
+    if (!props.selectDoctor && doctors.value.length) {
+      selected.value = doctors.value[Math.floor(Math.random() * doctors.value.length)]
       await retryImage()
     }
   } catch (_) {
-    if (!disposed) loadError.value = '咨询人员加载失败，请检查网络后重试。'
+    if (!disposed) loadError.value = props.selectDoctor ? '医生列表加载失败，请检查网络后重试。' : '咨询人员加载失败，请检查网络后重试。'
   } finally {
     if (!disposed) loading.value = false
   }
 }
+const chooseDoctor = (doctor) => {
+  if (disposed || !props.selectDoctor || loading.value || selected.value) return
+  selected.value = doctor
+  return retryImage()
+}
+const backToList = () => {
+  if (saving.value) return
+  selected.value = null
+  imageVisible.value = false
+}
 const retryImage = async () => {
+  const requestId = ++imageRequestId.value
   imageFailed.value = false
   imageLoading.value = true
   // 同一地址加载失败后，先移除原生 image 再重建，确保小程序重新加载图片。
   imageVisible.value = false
   await nextTick()
-  if (!disposed) imageVisible.value = true
+  if (!disposed && selected.value && requestId === imageRequestId.value) imageVisible.value = true
 }
-const onImageLoad = () => {
+const onImageComplete = (event, failed) => {
+  if (disposed || !selected.value || !imageVisible.value || Number(event.currentTarget?.dataset?.qrRequest) !== imageRequestId.value) return
   imageLoading.value = false
-  imageFailed.value = false
-}
-const onImageError = () => {
-  imageLoading.value = false
-  imageFailed.value = true
+  imageFailed.value = failed
 }
 const preview = () => {
   if (disposed || saving.value || !selected.value || imageLoading.value || imageFailed.value) return
@@ -221,7 +263,7 @@ onMounted(loadDoctors)
 onUnmounted(() => { disposed = true })
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .consult-mask { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 1100; background: rgba(20, 35, 50, .38); display: flex; align-items: flex-end; }
 .consult-sheet { display: flex; flex-direction: column; width: 100%; max-height: 90vh; box-sizing: border-box; background: #fff; border-radius: 32rpx 32rpx 0 0; padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom)); }
 .consult-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; padding-bottom: 16rpx; border-bottom: 1rpx solid #edf1f3; }
@@ -230,8 +272,13 @@ onUnmounted(() => { disposed = true })
 button::after { border: 0; }
 .consult-state { padding: 64rpx 12rpx; text-align: center; color: #667986; font-size: 27rpx; }
 .consult-body { height: 56vh; min-height: 0; flex-shrink: 1; }
+.consult-list-single { height: auto; }
 .consult-footer { flex-shrink: 0; }
 .consult-doctor { display: flex; align-items: center; padding: 28rpx 8rpx; text-align: left; line-height: 1.5; }
+.consult-pickable { margin-top: 16rpx; padding: 24rpx 20rpx; border: 1rpx solid $mini-primary-border; border-radius: 16rpx; background: $mini-page; }
+.consult-pickable-pressed { background: $mini-primary-soft; }
+.consult-doctor-arrow { margin-left: 12rpx; font-size: 40rpx; color: $mini-primary; }
+.consult-back { display: inline-block; margin-top: 12rpx; padding: 0 8rpx; background: transparent; color: $mini-primary; font-size: 26rpx; }
 .consult-avatar { width: 88rpx; height: 88rpx; border-radius: 50%; margin-right: 22rpx; flex-shrink: 0; }
 .consult-avatar-empty { background: #edf4f7; color: #377b9b; text-align: center; line-height: 88rpx; font-size: 32rpx; }
 .consult-doctor-info { flex: 1; min-width: 0; }

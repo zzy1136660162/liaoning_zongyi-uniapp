@@ -1,0 +1,2 @@
+# HBuilderX 编译会从项目的 node_modules 查找依赖。
+nodeLinker: hoisted

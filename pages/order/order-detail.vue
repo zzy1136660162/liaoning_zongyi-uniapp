@@ -141,6 +141,8 @@
       </view>
     </view>
 
+    <HisTherapyUsage :usage="order.hisTherapyUsage" />
+
     <!-- 订单卡片 -->
     <view class="order-card">
       <view class="order-card-header">
@@ -305,6 +307,7 @@
   import { getConsultationDetail, getPrescriptionByConsultation, getPrescriptionDetail } from '@/api/consultation.js'
   import { AI_DOCTOR, resolveConsultationDoctorName } from '@/utils/consultation-mode.js'
   import { getOrderDetail } from '@/api/order.js'
+  import HisTherapyUsage from '@/components/HisTherapyUsage.vue'
   import { getDisplayOrderNo, getPaidAmountText, getRefundedAmountText } from '@/utils/order-display.js'
   import { wechatSinglePay } from '@/api/payment.js'
   import { formatFreightEstimate } from '@/utils/freight.js'
@@ -322,6 +325,7 @@
 
   export default {
     name: 'OrderDetail',
+    components: { HisTherapyUsage },
     setup: useProductImages,
     data() {
       return {
@@ -331,6 +335,7 @@
           statusText: '',
           time: '',
           orderNo: '',
+          hisTherapyUsage: null,
           // 页面展示用的"处方单号"（沿用原来的订单号/处方号文案）
           // 真正用于跳转处方详情接口的处方ID（数字）
           prescriptionId: null,
@@ -824,6 +829,7 @@
             this.order.time = this.formatDateTime(orderDetail.createdAt)
             this.order.orderNo = orderDetail.orderNo || this.order.orderNo
             this.order.hisOrderNo = orderDetail.hisOrderNo || null
+            this.order.hisTherapyUsage = orderDetail.hisTherapyUsage ?? null
             this.order.paidAmount = orderDetail.paidAmount
             this.order.refundedAmount = orderDetail.refundedAmount
             // 物流/运费（到付）信息

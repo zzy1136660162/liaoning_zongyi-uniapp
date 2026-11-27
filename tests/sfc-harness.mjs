@@ -100,6 +100,7 @@ export const loadOptions = (path, mocks) => {
     mapProductDetail: missingProductRequest, mapProductListItem: missingProductRequest,
     resolveProductSku, withProductSku, useProductImages, preloadProductImages, ...mocks }
   const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+  mocks = { HisTherapyUsage: {}, ...mocks }
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/^[ \t]*import\s[\s\S]*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
     .replace('export default', 'return')

@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import * as cart from './cart-api-fixture.mjs'
 import * as mode from '../utils/consultation-mode.js'
+import { isHospitalMedical } from '../utils/product-biz.js'
 import { loadSetup } from './sfc-harness.mjs'
 
 const keys = ['7:1', '8:1', '9:1']
@@ -41,7 +42,7 @@ const harness = (overrides = {}, route = {}) => {
   }])))
   const options = { selectedItems: keys.join(','), ...route }
   const page = loadSetup('pages/dispense/apply.vue', {
-    ...cart, ...mode,
+    ...cart, ...mode, isHospitalMedical,
     ref: value => ({ value }), computed: get => ({ get value() { return get() } }),
     onMounted: fn => { mount = fn }, onShow: fn => { show = fn }, onUnmounted: fn => { unmount = fn },
     getCurrentPages: () => [{ options }], getSessionGeneration: () => 1,
@@ -58,7 +59,7 @@ const harness = (overrides = {}, route = {}) => {
   }, ['loadPatientsFromAPI', 'loadProducts', 'patients', 'selectedPatient', 'cartItems',
     'selectedItems', 'directPurchase', 'onSubmit', 'removeSelectedPatient', 'selectPatient', 'onQuantityChange',
     'showAgreementDialog', 'showAgreement', 'agreementChecked', 'selectConsultationMode', 'consultationMode',
-    'totalPrice', 'totalQuantity'])
+    'totalPrice', 'totalQuantity', 'prescribingProductId'])
   return { ...page, storage, listeners, routes, toasts, modals, deleted,
     mount: async () => { mount(); await flush() }, show: () => show(), unmount: () => unmount(),
     changeSession: () => { currentSession = false }, patientCalls: () => patientCalls,
@@ -88,26 +89,26 @@ test('申请页保留混购、数量修改、协议弹窗和AI问诊路由', asy
   assert.equal(query.get('patientId'), '8')
   assert.equal(query.get('consultationMode'), 'ai')
   assert.equal(query.get('doctorId'), null)
-  assert.equal(query.get('doctorName'), mode.AI_DOCTOR.name)
-  assert.equal(query.get('doctorAvatar'), mode.AI_DOCTOR.avatar)
 })
 
-test('人工问诊仍在提交时随机分配一次，ID姓名头像保持同一对象', async t => {
-  let randoms = 0
+test('指定医生入口使用首件制剂商品打开选择列表，提交可重新打开', async () => {
   const page = harness()
   await page.mount()
   await page.show()
-  t.mock.method(Math, 'random', () => { randoms++; return 0 })
-  page.selectPatient(page.patients.value[0])
+  page.cartItems.value = [page.cartItems.value[1], page.cartItems.value[0], page.cartItems.value[2]]
   page.selectConsultationMode(mode.CONSULTATION_MODE_MANUAL)
+  assert.equal(page.prescribingProductId.value, '7', '使用制剂的商品ID，而非首件健康商品或购物车键')
+  assert.deepEqual(page.routes, [])
+  page.prescribingProductId.value = null
+  page.selectConsultationMode(mode.CONSULTATION_MODE_MANUAL)
+  assert.equal(page.prescribingProductId.value, '7', '相同接诊方式仍可重新打开列表')
+
+  page.prescribingProductId.value = null
+  page.selectPatient(page.patients.value[0])
   page.agreementChecked.value = true
   page.onSubmit()
-  const query = new URL(page.routes[0], 'https://fixture.invalid').searchParams
-  assert.equal(query.get('consultationMode'), 'manual')
-  assert.equal(query.get('doctorId'), String(mode.MANUAL_DOCTORS[0].id))
-  assert.equal(query.get('doctorName'), mode.MANUAL_DOCTORS[0].name)
-  assert.equal(query.get('doctorAvatar'), mode.MANUAL_DOCTORS[0].avatar)
-  assert.equal(randoms, 1)
+  assert.equal(page.prescribingProductId.value, '7')
+  assert.deepEqual(page.routes, [], '指定医生流程不进入自动创建咨询的页面')
 })
 
 test('患者编辑事件只记优先ID，返回页刷新一次并保留之后的当前选择', async () => {
